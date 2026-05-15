@@ -1252,7 +1252,7 @@
       const resetCustomStatus = () => {
         customOk = false;
         customStatusEl.innerHTML =
-          '将依次用已填写模型发送 <code>hello world</code>，检查接口与模型是否可用。';
+          '浏览器直连测试可能受 CORS 限制；如果出现 Failed to fetch，仍可保存配置并用 GitHub Actions 验证。';
         customStatusEl.style.color = '#999';
       };
 
@@ -1271,7 +1271,7 @@
         resetCustomStatus();
         customApiKeyInput.focus();
         setErrorText(
-          `已填入 ${preset.label} 预设，请补充 API Key 后点击“测试当前配置”。`,
+          `已填入 ${preset.label} 预设，请补充 API Key。测试失败也可保存后用 GitHub Actions 验证。`,
           '#666',
         );
       };
@@ -1394,7 +1394,7 @@
         platoStatusEl.style.color = '#666';
       }
       if (currentProviderType === 'openai-compatible' && initialCustomApiKey && initialCustomBaseUrl) {
-        customStatusEl.textContent = '已载入当前加密配置；如更换 Base URL / 模型，建议重新点击测试。';
+        customStatusEl.textContent = '已载入当前加密配置；浏览器测试可能受 CORS 限制，实际工作流会在 GitHub Actions 中验证。';
         customStatusEl.style.color = '#666';
       }
 
@@ -1575,8 +1575,10 @@
           return;
         }
         if (providerDraft.providerType === 'openai-compatible' && !customOk) {
-          setErrorText('请先点击“测试当前配置”，确认 OpenAI-compatible 配置可用。', '#c00');
-          return;
+          setErrorText(
+            '浏览器测试未通过或未执行，将直接保存 OpenAI-compatible 配置；请随后运行 GitHub Actions 验证。',
+            '#b26a00',
+          );
         }
 
         const nowIso = new Date().toISOString();
