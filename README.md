@@ -46,6 +46,16 @@ the existing LLM steps for query rewrite, filtering, and summaries. Since normal
 OpenAI-compatible endpoints usually do not expose BLT's `/rerank` endpoint, the
 rerank step is skipped automatically and the pipeline uses its fallback ranking.
 
+For realtime browser chat, use the Cloudflare Worker proxy in
+`cloudflare-worker/`. Direct browser calls to many relay services fail because of
+CORS. After deploying the Worker, use its URL in the web UI:
+
+```text
+Base URL: https://YOUR_WORKER.workers.dev/v1
+Model: gpt-5.5
+API Key: browser-placeholder
+```
+
 
 ## 🖼️ 界面预览
 <p align="center">
