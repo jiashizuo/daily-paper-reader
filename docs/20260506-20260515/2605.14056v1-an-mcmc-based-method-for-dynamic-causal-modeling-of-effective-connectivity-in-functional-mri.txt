@@ -1,0 +1,1879 @@
+Title: An MCMC-Based Method for Dynamic Causal Modeling of Effective Connectivity in Functional MRI
+
+URL Source: https://arxiv.org/pdf/2605.14056v1
+
+Published Time: Fri, 15 May 2026 00:17:15 GMT
+
+Number of Pages: 65
+
+Markdown Content:
+# An MCMC-Based Method for Dynamic Causal Modeling of Effective Connectivity in Functional MRI 
+
+# Kaitlyn R. Fales ∗1, Hyebin Song 1, and Nicole A. Lazar 1,2 1Department of Statistics, Pennsylvania State University 
+
+> 2
+
+# Huck Institutes of the Life Sciences, Pennsylvania State University 
+
+Shortened Title: MCMC-Based Dynamic Causal Modeling for fMRI Connectivity 
+
+Abstract: Effective connectivity analysis in functional magnetic resonance imaging (fMRI) studies directional interactions among brain regions and experimental stimuli. Dynamic causal modeling (DCM) is a widely used method to estimate effective connectivity, based on a state-space representation consisting of a latent neural signal model and an observa-tion model transforming the neural signal into the observed blood-oxygen–level-dependent (BOLD) response. A standard DCM combines ordinary differential equation (ODE) dy-namics for the latent signal with a complex neural-hemodynamic system for the observation model, and typically uses variational Bayes for parameter estimation. While physically well-motivated, this approach can lead to practical challenges such as inexact solutions and underestimated uncertainty. We introduce Canonical DCM (CDCM), a Markov chain Monte Carlo (MCMC)-based method that adopts a simpler observation model and the No-U-Turn Sampler for posterior sampling. The simpler observation model admits a piecewise analytic solution to the neural ODE, increasing computational efficiency and enabling explicit deriva-tion of sufficient conditions for parameter identifiability. The results indicate that CDCM provides reliable uncertainty quantification and consistent estimation of parameters related to experimental inputs for simulated and real data. We use publicly available data from the Wellcome Centre for Human Neuroimaging and the Human Connectome Project (HCP) to benchmark CDCM against standard DCM methods and examine replicability of estimated connectivity patterns in small- and large-scale neuroimaging settings. 
+
+Keywords: functional neuroimaging, state-space model, identifiability, replicability, brain networks, human connectome project 
+
+# 1 Introduction 
+
+State-space models defined by systems of ordinary differential equations (ODEs) are widely used to represent dynamic processes across scientific domains. Parameter estimation in 
+
+> ∗Corresponding author: kfales@psu.edu
+
+1
+
+> arXiv:2605.14056v1 [stat.ME] 13 May 2026
+
+these models is often challenging due to the presence of latent states, nonlinear dynamics, and partial or indirect observations. 1–4 In such settings, distinct parameter sets may produce identical model outputs, raising the issue of parameter identifiability. Parameter identifia-bility generally refers to the ability to uniquely identify model parameters from observed data. 5–7 Determining identifiability is a central problem in dynamical systems, with a large body of existing results, but one that remains inherently model-dependent. Identifiability is closely related to observability in the control systems literature, where observability is introduced first for linear systems, 8 and later extended to nonlinear systems. 9 Bellman and Åström 10 formalize the concept of structural identifiability for dynamical systems as the property that model parameters can be uniquely determined from noiseless observations of the system output. Without structural identifiability, reliable parameter estimation is fun-damentally impossible, but even when parameters are identifiable under idealized conditions, finite and noisy data still complicate estimation in practice. 6,11 
+
+A large body of existing work studies identifiability and its implications for parameter estimation in dynamical systems. In system identification, identifiability of linear and affine state-space models depends heavily on input design and parameterization, 1,2,5,12 while work in systems biology highlights the gap between theoretical identifiability and reliable estima-tion in finite or partially observed data. 6,7,11,13,14 The previous literature reflects a fundamen-tal trade-off between model complexity and parameter identification. 3 More recent advances emphasize identifying estimable combinations of parameters 15 and reparameterizing models to improve identifiability. 16 
+
+These identifiability challenges are pronounced in studies of effective, or directed, brain connectivity in functional MRI (fMRI), where latent neural activity is inferred from indirect measurements. In neuroimaging, dynamic causal modeling (DCM) is a popular state-space framework in which latent neural dynamics are represented through a system of ODEs. 17 
+
+DCM models directed interactions between brain regions and their modulation by exper-imental inputs. DCM is inherently confirmatory: the state-space structure is specified apriori , with many parameters fixed to zero according to hypothesized connections. 17,18 Con-sequently, the framework does not support discovery of previously unmodeled interactions, increasing the importance of reliable and identifiable parameter estimation. Moreover, ex-perimental design, including choices regarding the number, timing, and variation of stimuli, directly influences the ability to recover model parameters and test hypotheses. 18,19 Although general design recommendations exist, 17,18,20,21 they are often qualitative, leaving open ques-tions about how design impacts identifiability and estimation in practice. Reliable parameter identification is also fundamental to replicability and reproducibility: without consistent re-covery of model parameters across datasets or experimental realizations, inferred system dynamics may fail to generalize, limiting the scientific utility of the model. Despite widespread use, theoretical understanding of parameter identifiability in DCM is limited. Most work relies on empirical evaluation through simulations and model recov-2ery studies, 18,22,23 or profile likelihood assessments. 19 Recent methodological developments aimed at improving computational scalability, including regression DCM 24 and large-scale optimization strategies, 25 focus on efficient inference but do not establish formal identifia-bility guarantees. Similarly, spectral and frequency-domain extensions of DCM 26 emphasize interpretability and links to functional connectivity but rely on empirical validation rather than theoretical analysis. Alternative causal modeling approaches, such as CausalMamba, 27 
+
+are aimed at addressing the computational intractability challenges of DCM. These methods rely on machine learning techniques to infer network connectivity and typically lack inter-pretability and explicit guarantees of parameter identifiability, further highlighting the need for theoretically grounded approaches to dynamical connectivity modeling. The difficulty of formal identifiability analysis appears to arise, at least in part, from the complex structure of standard DCM, which couples the neural ODE with a nonlin-ear hemodynamic model of four additional differential equations. 18,28–30 This complexity is emblematic of nonlinear state-space ODE models more generally, where latent dynamics interacting with observation models complicate theoretical analysis. Adding further model flexibility exacerbates the challenge; in the case of DCM, other modeling variations such as the two-state, 22 nonlinear, 31 and stochastic DCM 32 all substantially increase complexity. On the other hand, work in system identification and dynamical systems establishes conditions for parameter identifiability in linear and affine models. 1,2,5,12 Similarly, systems biology lit-erature develops frameworks for assessing structural and practical identifiability in nonlinear ODE models. 6,7,11,13,14,19 Together, these lines of work suggest that, under appropriate sim-plifications, complex models such as DCM may be recast in a tractable form that permits analysis of parameter identifiability. Simplifications that admit piecewise or analytic solu-tions further facilitate both theoretical understanding and computational efficiency. 7,13,33–35 
+
+Most existing DCM implementations use variational Laplace (VL) for parameter estima-tion. 17,18,22,31,36 VL replaces the intractable posterior with a Gaussian approximation centered at the posterior mode and obtained through free energy optimization. While computationally efficient, the approximation imposes a unimodal, locally quadratic structure on the posterior that is a strong assumption for state-space models such as DCM. 37,38 Furthermore, the free energy may have multiple local maxima, or even when the global maximum is reached, there is still a risk of biased inference. 23 
+
+By contrast, Markov chain Monte Carlo (MCMC) methods avoid restrictive assumptions on posterior form and instead target the full posterior distribution, enabling more accurate representations of uncertainty and parameter dependencies. Although prior work shows that VL optimization and sampling-based approaches, such as MCMC, agree on model selection, 37 
+
+agreement does not imply equivalence of the inferred posteriors. Variational inference liter-ature demonstrates these approaches often underestimate posterior uncertainty, particularly when the true posterior deviates from Gaussianity. 39 This limitation is especially problem-atic in fMRI, where inference is already challenged by indirect, noisy, and temporally coarse 3measurements of neural activity. Relevant work explores sampling-based approaches for DCM parameter estimation, par-ticularly in neural mass models. Gradient-based MCMC methods are shown to more ef-fectively explore the complex posterior geometries arising in DCM compared to gradient-free approaches. 40,41 However, these approaches are applied to the full nonlinear DCM and therefore remain computationally demanding in practice, taking approximately 46 hours for 20,000 Hamiltonian Monte Carlo samples, but with much larger effective sample sizes than Langevin Monte Carlo, taking just over one hour for the same number of iterations. 41 While sampling-based methods are also used for estimating model evidence in DCM to perform Bayesian model selection, for example via thermodynamic integration, 42 they similarly re-quire repeated evaluation of the nonlinear state-space model. These limitations motivate the development of more computationally efficient approaches to sampling-based inference in DCM. In this paper, we introduce Canonical DCM (CDCM), a simplified representation of the classical DCM from Friston et al 17 that retains its essential dynamical structure while reduc-ing model complexity. Through the simplified framework, we make three main contributions. First, we show that the proposed model admits a piecewise analytic solution to the neural ODE, bypassing the need for numerical integration. The solution is exact and more com-putationally efficient than numerical integration for this class of state-space ODE models. Second, we derive sufficient conditions for parameter identifiability by exploiting the piece-wise affine ODE solution made possible by the simplification. We can then connect the DCM setting to existing identifiability results from linear and affine dynamical systems. To the best of our knowledge, this is the first work to investigate and establish formal parameter identifiability in the context of DCM. Finally, we implement an exact parameter estima-tion procedure that allows reliable uncertainty quantification via MCMC, while improving computational scalability with the use of the piecewise analytic ODE solution. The remainder of the paper is organized as follows. In Section 2, we present a motivating large-scale fMRI application that serves as a natural setting for evaluating the consistency and replicability of effective connectivity estimates. Section 3 describes the proposed method, and Section 4 provides sufficient conditions for unique parameter identification. In Section 5, we present two simulation studies demonstrating the practical utility of the proposed approach under a range of settings. Section 6 presents two fMRI applications: the first compares CDCM with the classical DCM of Friston et al 17 using data from a single subject, and the second revisits the motivating example from Section 2. We conclude with a discussion in Section 7. 42 Motivating Data Example 
+
+As a motivating example, we consider task fMRI data from the Human Connectome Project – Young Adult (HCP-YA) 2025 Release, 43,44 which highlights the practical challenges of as-sessing stability and replicability of effective connectivity estimates in DCM-based analyses. The HCP provides high-quality, publicly available fMRI data for over 1,000 healthy adults, with the 2025 release incorporating updated preprocessing, including spatial and temporal independent component analysis, multi-run denoising, and spin-echo intensity bias correc-tion. 45 We focus on the social cognition task from the 100 Unrelated Subjects dataset, a Theory of Mind paradigm based on animated shapes. 46–49 In the task, participants view short clips of geometric shapes exhibiting either random (inanimate) or socially meaningful (animate) interactions and classify each clip accordingly. The design consists of alternating blocks of these conditions interleaved with fixation, and participants typically perform with high accuracy. 50,51 
+
+A prior study by Hillebrandt et al 51 applies a two-state DCM to the Q2 HCP data re-lease to estimate directed connectivity between motion-sensitive (V5) and social cognition (posterior superior temporal sulcus; pSTS) regions. The model includes two inputs corre-sponding to the experimental design: the “All Motion” input reflects the presence of any motion stimulus relative to fixation, while the “Animate > Inanimate” contrast isolates the additional effect of viewing socially meaningful interactions. Together, the inputs define how effects of social meaning are modeled separately from basic motion processing. In the two-state formulation, each region is represented by interacting excitatory and in-hibitory neural subpopulations 22 rather than a single neural state, as in traditional DCM. 17 
+
+Using post-hoc Bayesian model selection over a large model space, they identify a fully connected model as having the highest posterior evidence and report consistent connectiv-ity patterns across sessions and hemispheres. The selected model, with results as reported by Hillebrandt et al 51 is shown in Figure 1. The model includes bidirectional connectiv-ity between V5 and pSTS; the “All Motion” input drives activity in both regions, and the “Animate > Inanimate” contrast modulates all intra- and inter-regional connections. The consistency Hillebrandt et al 51 find in connectivity patterns may suggest that effective con-nectivity estimates for the social cognition task are stable and well-characterized. However, several aspects of the previous analysis limit the strength of the conclusion. First, Figure 1 demonstrates that results are only reported for a subset of parameters, and posterior uncertainty is not directly quantified or interpreted; uncertainty is instead summa-rized indirectly through ANOVA-based confidence intervals on selected contrasts. Second, the use of a two-state DCM introduces substantial model complexity beyond the standard one-state formulation. Because parameter identifiability is already difficult to assess even in one-state models, 23 the complexity of a two-state model further exacerbates the problem. Third, the regional time series used for model estimation are constructed using subject-5Figure 1: Hillebrandt et al 51 group-level DCM using Q2 HCP data, with each parameter shown being the grand mean estimate across all subjects, sessions, and hemispheres. The grand means are reported as no session (RL, LR phase encoding) or hemisphere (right, left) effects are found from conducting repeated-measures ANOVAs on pairs of connections. Some connections shown in the state-space hypothesis do not have mean estimates reported in the paper, namely, those in the endogenous connectivity matrix, A (blue arrows). The analysis from Hillebrandt et al 51 uses a two-state DCM for each subject, and define “All Motion” and “Animate > Inanimate” contrasts in the experimental design. The modulatory parameters corresponding to B (orange arrows) are shown in the raw, untransformed scale, as the parameterizations for these matrices are more complex than those of the one-state DCM. We use this model hypothesis as the basis for our analysis using CDCM. specific voxel sets defined via local activation maxima, introducing a selection mechanism where each subject’s data is derived from peak activation voxels. Variability in region defi-nition introduces an additional source of bias in estimated connectivity. Together, these considerations raise an important question: to what extent are the re-ported connectivity patterns replicable across choices in model specification, parameter es-timation, and ROI construction? We therefore investigate replicability of the connectivity results given by Hillebrandt et al 51 using the updated 100 Unrelated Subjects dataset within the HCP-YA 2025 release. Between the updated data preprocessing and limited subject over-lap (24 percent) with the earlier Q2 release used in Hillebrandt et al, 51 we assess replicability of results under meaningful data perturbations. In the current work, we revisit this motivating example using CDCM, a framework that permits sufficient conditions for parameter identifiability. Rather than relying on model selection alone, we evaluate posterior uncertainty for all connectivity parameters to determine which connections are reliably supported. In addition, we construct regional time series using prespecified, consistent voxel sets across subjects, thereby removing variability in subject-6specific ROI selection. By jointly addressing identifiability, uncertainty quantification, and ROI construction, the analysis provides a more rigorous assessment of the stability and replicability of effective connectivity estimates in a large-scale task fMRI setting. 
+
+# 3 Methods 
+
+The standard DCM framework from Friston et al 17 is formulated as a bilinear one-state neural model, in which each brain region is represented by a single latent neural state whose dynamics are governed by intrinsic connectivity parameters and modulatory effects of ex-perimental inputs. Inputs enter both additively and through bilinear interactions with the state (e.g., products of inputs and states), allowing (experimental) condition-specific modu-lations of connectivity. Then, the traditional observation model describes the hemodynamic transformation from neural activity to the observed blood-oxygen-level-dependent (BOLD) response in fMRI. The Balloon model 52 is adapted for use in DCM to account for the hemo-dynamics. 28–30 These dynamics are represented by a four-dimensional system of nonlinear ODEs with several parameters to estimate; for more details, see Appendix 5 of Zeidman et al. 18 
+
+Our approach, Canonical DCM, differs from the traditional bilinear DCM 17 in two re-spects: 1) CDCM utilizes a simpler observation model, and 2) parameter estimation is accomplished using an MCMC-based approach. Instead of the four-dimensional nonlinear Balloon observation model, we propose convolving the latent neural signal with a fixed hemo-dynamic response function (HRF). There are several choices of HRF used in fMRI, but the most common, or canonical HRF, is the linear combination of two gamma functions, 
+
+h(t; ( α1, α 2, β 1, β 2, c )) = βα1
+
+> 1
+
+Γ( α1)tα1−1e−β1t − c βα2
+
+> 2
+
+Γ( α2)tα2−1e−β2t, (1) with parameters α1 = 6 , α2 = 16 , β1 = β2 = 1 , and c = 1 /6, as implemented in SPM ( https: //www.fil.ion.ucl.ac.uk/spm/software/spm12/ ), a popular neuroimaging software. 53,54 
+
+This proposal offers two main advantages. With the simplification, the model retains only a single linear (affine) ODE, for which an analytical solution can be derived. The analytical solution provides the ability to explicitly analyze the identifiability of the ODE system and removes the reliance on numerical solvers, enabling faster MCMC-based computation as compared to MCMC for traditional DCM. 41 
+
+There is an important relation between the two observation model approaches through the Volterra series expansion of the BOLD signal. The Volterra expansion is similar to Taylor expansion except that the Volterra series captures memory, making it applicable to the BOLD signal as it “remembers” dependencies in the signal. 28 Friston 29 shows that if the biophysical parameters in the Balloon model are treated as fixed, the state equations 7linearized, and the Volterra expansion is cut off after first-order terms, the linearized Balloon model is well-approximated by the convolution of neural activation with the canonical HRF. Therefore, our convolution approach can be considered a special case approximation of the Balloon model. The details of the relationship are given in Supplementary Material A. The convolution of neural activation with the canonical HRF is a natural choice for simpli-fying DCM while maintaining its biophysical foundations. In a simulation study of practical identifiability for DCM, Arand et al 19 use the canonical HRF approach coupled with profile likelihood estimation to obtain reasonable parameter estimates for synthetic data generated using various scanning parameters (e.g., repetition time, scanning session duration, block duration). A profile likelihood scheme can be viewed as a “worst case scenario” approach for DCM since it does not incorporate any prior information 55 and helps motivate the use of the canonical HRF within a Bayesian framework. 
+
+# 3.1 Model Specification 
+
+We now specify the latent neural dynamics and observation model in CDCM. Let z =
+
+{z(t)}t≥0 denote the latent neural signal, initialized at z(0) ∈ Rd, where z(t) ∈ Rd is the vector of states corresponding to neural activation at time t across d ROIs. Following Friston et al 17 , we model the latent neural dynamic by the ODE 
+
+˙z(t) = ( A +
+
+> m∑
+> i=1
+
+ui(t)Bi)z(t) + Cu (t), t ∈ (0 , ∞), (2) where the vector u(t) = [ u1(t), . . . , u m(t)] ⊤ ∈ Rm indicates which, if any, of the m stimuli are present at time t. Specifically, ui(t) = 1 indicates that the ith stimulus is present at time 
+
+t, and ui(t) = 0 otherwise, for i = 1 , . . . , m .In the neural dynamic equation (2), A ∈ Rd×d parameterizes the connections between ROIs in the hypothesis (endogenous connectivity), Bi ∈ Rd×d parameterizes the modula-tion from stimulus i to the (hypothesized) connections between ROIs for i = 1 , . . . , m , and 
+
+C ∈ Rd×m parameterizes the driving connections from experimental stimuli directly to ROIs. Based on the research hypothesis, many values in A, B = [ B1, . . . , Bm], and C are hypoth-esized to be zero, and are not considered during estimation. We define vec (A)̸ =0 as the vectorization of the nonzero elements of A. The parameters of interest in A, B, and C are 
+
+νA = vec (A)̸ =0 , νB = vec (B)̸=0 , and νC = vec (C)̸ =0 . We summarize the set of parameters for the neural signal model as θz = {νA, ν B , ν C }. From this point forward, we refer to θz ∈ Rpθz 
+
+as the neural parameters, or neural parameter vector. DCM is specified in terms of continuous time t ∈ [0 , ∞) since the true signals are con-tinuous. However, in practice, we only observe the BOLD response, denoted as y(t) ∈ Rd
+
+at time t, at equally spaced repetition times (TR). Let r denote the repetition time, and define tj = rj for j = 1 , . . . , n , where n is the number of scans in the fMRI session. To 8account for the hemodynamics, we model the mean of the observed BOLD response at the observed time points as the sum of ROI-specific offsets and a convolution term based on the convolution of z with the canonical HRF h(·; θy) defined in (1), with fixed parameter values θy = {α1 = 6 , α 2 = 16 , β 1 = 1 , β 2 = 1 , c = 1 /6}. For notational simplicity, we denote the HRF as h(·) = h(·; (6 , 16 , 1, 1, 1/6)) . We define the convolution component of the mean BOLD response at the observed time points as 
+
+μ(tj ) = 
+
+> j∑
+> i=0
+
+h(ti)z(tj−i), (3) where the sum truncates at i = 0 since both the neural signal and the canonical HRF are zero prior to the start of the scan. Combining the latent neural dynamics and the observation model, CDCM is specified by 
+
+˙z(t) = ( A +
+
+> m∑
+> i=1
+
+ui(t)Bi)z(t) + Cu (t), t ∈ (0 , ∞) (4) 
+
+y(tj ) = μ(tj ) + β + ε(tj ), j ∈ N, (5) where β ∈ Rd is an intercept term accounting for the mean of the BOLD signal within each region, and the measurement errors ε(tj ), for j = 1 , . . . , n , are iid multivariate Gaussian with variance matrix diag (σ21 , . . . , σ 2
+
+> d
+
+). Let s∗ = z(0) denote the initial state. The unknown parameters are the neural parameters θz , the initial system condition s∗ ∈ Rd, the intercept vector β ∈ Rd, and the measurement error variance {σ21 , . . . , σ 2
+
+> d
+
+}.To constrain the dynamic system and prevent it from diverging, we impose strictly neg-ative self-loop connections on the diagonal of A, concentrating them around a baseline of −0.5 Hz, similar to other DCM implementations (e.g., Zeidman et al). 18 We reparam-eterize the diagonal entries of A via an unconstrained parameter vector νDA , such that diag (A) = −0.5 exp( νDA ), where the transformation enforces negativity and the prior controls deviation from the baseline. In contrast to SPM, which reparameterizes the diagonal entries of both A and Bi for i = 1 , . . . , m , we reparameterize only the diagonal of A and impose tighter priors on the diagonals of A and Bi. More details on the distinction between the two parameterizations and its implications are discussed in Supplementary Material B. For prior specification, we separate the diagonal and off diagonal components of A and B.Define νD 
+
+> (A,B )
+
+= vec( νDA , diag (B)) ̸=0 as the vectorization of all nonzero diagonal entries across 
+
+A and B, where νDA denotes the unconstrained representation of diag (A). Similarly, we define νO 
+
+> (A,B )
+
+= vec( offdiag (A), offdiag (B)) ̸=0 as the vectorization of all nonzero off-diagonal entries across A and B. We then specify priors on the neural parameters θz through νD
+
+> (A,B )
+
+,9νO
+
+> (A,B )
+
+, and νC . Specifically, the priors are given by, 
+
+νD 
+
+> (A,B )
+
+∼ Ndim (νD
+
+> (A,B ))
+
+(0 , σ 2 
+
+> νD
+
+I),νO 
+
+> (A,B )
+
+∼ Ndim (νO
+
+> (A,B ))
+
+(0 , σ 2 
+
+> νO
+
+I),νC ∼ Ndim (νC )(0 , σ 2 
+
+> νO
+
+I),
+
+s∗ ∼ Nd(0 , σ 2 
+
+> s
+
+I),β ∼ Nd(0 , I),ε(tj )|{ σ21 , . . . , σ 2
+
+> d
+
+} ∼ Nd(0 , diag (σ21 , . . . , σ 2
+
+> d
+
+)) ,σℓ ∼ Exp (0 .5) for ℓ ∈ { 1, . . . , d },
+
+where σνD = 0 .125 , σνO = 1 , and σs = 0 .3. This leads to the following likelihood for y(tj )
+
+for j = 1 , . . . , n :
+
+y(tj )|{ θz , s∗, β, σ 21 , . . . , σ 2
+
+> d
+
+} ∼ Nd(μ(tj ) + β, diag (σ21 , . . . , σ 2
+
+> d
+
+)) .
+
+# 3.2 Piecewise Analytic Solution of the Neural Signal 
+
+The observation model simplification via the canonical HRF is the contribution that makes MCMC-based estimation more feasible, but adoption of CDCM also hinges on computational efficiency. While MCMC provides a more faithful characterization of posterior uncertainty for DCM, its computational demands hinder routine application. Here, we demonstrate that a simplified model formulation, combined with a piecewise analytic solution to the neural state equation, renders MCMC both tractable and efficient. Many fMRI experiments use a block design, where subjects experience a stimulus repeatedly over blocks of time 56 ; it is the intuition behind the block design that enables a piecewise analytic solution for CDCM. Each element of u(t) at time t is in {0, 1} based on which stimuli are present during a particular block of time. We divide the experiment into B + 1 distinct blocks, assigning a new block each time the set of stimuli changes. Within a block, the subject experiences the same stimulus repeatedly. Let T (b) be the set of time points tj belonging to the bth block and let t(b) represent the minimum of T (b), which is the starting time point of the block b for b = 0 , 1, . . . , B . Then, T (b) = {t(b), t (b) + r, t (b) + 2 r, . . . , t (b+1) − r}, where we recall that r is the repetition time (TR). Also, we represent the experimental stimuli as ˜U := [˜ u(0) ⊤, . . . , ˜u(B)⊤]⊤ ∈ R(B+1) ×m, where ˜u(b) = [˜ u(b)1 , . . . , ˜u(b) 
+
+> m
+
+]⊤ ∈ Rm is a stimulus indicator vector for all observations within block b for b ∈ { 0, 1, . . . , B }.Note that for any tj ∈ T (b), u(tj ) = ˜ u(b). The trajectory of the ODE system (4) either follows linear or affine ODE dynamics within each block , as ∑mi=1 ui(t)Bi and Cu (t) are constant for t ∈ T (b). This observation underlies the closed-form solution to the neural ODE and enables us to leverage existing results on identifiability for linear or affine ODE 10 systems. 1,2,5 More concretely, for t ∈ T (b), the dynamics in (4) become 
+
+˙z(t) = ˜ A(b)z(t) + ˜ c(b) (6) where ˜A(b) := ( A + ∑mi=1 ˜u(b) 
+
+> i
+
+Bi) ∈ Rd×d and ˜c(b) := C˜u(b) ∈ Rd are both constants within block b. Note that the equation (6) is linear if ˜c(b) = 0 and affine otherwise. It is well known that for an affine ODE 
+
+˙v(t) = Av (t) + c, (7) with the initial condition v(0) , the closed-form solution is given by, 
+
+v(t) = eAt(v(0) + A−1c) − A−1c, (8) where eAt denotes the matrix exponential. Proposition 1 formalizes the observation, and shows that the solution of the dynamics in (4) is piecewise identical to a solution of the form (8). 
+
+Proposition 1. Let v(t; v(0) , (A, c)) denote the solution at time t ∈ R+ of the affine system (7) . Also let z(t; s∗, θ ∗) denote the solution of the DCM dynamics in (4) , and 
+
+θ∗ = {A, B1, . . . , Bm, C}. For b ∈ { 0, . . . , B }, with ˜A(b) and ˜c(b) defined in (6) ,
+
+z(t; s∗, θ ∗) = v(t − t(b); z(t(b)), ( ˜ A(b), ˜c(b))) , t ∈ [t(b), t (b+1) ).
+
+In particular, the closed-form solution of z(t; s∗, θ ∗) is given by 
+
+z(t; s∗, θ ∗) = e ˜A(b)(t−t(b)){z(t(b)) + ( ˜ A(b))−1˜c(b)} − ( ˜ A(b))−1˜c(b), t ∈ [t(b), t (b+1) ).
+
+The proof of Proposition 1 is given in Supplementary Material C. To evaluate the likeli-hood at parameters s, θ, we compute z(tj ; s, θ ) for j = 1 , . . . , n . By leveraging Proposition 1, we apply the closed-form solution to efficiently compute the ODE trajectory, therefore bypassing the need for numerical ODE integration. A schematic illustration of Proposition 1 is provided in Figure 2. The figure highlights how, within each block b ∈ { 0, 1, 2, 3}, the stimulus ˜u(b) partitions time into blocks over which the neural dynamics reduce to affine ODEs, and how the trajectory z(t) is obtained by solving each block in closed form and propagating through the boundary states z(t(b)).Proposition 1 is central to the CDCM framework because it makes MCMC-based es-timation both tractable and efficient, and also, places the model in a form amenable to theoretical analysis. Notably, the piecewise analytic solution to the neural ODE enables the identifiability results we develop in Section 4, linking the block design structure directly to conditions under which parameters can be uniquely recovered. 11 Figure 2: Schematic representation of Proposition 1. Constant stimulus blocks induce affine dynamics, and the trajectory z(t) is constructed by solving each block and propagating via 
+
+z(t(b)).
+
+# 3.3 Individual and Group-Level Parametric Estimation Procedure 
+
+Through the simplification of the observation model, CDCM involves fewer parameters and a simpler structure, enabling an exact parametric estimation procedure that is made more computationally efficient with the use of the piecewise analytic solution to the neural ODE. We use the No-U-Turn Sampler (NUTS) 57 for posterior distribution sampling of network pa-rameters in Stan 58 with the cmdstanr interface. 59 Initial values for the sampler are obtained via the Pathfinder algorithm. 60 
+
+Convergence of the MCMC chains is assessed using the multivariate effective sample size (ESS) from Vats et al, 61 as implemented in the mcmcse package. 62 The multivariate ESS is defined as, 
+
+\multiESS = N · 
+
+> (
+
+|̂Λ||̂Σ|
+
+> )1/P
+
+,
+
+where N is the number of sampling draws, P is the total number of parameters, ̂ Λ is the sample covariance of the draws and ̂ Σ is a consistent estimator of the asymptotic covariance matrix Σ. We note P = pθz + 3 d, where pθz is the number of neural parameters, and the remaining parameters are β, s∗ ∈ Rd, and σ2 
+
+> ℓ
+
+for ℓ = 1 , . . . , d , resulting in an additional 
+
+3d parameters not of primary interest. We estimate the long-run covariance matrix Σ using the multivariate moment least-squares (MLS) estimator from Song and Berg, 63 implemented in the momentLS package 64 which estimates the auto- and cross-covariance sequence via a 12 moment representation based on the reversibility of the Markov chain, and uses these to construct an asymptotic variance estimate. Chains are considered converged once the estimated multivariate ESS satisfies the mul-tivariate stopping criterion 61 :
+
+\multiESS ≥ W (P, α ESS , ε ESS ),
+
+where W (P, α ESS , ε ESS ) depends on the dimension P , level αESS , and relative precision 
+
+εESS . In practice, the stopping criterion is most sensitive to the choice of εESS , with smaller values requiring substantially larger ESS to ensure small Monte Carlo standard errors. The effects of P and αESS are comparatively modest, although increasing P or decreasing αESS 
+
+also requires longer chains to reach sampler convergence. CDCM is a method for estimating a single-subject’s directed connectivity, but most of-ten, an fMRI study has many subjects, and the broader goal of the study involves examining connectivity patterns across the entire group. If we treat the individual subject-level pa-rameters of interest as an independent “study”, we can then use a standard multivariate normal–normal Bayesian hierarchical model to estimate the group-level DCM across all sub-jects. 65,66 
+
+For each subject k = 1 , . . . , K , let ˆθz,k ∈ Rpθz denote the estimated posterior means for subject k, and Sk ∈ Rpθz ×pθz denote the within-subject posterior covariance matrix of ˆθz,k ,both estimated for every subject individually using CDCM. At the group-level, we control for differences between subjects by including subject-level covariates such as age, sex, fMRI task performance measures (if applicable), and other relevant sample characteristics. Let 
+
+bk ∈ Rqs denote the corresponding subject-level covariates for subject k.We model the true subject neural parameters θz,k hierarchically as 
+
+θz,k ∼ Npθz (α + Θ bk, T), ˆθz,k | θz,k ∼ Npθz (θz,k , Sk),
+
+where α ∈ Rpθz are group-level intercepts indicating baseline group-level connectivity, Θ ∈
+
+Rpθz ×qs are regression coefficients corresponding to the covariates, and T ∈ Rpθz ×pθz is the between-subject covariance matrix. Because both levels are normal, the latent θz,k can be integrated out, yielding the marginalized likelihood, 
+
+ˆθz,k ∼ Npθz (α + Θ bk, T + Sk),
+
+which is used for efficient estimation of group-level effects. Full details on the priors, covari-ance factorization, and sampling procedure are provided in Supplementary Material D. 13 4 Identifiability of Model Parameters 
+
+We now turn to the theoretical contribution of this work, namely the development of condi-tions for parameter identifiability of CDCM. Loosely, identifiability for an ODE system refers to the ability to uniquely identify parameters from a whole trajectory for a given input and output, where a whole trajectory refers to the solution curve of the ODE considering all possible states. 5,6 In many situations, we do not have access to the whole trajectory, we only have access to one, or a trajectory from one initial condition. Furthermore, even a single trajectory implies completely observing the system path in continuous time. This also is unlikely in practice and we only observe a set of discrete observations instead. In fMRI, we have a set of equally-spaced discrete observations sampled from a single trajectory. We discuss identifiability of CDCM in terms of error-free observations. Specifically, we consider if model parameters can be uniquely identified from inputs U = [ u(t1)⊤, . . . , u(tn)⊤]⊤ ∈
+
+Rn×m and observations Y = [ y(t1)⊤, . . . , y(tn)⊤]⊤ ∈ Rn×d, in the absence of measurement error. If two distinct sets of model parameters produce the same trajectory, consistent es-timation of the model parameters is impossible, as these parameters are indistinguishable based on the observed data. We first establish a set of sufficient conditions for the iden-tifiability of model parameters in the ODE system (4) from the latent discrete z(tj ), as well as conditions for an injective mapping from z(tj ) to the mean of the observed data, 
+
+E[y(tj )] = μ(tj ) + β. The injective mapping ensures that the parameters uniquely identified from z(tj ) are uniquely translated to the observable mean trajectory. The network parameters are θ∗ = {A, B1, . . . , Bm, C}, along with initial system condition 
+
+s∗. We use θ∗ here instead of θz because identifiability is defined at the level of the full dynamic system matrices; since θz corresponds to the nonzero elements of these matrices, identification of θ∗ implies identification of θz . For future reference, let z(t; s, θ ) denote the solution of the DCM dynamics in (4) at time t, given the initial state s and parameter θ.When s and θ are taken at the true values s∗ and θ∗, we suppress the explicit dependence on s∗, θ ∗ and simply write z(t) = z(t; s∗, θ ∗). We first define the identifiability that our theoretical result refers to, which is an extension of (s∗, A)-identifiability in Wang et al. 5
+
+Definition 1 ((s∗, θ ∗)-identifiability) . For s∗ ∈ Rd and θ∗ = {A, B1, . . . , Bm, C}, we say the ODE system in (4) is (s∗, θ ∗)-identifiable from z(t1), . . . , z(tn) if for all s′ ∈ Rd and 
+
+θ′ = {A′, B′
+
+> 1
+
+, . . . , B′
+
+> m
+
+, C′} with (s′, θ ′)̸ = ( s∗, θ ∗), there exists j for j ∈ { 1, . . . , n }, such that 
+
+z(tj ; s′, θ ′)̸ = z(tj ; s∗, θ ∗).
+
+Similar to Wang et al, 5 the definition of identifiability specifically refers to discrete error-free observations sampled from a single trajectory z(t; s∗, θ ∗), meaning s∗ and θ∗ are fixed and s′ and θ′ are arbitrary (within the parameter space). That is, Definition 1 describes a property of a single system rather than a collective set of systems. 14 Now we discuss the (s∗, θ ∗)-identifiability of CDCM. We make two distinct types of as-sumptions: 1) assumptions on the experimental design, and 2) conditions on the parameters and latent discrete observations. These assumptions are sufficient but not necessary for 
+
+(s∗, θ ∗)-identifiability of (4). The following assumptions concern the experimental design :(A1) The fMRI experiment utilizes a block design, and each block contains at least d + 1 
+
+equally spaced observations following its initial within-block state z(t(b)).(A2) The experimental design contains at least m + 1 blocks b1, . . . , b m+1 satisfying Assump-tion (A1), where B∗ := {b1, . . . , b m+1 } ⊆ { 0, . . . , B }. Moreover, the corresponding stimulus combinations are unconfounded in the sense that 
+
+˜U∗ =
+
+> 
+
+1 ˜u(b1)⊤
+
+1 ˜u(b2)⊤
+
+... ...
+
+1 ˜u(bm+1 )⊤
+
+> 
+
+∈ R(m+1) ×(m+1) 
+
+is invertible. Essentially, Assumptions (A1)–(A2) require that the fMRI experiment contains suffi-ciently long blocks to enable within-block identification of the latent dynamics, and that the experimental design includes sufficiently varied combinations of stimuli across blocks. In par-ticular, Assumption (A2) ensures that at least m+1 blocks are available whose stimulus con-figurations are linearly independent (after augmentation with an intercept), which prevents confounding between the baseline connectivity A and the modulatory effects B1, . . . , Bm.Regarding Assumption (A1), an fMRI block design is the natural choice, as the subject is repeatedly experiencing the same stimulus for a block of observations at a time, and each block is typically several TRs long, so (A1) is easily satisfied. For DCM, it is recommended to keep the number of ROIs in the hypothesis fewer than 10, 67 meaning at worst, the block should be at least 10 TRs long, or about 20–30 s to satisfy Assumption (A1). In Assumption (A2), we require sufficiently varied combinations of experimental stimuli to prevent con-founding effects. As a practical guideline, the total number of observations should be large enough to include at least m + 1 blocks satisfying Assumption (A1) (e.g., on the order of 
+
+(m + 1)( d + 1) observations). For example, even with a moderately complex model with 
+
+d = 9 and m = 3 , only a modest number of blocks and observations are needed, and both are easily achievable in typical fMRI experiments. The remaining assumptions concern the parameters and latent discrete observations :(A3) For each b ∈ B ∗, ˜A(b) = ( A + ∑mi=1 ˜u(b) 
+
+> i
+
+Bi) ∈ Rd×d has d distinct, real eigenvalues. (A4) For each b ∈ B ∗, the data matrix X(b)0 = [ x(b)0 , . . . , x(b) 
+
+> d
+
+] ∈ R(d+1) ×(d+1) is invertible, 15 where x(b) 
+
+> j
+
+:= [ z(t(b) + tj ), 1] ⊤ = [ v(b) 
+
+> j
+
+, 1] ⊤ for j ∈ { 0, . . . , d } are the first d + 1 discrete observations from block b.These assumptions are made to ensure the identifiability of a linear (affine) ODE sys-tem within each block. The identifiability of such a system is equivalently characterized by whether the system’s trajectory is constrained to a proper (affine) subspace space of Rd.1,2 
+
+Conditions (A3)–(A4) guarantee that no such confinement occurs for the continuous trajec-tory, and discrete observations are made in a non-degenerative way, so that the the trajectory evaluated at discrete time points continues to span the full space. Similar assumptions are made in Duan et al, Stanhope et al, and Wang et al. 1,2,5 
+
+Theorem 1. Assume (A1)–(A4). Then the ODE system in (4) is (s∗, θ ∗)-identifiable. 
+
+The detailed proofs for the theoretical results are given in Supplementary Material C. We leverage Proposition 1, together with results from Duan et al. 1, to prove Theorem 1. In summary, the proof proceeds in three steps. First, for each block b ∈ B ∗, we show that the block-specific parameters ˜A(b) and ˜c(b) are uniquely determined by a finite number of within-block observations. Second, using Assumption (A2), we select m + 1 blocks whose stimulus configurations are linearly independent, and express the parameters A, B1, . . . , Bm,and C as solutions to a linear system involving the block-specific parameters. Finally, the initial condition s∗ is recovered using the closed-form affine solution over [0 , r ) under the initial stimulus setting. For all empirical analyses, we assume that no external stimuli are present during the interval [0 , r ) prior to the first observation, but the initial system condi-tion is identifiable regardless of if stimuli are present in [0 , r ). Together, these steps show that all parameters (s∗, θ ∗) are uniquely determined by the discrete trajectory, establishing identifiability according to Definition 1. Theorem 1 provides a set of sufficient conditions for the (s∗, θ ∗)-identifiability of CDCM parameters relating to latent neural trajectory z(t; s∗, θ ∗). We also present the following theo-rem for the injective mapping from discrete z(tj ) to the observable mean E[y(tj )] = μ(tj )+ β,which gives the important translation from (s∗, θ ∗)-identifiability in z(tj ) to identifiability from the observed BOLD signal y(tj ) for j ∈ { 1, . . . , n }.
+
+Theorem 2. If h(r)̸ = 0 , that is, the canonical HRF evaluated at the TR r is nonzero, then the mapping 
+
+{z(tj ); j = 0 , . . . , n − 1} 7 → { E[y(tj )]; j ∈ { 1, . . . , n }} 
+
+with E[y(tj )] = μ(tj ) + β is injective. In particular, the system defined by (4) and (5) 
+
+is (s∗, θ ∗)-identifiable from {E[y(t1)] , . . . , E[y(tn)] } in the sense that for s′ ∈ Rd and θ′ =
+
+{A′, B′
+
+> 1
+
+, . . . , B′
+
+> m
+
+, C′} with (s′, θ ′)̸ = ( s∗, θ ∗), there exists j ∈ { 1, . . . , n } such that 
+
+E[y(tj ; s′, θ ′)] ̸ = E[y(tj ; s∗, θ ∗)] .
+
+16 As β = E[y(tj )] − μ(tj ) for any j, the intercept β is uniquely determined once μ(tj ) is identified. 
+
+We prove Theorem 2 by using the definition of discrete time convolution (3) and explicitly writing out the terms of μ(tj ). The discrete convolution can be represented in matrix form, and the matrix form of the terms involving the canonical HRF reduces to a lower triangular matrix and thus, is invertible. Matrix invertibility provides a one-to-one mapping from dis-crete dynamics {z(tj ); j = 0 , . . . , n − 1} to {μ(tj ); j ∈ { 1, . . . , n }} . Since E[y(tj )] = μ(tj ) + β
+
+with β constant across time, the addition of β preserves injectivity and is itself identifi-able from the mean trajectory. Therefore, the mapping from {z(tj ); j = 0 , . . . , n − 1} to 
+
+{E[y(tj )]; j ∈ { 1, . . . , n }} remains injective. For a standard TR (2–3 s), the nonzero condi-tion for the HRF evaluated at the TR for Theorem 2 is satisfied. Therefore, if Assumptions (A1)–(A4) are met, along with a standard choice of TR, the parameters of CDCM are 
+
+(s∗, θ ∗)-identifiable from {E[y(tj ; s∗, θ ∗)]; j = 1 , . . . , n }.
+
+# 5 Simulation Studies 
+
+We conduct two simulation studies to evaluate the practical utility of CDCM, with the aims of assessing computational efficiency as model complexity increases, and evaluating robustness to model misspecification. The first simulation in Section 5.1 examines parameter recovery and computational efficiency as the number of ROIs increases, with particular emphasis on quantifying the computational gains from the piecewise analytic solution relative to numerical integration. The second simulation in Section 5.2 investigates performance under three variations of model misspecification, including when the hemodynamic data-generating process uses the Balloon model versus the canonical HRF used in CDCM. 
+
+# 5.1 Computational Efficiency 
+
+In this subsection, we empirically investigate how CDCM scales with the number of ROIs, d,and quantify the computational gains of utilizing the piecewise analytic solution of the neural ODE (Proposition 1) by comparing sampling time where the ODE is solved analytically versus numerically. Among the available solvers, 58 the Cash-Karp Runge-Kutta (CKRK) method is the fastest for our setting and is used as the baseline for comparison. We consider two experimental settings: a simple and a complex model, both under the same block design. The experiment alternates between two stimuli (U1, U2) and rest in 10-TR blocks, with a TR of 2 s and a total of 150 scans. The design satisfies Assumptions (A1)– (A2), with the remaining assumptions verified after specifying the model hypotheses. The corresponding state-space representations and true parameter values (aside from ROI self-loops) are shown in Figure 3; the complex model consists of three copies of the simple model 17 Figure 3: A network representation of the model hypothesis used to conduct the simulations for evaluating computational scalability. The simple model is denoted in the red box. chained together. The values in Figure 3 define A, B, and C, along with the reparameterized diag (A) = ( −0.55) ·1d. The initial condition is set to s∗ = 0 .1·1d, reflecting nonzero baseline activity. Given these specifications, we verify that Assumptions (A3)–(A4) are satisfied. Neural signals are simulated from the models, convolved with the canonical HRF, and Gaussian noise is added to match the estimated signal-to-noise ratio (SNR) of the attention to visual motion dataset (more discussion on this dataset in Section 6.1). 68 To estimate the SNR from the attention to motion data, we fit a cubic smoothing spline to each ROI time series and treat the fitted values as the underlying signal. The regional SNR is estimated as the ratio of the standard deviation of the fitted signal to that of the residuals. Averaging SNR across regions, we obtain an SNR of 1.68 , which we use to set the noise variance σ2 
+
+> ℓ
+
+in each simulated region ℓ = 1 , . . . , d as 
+
+σ2 
+
+> ℓ
+
+= s2
+
+> Truth ,ℓ
+
+SNR 2 = s2
+
+> Truth ,ℓ
+
+1.68 2 ,
+
+where s2 
+
+> Truth ,ℓ
+
+is the sample variance of yTruth ,ℓ = ( μℓ(tj )) nj=1 ∈ Rn, since we set β = 0d in the simulations. We use CDCM to estimate network parameters for 5,000 warm-up iterations and 3,000 sampling iterations for each setting. For the simulation, the stopping criterion is the fixed number of iterations, not the multivariate ESS. The results for each scenario are averaged across 50 repeated simulations shown in Table 1, with computation time in minutes. In assessing computational efficiency of the piecewise analytic solution compared to nu-merical integration, we find that the average computation time for the simple model using the piecewise analytic solution is 1.62 minutes, approximately twenty-two times faster than the CKRK solver, taking 35.46 minutes on average. For the complex model, the analytic 18 Table 1: Mean computation time (in minutes) across 50 simulations comparing the piece-wise analytic solution to the ODE to the CKRK numeric solver for the simple and complex models (5,000 warm-up and 3,000 sampling iterations). Also included is the number of total parameters and neural parameters (θz ) being estimated for each case, neural parameter cov-erage (the proportion of neural parameters captured within the HPD intervals on average), and average HPD interval length for a nominal coverage of 0.95. Note that for the complex model, one simulation replicate for the CKRK solver hit the wall-time of 48 hours prior to finishing sampling, and results shown are averaged across the 49 completed simulations.                             
+
+> ODE Solution/Solver Total Param. Neural Param. Warm-up (minutes) Sampling (minutes) Total (minutes) Neural Parameter Coverage Neural Avg. Interval Length Simple Model
+> Piecewise Analytic 12 61.10 0.52 1.62 0.967 0.353 CKRK Numeric 12 624.37 11.09 35.46 0.973 0.352
+> Complex Model
+> Piecewise Analytic 40 22 190.92 70.92 261.85 0.977 0.558 CKRK Numeric 40 22 819.21 339.69 1158.90 0.977 0.558
+
+solution finishes sampling in 4.4 hours on average, while remaining approximately four times faster than numerical integration despite the increased model complexity. In contrast, one of the simulations for the CKRK solver hit the 48-hour cluster wall-time at 80 percent comple-tion, and the results in Table 1 are averaged across the remaining 49 simulations. Overall, computation time increases with the number of ROIs, d, for both approaches, although the piecewise analytic solution consistently provides substantial computational gains relative to numerical integration. The main computational burden comes from evaluating the likeli-hood, which involves solving the neural ODE at each iteration. Solving the ODE requires computing a matrix exponential within each time block, which scales at O(d3).69 
+
+In practice, DCM is typically applied to small, hypothesis-driven networks, often in-volving only a few regions, 18 and effective connectivity analyses are rarely considered for networks beyond eight to ten regions due to computational limitations. 67 Moreover, overly complex models are discouraged, as they can be difficult to estimate and interpret reli-ably. 20 Therefore, the upper limit of d = 6 in the current simulation is aligned with common practice, and while CDCM can in principle be applied to somewhat larger networks, the associated computational cost increases substantially and such models may be difficult to justify scientifically. Table 1 also shows the average neural parameter coverage, or the proportion of true neural parameters captured within the 95% highest posterior density (HPD) intervals on average, and the average HPD interval length across parameters and chains. These results validate CDCM’s ability to recover true parameters from noisy observation under the cor-rectly specified model. For both models, coverage is close to the nominal 0.95, with wider intervals for the complex model. We note that the HPD intervals in Table 1 differ slightly between the analytic and numeric solutions. Although the two solutions to the neural ODE 19 agree up to a small numerical tolerance for any given parameter, these small differences in the likelihood, through repeated evaluations, lead to slightly different proposal trajectories and thus minor differences in the resulting posterior distributions. 
+
+# 5.2 Robustness to Misspecification 
+
+In Section 5.1, we show the performance of CDCM under a correctly specified model. In this subsection, we further examine parametric estimation performance under various types of model misspecification. In particular, we assess CDCM’s robustness to misspecification in comparison to the one-state, bilinear DCM of Friston et al, 17 implemented in SPM. The simulation varies three types of misspecification: 1) observation model, 2) diagonal parameterization, and 3) hemodynamic delay. Of the three types of misspecification we consider here, observation model misspecifi-cation is the most important, as the true hemodynamic data-generating process in fMRI is unknown. To study the impact of observation model misspecification, we generate data from two mechanisms: the nonlinear Balloon model used in SPM and the simplified observation model used in CDCM. This setting allows us to assess how CDCM compares to a more complex representation of the hemodynamic model. For the Balloon model, SPM internally represents the hemodynamic parameters on the log scale to enforce positivity, and we use the values θy = {log( κ) = −0.2, log( τh) = [ −0.2, −0.3] ⊤, log( εh) = 0 .15 }. These correspond to the natural-scale parameters κ, the decay rate of the vasoactive signal, τh ∈ Rd (d = 2 , as we simulate from a two-ROI system), the mean transit time (s), representing the average time blood spends in the venous compartment, and εh, the ratio of intra- to extravascular signal contributions. For more information on the Balloon model, we refer the reader to Appendix 5 of Zeidman et al. 18 Just as in CDCM, SPM also estimates the intercept vector β ∈ Rd,and for the simulation, we set β = 0d for both observation models. For CDCM’s observation model, as mentioned in Section 3.1, all hemodynamic parameters in the canonical HRF are fixed values and there are no additional parameters to specify. Beyond observation model misspecification, we consider two other forms of misspecifica-tion, the first of which being diagonal parameterization. As mentioned in Section 3.1 (and elaborated on in Supplementary Material B), we adopt a different diagonal parameterization strategy in CDCM than SPM, where CDCM’s parameterization concerns only the diagonal entries of A with a tight prior on the diagonal of B, but SPM’s parameterizes the diagonal of A + ∑mi=1 ui(t)Bi directly. Both approaches are similar in that they are designed to regu-late system dynamics from diverging, but they do imply a difference in neural ODE model structure when modulation of self-loops is part of the state-space hypothesis. Therefore, it is worth investigating the impact of these two parameterization choices on parametric estima-tion performance. We consider two neural parameter settings reflecting differences between CDCM and SPM. In the first, only diag (A) is parameterized, meaning the neural models 20 are equivalent; in the second setting, we additionally include a modulatory effect in diag (B),implying misspecification under the opposing estimation procedure. Both settings use the same experimental design as in Section 5.1. For the baseline case, the (untransformed) neural parameters are 
+
+A =
+
+> 
+
+−0.1 0.30.4 0.15  
+
+> 
+
+, B1 =
+
+> 
+
+0 00 0 
+
+> 
+
+, B2 =
+
+> 
+
+0 −0.20 0 
+
+> 
+
+, C =
+
+> 
+
+0.7 00 0 
+
+> 
+
+.
+
+In the second setting, we additionally set (B2)22 = 0 .05 .The third type of misspecification we consider is the type of differential equation used in the model. SPM’s DCM formulation uses delay differential equations to account for the time required for signals to travel between states, and defaults to fixed delays of TR /2 seconds. 17 
+
+CDCM does not use delay differential equations, so the two different differential equation approaches allow us to assess the impact of misspecified hemodynamic delays on parameter estimation performance. All together, the types of misspecification yield six combinations across observation model, diagonal parameterization, and delay inclusion. For each combination, we simulate neural signals, generate BOLD responses under the specified observation model, and add Gaussian noise targeting an SNR of 1.68, as in the first simulation. Due to differences in observation models, signals generated under the Bal-loon model have larger amplitudes than those from CDCM, and adding noise at the target variance can produce simulated BOLD series with a range exceeding four units. Since SPM internally rescales inputs exceeding this threshold, 18 we avoid the additional rescaling by scaling the additive noise when necessary. Specifically, after drawing Gaussian noise at the target variance, we check whether the resulting simulated BOLD series exceeds a range of four units. If so, we multiply the sampled noise by the largest constant that keeps the simulated series within the acceptable range. Chain length for CDCM is determined by multivariate ESS convergence for αESS = εESS = 0 .05 , and for every setting, we conduct 50 repeated simulations. We present the results, averaged across the 50 simulations, in Table 2. In terms of parameter coverage, or the proportion of true neural parameters captured within the 95% HPD intervals, there is a drop in coverage for both CDCM and SPM under observation model misspecification. However, CDCM’s performance declines less than that of SPM’s, and even under correct model specification, SPM’s intervals undercover compared to the nominal coverage of 0.95. The average interval length for SPM is shorter than CDCM in every case, indicating that posterior uncertainty may be underestimated. When CDCM is estimating a correctly specified model, average interval length is wider and overcovering parameters; the average length is larger than those of the misspecified observation model, but a likely explanation is the SNR difference between the two sets of simulated data. Also, we do not observe an impact of signal delay specification on the simulation results. 21 Table 2: Simulation results between CDCM and SPM for each type of misspecification, where the first six rows indicate model misspecification, and the next six rows are the correctly specified models. Results are averaged across 50 simulations. We generate data using both SPM’s and CDCM’s data-generating model (DGM), incorporating diagonal parameters in 
+
+A only, or both in A and B, and for SPM’s DGM, conduct the simulation both assuming no stimulus delays between states, and 1 second delays. Results shown include the parameter coverage, or the proportion of true parameters captured within the 95% HPD interval, the average HPD interval length across parameters, as well the MSE of the predicted BOLD signal vs. the true simulated signal for each condition. The predicted curve is generated using the posterior mean estimates.                                                                                         
+
+> Estimation Procedure DGM Diag. Delays Parameter Coverage Avg. Interval Length MSE of Pred vs. True Curve Misspecified Models
+> CDCM SPM ANone 0.750 0.236 0.0360 CDCM SPM A&BNone 0.643 0.242 0.0358 CDCM SPM A1 s 0.750 0.236 0.0360 CDCM SPM A&B1 s 0.643 0.242 0.0358 SPM CDCM ANone 0.490 0.237 0.0021 SPM CDCM A&BNone 0.357 0.212 0.0021
+> Correctly Specified Models
+> SPM SPM ANone 0.703 0.200 0.0019 SPM SPM A&BNone 0.720 0.182 0.0019 SPM SPM A1 s 0.703 0.200 0.0019 SPM SPM A&B1 s 0.720 0.182 0.0019 CDCM CDCM ANone 0.960 0.311 0.0061 CDCM CDCM A&BNone 0.966 0.313 0.0058
+
+We also use the estimated posterior means to construct the predicted BOLD signal curves and compute the mean-squared error (MSE) between the predicted and true signals in Table 2. In all cases, the MSE is small, indicating the models are performing well, even when parameter coverage is lower for the misspecified variations. We observe that SPM has a smaller MSE on average across all combinations compared to CDCM. This is not surprising, given that SPM has four free parameters in the hemodynamic portion of the observation model compared to zero in CDCM. To better understand if there are patterns across the parameters for which coverage drops, we perform parameter-wise comparisons for the misspecified models. In Figure 4, we plot the true values, posterior mean estimates, and 95% HPD intervals for the neural parameters. Across conditions for the correctly specified model results, as well as the 1 s delay variations, we observe qualitatively similar results, therefore, we defer the other comparison figures to Supplementary Material F. Since CDCM and SPM both reparameterize the diagonal elements of A, and SPM ad-ditionally reparameterizes B, they are transformed back to their original scale for direct 22 Figure 4: (Top) Average posterior mean estimates and 95% HPD intervals across 50 simu-lations using CDCM where data are generated using SPM’s Balloon hemodynamic model. (Bottom) Average posterior mean estimates and 95% HPD intervals across 50 simulations using SPM where data are generated using CDCM. The left panels include diagonal pa-rameters in A only (positions three and four), whereas the right panels include diagonal parameters in A (positions three and four) as well as one diagonal parameter in B (position six). Intervals and true values for the diagonal parameters have been parameterized accord-ing to the respective modeling definition to facilitate direct comparison. comparison. For CDCM, we transform posterior draws ˆνDA,ℓ,s for the ℓth diagonal of A via 
+
+aℓ,s = −0.5 exp(ˆ νDA,ℓ,s ),
+
+where ˆνDA,ℓ,s denotes posterior draw s ∈ { 1, . . . , N } on the unconstrained scale, and N is the number of sampling draws. For SPM, variational Laplace returns a Gaussian approximation to the posterior of the reparameterized diagonal elements of A and B. Since the transforma-tion from the reparameterized diagonal elements to the original diagonal elements of A and 
+
+Bi is nonlinear, the posterior mean and variance on the original scale cannot be obtained by simply transforming the Gaussian posterior mean and variance. Therefore, we addition-23 ally generate N = 20 ,000 draws from the estimated posterior distributions. We denote the corresponding unconstrained draws by ¯aℓ,s and ¯b(i) 
+
+> ℓ,s
+
+for the diagonal elements of A and Bi,
+
+i = 1 , . . . , m . The transformed diagonal elements are computed as 
+
+aℓ,s = −0.5 exp(¯ aℓ,s ), b(i) 
+
+> ℓ,s
+
+= −0.5 aℓ,s 
+
+> [
+
+exp (¯b(i)
+
+> ℓ,s
+> )
+
+− 1]
+
+.
+
+After transformation, posterior means and variances are summarized in the original scale of the diagonal elements of A and B. Additional details on SPM’s parameterization are provided in Supplementary Material B. The top panels show CDCM’s performance when estimating data generated under SPM’s observation model. Across all conditions (Table 2), CDCM accurately recovers parameters in A, while recovery for B is more variable: the off-diagonal effect is covered, on average, whereas the diagonal effect (right panels) is not recovered, with intervals including zero. For 
+
+C, the posterior mean consistently has the correct sign but substantially overestimates the true magnitude. In contrast, the bottom panels show that SPM recovers the correct sign for all parameters, including the diagonal effect in B, but exhibits poor interval coverage, with estimates often narrowly missing the true values. As with CDCM, the largest discrepancies occur in C; however, SPM systematically underestimates its magnitude. The difference is likely driven by the underlying hemodynamic models, as Balloon-based signals exhibit larger amplitudes than those generated under CDCM, implying that scaling primarily impacts estimates in C.
+
+# 6 Real Data Applications 
+
+We consider two fMRI data applications to evaluate CDCM in relation to existing DCM implementations. Our goals are threefold: 1) compare the agreements and disagreements between CDCM and standard DCM implementations, 2) determine which connections are credibly different from zero based on posterior uncertainty across methods, and 3) examine the replicability of estimated connectivity patterns across subjects and modeling choices. The first application analyzes data from a single subject, providing a controlled setting to directly compare parameter estimates and uncertainty quantification between methods. The second revisits the motivating large-scale application introduced in Section 2, allowing assessment of the stability and replicability of connectivity patterns across subjects, sessions, and experimental conditions. Jointly, the connectivity analyses of these data connect method comparison, uncertainty quantification, and replicability. 24 Figure 5: A network representation of a DCM hypothesis from the attention to visual motion study in Büchel and Friston, 68 with each ROI having a single, representative BOLD time course. This hypothesis consists of three ROIs (V1, V5, and SPC), and three experimental stimuli (Photic, Motion, and Attention) based on the subject’s required level of attention to a screen with dots during the MRI scan. The blue arrows indicate the hypothesized connections between ROIs, while the green arrow indicates the (hypothesized) connection from the Photic stimulus to V1, and the orange arrows indicate the (hypothesized) connections from the Motion and Attention stimuli modulating the relationship from V1 to V5. 
+
+# 6.1 Attention to Visual Motion Task 
+
+The attention to visual motion study from Büchel and Friston, 68 with data provided by the Wellcome Centre for Human Neuroimaging, provides a single subject’s fMRI data for a task involving three experimental stimuli. The hypothesis from the study is shown in Figure 5. There are three ROIs: V1, V5, and the superior parietal cortex (SPC). These ROIs respond to visual stimulation, with V1 sensitive to general input, V5 selective for motion, and SPC engaged during attention to motion. The Photic condition corresponds to viewing static dots, representing the most general level of visual stimulation. The Motion condition extends this by introducing moving dots, and the Attention condition further builds on Motion by requiring focused engagement. Thus, the conditions are hierarchically related, progressing from general visual stimulation (Photic), to motion processing (Motion), to attentional engagement (Attention). Assumptions (A1)–(A2) are satisfied for the design, but given these are real data, we cannot verify (A3)–(A4) directly. The TR is 3.22 seconds and there are 360 scans in the session. Time series extraction is performed in SPM following the DCM tutorial procedures (SPM12 Manual, Chapter 36). 70 For the single-subject application, voxels are selected based on peak task activation within 8 mm spheres around each ROI, defined as p < 0.001 (un-corrected) from a voxelwise task-activation general linear model (GLM). The first principal component of these voxels is used as the representative time course, and the resulting signals 25 Figure 6: Attention to visual motion posterior mean estimates and 95% HPD intervals for CDCM, SPM, and VBA. CDCM yields similar results to SPM for most estimates, while VBA and SPM are not consistent with one another. are scaled to ensure range (Y) ≤ 4 for numerical stability. We compare CDCM against two existing DCM implementations, SPM and VBA, 36 on the attention to visual motion data. Although the SPM12 software 70 includes multiple DCM variations, when we refer to SPM, we are referring to the traditional, one-state, bilinear DCM from Friston et al. 17 VBA is a Matlab toolbox for variational Bayesian inversion of nonlinear state-space models, including DCM-style formulations. Although it uses the same bilinear neural model structure as SPM, it differs in prior specification, ODE numerical integration, and variational optimization scheme, and defaults to using a linearized variant of the Balloon observation model. For SPM and VBA under the default settings, both optimizations converge in approximately one minute. The CDCM results are from 8,000 MCMC iterations (after 5,000 warm-up iterations), taking 49.72 minutes total, and achieving a multivariate ESS of 9,313.23, corresponding to a precision of εESS = 0 .048 for 19 total parameters and αESS = 0 .05 .Figure 6 shows posterior means and 95% HPD intervals for seven of the ten neural parameters; the three diagonal elements of A are omitted as they are not of primary interest. For most parameters, the results from CDCM and SPM are in agreement. The only difference between CDCM and SPM is for the connection from SPC to V5, where SPM’s interval is entirely negative, whereas CDCM’s interval covers zero. Also, both intervals are strongly positive for the Photic stimulus to V1, and given the scaling differences between CDCM and SPM regarding the C matrix (as described in Section 5.2), it is unsurprising that CDCM estimates a larger value than SPM. In contrast, while VBA produces similar estimates for several connections, it differs more noticeably for others. The most prominent difference is for the direct photic input 26 Table 3: Mean squared error (MSE), block bootstrap estimated standard error (SE), and 95% block bootstrap confidence intervals (CI) between the predicted and the observed BOLD response for CDCM and SPM in each ROI. The block bootstrap accounts for the temporal dependence within fMRI data (10 TR block length, 10,000 bootstrap replicates). For each ROI, the intervals between the two methods overlap, indicating that neither method is superior in estimating the data. 
+
+ROI CDCM MSE (SE) CDCM 95% CI SPM MSE (SE) SPM 95% CI 
+
+V1 0.232 (0.019) (0.198, 0.272) 0.199 (0.027) (0.148, 0.253) V5 0.177 (0.015) (0.151, 0.210) 0.178 (0.014) (0.152, 0.207) SPC 0.092 (0.010) (0.076, 0.113) 0.090 (0.009) (0.075, 0.108) to V1, as it is estimated to be near zero under VBA, in contrast to the positive effects estimated by both CDCM and SPM. The discrepancy is unlikely to reflect an absence of stimulus-driven response, but rather a difference in how the VBA implementation allocates stimulus-related variance across model components. Although the input specification U is standard and identifiable, the direct input effect may be distributed differently across the neural and observation components under alternative parameterizations. Using the nonlinear hemodynamic option in VBA produces a similar estimate, suggesting that this behavior is not attributed to the choice of hemodynamic model. Finally, assuming the posterior means represent the ground truth, simulation using CDCM estimates indicates that Assumptions (A3)–(A4) are satisfied. Next, we compare the predicted versus the observed BOLD signal in each of the ROIs between CDCM and SPM only, as SPM is the more commonly used DCM implementation. The predicted curves for each method are generated using the posterior means shown in Figure 6. The results are shown in Figure 7, where the dotted curve shows the observed data, the blue line is the prediction from CDCM, and the red line is from SPM; both models fit the data well. In terms of MSE between the data and each of the predicted curves in each ROI, Table 3 provides the point estimates, as well as block bootstrap estimated standard errors and 95% confidence intervals to provide a sense of error variation from one point on the curve to the next. For each ROI, the intervals overlap, indicating that neither method is superior in fitting the data. Overall, these results support CDCM as a reliable alternative to existing DCM approaches, achieving comparable estimates and predictive fit while enabling clearer assessment of uncertainty and stability. 
+
+# 6.2 Human Connectome Project (HCP) Social Cognition Task 
+
+For the second application, we revisit the motivating example from Section 2, with the goals of assessing the stability and replicability of effective connectivity patterns across methods, subjects, sessions, and hemispheres for the social cognition task using the updated HCP-27 Figure 7: The estimated versus observed BOLD signal in each ROI between CDCM (blue) and SPM (red), with the experimental design at the bottom. For ease of viewing, we adjust the data by − ˆβ, which is the estimated intercept vector multiplied by −1, such that the predicted curves and data start at approximately zero. We do this instead of adjusting the predicted signal by ˆβ so the range of the signals in each ROI are easier to visualize. In the design, the dotted line corresponds to Photic, the dashed to Motion, and the solid to Attention. YA 2025 data. Using previous Q2 HCP data, Hillebrandt et al 51 find that the full model with all possible connections has the highest evidence (Figure 1), but only report posterior mean estimates for the B and C matrix connections and do not directly report posterior SD for any estimates; we use this full model as our state-space hypothesis and confirm, using the posterior uncertainty associated with the connectivity estimates, which connections are reliably supported, and assess if results replicate across sessions and hemispheres. 28 6.2.1 Data and Analysis Setup 
+
+In the HCP task implementation, participants view 20 s video clips of geometric shapes that either move randomly or interact in an animated manner. Following each clip, participants indicate whether the shapes exhibit an animated (mental) interaction, no interaction, or are unsure. Each session consists of alternating blocks of “mental interaction” and “random interaction” conditions, interleaved with 15 s fixation blocks. 50 Each participant has data from two task sessions (TR = 0.72 s, 2 mm isotropic resolution, 274 scans per session) one with right-to-left (RL) phase encoding, and the other with left-to-right (LR). We model all connections given in Figure 1 and define the input matrix U using a hierarchical stimulus structure, similar to the structure we use in Section 6.1. The All Motion stimulus indicates when any video is active during the scan, and the Animate stimulus indicates the subset of animate motion videos. Under the design, Assumptions (A1)–(A2) are satisfied. Instead of selecting voxels for each ROI based on subject-specific task-activation thresh-olds, we extract the regional time courses using the group-level activation MNI coordinates as given by Hillebrandt et al, 51 and define ROI cubes of voxels around these coordinates. For V5, we use MNI (44 , −64 , 4) mm (right middle temporal gyrus) and (−44 , −74 , 4) mm (left middle occipital gyrus) for the right and left hemispheres, respectively. For the pSTS, we use MNI (54 , −50 , 16) mm (right middle temporal gyrus) and (−56 , −52 , 10) mm (left middle temporal gyrus). We define 14 × 14 × 14 mm = 2744 mm 3 cubes, equivalent to 343 voxels. The regional time courses are extracted by taking the first principal component of all voxels in the ROI, flipping the sign as needed such that the average voxel loading is positive. The range of the representative BOLD time courses exceeds four units, so the data for each subject are scaled accordingly, just as in Section 6.1. Effective connectivity is estimated using CDCM and SPM (one-state bilinear DCM) on all session × hemisphere combinations for every subject. The chains in CDCM use a warm-up of 5,000 iterations with a target NUTS acceptance probability of 0.9, and multivariate ESS for αESS = εESS = 0 .05 determines sampler convergence. All 400 chains are run until convergence, a maximum of 100,000 iterations, or a wall-time of 48 hours, whichever comes first. Of the 400 chains, 11 encounter either divergence or maximum tree-depth warnings and require additional sampler tuning, consisting of adjustments to the target acceptance probability and, in some cases, a longer warm-up period. After tuning, 393 chains achieve the multivariate ESS required for a precision of εESS = 0 .05 , and the remaining seven achieve a slightly lower but still acceptable precision between 0.05 and 0.1. Thus, all chains are retained for analysis, and a table with the additional tuning requirements is provided in Supplementary Material F. As for SPM, 15 of the 400 VL optimizations do not converge under the default maximum number of iterations of 128, but all converge within 512 iterations. Four separate group-level models, one for each session × hemisphere combination, are es-29 timated for both methods using five parallel chains, each with 1,000 warm-up and 5,000 sam-pling iterations. We include participant age category (participants’ exact age is restricted), gender, and the Penn Progressive Matrices (PMAT24_A_CR) score as covariates. 43 The PMAT score is the number of correct responses on the 24-item Penn Progressive Matrices be-havioral assessment 71 abbreviated by Van Essen et al 43 for the HCP. The PMAT assessment provides a measure of subjects’ fluid cognitive intelligence. Age and gender are effect-coded and the PMAT score is standardized, making the interpretation of the group-level intercept coefficient estimates ˆα ∈ Rpθz in terms of the “average subject”. 
+
+6.2.2 Results 
+
+We present group-level posterior means and 95% HPD intervals for both methods in Figure 8, with panels corresponding to session (LR, RL phase encoding) and hemisphere (mask L, R). Recall, the first goal of the empirical study is to compare agreements and disagreements be-tween CDCM and standard DCM implementations, where greater agreement indicates more replicable connectivity patterns. Overall, CDCM and SPM’s one-state bilinear DCM show substantial agreement, particularly in connectivity direction, with only modest differences in magnitude (e.g., the third position of ˆαA). Of the ten neural parameters, three show disagreement or are inconclusive due to un-certainty. In the second position of ˆαA, CDCM estimates a positive effect, whereas SPM’s interval includes zero. In the third position of ˆαB , both methods are uncertain for LR phase encoding with mask L; for mask R, CDCM’s interval is entirely positive while SPM’s is mostly negative, though still inconclusive. Most notably, the methods disagree on the direction of the driving input from All Motion to pSTS (second position of ˆαC ), with CDCM estimating a negative effect and SPM a positive one. This is the only group-level sign disagreement for which both intervals exclude zero. Given the posterior uncertainty in all other potential disagreements, the results regarding the first goal demonstrate one key disagreement between the two one-state methods. We compare CDCM and SPM further by investigating the observed discrepancies through a targeted simulation study using the group-level posterior means from each method as the ground truth. In summary, we find that both methods recover the true parameter signs reliably and produce estimates close to the truth across all simulation settings, although both approaches exhibit overconfident intervals with poor coverage. Performance is driven more by whether the assumed parameter values align with the estimation method than by whether the data-generating model is correctly specified. For the key parameter of interest, the driving input from All Motion to pSTS, CDCM more consistently recovers the correct sign, while SPM shows lower reliability. Overall, the results suggest that both methods are robust to misspecification, but CDCM may provide more stable directional inference. Full simulation details are provided in Supplementary Material E. 30 Figure 8: Group-level posterior mean estimates and 95% HPD interval comparison between CDCM and SPM across all phase encoding (session) and hemisphere combinations. Posterior means and intervals for the diagonal parameters have been parameterized according to the respective modeling definition to facilitate direct comparison. Diagonal parameters are in positions one, four, five, and eight within each panel. Before assessing consistency between the one-state models presented here and the two-state DCM in Hillebrandt et al, 51 we first examine results for goals two and three, as these establish whether averaging effective connectivity across experimental conditions, following their approach, is justified and thus whether such pooled estimates provide a reliable basis for comparison across methods. Given the overall agreement between the two one-state methods, we focus on these goals using CDCM. As noted above, the second objective is to determine which connections are credibly different from zero based on posterior uncertainty. Regarding this goal, we find that all parameters in the A and C matrices are credibly nonzero, whereas those in B are less certain. The diagonal elements of B (first and fourth positions of ˆαB ; Figure 8) represent modulatory self-loops and are strongly regularized to-31 Figure 9: Resulting average group-level models across sessions and hemispheres using CDCM and SPM. Estimates for the diagonal parameters have been parameterized according to the respective modeling definition to facilitate direct comparison. Four parameter estimates have conflicting signs between the two methods, and three of them are rendered inconclusive due to uncertainty. The key parameter difference between methods is the driving input from the All Motion contrast to the pSTS, in which CDCM estimates a negative effect, and SPM estimates a positive effect, which we examine further in Supplementary Material E. ward zero by the prior (Section 3.1), resulting in posterior intervals that often include zero and thus inconclusive directionality. The third position of ˆαB , corresponding to animate motion modulation of the backward connection from pSTS to V5, shows notable variability across conditions, with some intervals excluding zero and others not. The intervals in Figure 8, however, are not adjusted for multiple testing and therefore likely underestimate posterior uncertainty. Excluding the self-loops and the pSTS-to-V5 modulation, we find the parameters in the selected model from Hillebrandt et al 51 are credibly nonzero, with uncertainty in the self-loop estimates largely driven by prior regularization. For the third goal of examining the replicability of estimated connectivity patterns across subjects and modeling choices, the results in Figure 8 broadly support the conclusion of Hillebrandt et al 51 that connectivity patterns replicate across sessions and hemispheres. The only potential deviation is the third element of ˆαB , which exhibits sign changes across conditions; however, given that uncertainty is likely underestimated and several intervals include or are near zero, there is no strong evidence of meaningful differences across sessions or hemispheres. Consequently, we return to the first goal and compare the results from Figure 1 in Hille-brandt et al 51 and the averaged group-level results in Figure 9. Of the ten connectivity parameters, four differ in sign between CDCM and SPM, three of which are inconclusive due 32 to uncertainty (dashed lines in Figure 9). The primary discrepancy between the one-state models concerns the driving input from All Motion to pSTS. While direct comparison with the two-state model is limited by differences in neural dynamics, partial comparisons remain informative. The parameterization of C is unchanged between one- and two-state models, and differences in A and B largely reflect within-region dynamics rather than between-region interactions. 22 Accordingly, we focus on agreement in the signs of C and the off-diagonal elements of B, as off-diagonal entries of A are not reported. 51 
+
+Comparing Figures 9 and 1, all three models agree on the sign of the driving input to V5. For the input to pSTS, the estimated effect is negative, consistent with CDCM. Although the estimate in Hillebrandt et al 51 is closer to zero, their Bonferroni-corrected interval remains entirely negative (−0.091 , −0.030) . For the modulatory parameters, both off-diagonal effects in Figure 1 are positive, with a stronger effect on the forward connection from V5 to pSTS (mean = 1 .22 ) than on the backward connection (mean = 0 .16 ). The sign of the forward connection is consistent across all three models, whereas the backward connection is less stable, showing the greatest variation within ˆαB for both one-state approaches. Using the 100 Unrelated Subjects dataset from the HCP-YA 2025 release, we provide a thorough assessment of the replicability of effective connectivity estimates across mod-eling approaches, subjects, and experimental conditions. Generally, we find consistency across these dimensions and with earlier work, but do so under the CDCM framework, a method built on a foundation of theoretical identifiability. Across small- and large-scale fMRI applications, CDCM achieves consistent and replicable connectivity findings; in controlled simulation settings, CDCM is more robust to misspecification than its complex predecessor. 
+
+# 7 Discussion 
+
+We introduced Canonical DCM (CDCM), a simplified framework for modeling effective con-nectivity in fMRI that enables both theoretical analysis and efficient estimation. While motivated by DCM, the proposed approach reflects a broader strategy for state-space ODE models: simplifying the system structure to obtain a representation that is amenable to theoretical analysis. In contrast to existing DCM formulations, which rely primarily on em-pirical assessment of parameter recovery, 17,22,72 CDCM admits a set of sufficient conditions for parameter identifiability. The use of a piecewise analytic solution to the neural ODE further enables efficient implementation using gradient-based Hamiltonian Monte Carlo and facilitates accurate uncertainty quantification. Ljung 3 states that a model should be formed taking two aspects into account: 1) it fits the data well, and 2) is not overly complex. Across simulation studies and real data applications, CDCM produces estimates compara-ble to those obtained from more complex approaches while offering improved MCMC-based computational efficiency and clearer theoretical guarantees within a simpler framework. A central motivation of this work is the role of identifiability in supporting replicabil-33 ity. Because DCM is inherently confirmatory, the reliability of scientific conclusions de-pends on the ability to consistently recover model parameters across datasets, sessions, and experimental conditions. By establishing explicit conditions under which parameters are uniquely identifiable, CDCM provides a foundation for stable and interpretable inference. This connection is reflected in both the simulation studies and the HCP application, where we observe general agreement with existing methods alongside consistency across repeated measurements, highlighting the importance of identifiability for reproducible connectivity estimates. More generally, the relationship between identifiability and replicability extends to state-space ODE models beyond neuroimaging, where unidentifiable parameters can sim-ilarly undermine the stability of inference. We identify two key directions for future work. First, to meet Assumptions (A1)–(A4), CDCM is currently restricted to fMRI block designs. A block design is a simple way to ensure that there are at least d + 1 consecutive, equally-spaced observations in each block to identify system parameters from. Depending on the research questions, it may make more sense to have a task fMRI design more similar to that of the event-related design. An area of future work is to investigate the potential relaxation of the Assumptions (A1)–(A4) wherever possible. Wang et al 5 provide some conditions for the identifiability of linear ODE systems from degraded observations, specifically aggregated and time-scaled observations. With event-related or hybrid designs, observations are not necessarily degraded, but they are not consecutive and equally-spaced either. Also, even in a block design, if the model hypothesis includes d ROIs and the experiment only has individual blocks with fewer than 
+
+d+1 observations, can we still provide a set of sufficient conditions for (s∗, θ ∗)-identifiability? Future research examining possible relaxations of Assumptions (A1)–(A4) could extend the applicability of CDCM to additional fMRI study designs without being overly restrictive as to how the study and hypotheses should be constructed. Second, to our knowledge, there are currently no extensions of the DCM framework to incorporate longitudinal hypotheses in a joint estimation procedure. Many existing studies have a longitudinal component (such as pre- and post-treatment/intervention), and currently, the standard procedure is to estimate the DCM separately at each time point and then use a hierarchical parametric empirical Bayes approach to capture longitudinal effects. 73–76 
+
+We believe there is valuable information worth capturing between the two scans and a joint estimation approach across multiple scanning sessions would provide useful insights. Given the complexity of existing DCM implementations, a longitudinal extension may not be realistic. Therefore, CDCM being simpler provides strong motivation for exploring potential longitudinal extensions to the methodology. Overall, CDCM provides a conceptually transparent and computationally efficient ap-proach to effective connectivity modeling, together with explicit theoretical guarantees that are often lacking in existing methods. By linking identifiability, estimation, and replicability within a unified framework, this work contributes to a more principled understanding of 34 state-space ODE models and their application to complex biological data. 
+
+# Data and Code Availability Statement 
+
+The Attention to Visual Motion fMRI dataset is publicly accessible from the Wellcome Centre for Human Neuroimaging here: https://www.fil.ion.ucl.ac.uk/spm/data/attention/ .Data are provided, in part, by the Human Connectome Project, WU-Minn Consortium (Principal Investigators: David C. Van Essen and Kamil Ugurbil; 1U54MH091657) funded by the 16 NIH Institutes and Centers that support the NIH Blueprint for Neuroscience Research, and by the McDonnell Center for Systems Neuroscience at Washington University. We acknowledge the contributions of the HCP consortium in making these data publicly available. We have developed an R package for simulating from and implementing CDCM available on GitHub: https://github.com/kaitlyn-fales/cdcm . The R code for reproducing all analyses in the manuscript and supplementary materials is available via GitHub at https: //github.com/kaitlyn-fales/Canonical-DCM-Method .
+
+# References 
+
+1. Duan X, Rubin J, Swigon D. Identification of affine dynamical systems from a single trajectory. Inverse Problems . 2020;36:no. 085004. 2. Stanhope S, Rubin J, Swigon D. Identifiability of linear and linear-in-parameters dy-namical systems from a single trajectory. SIAM Journal on Applied Dynamical Systems .2014;13:1792-1815. 3. Ljung L. Perspectives on system identification. Annual Reviews in Control . 2010;34:1-12. 4. Schön T, Wills A, Ninness B. System identification of nonlinear state-space models. 
+
+Automatica . 2011;47:39-49. 5. Wang Y, Huang W, Gong M, Geng X, Liu T, Zhang K, et al. Identifiability and asymp-totics in learning homogeneous linear ODE systems from discrete observations. Journal of Machine Learning Research . 2024;25:1-50. 6. Miao H, Xia X, Perelson A, Wu H. On identifiability of nonlinear ODE models and applications in viral dynamics. SIAM Review . 2011;53:3-39. 7. Villaverde A. Observability and structural identifiability of nonlinear biological systems. 
+
+Complexity . 2019;2019:no. 8497093. 8. Kalman R. On the general theory of control systems. IFAC Proceedings Volumes .1960;1:491-502. 35 9. Hermann R, Krener A. Nonlinear controllability and observability. IEEE Transactions on Automatic Control . 1977;22:728-740. 10. Bellman R, Åström K. On structural identifiability. Mathematical Biosciences .1970;7:329-339. 11. Raue A, Kreutz C, Maiwald T, Bachmann J, Schilling M, Klingmuller U, et al. Structural and practical identifiability analysis of partially observed dynamical models. Bioinfor-matics . 2009;25:1923-1929. 12. Kailath T. Linear Systems . Englewood Cliffs, NJ: Prentice Hall; 1980. 13. Chis OT, Banga J, Balsa-Canto E. Structural identifiability of systems biology models: A critical comparison of methods. PLOS ONE . 2011;6:no. e27755. 14. Wieland F, Hauber F, Rosenblatt M, Timmer J. On structural and practical identifia-bility. Current Opinion in Systems Biology . 2021;25:60-69. 15. Ovchinnikov A, Pillay A, Pogudin G, Scanlon T. Computing all identifiable functions of parameters for ODE models. Systems & Control Letters . 2021;157:no. 105030. 16. Ovchinnikov A, Pillay A, Pogudin G, Scanlon T. Identifiable specializations for ODE models. Systems & Control Letters . 2025;204:no. 106226. 17. Friston K, Harrison L, Penny W. Dynamic causal modelling. NeuroImage . 2003;19:1273-1302. 18. Zeidman P, Jafarian A, Corbin N, Seghier M, Razi A, Price C, et al. A guide to group effective connectivity analysis, part 1: First level analysis with DCM for fMRI. Neu-roImage . 2019;200:174-190. 19. Arand C, Scheller E, Seeber B, Timmer J, Klöppel S, Schelter B. Assessing parameter identifiability for dynamic causal modeling of fMRI data. Frontiers in Neuroscience .2015;9:no. 43. 20. Stephan K, Penny W, Moran R, den Ouden H, Daunizeau J, Friston K. Ten simple rules for dynamic causal modeling. NeuroImage . 2010;49:3099-3109. 21. Kahan J, Foltynie T. Understanding DCM: Ten simple rules for the clinician. NeuroIm-age . 2013;83:542-549. 22. Marreiros A, Kiebel S, Friston K. Dynamic causal modelling for fMRI: A two-state model. NeuroImage . 2008;39:269-278. 23. Daunizeau J, David O, Stephan K. Dynamic causal modelling: A critical review of the biophysical and statistical foundations. NeuroImage . 2011;58:312-322. 24. Frässle S, Harrison S, Heinzle J, Clementz B, Tamminga C, Sweeney J, et al. Regression dynamic causal modeling for resting-state fMRI. Human Brain Mapping . 2021;42:2159-2180. 36 25. Zhuang J, Dvornek N, Tatikonda S, Papademetris X, Ventola P, Duncan J. Multiple-shooting adjoint method for whole-brain dynamic causal modeling. In: Proceedings of the International Conference on Information Processing in Medical Imaging (IPMI) .2021:58–70. 26. Novelli L, Friston K, Razi A. Spectral dynamic causal modeling: A didactic introduction and its relationship with functional connectivity. Network Neuroscience . 2024;8:178-202. 27. Bae S, Cha J. CausalMamba: Scalable conditional state space models for neural causal inference. arXiv preprint . 2025. ArXiv:2510.17318. Available from: https://arxiv. org/abs/2510.17318 .28. Friston K, Mechelli A, Turner R, Price C. Nonlinear responses in fMRI: The Balloon model, Volterra kernels, and other hemodynamics. NeuroImage . 2000;12:466-477. 29. Friston K. Bayesian estimation of dynamical systems: An application to fMRI. Neu-roImage . 2002;16:513-530. 30. Stephan K, Weiskopf N, Drysdale P, Robinson P, Friston K. Comparing hemodynamic models with DCM. NeuroImage . 2007;38:387-401. 31. Stephan K, Kasper L, Harrison L, Daunizeau J, den Ouden H, Breakspear M, et al. Nonlinear dynamic causal models for fMRI. NeuroImage . 2008;42:649-662. 32. Daunizeau J, Stephan K, Friston K. Stochastic dynamic causal modelling of fMRI data: Should we care about neural noise? NeuroImage . 2012;62:464-481. 33. Khalil H. Nonlinear Systems . Englewood Cliffs, NJ: Prentice Hall; 2002. 34. Sontag E. Mathematical Control Theory: Deterministic Finite Dimensional Systems .New York, NY: Springer; 1998. 35. Jacquez J, Simon C. Qualitative theory of compartmental systems. SIAM Review .1993;35:43-79. 36. Daunizeau J, Adam V, Rigoux L. VBA: A probabilistic treatment of nonlinear models for neurobiological and behavioural data. PLOS Computational Biology . 2014;10:no. e1003441. 37. Friston K, Mattout J, Trujillo-Barreto N, Ashburner J, Penny W. Variational free energy and the Laplace approximation. NeuroImage . 2006;34:220-234. 38. Zeidman P, Friston K, Parr T. A primer on variational Laplace. NeuroImage .2023;279:no. 120310. 39. Blei D, Kucukelbir A, McAuliffe J. Variational inference: A review for statisticians. 
+
+Journal of the American Statistical Association . 2017;112:859-877. 40. Sengupta B, Friston K, Penny W. Gradient-free MCMC methods for dynamic causal modelling. NeuroImage . 2015;112:375-381. 37 41. Sengupta B, Friston K, Penny W. Gradient-based MCMC samplers for dynamic causal modelling. NeuroImage . 2016;125:1107-1118. 42. Aponte E, Yao Y, Raman S, Frässle S, Heinzle J, Penny W, et al. An introduction to thermodynamic integration and application to dynamic causal models. Cognitive Neurodynamics . 2022;16:1-15. 43. Van Essen D, Smith S, Barch D, Behrens T, Yacoub E, Ugurbil K, et al. The WU-Minn Human Connectome Project: An overview. NeuroImage . 2013;80:62-79. 44. Glasser M, Sotiropoulos S, Wilson J, Coalson T, Fischl B, Andersson J, et al. The minimal preprocessing pipelines for the Human Connectome Project. NeuroImage .2013;80:105-124. 45. WU-Minn Human Connectome Project Consortium. HCP-Young Adult 2025 release .Human Connectome Project; 2025. Data release documentation. ConnectomeDB pow-ered by BALSA. Updated processing of task and resting-state fMRI data. Avail-able from: https://www.humanconnectome.org/study/hcp-young-adult/document/ hcp-young-adult-2025-release .46. Castelli F, Happe F, Frith U, Frith C. Movement and mind: A functional imaging study of perception and interpretation of complex intentional movement patterns. NeuroImage .2000;12:314-325. 47. Castelli F, Frith C, Happe F, Frith U. Autism, Asperger syndrome and brain mechanisms for the attribution of mental states to animated shapes. Brain . 2002;125:1839-1849. 48. Wheatley T, Milleville S, Martin A. Understanding animate agents: Distinct roles for the social network and mirror system. Psychological Science . 2007;18:469-474. 49. White S, Coniston D, Rogers R, Frith U. Developing the Frith-Happe animations: A quick and objective test of theory of mind for adults with autism. Autism Research .2011;4:149-154. 50. Barch D, Burgess G, Harms M, Petersen S, Schlaggar B, Corbetta M, et al. Function in the human connectome: Task-fMRI and individual differences in behavior. NeuroImage .2013;80:169-189. 51. Hillebrandt H, Friston K, Blakemore S. Effective connectivity during animacy perception–dynamic causal modelling of Human Connectome Project data. Scientific Reports . 2014;4:no. 6240. 52. Buxton R, Wong E, Frank L. Dynamics of blood flow and oxygenation changes during brain activation: The Balloon model. Magnetic Resonance in Medicine . 1998;39:855-864. 53. Henson R, Friston K. Statistical Parametric Mapping: The Analysis of Functional Brain Images . San Diego, CA: Academic Press; 2006. 38 54. Lindquist M, Loh JM, Atlas L, Wager T. Modeling the hemodynamic response function in fMRI: Efficiency, bias and mid-modeling. NeuroImage . 2009;1 Suppl:S187-S198. 55. Raue A, Kreutz C, Theis F, Timmer J. Joining forces of Bayesian and frequentist methodology: A study for inference in the presence of non-identifiability. Philosophical Transactions Series A, Mathematical, Physical, and Engineering Sciences . 2012;371:no. 20110544. 56. Tie Y, Suarez R, Whalen S, Radmanesh A, Norton I, Golby A. Comparison of blocked and event-related fMRI designs for pre-surgical language mapping. NeuroImage . 2009;47 Suppl 2:T107-T115. 57. Hoffman M, Gelman A. The No-U-Turn Sampler: Adaptively setting path lengths in Hamiltonian Monte Carlo. Journal of Machine Learning Research . 2014;15:1593-1623. 58. Stan Development Team. Stan modeling language users guide and reference manual .Stan; 2024. Version 2.35. Available from: https://mc-stan.org .59. Gabry J, Češnovar R, Johnson A. cmdstanr: R interface to CmdStan . CRAN; 2024. R package version 0.7.1. Available from: https://mc-stan.org/cmdstanr/ .60. Zhang L, Carpenter B, Gelman A, Vehtari A. Pathfinder: Parallel quasi-Newton varia-tional inference. Journal of Machine Learning Research . 2022;23:1-49. 61. Vats D, Flegal J, Jones G. Multivariate output Aaalysis for Markov chain Monte Carlo. 
+
+Biometrika . 2019;106:321-337. 62. Flegal J, Vats D, Jones G. mcmcse: Monte Carlo standard errors for MCMC . CRAN; 2020. R package version 1.5-1. Available from: https://cran.r-project.org/ package=mcmcse .63. Song H, Berg S. Multivariate moment least-squares variance estimators for reversible Markov chains. Journal of Computational and Graphical Statistics . 2025;34:409-421. 64. Song H, Berg S. momentLS: Moment-based long-run variance estimation for Markov chains . GitHub; 2025. R package version 0.1.0. Available from: https://github.com/ hsong1/momentLS .65. Gelman A, Carlin J, Stern H, Dunson D, Vehtari A, Rubin D. Bayesian Data Analysis .3rd ed. Boca Raton, FL: CRC Press; 2013. 66. Smith T, Spiegelhalter D. Bayesian approaches to random-effects meta-analysis. Statis-tics in Medicine . 1995;14:389-401. 67. Smith S, Vidaurre D, Beckmann C, Glasser M, Jenkinson M, Miller K, et al. Functional connectomics from resting-state fMRI. Trends in Cognitive Sciences . 2013;17:666-682. 68. Büchel C, Friston K. Modulation of connectivity in visual pathways by attention: Corti-cal interactions evaluated with structural equation modelling and fMRI. Cerebral Cortex .1997;7:768-778. 39 69. Moler C, Van Loan C. Nineteen dubious ways to compute the exponential of a matrix, twenty-five years later. SIAM Review . 2003;45:3-49. 70. FIL Methods Group. SPM12 Manual: Statistical parametric mapping . Wellcome Centre for Human Neuroimaging, University College London; 2020. Chapter 36: Dynamic Causal Modeling for fMRI. Available from: https://www.fil.ion.ucl.ac.uk/spm/ doc/spm12_manual.pdf .71. Bilker W, Hansen J, Brensinger C, Richard J, Gur RE, Gur RC. Development of abbre-viated nine-item forms of the Raven’s standard progressive matrices test. Assessment .2012;19:354-369. 72. Friston K, Kahan J, Biswal B, Razi A. A DCM for resting state fMRI. NeuroImage .2014;94:396-407. 73. Almgren H, Van de Steen F, Kühn S, Razi A, Friston K, Marinazzo D. Variability and reliability of effective connectivity within the core default mode network: A multi-site longitudinal spectral DCM study. NeuroImage . 2018;183:757-768. 74. Eo J, Kang J, Youn T, Park HJ. Neuropharmacological computational analysis of lon-gitudinal electroencephalograms in clozapine-treated patients with schizophrenia using hierarchical dynamic causal modeling. NeuroImage . 2023;275:no. 120161. 75. Huang J, Jung JY, Nam C. Estimating effective connectivity in Alzheimer’s disease progression: A dynamic causal modeling study. Frontiers in Human Neuroscience .2022;16:no. 1060936. 76. Park HJ, Pae C, Friston K, Jang C, Razi A, Zeidman P, et al. Hierarchical dynamic causal modeling of resting-state fMRI reveals longitudinal changes in effective connectivity in the motor system after thalamotomy for essential tremor. Frontiers in Neurology .2017;8:no. 346. 77. Glover G. Deconvolution of impulse response in event-related BOLD fMRI. NeuroImage .1999;9:416-429. 78. Grubb R, Raichle M, Eichling J, Ter-Pogossian M. The effects of changes in PaCO2 on cerebral blood volume, blood flow, and vascular mean transit time. Stroke . 1974;5:630-639. 79. Oppenheim A, Willsky A, Nawab S. Signals and Systems . 2nd ed. Upper Saddle River, NJ: Prentice Hall; 1996. 80. Lewandowski D, Kurowicka D, Joe H. Generating random correlation matrices based on vines and extended onion method. Journal of Multivariate Analysis . 2009;100:1989-2001. 40 Supplementary Materials 
+
+# A Canonical HRF as a Special Case of the Balloon Model 
+
+As we identify in the main text, we can consider the canonical HRF as a type of special case of the Balloon model. We show here why that is the case, by synthesizing the con-cepts and results of prior work 17,18,28,29,52,77 ; no new results are introduced. For simplicity, we present the derivation in the univariate case, where z(t) and the hemodynamic states 
+
+s(t), f (t), v (t), q (t) are scalar quantities rather than vectors. Following the standard DCM formulation, 17,28,52 the hemodynamic Balloon model couples neural activity z(t) to a vasoac-tive signal s(t), blood inflow f (t) ≡ fin (t), venous volume v(t), and deoxyhemoglobin content 
+
+q(t):
+
+˙s(t) = z(t) − κs (t) − γ [f (t) − 1] ,
+
+˙f (t) = s(t),τh ˙v(t) = f (t) − fout (v, t ), fout (v, t ) = v(t)1/ζ ,τh ˙q(t) = f (t)E(f (t)) − fout (v, t ) q(t)
+
+v(t).
+
+Following the implementation used in modern SPM, as described in Zeidman et al, 18 the oxygen extraction function E(f (t)) is written in the normalized form, 
+
+E(f ) = 1 − (1 − E0)1/f 
+
+E0
+
+,
+
+where E0 is the resting oxygen extraction fraction. The corresponding fractional change in BOLD signal y(t) = ∆ S(t)/S 0 is, 
+
+y(t) = ∆S(t)
+
+S0
+
+≈ V0
+
+> [
+
+k1(1 − q(t)) + k2
+
+> (
+
+1 − q(t)
+
+v(t)
+
+> )
+
++ k3(1 − v(t)) 
+
+> ]
+
+,
+
+with parameters κ, γ, τ h, ζ, E 0, V 0, and ki for i = 1 , 2, 3 as defined in Zeidman et al, 18 except we use ζ to denote Grubb’s exponent. 78 
+
+To obtain a linear time-invariant (LTI) approximation, we linearize the system about its resting point: 
+
+f = v = q = 1 , s = z = 0 .
+
+41 We define small deviations from rest: 
+
+xs = s, xf = f − 1, xv = v − 1, xq = q − 1.
+
+Substituting these into the state equations and keeping only first-order terms from the Taylor expansion gives 
+
+˙xs = z − κx s − γx f ,
+
+˙xf = xs,τh ˙xv = xf − 1
+
+ζ xv,τh ˙xq = ωE0 xf − 
+
+> (
+
+1
+
+ζ − 1
+
+> )
+
+xv − xq,
+
+where ωE0 = 1 + (1 −E0) log(1 −E0) 
+
+> E0
+
+is a constant, as E0 is a preset value in SPM. 18 
+
+Note. In the DCM implementation used by Zeidman et al 18 and in the modern version of SPM, the hemodynamic states f, v, q are expressed in log form ( log f, log v, log q) for numerical stability and to ensure positivity. Here we use the ratio form (normalized to baseline), which is equivalent to first order since log(1 + δ) ≈ δ for small deviations. At rest, this corresponds to f = v = q = 1 in ratio form (or 0 in log form). Collecting these equations into vector form with w(t) = [ xs, x f , x v, x q]⊤ gives 
+
+˙w(t) = Mw (t) + az(t), y(t) = dw (t),
+
+where 
+
+M =
+
+> 
+
+−κ −γ 0 01 0 0 00 1/τ h −1/(ζτ h) 00 ωE0 /τ h −(1 /τ h)(1 /ζ − 1) −(1 /τ h)
+
+> 
+
+, a =
+
+> 
+
+1000
+
+> 
+
+, and 
+
+d = V0
+
+> [
+
+0 0 (k2 − k3) −(k1 + k2)]
+
+.
+
+Applying the Laplace transform converts the coupled differential equations into algebraic equations in the Laplace domain, with Laplace-domain variable ρ.79 Using the property 
+
+L{ ˙w(t)} = ρW(ρ) − w(0) , we obtain the algebraic system, 
+
+(ρI − M)W(ρ) = aZ(ρ),
+
+where W(ρ) and Z(ρ) are the Laplace transforms of w(t) and z(t), and I denotes the identity 42 matrix. Assuming zero initial conditions ( w(0) = 0 ), 
+
+W(ρ) = ( ρI − M)−1aZ(ρ), Y (ρ) = dW (ρ),
+
+so that the transfer function of the system is: 
+
+H(ρ) ≡ Y (ρ)
+
+Z(ρ) = d(ρI − M)−1a.
+
+Intuitively, the Laplace transform replaces differentiation with multiplication by ρ, re-ducing the coupled differential equations to algebraic form. The matrix inverse, (ρI − M)−1,encodes the system’s internal dynamics. Its poles (the roots of det( ρI − M) = 0 ) determine the system’s characteristic time constants, controlling the rise, decay, and undershoot of the impulse response. The impulse response of the linearized hemodynamic system is defined as h(t) = L−1{H(ρ)}.For an arbitrary input z(t), with Z(ρ) = L{ z(t)} and Y (ρ) = L{ y(t)},
+
+Y (ρ) = H(ρ)Z(ρ) ⇐⇒ y(t) = ( h ∗ z)( t),
+
+so the BOLD response is given by the convolution of the impulse response with the neural input. In the Volterra framework, this convolution corresponds to the first-order term in the Volterra expansion, and thus h(t) is identified with the first-order Volterra kernel of the nonlinear Balloon model. 28 
+
+For physiologically plausible parameters, h(t) exhibits a biphasic form, with a positive peak followed by a smaller undershoot, corresponding to the dominant poles of the linearized system. 52 The canonical HRF (1) used in SPM is a convenient parametric approximation to this impulse response, given by: 
+
+h(t) = βα1
+
+> 1
+
+Γ( α1)tα1−1e−β1t − c βα2
+
+> 2
+
+Γ( α2)tα2−1e−β2t,
+
+with parameters α1 = 6 , α2 = 16 , β1 = β2 = 1 , and c = 1 /6. Thus, the canonical HRF can be viewed as a parametric approximation to the impulse response of the linearized Bal-loon model, or equivalently, to the first-order Volterra kernel of the nonlinear hemodynamic system. 29,77 For a gentle introduction to the Laplace transform and transfer-function repre-sentation, see Oppenheim et al. 79 
+
+# B Diagonal Parameterization 
+
+Here, we provide further discussion of the diagonal parameterization used in SPM’s DCM. We show how the standard SPM exponential mapping for diagonal elements affects the re-43 lationship between the original neural equation and the reparameterized form. Additionally, we discuss our alternative reparameterization strategy used in CDCM that preserves the additive structure of the neural model while allowing more flexible prior specification for diagonal and off-diagonal elements. Consider the latent neural state z(t) ∈ Rd, with t ∈ (0 , ∞). Recall, the neural signal model in the bilinear, one-state DCM is, 
+
+˙z(t) = ( A +
+
+> m∑
+> i=1
+
+ui(t)Bi)z(t) + Cu (t). (B.1) We can split the A and B = [ B1, . . . , Bm] connectivity matrices into diagonal and off-diagonal parts: 
+
+˙z(t) = ( AD +
+
+> m∑
+> i=1
+
+ui(t)BDi )z(t) + ( AO +
+
+> m∑
+> i=1
+
+ui(t)BOi )z(t) + Cu (t),
+
+where AD = diag( a1, . . . , a d), and BDi = diag( b(i)1 , . . . , b (i) 
+
+> d
+
+), for i = 1 , . . . , m . Thus, the diagonal contribution for element ℓ is, 
+
+aℓ +
+
+> m∑
+> i=1
+
+ui(t)b(i) 
+
+> ℓ
+
+, ℓ = 1 . . . , d. 
+
+A sufficient condition for numerical stability of the dynamic system is the baseline aℓ ≤ 0
+
+and modulation b(i) 
+
+> ℓ
+
+≤ − aℓ for all ℓ and i. Essentially, each region should experience self-inhibition (aℓ ≤ 0) at baseline to constrain system dynamics, and any modulation to that baseline should not be too strong (b(i) 
+
+> ℓ
+
+≤ − aℓ) such that each region is always experiencing some level of self-inhibition. To achieve this, SPM uses a default intrinsic (self-inhibition) strength of −0.5 Hz, and applies an exponential mapping to the diagonal 18 :
+
+AD +
+
+> m∑
+> i=1
+
+ui(t)BDi 7 → −0.5 exp 
+
+> (
+
+¯AD +
+
+> m∑
+> i=1
+
+ui(t) ¯ BDi
+
+> )
+
+,
+
+in which each diagonal element then becomes, 
+
+−0.5 exp 
+
+> (
+
+¯aℓ +
+
+> m∑
+> i=1
+
+ui(t)¯b(i)
+
+> ℓ
+> )
+
+.
+
+Recovery of the original neural model (B.1), aside from the multiplicative constant of −0.5,requires, 
+
+aℓ +
+
+> m∑
+> i=1
+
+ui(t)b(i) 
+
+> ℓ
+
+= exp 
+
+> (
+
+¯aℓ +
+
+> m∑
+> i=1
+
+ui(t)¯b(i)
+
+> ℓ
+> )
+
+, ∀ℓ ∈ { 1, . . . , d }.
+
+44 If all ui(t) = 0 , for i = 1 , . . . , m , then, 
+
+¯aℓ = log( aℓ).
+
+If a single input ui(t) = 1 , then, 
+
+¯b(i) 
+
+> ℓ
+
+= log 
+
+> (
+
+1 + b(i)
+
+> ℓ
+
+aℓ
+
+> )
+
+.
+
+When multiple inputs are active, cross-terms appear. For ui(t) = ui′ (t) = 1 , i̸ = i′:
+
+aℓ + b(i) 
+
+> ℓ
+
++ b(i′) 
+
+> ℓ
+
+= aℓ exp (¯b(i) 
+
+> ℓ
+
++ ¯b(i′)
+
+> ℓ
+> )
+
+= aℓ
+
+> (
+
+1 + b(i)
+
+> ℓ
+
+aℓ
+
+> )(
+
+1 + b(i′)
+
+> ℓ
+
+aℓ
+
+> )
+
+= aℓ + b(i) 
+
+> ℓ
+
++ b(i′) 
+
+> ℓ
+
++ b(i) 
+
+> ℓ
+
+b(i′)
+
+> ℓ
+
+aℓ
+
+.
+
+Thus, exact equivalence requires 
+
+b(i) 
+
+> ℓ
+
+b(i′) 
+
+> ℓ
+
+= 0 ∀i̸ = i′,
+
+which implies that multiple stimuli cannot simultaneously modulate an intrinsic connection. In practice, this is not an entirely unreasonable assumption to make, as it rarely would be of interest to researchers. However, it is important to note because this diagonal parameter-ization does not automatically guarantee equivalence of the neural model specification given in (B.1). To view the reparameterization differently, consider small values of ¯aℓ and ¯b(i) 
+
+> ℓ
+
+(e.g., 
+
+|¯aℓ|, |¯b(i) 
+
+> ℓ
+
+| ≤ 0.2). Using a second-order Taylor expansion, 
+
+ex ≈ 1 + x + 12x2,
+
+we obtain, when a single input ui(t) = 1 ,
+
+−0.5 e¯aℓ+¯b(i) 
+
+> ℓ
+
+≈ − 0.5
+
+> [
+
+1 + ¯ aℓ + ¯b(i) 
+
+> ℓ
+
++ 12 ¯a2 
+
+> ℓ
+
++ ¯ aℓ¯b(i) 
+
+> ℓ
+
++ 12 {¯b(i) 
+
+> ℓ
+
+}2
+
+> ]
+
+.
+
+Retaining only first-order terms yields the simpler approximation 
+
+−0.5 e¯aℓ+¯b(i) 
+
+> ℓ
+
+≈ − 0.5(
+
+1 + ¯ aℓ + ¯b(i)
+
+> ℓ
+> )
+
+.
+
+Thus, although the parametrization is multiplicative on the constrained scale, it behaves approximately additively in ¯aℓ and ¯b(i) 
+
+> ℓ
+
+for small values, inducing an approximate effect 45 aℓ + b(i) 
+
+> ℓ
+
+on the original scale. In this view, the reparameterization only introduces a small error (approximately 2%) and a constant offset term. Additionally, in the case where ui(t) = ui′ (t) = 1 , with small aℓ, b (i)
+
+> ℓ
+
+and b(j) 
+
+> ℓ
+
+the cross-terms are near zero. However, SPM’s diagonal priors do not necessarily guarantee small enough modulation elements ¯b(i) 
+
+> ℓ
+
+by default, making the Taylor approxima-tion approach impractical. The standard SPM approach applies a restrictive prior (variance 
+
+1/64 ) to all elements of A, including off-diagonal, and uses a wider prior (variance 1) for all elements of Bi.18 The rationale for this comes from the fact that the modulation elements are effectively scaled by the baseline intrinsic connections, as seen in the earlier argument above. Therefore, SPM’s approach implies either the imposition of an additional assumption on intrinsic modulatory parameters, or a more restrictive prior on them in order to recover (B.1). Alternatively, we can reparameterize only the diagonal of A while keeping the Bi matrices unchanged, outside of a more restrictive prior, which is the approach we take for CDCM (discussed in Section 3.1). In this approach, the diagonal elements of both A and Bi are assigned restrictive priors with variance 1/64 , while the off-diagonal elements of both matrices receive wider priors with variance 1. Reparameterizing only the diagonal of A preserves the additive structure of (B.1), controls dynamic system stability via the diagonal priors, and avoids the restrictive assumption that multiple diagonal modulatory terms in Bi must be mutually exclusive. 
+
+# C Detailed Proofs 
+
+In this section, we present the detailed proofs of our proposition and theorems. 
+
+# C.1 Proof of Proposition 1 
+
+Proposition 1. Let v(t; v(0) , (A, c)) denote the solution at time t ∈ R+ of the affine system (7) . Also let z(t; s∗, θ ∗) denote the solution of the DCM dynamics in (4) , and 
+
+θ∗ = {A, B1, . . . , Bm, C}. For b ∈ { 0, . . . , B }, with ˜A(b) and ˜c(b) defined in (6) ,
+
+z(t; s∗, θ ∗) = v(t − t(b); z(t(b)), ( ˜ A(b), ˜c(b))) , t ∈ [t(b), t (b+1) ).
+
+In particular, the closed-form solution of z(t; s∗, θ ∗) is given by 
+
+z(t; s∗, θ ∗) = e ˜A(b)(t−t(b)){z(t(b)) + ( ˜ A(b))−1˜c(b)} − ( ˜ A(b))−1˜c(b), t ∈ [t(b), t (b+1) ).
+
+46 Proof. Let b = 0 , . . . , B be given. For t ∈ [t(b), t (b+1) ),
+
+˙z(t; s∗, θ ∗) = 
+
+> (
+
+A +
+
+> m∑
+> i=1
+
+˜u(b) 
+
+> i
+
+Bi
+
+> )
+
+z(t; s∗, θ ∗) + C˜u(b)
+
+= ˜ A(b)z(t; s∗, θ ∗) + ˜ c(b).
+
+Therefore, on [t(b), t (b+1) ), the trajectory z(t; s∗, θ ∗) is identical to 
+
+v(t − t(b); z(t(b); s∗, θ ∗), ( ˜ A(b), ˜c(b))) ,
+
+establishing the first claim. As the closed-form solution of (7) is given by (8), substituting t−t(b) for t, z(t(b)) for v(0) ,and ( ˜ A(b), ˜c(b)) for (A, c) in (8) gives the stated closed-form expression for z(t; s∗, θ ∗). ■
+
+# C.2 Proof of Theorem 1 
+
+We first introduce some notations. For b = 0 , 1, . . . , B , we define 
+
+v(b)(t) = v(t; z(t(b)), ( ˜ A(b), ˜c(b))) 
+
+as the solution at time t ∈ R+ of the affine system 
+
+˙v(t) = ˜ A(b)v(t) + ˜ c(b), (C.1) with the initial condition z(t(b)). By Proposition 1, this solution coincides with the corre-sponding segment of the original trajectory: 
+
+v(b)(t) = z(t(b) + t), t ∈ [t(b), t (b+1) ).
+
+We then write v(b) 
+
+> j
+
+for observations taken at equally spaced intervals of length r:
+
+v(b) 
+
+> j
+
+= v(b)(jr ) = z(t(b) + jr ), j = 0 , 1, 2, . . . (C.2) We present results from Duan et al 1 that are used to establish identifiability of the block-specific parameters ( ˜ A(b), ˜c(b)) in Lemma S3. We then use Lemma S3 to prove Theorem 1. 
+
+Lemma S1 (Duan et al, 1 Lemma 4.2) . Let v0, . . . , vd+1 be any d + 2 vectors in Rd. Define the augmented vectors xj = [ vj , 1] ⊤ for j = 0 , . . . , d + 1 . Define the following matrices: 
+
+Zi := [ vi, . . . , vi+d−1] ∈ Rd×d for i ∈ { 0, 1, 2}
+
+Xi := [ xi, . . . , xi+d] ∈ R(d+1) ×(d+1) for i ∈ { 0, 1}.
+
+47 Suppose there exists a matrix Ψ ∈ R(d+1) ×(d+1) that maps the first block of augmented vectors to the second, such that: 
+
+ΨX0 = X1.
+
+If the matrix X0 is invertible, then Ψ must take the block form: 
+
+Ψ = 
+
+> 
+
+Φ p
+
+0 1
+
+> 
+
+where the top-left block Φ ∈ Rd×d and the top-right vector p ∈ Rd are given by: 
+
+Φ = ( Z2 − Z1)( Z1 − Z0)−1
+
+p = vi+1 − Φvi for any i ∈ { 0, . . . , d }.
+
+Lemma S2 (Duan et al, 1 Theorem 4.5) . Let Φ ∈ Rd×d. The following are equivalent: 
+
+(a) For any p ∈ Rd, there exists a real, unique solution pair (A, c) ∈ Rd×d × Rd to the system, 
+
+eA = Φ ,w(A)c = p,
+
+where w(A) := ∑∞  
+
+> k=0 1(k+1)!
+
+Ak.
+
+(b) There exists a unique real solution A ∈ Rd×d to Φ = eA.
+
+(c) The eigenvalues of Φ are all positive real and each Jordan block of Φ only occurs once. 
+
+Corollary S1 (Duan et al, 1 Corollary 4.7) . Let A ∈ Rd×d, and t ∈ R+. If tA is the unique real logarithm of etA, then w(t; A) is invertible. 
+
+We now present Lemma S3, which establishes identifiability of the block-specific param-eters ( ˜ A(b), ˜c(b)) as functions of the latent discrete observations {v(b)0 , v(b)1 , . . . , v(b)
+
+> d+1
+
+} within block b.
+
+Lemma S3. Let a block b ∈ B ∗ be fixed, over which the stimulus vector is constant and equal to ˜u(b) ∈ Rm. Consider the DCM latent trajectory z(t; s∗, θ ∗) defined by (4) . Recall the definition of the block-specific matrix and affine term for block b:
+
+˜A(b) = A +
+
+> m∑
+> i=1
+
+˜u(b) 
+
+> i
+
+Bi ∈ Rd×d, ˜c(b) = C˜u(b) ∈ Rd.
+
+Under Assumptions (A3) and (A4), ˜A(b) and ˜c(b) are uniquely determined as functions of 
+
+{v(b)0 , v(b)1 , . . . , v(b)
+
+> d+1
+
+}.
+
+48 Proof. As the stimulus vector is constant within block b, for t ∈ [t(b), t (b+1) ), the trajectory follows the affine dynamics governed by ( ˜ A(b), ˜c(b)). Leveraging results from Duan et al 1, we show that ˜A(b) and ˜c(b) can be expressed as functions of {v(b)0 , v(b)1 , . . . , v(b)
+
+> d+1
+
+}.
+
+Step (i) – Using Lemma S1, we establish that Φ(b) and p(b), defined respectively as the upper-left and upper-right blocks of exp 
+
+r
+
+ ˜A(b) ˜c(b)
+
+0 0
+
+ ,
+
+are uniquely determined by the first d + 2 discrete observations of block b, v(b)0 , . . . , v(b)
+
+> d+1
+
+.Let x(b)(t) := [ v(b)(t), 1] ⊤ ∈ Rd+1 , which gives the linear system, 
+
+˙x(b)(t) = 
+
+ ˜A(b) ˜c(b)
+
+0 0
+
+ x(b)(t) = 
+
+ ˜A(b) ˜c(b)
+
+0 0
+
+v(b)(t)1
+
+ =
+
+ ˜A(b)v(b)(t) + ˜ c(b)
+
+0
+
+ . (C.3) In particular, the solution to system (C.3) is 
+
+x(b)(t) = (Ψ (b))rx(b)(t − r) = . . . = (Ψ (b))tx(b)(0) (C.4) where we define 
+
+Ψ(b) := exp 
+
+ ˜A(b) ˜c(b)
+
+0 0
+
+ .
+
+Let x(b) 
+
+> j
+
+:= x(b)(tj ), j ∈ { 0, . . . , d + 1 }. Define X(b)0 , X(b)1 ∈ R(d+1) ×(d+1) as X(b)0 =[x(b)0 , . . . , x(b) 
+
+> d
+
+], and X(b)1 = [ x(b)1 , . . . , x(b)
+
+> d+1
+
+]. By (C.4), there is a recursive relation between 
+
+x(b) 
+
+> j+1
+
+and x(b) 
+
+> j
+
+, where x(b) 
+
+> j+1
+
+= (Ψ (b))rx(b) 
+
+> j
+
+for each j ∈ { 0, . . . , d } since tj+1 − tj = r. Then, 
+
+X(b)1 = (Ψ (b))rX(b)0 .
+
+Since (X(b)0 )−1 exists by Assumption (A4), (Ψ (b))r = X(b)1 (X(b)0 )−1 and by Lemma S1, 
+
+(Ψ (b))r =
+
+Φ(b) p(b)
+
+0 1
+
+ (C.5) where Φ(b) and p(b) are given by 
+
+Φ(b) = ( Z(b)2 − Z(b)1 )( Z(b)1 − Z(b)0 )−1
+
+p(b) = v(b) 
+
+> j+1
+
+− Φ(b)v(b) 
+
+> j
+
+, j ∈ { 0, . . . , d } (C.6) where Z(b) 
+
+> i
+
+:= [ v(b) 
+
+> i
+
+, . . . , v(b)
+
+> i+d−1
+
+] for i ∈ { 0, 1, 2}. This provides a mapping from {v(b)0 , . . . , v(b)
+
+> d+1
+
+}
+
+to Φ(b) and p(b).49 Step (ii) – Show that ˜A(b) and ˜c(b) are uniquely identified from Φ(b) and p(b), which implies identification of ˜A(b) and ˜c(b) from {v(b)0 , . . . , v(b)
+
+> d+1
+
+}.Following the argument of Duan et al, 1
+
+exp 
+
+r
+
+ ˜A(b) ˜c(b)
+
+0 0
+
+ =
+
+er ˜A(b)
+
+w(r; ˜ A(b))˜ c(b)
+
+0 1
+
+ (C.7) where w(t; A) denotes the antiderivative of etA given by 
+
+w(t; A) = 
+
+> ∞
+
+∑
+
+> k=0
+
+tk+1 
+
+(k + 1)! Ak, (C.8) so that ddt w(t; A) = etA.Combining (C.5) and (C.7), 
+
+er ˜A(b)
+
+= Φ (b) = ( Z(b)2 − Z(b)1 )( Z(b)1 − Z(b)0 )−1,w(r ˜A(b))( r˜c(b)) = p(b) = v(b) 
+
+> j+1
+
+− Φ(b)v(b) 
+
+> j
+
+, ∀j ∈ { 0, . . . , d }.
+
+where we also use 
+
+w(r; ˜ A(b)) = 
+
+> ∞
+
+∑
+
+> k=0
+
+rk+1 
+
+(k + 1)! ( ˜ A(b))k = r
+
+> ∞
+
+∑
+
+> k=0
+
+1(k + 1)! (r ˜A(b))k = rw (1; r ˜A(b)).
+
+By Assumption (A3), ˜A(b) is diagonalizable, and therefore ˜A(b) = PDP −1 for an invert-ible P ∈ Rd×d and a diagonal matrix D = diag (λ1, . . . , λ d) such that λi̸ = λj for i̸ = j.Then 
+
+er ˜A(b)
+
+=
+
+> ∞
+
+∑
+
+> k=0
+
+(r ˜A(b))k
+
+k! = P
+
+> ∞
+
+∑
+
+> k=0
+
+(rD)k
+
+k! P−1 = PerDP−1
+
+where erD = diag (erλ 1 , . . . , e rλ d ). In particular, the eigenvalues of er ˜A(b)
+
+are all positive real and distinct, therefore condition (c) in Lemma S2 is satisfied for Φ(b) = er ˜A(b)
+
+. Then there exists a unique real logarithm of r ˜A(b) = log( er ˜A(b)
+
+) = log(( Z(b)2 − Z(b)1 )( Z(b)1 − Z(b)0 )−1). More-over, by Corollary S1, if r ˜A(b) is the unique logarithm of er ˜A(b)
+
+, then w(r ˜A(b)) is invertible. Therefore, 
+
+˜A(b) = r−1 log(( Z(b)2 − Z(b)1 )( Z(b)1 − Z(b)0 )−1)˜c(b) = r−1w(r ˜A(b))−1(v(b)1 − Φ(b)v(b)0 ).
+
+where log( A) denotes a matrix logarithm of the matrix A. Thus, ˜A(b) and ˜c(b) are functions of {v(b)0 , . . . , v(b)
+
+> d+1
+
+}.
+
+■
+
+50 Now, we use Lemma S3 to prove Theorem 1. 
+
+Theorem 1. Assume (A1)–(A4). Then the ODE system in (4) is (s∗, θ ∗)-identifiable. 
+
+Proof. Let zj := z(tj ; s∗, θ ∗) for j = 1 , . . . , n . We prove the contrapositive: if there exist s′
+
+and θ′ such that z(tj ; s′, θ ′) = z(tj ; s∗, θ ∗) for all j = 1 , . . . , n , then s′ = s∗ and θ′ = θ∗. Thus, it suffices to show that (s∗, θ ∗) are uniquely determined by the discrete trajectory {zj }nj=1 .We show that s∗ and θ∗ = {A, B1, . . . , Bm, C} can be expressed as functions of {zj }nj=1 .By Assumption (A2), there exist m + 1 blocks B∗ = {b1, . . . , b m+1 } with each block bk
+
+satisfying Assumption (A1), such that 
+
+˜U∗ =
+
+
+
+1 ˜u(b1)⊤
+
+... ...
+
+1 ˜u(bm+1 )⊤
+
+
+
+is invertible. We let v(b) 
+
+> j
+
+:= z(t(b) + jr ) for j = 0 , . . . , d + 1 denote the first d + 2 latent states within block b, as defined in Lemma S3. Then, by Lemma S3, for each bk ∈ B ∗, ˜A(bk ) and ˜c(bk ) are functions of the first d + 2 observations {v(bk )0 , . . . , v(bk )
+
+> d+1
+
+}.For each selected block bk,
+
+˜A(bk ) = A +
+
+> m
+
+∑
+
+> i=1
+
+˜u(bk ) 
+
+> i
+
+Bi.
+
+Stacking these equations yields 
+
+
+
+˜A(b1)
+
+...
+
+˜A(bm+1 )
+
+ =
+
+
+
+Id ˜u(b1)1 Id · · · ˜u(b1) 
+
+> m
+
+Id
+
+... ... ...
+
+Id ˜u(bm+1 )1 Id · · · ˜u(bm+1 ) 
+
+> m
+
+Id
+
+
+
+AB1
+
+...
+
+Bm
+
+
+
+.
+
+Since ˜U∗ and Id are invertible, the block matrix 
+
+˜U∗ ⊗ Id =
+
+
+
+Id ˜u(b1)1 Id · · · ˜u(b1) 
+
+> m
+
+Id
+
+... ... ...
+
+Id ˜u(bm+1 )1 Id · · · ˜u(bm+1 ) 
+
+> m
+
+Id
+
+
+
+51 is invertible. Therefore, 
+
+
+
+AB1
+
+...
+
+Bm
+
+
+
+=
+
+
+
+Id ˜u(b1)1 Id · · · ˜u(b1) 
+
+> m
+
+Id
+
+... ... ...
+
+Id ˜u(bm+1 )1 Id · · · ˜u(bm+1 ) 
+
+> m
+
+Id
+
+
+
+> −1
+
+
+
+˜A(b1)
+
+˜A(b2)
+
+...
+
+˜A(bm+1 )
+
+
+
+.
+
+In particular, A and B1, . . . , Bm are functions of observations in the discrete trajectory 
+
+{z(t(b) + jr ); j = 0 , . . . , d + 1 , b ∈ B ∗}.Similarly, writing C = [ c1, . . . , cm], where ci ∈ Rd is the ith column of C, we have 
+
+˜c(bk ) =
+
+> m
+
+∑
+
+> i=1
+
+˜u(bk ) 
+
+> i
+
+ci, for k = 1 , . . . , m + 1 .
+
+Stacking over the selected blocks gives 
+
+
+
+˜c(b1)
+
+˜c(b2)
+
+...
+
+˜c(bm+1 )
+
+
+
+=
+
+
+
+Id ˜u(b1)1 Id · · · ˜u(b1) 
+
+> m
+
+Id
+
+Id ˜u(b2)1 Id · · · ˜u(b2) 
+
+> m
+
+Id
+
+... ... ...
+
+Id ˜u(bm+1 )1 Id · · · ˜u(bm+1 ) 
+
+> m
+
+Id
+
+
+
+0c1
+
+...
+
+cm
+
+
+
+.
+
+Therefore, 
+
+0c1
+
+...
+
+cm
+
+
+
+=
+
+
+
+Id ˜u(b1)1 Id · · · ˜u(b1) 
+
+> m
+
+Id
+
+Id ˜u(b2)1 Id · · · ˜u(b2) 
+
+> m
+
+Id
+
+... ... ...
+
+Id ˜u(bm+1 )1 Id · · · ˜u(bm+1 ) 
+
+> m
+
+Id
+
+ 
+
+> −1
+
+
+
+˜c(b1)
+
+˜c(b2)
+
+...
+
+˜c(bm+1 )
+
+
+
+,
+
+and C is uniquely determined by {z(t(b) + jr ); j = 0 , . . . , d + 1 , b ∈ B ∗}.Finally, we identify the initial state s∗. Let ˜uinit denote the constant stimulus vector during [0 , r ). Typically ˜uinit = 0 , corresponding to no stimulus before the first TR, or 
+
+˜uinit = ˜ u(0) , corresponding to the stimulus during the first block. During this interval, the system evolves according to ˜Ainit = A + ∑mi=1 ˜uinit ,i Bi and ˜cinit = C˜uinit . By the closed-form solution of the affine ODE, 
+
+z(r) = er ˜Ainit s∗ + w(r; ˜ Ainit )˜ cinit .
+
+That is, 
+
+s∗ = e−r ˜Ainit {z(r) − w(r; ˜ Ainit )˜ cinit }.
+
+Since A, B1, . . . , Bm, and C are functions of observations {z(t(b) + jr ); j = 0 , . . . , d + 1 , b ∈
+
+52 B∗}, so are ˜Ainit and ˜cinit . It follows that s∗ is a function of {z(r)} ∪ { z(t(b) + jr ); j =0, . . . , d + 1 , b ∈ B ∗}.Therefore, (s∗, θ ∗) are uniquely determined by the discrete trajectory {z(rj ); j = 1 , . . . , n },completing the proof. ■
+
+# C.3 Proof of Theorem 2 
+
+Theorem 2. If h(r)̸ = 0 , that is, the canonical HRF evaluated at the TR r is nonzero, then the mapping 
+
+{z(tj ); j = 0 , . . . , n − 1} 7 → { E[y(tj )]; j ∈ { 1, . . . , n }} 
+
+with E[y(tj )] = μ(tj ) + β is injective. In particular, the system defined by (4) and (5) 
+
+is (s∗, θ ∗)-identifiable from {E[y(t1)] , . . . , E[y(tn)] } in the sense that for s′ ∈ Rd and θ′ =
+
+{A′, B′
+
+> 1
+
+, . . . , B′
+
+> m
+
+, C′} with (s′, θ ′)̸ = ( s∗, θ ∗), there exists j ∈ { 1, . . . , n } such that 
+
+E[y(tj ; s′, θ ′)] ̸ = E[y(tj ; s∗, θ ∗)] .
+
+As β = E[y(tj )] − μ(tj ) for any j, the intercept β is uniquely determined once μ(tj ) is identified. 
+
+Proof. We begin by providing a more explicit definition of the discrete time convolution (3) in the main text. For a function f : [0 , ∞) → R, we define f [j] = f (tj ) = f (rj ) as the sampled vector with sampling interval r for j ∈ N. We model the mean μ[j] = μ(tj ) of the 
+
+jth observation y[j] = y(tj ) as 
+
+μ[j] = ( z ∗ h)[ j] = 
+
+> ∞∑
+> i=−∞
+
+h[i]z[j − i] = 
+
+> j∑
+> i=0
+
+h[i]z[j − i], (C.9) since h[i] = h(ri ) = 0 when i < 0 and z[j − i] = 0 when i > j , as neither the neural signal nor the canonical HRF have nonzero values prior to the start of the scan. From (C.9), we have μ(tj ) = μ[j] = ∑ji=0 h[i]z[j − i]. Explicitly writing out the first few terms of μ[j] gives, 
+
+μ[1] = h[0] z[1] + h[1] z[0] ,μ[2] = h[0] z[2] + h[1] z[1] + h[2] z[0] ,μ[3] = h[0] z[3] + h[1] z[2] + h[2] z[1] + h[3] z[0] ,
+
+...
+
+μ[n] = h[0] z[n] + h[1] z[n − 1] + · · · + h[n − 1] z[1] + h[n]z[0] .
+
+Note that h[0] = h(t0) = h(0) = 0 from the definition of the canonical HRF. After eliminating 53 this term, we can represent the system of equations in matrix form: 
+
+> 
+
+μ[1] 
+
+μ[2] 
+
+μ[3] 
+
+...
+
+μ[n]
+
+> 
+
+=
+
+> 
+
+h[1] 0 0 · · · 0
+
+h[2] h[1] 0 · · · 0
+
+h[3] h[2] h[1] . . . 0
+
+... ... ... . . . 0
+
+h[n] h[n − 1] h[n − 2] . . . h[1] 
+
+> 
+
+z[0] 
+
+z[1] 
+
+z[2] 
+
+...
+
+z[n − 1] 
+
+> 
+
+,
+
+or, alternatively, ˜μ = H˜z where ˜μ := [ μ[1] , . . . , μ [n]] ⊤ and ˜z := [ z[0] , . . . , z[n − 1]] ⊤. The matrix H ∈ Rn×n is a lower triangular matrix, and det( H) = ∏nj=1 h[1] = ( h[1]) n. If h[1] ̸ = 0 ,then det( H)̸ = 0 , and H is invertible. Thus, ˜z = H−1 ˜μ, so for a given ˜z, there is a one-to-one mapping from ˜z to ˜μ when H is invertible. Finally, since E[y(tj )] = μ(tj ) + β with β constant across j, the mapping from ˜μs to 
+
+{E[y(tj )] } is a translation and therefore injective. Hence, the one-to-one correspondence between ˜z and ˜μ extends to a one-to-one mapping between ˜z and {E[y(tj )] }. Moreover, β is uniquely determined from E[y(tj )] − μ(tj ). ■
+
+# D Group-Level Bayesian Hierarchical Model Details 
+
+For each subject k = 1 , . . . , K , let ˆθz,k ∈ Rpθz denote the estimated subject-level neural parameter posterior means, Sk ∈ Rpθz ×pθz the estimated within-subject posterior covariance, and bk ∈ Rqs the standardized and/or effect-coded subject-level covariates. We define the mean structure: 
+
+ηk = α + Θ bk,
+
+where α ∈ Rpθz are group-level intercepts and Θ ∈ Rpθz ×qs are regression coefficients. We standardize continuous covariates and effect-code categorical covariates because the inter-pretation of the group-level intercepts α is then in terms of the “average subject” and is not specific to particular reference level(s). The hierarchical model can be written as, 
+
+θz,k | α, Θ, T ∼ Npθz 
+
+> (
+
+ηk, T)
+
+,
+
+ˆθz,k | θz,k ∼ Npθz 
+
+> (
+
+θz,k , Sk
+
+> )
+
+,
+
+where the latent vectors θz,k represent the true (unobserved) subject-level neural parameters, and T ∈ Rpθz ×pθz is the between-subject covariance matrix describing heterogeneity across subjects. Because both levels are multivariate normal, the latent θz,k can be integrated out ana-54 lytically: 
+
+p(ˆθz,k | α, Θ, T) = 
+
+> ∫
+
+p(ˆθz,k | θz,k ) p(θz,k | α, Θ, T) dθ z,k 
+
+=
+
+> ∫
+
+Npθz (ˆθz,k | θz,k , Sk) Npθz (θz,k | ηk, T) dθ z,k 
+
+= Npθz 
+
+> (
+
+ˆθz,k | ηk, T + Sk
+
+> )
+
+.
+
+Thus, the marginalized likelihood used for estimation is, 
+
+ˆθz,k ∼ Npθz 
+
+> (
+
+ηk, T + Sk
+
+> )
+
+,
+
+where the total covariance is the sum of the between-subject variability T and the within-subject uncertainty Sk. This form is algebraically equivalent to the hierarchical model above, but is computationally more efficient because the θz,k are integrated out. The between-subject covariance T is expressed through a Cholesky factorization with an LKJ prior 80 :
+
+T = Lτ L⊤ 
+
+> τ
+
+, Lτ = diag( τ ) Lcorr ,
+
+where τ ∈ Rpθz  
+
+> >0
+
+are between-subject standard deviations and Lcorr is the Cholesky factor of a correlation matrix capturing correlations among parameters. Priors are specified as, 
+
+α ∼ Npθz (0, I),
+
+vec(Θ) ∼ Npθz qs (0, I),τ ∼ N+ 
+
+> pθz
+
+(0, I),
+
+Lcorr ∼ LKJ(2) ,
+
+where N + denotes a half-normal distribution. Similar to CDCM, we use NUTS 57 for posterior distribution sampling of group-level parameters with initial values from the output of the Pathfinder algorithm. 60 
+
+# E HCP Social Cognition Task Simulation Study 
+
+Comparisons of group-level results from the HCP social cognition task indicate agreement between CDCM and SPM, particularly in the signs of estimated parameters, with one notable exception: the driving input from the All Motion stimulus to the pSTS. For this parameter, CDCM consistently estimates a negative effect, whereas SPM estimates a positive effect. As the ground truth is unknown in real data, we conduct a follow-up simulation study to assess which method more accurately recovers the underlying parameters under the specified model. 55 In this simulation study, we create four simulated datasets of the same size as the HCP data (100 subjects × 2 sessions × 2 hemispheres), and estimate the single subject DCMs for all datasets using both CDCM and SPM. The results are summarized at the group-level for each of the datasets in the same way as they are for the real data. From the real data, we can treat the group-level posterior means as the true set of neural parameters, and simulate data from those values. The four simulated datasets arise from the 2 × 2 combinations of true values (CDCM group-level as the truth, and SPM group-level as the truth) and data-generating models (CDCM DGM and SPM DGM). Within each dataset, the true values we use correspond to the posterior means for that session and hemisphere combination. As an example, for the dataset using CDCM as the truth and SPM as the DGM, then for LR phase encoding and the left hemisphere, the true values used are the CDCM group-level posterior means from the LR phase encoding, mask L panel of Figure 8, and the simulated data are generated from those values using SPM. We also retain the set of subject IDs such that, in each dataset, we use the U matrix for that subject and session, just as in the real data. For the two datasets using SPM as the data-generating model, we also use the individual estimated hemodynamic parameters from the Balloon model for that subject, session, and hemisphere in the real data. Since there are no hemodynamic parameters for CDCM, this step is not necessary for the other two datasets. After simulating the true signals, we add Gaussian noise with a target SNR of 1.68, just as in our earlier simulations. Similar to Section 5.2, the simulated signals for all datasets have a range close to four. To ensure that both methods are fit to identical data on a scale comparable to the real data, the additive Gaussian noise is reduced when necessary to prevent the data range from exceeding four and triggering SPM’s internal rescaling. As a result, the noise is more constrained in V5 than in pSTS, leading to a higher average SNR in V5. The convergence criterion for each estimation procedure is identical as described for the real data. For CDCM, there are five chains total across the four datasets that do not converge initially and require an increase in the target acceptance probability from 0.9 to either 0.95 (3 chains) or 0.99 (2 chains) to converge according to a multivariate ESS satisfying 
+
+αESS = εESS = 0 .05 . These five chains all come from the two datasets using SPM’s estimates as the truth. SPM’s VL optimization converges in all cases within 512 iterations. The simulation results are shown in Table E.1, with the left three columns defining the session and hemisphere condition, the true set of values, and the DGM, followed by the results from each estimation procedure. When summarized at the group-level, both estimation procedures tend to be overconfident, with narrow HPD intervals that often miss the true value. We still observe this in cases where the truth, DGM, and estimation procedure all match. This apparent lack of coverage is likely driven in part by the structure of the simulation design. Within each dataset, the 100 subjects are simulated as repeated noisy realizations 56 Table E.1: Simulated HCP dataset group-level results. Simulated subjects’ effective connec-tivity networks are estimated using both estimation procedures, and then we estimate the group-level parameters controlling for subject-level covariates. From the group-level results, we report the proportion of correct sign (+ /−) matches between the truth and the posterior mean estimates, as well as the mean distance to the true values. Both methods have a large proportion of correct sign matches, and similar average distances to the true values. 
+
+Condition Truth DGM Correct Sign Mean Dist. to Truth CDCM SPM CDCM SPM 
+
+LR-L CDCM CDCM 1.0 0.8 0.113 0.286 LR-L CDCM SPM 1.0 0.9 0.123 0.167 LR-L SPM CDCM 0.7 0.9 0.183 0.048 LR-L SPM SPM 0.8 1.0 0.245 0.046 LR-R CDCM CDCM 1.0 0.7 0.073 0.386 LR-R CDCM SPM 1.0 0.8 0.106 0.292 LR-R SPM CDCM 1.0 0.7 0.129 0.131 LR-R SPM SPM 0.8 0.9 0.228 0.105 RL-L CDCM CDCM 0.9 0.6 0.117 0.196 RL-L CDCM SPM 0.9 0.8 0.113 0.113 RL-L SPM CDCM 0.6 0.7 0.271 0.131 RL-L SPM SPM 0.6 0.9 0.377 0.043 RL-R CDCM CDCM 0.8 0.5 0.124 0.434 RL-R CDCM SPM 0.8 0.7 0.198 0.263 RL-R SPM CDCM 0.8 0.9 0.396 0.238 RL-R SPM SPM 0.8 1.0 0.261 0.093 of the same underlying parameter vector. This provides a controlled setting that reflects the structure of the real data while limiting between-subject variability, allowing the group-level model to efficiently pool information across observations. At the same time, the group-level analysis retains subject-level covariates as in the real data, even though the simulated parameter values do not vary systematically with those covariates. Together, these features lead to relatively narrow group-level intervals, so coverage is not the most informative metric for this comparison. Instead, we focus on the proportion of correct sign matches to the truth, as well as the mean distance to the truth, given that the sign difference between CDCM and SPM for the second estimate in ˆαC is what prompted this simulation study. Even though both methods exhibit poor coverage, they both estimate the correct sign of the parameter the majority of the time, and do so with similar magnitude, as the mean distances between the true values and estimated values are small. This is the case even when considering the typical scale of the neural parameters in DCM. The results in Table E.1 also show that the data-generating mechanisms matter less for simulation performance than the true parameter set used to simulate the data, as there is a larger drop in parameter recovery when the true values do not match the estimation procedure than when the DGM 57 does not match the estimation procedure. For a more visual representation of the results shown in Table E.1, we refer the reader to Supplementary Material F, where results from each simulated dataset are plotted alongside the true values in the same fashion as in Figure 8. Table E.1 shows the overall simulation results, which demonstrate that both methods, even under misspecification and a different set of parameters than originally estimated for the real data, do a reasonable job of estimating values close to the truth, even if the intervals do not capture the truth. Regarding the original motivation for the simulation, the difference in direction for the driving input of All Motion into the pSTS, CDCM estimates the correct sign for this parameter every time, whereas SPM only estimates the correct sign 68.75% of the time. However, CDCM’s proportion is nearly 75%, as the posterior mean estimates for this input are only marginally positive for the dataset generated using SPM and DGM, resulting in intervals that narrowly exclude zero. Overall, the simulation results indicate that both models provide reasonable estimates of the network parameters across a range of conditions. In the real data analysis, however, the direction of the driving input from All Motion to the pSTS cannot be determined conclusively; accordingly, we do not attempt to interpret the biological significance of this parameter. 
+
+# F Supplementary Figures and Tables 
+
+Here, we present several supplementary figures and tables pertaining to the simulation in Section 5.2, and the HCP real data application from Section 6.2. Table F.1: Summary of NUTS sampler hyperparameter tuning changes for the HCP social cognition task analysis. For these cases, the CDCM default settings of a target acceptance probability of 0.9 and 5,000 warm-up iterations resulted in either divergence or maximum tree depth warnings. 
+
+Subject ID Session (Phase Encoding) Hemisphere Target Acceptance Probability Warm-up Iterations 
+
+101107 LR L 0.80 118730 RL R 0.99 131217 LR L 0.80 8,000 149337 RL L 0.95 149539 LR R 0.99 8,000 154734 LR L 0.80 8,000 162733 LR L 0.95 8,000 163129 RL L 0.80 8,000 189450 RL R 0.95 245333 RL L 0.99 414229 RL R 0.99 58 Figure F.1: Average posterior mean estimates and 95% HPD intervals across 50 simulations using CDCM where data are also generated using CDCM. The left panel includes diagonal parameters in A only (positions three and four), whereas the right includes diagonal param-eters in A (positions three and four) as well as one diagonal parameter in B (position six). Intervals and true values for the diagonal parameters in A have been reparameterized. Here, like in the simulation from Section 5.1, CDCM recovers all parameters in both scenarios. As mentioned in the main text, the intervals are slightly overcovering compared to that of SPM. 59 Figure F.2: Average posterior mean estimates and 95% HPD intervals across 50 simulations using CDCM where data are generated using SPM with 1 s signal delays. The left panel includes diagonal parameters in A only (positions three and four), whereas the right includes diagonal parameters in A (positions three and four) as well as one diagonal parameter in 
+
+B (position six). Intervals and true values for the diagonal parameters in A have been reparameterized. The results with delays do not differ much from the results shown for CDCM in Figure 4. 60 Figure F.3: Average posterior mean estimates and 95% HPD intervals across 50 simulations using SPM where data are also generated using SPM. The top two panels do not incorporate signal delays between regions and stimuli, and the bottom two incorporate 1s delays. The left two panels include diagonal parameters in A only (positions three and four), whereas the right two include diagonal parameters in A (positions three and four) as well as one diagonal parameter in B (position six). Intervals and true values for the diagonal parameters in A
+
+and B have been reparameterized. Most notably, SPM appears to be overly confident in the parameter estimates, and does not cover all parameters. This is especially true for the value in C, interestingly, in which SPM consistently overestimates the parameter. 61 Figure F.4: Group-level posterior mean estimates and 95% HPD interval comparison between CDCM and SPM across all phase encoding and hemisphere combinations for the HCP follow-up simulation study. The data are simulated using CDCM’s group-level posterior means shown in Figure 8, and CDCM’s data generating model; the true values are denoted by the stars. Posterior means and intervals for the diagonal parameters have been reparameterized according to the respective modeling definition to facilitate direct comparison. Diagonal parameters are in positions one, four, five, and eight within each panel. Unsurprisingly, CDCM outperforms SPM in terms of recovering the true parameters, but both methods are consistent in many cases. For the key parameter of interest, the second value in C, SPM continues to estimate a positive value, whereas CDCM correctly estimates a negative value. 62 Figure F.5: Group-level posterior mean estimates and 95% HPD interval comparison between CDCM and SPM across all phase encoding and hemisphere combinations for the HCP follow-up simulation study. The data are simulated using CDCM’s group-level posterior means shown in Figure 8, and SPM’s data generating model; the true values are denoted by the stars. Posterior means and intervals for the diagonal parameters have been reparameterized according to the respective modeling definition to facilitate direct comparison. Diagonal parameters are in positions one, four, five, and eight within each panel. Even with the mismatch between true values and DGM from the real data, both models estimate values very close to the truth in nearly all cases. Concerning the key parameter of interest in C,both estimation procedures estimate a correct negative value, or at the very least, a value whose HPD interval includes zero. 63 Figure F.6: Group-level posterior mean estimates and 95% HPD interval comparison be-tween CDCM and SPM across all phase encoding and hemisphere combinations for the HCP follow-up simulation study. The data are simulated using SPM’s group-level posterior means shown in Figure 8, and CDCM’s data generating model; the true values are denoted by the stars. Posterior means and intervals for the diagonal parameters have been repa-rameterized according to the respective modeling definition to facilitate direct comparison. Diagonal parameters are in positions one, four, five, and eight within each panel. For the LR phase encoding panels, both models perform fairly consistently, even with the true value and DGM mismatch. For RL phase coding using the left hemisphere, this remains true for all parameters except for that of the third modulation parameter, in which both models incorrectly estimate the sign. Interestingly, both models struggle overall with RL phase en-coding and right hemisphere, as both are very confident, but not as close to the truth as in the other session × hemisphere combinations. For the key parameter of interest, the second value in C, both methods correctly estimate a positive value. 64 Figure F.7: Group-level posterior mean estimates and 95% HPD interval comparison be-tween CDCM and SPM across all phase encoding and hemisphere combinations for the HCP follow-up simulation study. The data are simulated using SPM’s group-level posterior means shown in Figure 8, and SPM’s data generating model; the true values are denoted by the stars. Posterior means and intervals for the diagonal parameters have been repa-rameterized according to the respective modeling definition to facilitate direct comparison. Diagonal parameters are in positions one, four, five, and eight within each panel. Unsur-prisingly, SPM outperforms CDCM in terms of recovering the true parameters, but both methods are consistent in many cases. For the key parameter of interest, the second value in 
+
+C, SPM correctly estimates a positive value in all cases, and CDCM estimates values that are just barely positive, with all intervals including zero. 65
