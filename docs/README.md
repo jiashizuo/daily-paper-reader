@@ -6,76 +6,56 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-05-06 ~ 2026-05-15
-- 运行时间：2026-05-15 15:44:14 UTC
+- 最新运行日期：2026-05-15
+- 运行时间：2026-05-15 20:19:35 UTC
 - 运行状态：成功
-- 本次总论文数：18
-- 精读区：7
+- 本次总论文数：11
+- 精读区：0
 - 速读区：11
 
 ### 今日简报（AI）
-1) 2026-05-06 至 05-15 的神经影像推荐已完成：共筛选 18 篇，其中 7 篇精读、11 篇速读。
-2) 最值得关注的是跨站点/跨图谱脑网络泛化与表征学习，两篇满分精读聚焦脑网络迁移和多图谱功能连接中的脑疾病一致表征。
-3) 普通读者可先读两篇满分精读建立主线，再速览 NeuroAgent 与多智能体自动神经影像分析，了解 AI 助手如何进入科研流程。
-- 详情：[/20260506-20260515/README](/20260506-20260515/README)
+今天完成 2026-05-15 日报筛选：共 11 篇论文，全部为速读，暂无精读入选。
+最值得关注的是多模态阿尔茨海默诊断的可微提示调优、跨医院 MRI 外观偏移下的联邦脑肿瘤分割鲁棒性评估，以及视觉语义到神经层级的双曲映射。
+建议普通读者优先浏览这 3 篇 7.0 分论文，把握医学 AI 鲁棒性、多模态诊断与脑视觉表征建模的近期动向。
+- 详情：[/202605/15/README](/202605/15/README)
 
 ### 精读区论文标签
-1. [When Brain Networks Travel: Learning Beyond Site](/20260506-20260515/2605.06050v1-when-brain-networks-travel-learning-beyond-site)  
-   标签：评分：10.0/10、query:fmri-brain-network
-   evidence：基于图的fMRI功能连接诊断脑网络
-2. [Learning Cross-Atlas Consistent Brain Disorder Representations via Disentangled Multi-Atlas Functional Connectivity Learning](/20260506-20260515/2605.07026v1-learning-cross-atlas-consistent-brain-disorder-representations-via-disentangled-multi-atlas-functional-connectivity-learning)  
-   标签：评分：10.0/10、query:fmri-brain-network
-   evidence：静息态fMRI功能连接与脑疾病
-3. [Multilevel Regression Modeling of Covariance Matrix Outcomes](/20260506-20260515/2605.05371v1-multilevel-regression-modeling-of-covariance-matrix-outcomes)  
-   标签：评分：9.0/10、query:fmri-brain-network
-   evidence：神经影像协方差功能连接
-4. [NeuroGAN-3D: Enhancing Intrinsic Functional Brain Networks via High-Fidelity 3D Generative Super-Resolution](/20260506-20260515/2605.08373v1-neurogan-3d-enhancing-intrinsic-functional-brain-networks-via-high-fidelity-3d-generative-super-resolution)  
-   标签：评分：9.0/10、query:fmri-brain-network
-   evidence：静息态fMRI内在功能脑网络与连接图
-5. [A Bayesian Adaptive Latent Mixture Model for Zero-Inflated Weighted Brain Connectome Analysis](/20260506-20260515/2605.12901v1-a-bayesian-adaptive-latent-mixture-model-for-zero-inflated-weighted-brain-connectome-analysis)  
-   标签：评分：9.0/10、query:fmri-brain-network
-   evidence：加权脑连接组分析
-6. [Supervised Deep Multimodal Matrix Factorization for Interpretable Brain Network Analysis](/20260506-20260515/2605.13312v1-supervised-deep-multimodal-matrix-factorization-for-interpretable-brain-network-analysis)  
-   标签：评分：9.0/10、query:fmri-brain-network
-   evidence：脑网络深度监督多模态图建模
-7. [Network-Aware Bilinear Tokenization for Brain Functional Connectivity Representation Learning](/20260506-20260515/2605.14048v1-network-aware-bilinear-tokenization-for-brain-functional-connectivity-representation-learning)  
-   标签：评分：9.0/10、query:fmri-brain-network
-   evidence：静息态功能连接自监督学习
+- 本次无精读推荐。
 
 ### 速读区论文标签
-1. [NeuroAgent: LLM Agents for Multimodal Neuroimaging Analysis and Research](/20260506-20260515/2605.06584v1-neuroagent-llm-agents-for-multimodal-neuroimaging-analysis-and-research)  
-   标签：评分：8.0/10、query:fmri-brain-network
-   evidence：用于fMRI神经影像分析的LLM智能体
-2. [Towards a Virtual Neuroscientist: Autonomous Neuroimaging Analysis via Multi-Agent Collaboration](/20260506-20260515/2605.09366v1-towards-a-virtual-neuroscientist-autonomous-neuroimaging-analysis-via-multi-agent-collaboration)  
-   标签：评分：8.0/10、query:fmri-brain-network
-   evidence：面向生物标志物的神经影像AI
-3. [Unsupervised learning of acquisition variability in structural connectomes via hybrid latent space modeling](/20260506-20260515/2605.13933v1-unsupervised-learning-of-acquisition-variability-in-structural-connectomes-via-hybrid-latent-space-modeling)  
-   标签：评分：8.0/10、query:fmri-brain-network
-   evidence：结构脑连接组的深度潜空间建模
-4. [An MCMC-Based Method for Dynamic Causal Modeling of Effective Connectivity in Functional MRI](/20260506-20260515/2605.14056v1-an-mcmc-based-method-for-dynamic-causal-modeling-of-effective-connectivity-in-functional-mri)  
-   标签：评分：8.0/10、query:fmri-brain-network
-   evidence：fMRI脑区有效连接
-5. [AGA3DNet: Anatomy-Guided Gaussian Priors with Multi-view xLSTM for 3D Brain MRI Subtype Classification](/20260506-20260515/2605.07142v1-aga3dnet-anatomy-guided-gaussian-priors-with-multi-view-xlstm-for-3d-brain-mri-subtype-classification)  
+1. [PromptDx: Differentiable Prompt Tuning for Multimodal In-Context Alzheimer's Diagnosis](/202605/15/2605.08585v1-promptdx-differentiable-prompt-tuning-for-multimodal-in-context-alzheimers-diagnosis)  
    标签：评分：7.0/10、query:fmri-brain-network
-   evidence：AI脑MRI临床亚型分类
-6. [Hierarchical Perfusion Graphs for Tumor Heterogeneity Modeling in Glioma Molecular Subtyping](/20260506-20260515/2605.07156v1-hierarchical-perfusion-graphs-for-tumor-heterogeneity-modeling-in-glioma-molecular-subtyping)  
+   evidence：阿尔茨海默病医学影像AI诊断
+2. [MedFL-Stress: A Systematic Robustness Evaluation of Federated Brain Tumor Segmentation under Cross-Hospital MRI Appearance Shift](/202605/15/2605.09025v1-medfl-stress-a-systematic-robustness-evaluation-of-federated-brain-tumor-segmentation-under-cross-hospital-mri-appearance-shift)  
    标签：评分：7.0/10、query:fmri-brain-network
-   evidence：GNN神经影像胶质瘤临床分型
-7. [Brain Tumor Classification in MRI Images: A Computationally Efficient Convolutional Neural Network](/20260506-20260515/2605.12560v1-brain-tumor-classification-in-mri-images-a-computationally-efficient-convolutional-neural-network)  
+   evidence：临床脑MRI联邦AI
+3. [HyNeuralMap: Hyperbolic Mapping of Visual Semantics to Neural Hierarchies](/202605/15/2605.09392v1-hyneuralmap-hyperbolic-mapping-of-visual-semantics-to-neural-hierarchies)  
    标签：评分：7.0/10、query:fmri-brain-network
-   evidence：脑MRI深度学习诊断
-8. [BrainAnytime: Anatomy-Aware Cross-Modal Pretraining for Brain Image Analysis with Arbitrary Modality Availability](/20260506-20260515/2605.13059v1-brainanytime-anatomy-aware-cross-modal-pretraining-for-brain-image-analysis-with-arbitrary-modality-availability)  
+   evidence：AI映射视觉语义与fMRI响应
+4. [A Resampling-Based Framework for Network Structure Learning in High-Dimensional Data](/202605/15/2605.12706v1-a-resampling-based-framework-for-network-structure-learning-in-high-dimensional-data)  
    标签：评分：7.0/10、query:fmri-brain-network
-   evidence：临床脑影像AI预训练
-9. [Full-Spectrum Graph Neural Network: Expressive and Scalable](/20260506-20260515/2605.05759v1-full-spectrum-graph-neural-network-expressive-and-scalable)  
+   evidence：高维偏相关网络推断
+5. [Feature Visualization Recovers Known Cortical Selectivity from TRIBE v2](/202605/15/2605.13904v1-feature-visualization-recovers-known-cortical-selectivity-from-tribe-v2)  
+   标签：评分：7.0/10、query:fmri-brain-network
+   evidence：AI编码器预测皮层fMRI反应
+6. [Fatigue-Related Reaction Time Forecasting via EEG Functional Connectivity in Sustained Attention Task](/202605/15/2605.08631v1-fatigue-related-reaction-time-forecasting-via-eeg-functional-connectivity-in-sustained-attention-task)  
    标签：评分：6.0/10、query:fmri-brain-network
-   evidence：用于图建模的谱GNN方法
-10. [Bridging visual saliency and large language models for explainable deep learning in medical imaging](/20260506-20260515/2605.06197v1-bridging-visual-saliency-and-large-language-models-for-explainable-deep-learning-in-medical-imaging)  
+   evidence：EEG功能连接结合机器学习
+7. [Attention-based graph neural networks: a survey](/202605/15/2605.08679v1-attention-based-graph-neural-networks-a-survey)  
    标签：评分：6.0/10、query:fmri-brain-network
-   evidence：脑影像诊断可解释AI
-11. [NeuralBench: A Unifying Framework to Benchmark NeuroAI Models](/20260506-20260515/2605.08495v1-neuralbench-a-unifying-framework-to-benchmark-neuroai-models)  
+   evidence：注意力图神经网络综述
+8. [GraphNetz: Statistical Benchmarking of Graph Neural Networks with Paired Tests and Rank Aggregation](/202605/15/2605.09099v1-graphnetz-statistical-benchmarking-of-graph-neural-networks-with-paired-tests-and-rank-aggregation)  
    标签：评分：6.0/10、query:fmri-brain-network
-   evidence：脑信号AI基准
+   evidence：通用GNN基准评测框架
+9. [Hierarchical Attention-based Graph Neural Network with Relevance-driven Pruning](/202605/15/2605.09308v1-hierarchical-attention-based-graph-neural-network-with-relevance-driven-pruning)  
+   标签：评分：6.0/10、query:fmri-brain-network
+   evidence：可解释异构GNN剪枝
+10. [Hierarchical Multi-Scale Graph Neural Networks: Scalable Heterophilous Learning with Oversmoothing and Oversquashing Mitigation](/202605/15/2605.10975v1-hierarchical-multi-scale-graph-neural-networks-scalable-heterophilous-learning-with-oversmoothing-and-oversquashing-mitigation)  
+   标签：评分：6.0/10、query:fmri-brain-network
+   evidence：可扩展图分类GNN
+11. [When Brains Disagree: Biological Ambiguity Underlies the Challenge of Amyloid PET Synthesis from Structural MRI](/202605/15/2605.11867v1-when-brains-disagree-biological-ambiguity-underlies-the-challenge-of-amyloid-pet-synthesis-from-structural-mri)  
+   标签：评分：6.0/10、query:fmri-brain-network
+   evidence：阿尔茨海默神经影像AI评估
 
 
 <div class="dpr-home-promo-card">

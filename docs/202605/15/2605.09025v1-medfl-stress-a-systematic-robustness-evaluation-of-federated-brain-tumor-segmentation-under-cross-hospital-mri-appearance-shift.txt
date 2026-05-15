@@ -1,0 +1,283 @@
+Title: MedFL-Stress: A Systematic Robustness Evaluation of Federated Brain Tumor Segmentation under Cross-Hospital MRI Appearance Shift
+
+URL Source: https://arxiv.org/pdf/2605.09025v1
+
+Published Time: Tue, 12 May 2026 01:16:21 GMT
+
+Number of Pages: 17
+
+Markdown Content:
+# MedFL-Stress: A Systematic Robustness Evaluation of Federated Brain Tumor Segmentation under Cross-Hospital MRI Appearance Shift 
+
+Kiran Naseer and Naveed Anwer Butt 
+
+University of Gujrat, Pakistan 
+
+Abstract. Federated learning has made it possible for hospitals to train segmentation models together without sharing patient data [7]. While privacy is maintained, current evaluation protocols often ignore how these models perform at the individual client level; most federated studies report only average performance across clients and treat that number as the whole story. In clinical deployment, a model that looks strong on paper but fails consistently at one particular hospital is not a minor concern; it is a real risk that a good mean score can mask entirely. We introduce MedFL-Stress , a controlled stress-testing framework designed to expose exactly that kind of failure. We utilize 2D axial slices from the BraTS 2020 dataset distributed across four simulated hospital clients, we apply graded MRI appearance shifts — gamma contrast, scale-shift, and noise-plus-blur transformations — that reflect the scanner and acquisition variability commonly seen in real multi-site deployments. Three widely used federated baselines are evaluated: FedAvg , FedProx ,and FedBN . Critically, we treat worst-hospital Dice and inter-hospital disparity as primary evaluation targets, not supplementary observations. Our results expose a tradeoff that average reporting hides entirely. Fe-dAvg achieves the highest global mean Dice ( 0.8159 ), but beneath that number is a 0.0850 gap between its best and worst-performing hospi-tal — an 8.5-point deficit at the site that needs the most reliability. 
+
+FedBN , by retaining client-specific batch-normalisation statistics rather than folding them into the global aggregate, closes that gap by 41% 
+
+(0.0850 → 0.0503 ) while sacrificing less than half a Dice point in mean accuracy ( 0.8159 → 0.8109 ). The weakest hospital gains 3.5 Dice points outright ( 0.7309 → 0.7656 ). In a clinical context, those numbers are not minor differences that can be ignored. These findings highlight that robustness-oriented evaluation protocols are essential for reliable deploy-ment of federated medical imaging systems. 
+
+# 1 Introduction 
+
+Brain tumor segmentation from multi-modal magnetic resonance imaging (MRI) has made significant progress in clinical testing. Deep Neural Network architec-tures like U-Net [13] have become the dominant approach in estimating tumor  
+
+> arXiv:2605.09025v1 [cs.CV] 9 May 2026 2Kiran Naseer and Naveed Anwer Butt
+
+burden to guide treatment decisions and tracking disease over time. On standard benchmarks like BraTS, these encoder–decoder models like U-Net and its variants perform impressively. However most models assume that you can pool data from multiple institutions into a single place and train on all of it at once. In the real world, that assumption rarely holds. Patient data is sensitive. Hospitals operate under different privacy regulations, institutional policies, and data governance frameworks, and sharing raw MRI scans across sites is often not permitted [12]. Federated learning (FL) was developed precisely to work around this constraint [7]. Rather than centralising the data, each hospital trains a model locally on its own patients and sends only the model weights — never the real images — to a central server for aggregation. The server updates the global model and sends it back. This practice preserves patient privacy while learning still happens across sites. This observation is the starting point for the present work. In reality hospitals do not scan patients the same way. Different scanner vendors, field strengths, acquisition protocols, and preprocessing pipelines mean that MRI data from one site can look quite different from MRI data at another, even when both are imaging the same type of tumor. These appearance-driven domain shifts 
+
+introduce a form of heterogeneity that federated optimisers were not necessarily designed to handle gracefully. And when a model trained under such conditions is evaluated, most published studies report one number: the mean Dice across all participating hospitals. While the mean dice score is informative, it hides something important. If one hospital’s scans are clean, well-normalised, and close to the training distribution, that site will drive the average up. Another hospital — perhaps one with older equipment, higher noise levels, or a different contrast protocol — may be receiving a model that struggles badly on its data. In a clinical setting, invisible failures are not acceptable. A model deployed to ten hospitals that works well at nine and consistently fails at one is not a robust model. This presents a significant deployment risk. We noticed, reading through the federated medical imaging literature, that worst-hospital performance is almost never reported as a primary metric. Inter-site disparity — how far apart the best and worst sites actually are — receives even less attention. As Table 1 documents, no prior study in this space has simultaneously provided a controlled heterogeneity protocol, explicit worst-hospital reporting, and inter-hospital disparity metrics as primary evaluation objectives [14, 5, 9, 6, 17]. We introduce MedFL-Stress , a controlled and reproducible framework to address this gap directly. The framework is not a new segmentation architecture, and not a new federated optimiser. It is a stress-testing protocol that introduces a systematic architecture varies cross-hospital MRI appearance shifts and evaluates how standard federated baselines hold up — not just on average, but at the weakest site. Using the BraTS 2020 dataset [1, 8] partitioned across four simulated hospital clients, we apply graded intensity transformations drawn from the primary axes of real-world MRI variability: gamma contrast, scale-shift, and noise-plus-blur. We then evaluate three widely used methods — FedAvg , FedProx [4], Stress-Testing Cross-Hospital Segmentation in FL 3
+
+and FedBN [5] — with worst-hospital Dice and inter-hospital disparity treated as first-class metrics throughout. Recent work has rightly noted that unequal model performance across sub-populations and clinical sites is not just a technical inconvenience — it carries real fairness and safety implications [2, 11]. Our evaluation framework is designed with that concern in mind. 
+
+Contributions. This work makes the following contributions to robust federated medical image segmentation: 
+
+– MedFL-Stress protocol. A configurable, reproducible stress-testing frame-work with four controlled heterogeneity levels (H0–H3) and explicit client-wise reporting metrics, designed as a drop-in evaluation complement for federated medical imaging studies. Unlike prior work that reports only global Dice, our protocol explicitly surfaces worst-hospital failures and inter-site disparity. 
+
+– Quantitative evidence of metric inadequacy. We show empirically that global Dice conceals worst-site performance drops of up to 8.5 Dice points under strong appearance shifts — a clinically significant margin that would remain invisible under standard reporting practices. 
+
+– Systematic baseline stress-test. We provide the first controlled robustness evaluation of FedAvg , FedProx , and FedBN under graded appearance heterogeneity, revealing that FedAvg ’s global accuracy advantage (mean Dice 0.8159 ) comes at the cost of a 0.0850 best–worst gap — a trade-off entirely invisible in prior evaluations. 
+
+– Normalisation as a robustness lever. We provide systematic empirical evidence that FedBN reduces inter-hospital disparity across all three BraTS tumour subregions simultaneously, improving worst-client Dice by 3.5 points while sacrificing only 0.5 points in mean Dice — offering actionable guidance for clinically reliable federated deployment. 
+
+# 2 Related Work 
+
+Federated learning (FL) has been increasingly applied in medical imaging to enable collaborative training without raw data exchange, as in pioneering work by [7] and applications in [15, 14, 12]. Recent surveys underscore its potential for multi-institutional collaborations while preserving privacy, but also highlight persistent challenges in data heterogeneity, robustness, and cross-site general-ization [3, 16, 19]. Critically, these works emphasize that uneven performance across subpopulations can introduce fairness and safety risks in clinical AI [2, 11], motivating the need for disparity-aware evaluations like ours, which prior studies often overlook. 
+
+2.1 Federated Learning for Medical Image Segmentation 
+
+FL addresses privacy by having sites perform local optimization and share updates with a central server [7, 14, 15]. Early demonstrations applied FL to brain tumor 4 Kiran Naseer and Naveed Anwer Butt Table 1: Positioning of MedFL-Stress relative to closely related work across key eval-uation dimensions. ✓ indicates the property is present; × indicates it is absent or unreported. Work Controlled Worst-site Disparity Appearance Heterogeneity Reporting Metrics Focus Sheller et al. [14] × × × ×                    
+
+> FedBN [5] ×××✓
+> FeTS Challenge [9, 18] ×Partial partial ×
+> Manthe et al. [6] Partial ×××
+> FedVCK [17] ××××
+> MedFL-Stress (ours) ✓✓✓✓
+
+segmentation and diverse modalities (e.g., MRI, CT, histopathology), reporting competitive global performance relative to centralized baselines [12, 14, 15]. Yet, evaluations typically focus on averages, underreporting inter-site disparities that could compromise clinical equity [2, 11]. 
+
+2.2 Robustness to Heterogeneity in Federated Learning 
+
+Heterogeneity remains a core FL challenge, often arising from non-IID labels or imbalances, addressed by stabilizers like FedProx, which adds proximal regular-ization for consistent local updates [4]. In medical imaging, appearance shifts from scanners, protocols, and preprocessing dominate; FedBN counters this by retaining client-specific normalization statistics while aggregating convolutional parameters [5]. Recent benchmarks and reviews further explore FL robustness in medical contexts. For instance, Zhou et al. [20] provide a comprehensive evalua-tion of FL for image classification. Methods like FedVCK [17] address non-IID challenges through knowledge condensation, yet focus on label heterogeneity rather than appearance-driven shifts, and report only global accuracy without client-wise breakdown. Similarly, the comprehensive FL benchmark of Zhou et al. [20] evaluates medical image classification across sites but does not report worst-client performance or inter-hospital disparity as primary metrics. Critically, none of these works provide a controlled, graded heterogeneity protocol designed specifically to stress-test appearance robustness and expose worst-site failure modes—the gap that MedFL-Stress directly addresses. 
+
+2.3 Positioning of This Work 
+
+Table 1 summarizes how MedFL-Stress differs from the most closely related prior studies across four dimensions relevant to robust federated evaluation. The closest related work is the Federated Tumor Segmentation FeTS Chal-lenge [9, 18], which evaluates FL aggregation methods on naturally distributed multi-institutional brain tumor data and visualizes per-institution performance as a secondary observation. However, FeTS differs from MedFL-Stress in three Stress-Testing Cross-Hospital Segmentation in FL 5
+
+critical respects: (i) it uses naturally distributed data without a controlled, graded heterogeneity protocol; (ii) it does not define worst-hospital Dice or inter-hospital disparity as primary evaluation metrics; and (iii) it does not specifically target appearance-driven MRI intensity shifts as the source of heterogeneity. MedFL-Stress is therefore complementary to FeTS: where FeTS evaluates aggregation algorithms on real-world data distributions, MedFL-Stress provides a controlled stress-testing protocol for systematically isolating and quantifying appearance-driven failure modes with explicit worst-case reporting. 
+
+# 3 Method 
+
+3.1 Problem Setting 
+
+We consider federated brain tumor segmentation in a cross-silo medical setting where data from multiple hospitals cannot be centrally aggregated due to privacy and governance constraints. Each hospital is treated as a federated client and stores local MRI scans together with corresponding tumor annotations. Formally, let C = {1, . . . , K } denote the set of K clients (hospitals). Each client k possesses a local dataset 
+
+Dk = {(xki , y ki )}Nk
+
+> i=1
+
+,
+
+where xki represents a multi-modal MRI slice and yki denotes the corresponding segmentation mask. All clients share label semantics but different in appearance due to scanners, protocol diversity and preprocessing pipelines. The objective is to collaboratively learn a global segmentation model without sharing raw patient data while maintaining robust performance across all par-ticipating clients. Figure 1 provides an overview of the proposed MedFL-Stress framework, including hospital-specific local training, server-side aggregation, and robustness-oriented evaluation across clients. 
+
+3.2 Segmentation Model 
+
+While 3D architectures are standard for BraTS, we utilize a 2D U-Net to facilitate a computationally efficient and granular analysis of the proposed heterogeneity levels across multiple communication rounds. The model follows an encoder– decoder design with skip connections and processes four MRI modalities as input channels: T1, T1ce, T2, and FLAIR. The network predicts three tumor subregions following the BraTS evaluation protocol: 
+
+– Whole Tumor (WT) 
+
+– Tumor Core (TC) 
+
+– Enhancing Tumor (ET) 6 Kiran Naseer and Naveed Anwer Butt Hospital 1 Local MRI data Local U-Net training Hospital 2 Appearance shift Local U-Net training Hospital 3 Appearance shift Local U-Net training Hospital 4 Appearance shift Local U-Net training Federated Server Model aggregation Global segmentation model Client-wise robustness evaluation Fig. 1: Overview of the proposed MedFL-Stress framework for robustness evaluation in federated brain tumor segmentation. Each hospital trains locally on its own MRI data under client-specific appearance characteristics. Local model updates are aggregated at the federated server, and the resulting global model is evaluated using both average and client-wise robustness metrics. 
+
+Training is performed using a composite loss combining binary cross-entropy (BCE) and soft Dice loss. 
+
+L = 12 LBCE + 12 LDice (1) This formulation balances voxel-wise classification accuracy with overlap-based segmentation quality. 
+
+3.3 Federated Learning Baselines 
+
+We evaluate several commonly used federated optimization strategies to study robustness under heterogeneous data distributions. 
+
+Federated Averaging (FedAvg). FedAvg aggregates locally updated model param-eters using a weighted average proportional to client data size. At communication round t, the global model parameters are updated as: 
+
+θ(t+1) =
+
+> K
+
+X
+
+> k=1
+
+Nk
+
+PKj=1 Nj
+
+θ(t+1)  
+
+> k
+
+.
+
+FedAvg serves as the standard baseline for federated learning. Stress-Testing Cross-Hospital Segmentation in FL 7
+
+FedProx. FedProx extends FedAvg by introducing a proximal regularization term that constrains local updates to remain close to the global model parameters [4]. The local objective becomes 
+
+LFedProx = L + μ
+
+2 ∥θ − θ(t)∥2,
+
+where μ controls the strength of the proximal constraint. This formulation stabilizes local optimization when client data distributions differ significantly. 
+
+3.4 Federated Batch Normalization 
+
+Federated Batch Normalization (FedBN) addresses feature distribution hetero-geneity by maintaining client-specific normalization statistics [5]. In FedBN: 
+
+– Convolutional weights are shared and aggregated across clients. 
+
+– Batch normalization statistics (mean and variance) are maintained locally at each client. This design allows each hospital to adapt normalization parameters to its local intensity distribution while still benefiting from shared feature representations. 
+
+3.5 Controlled Heterogeneity Protocol 
+
+To simulate realistic cross-hospital appearance variability, we assign each of the four clients a fixed domain-specific intensity transformation drawn from four transformation types that emulate common sources of MRI appearance variation across scanner vendors, field strengths, and preprocessing pipelines: 
+
+– None (Client 1): Reference domain; no intensity modification applied. Serves as the homogeneous anchor client. 
+
+– Gamma contrast (Client 2): Nonlinear intensity remapping x ← xγ ,where γ is sampled uniformly from a level-dependent range. Emulates scanner-specific contrast response differences [10]. 
+
+– Scale–shift (Client 3): Affine intensity perturbation x ← αx +β, where α is a multiplicative scale and β is an additive shift sampled from level-dependent ranges. Emulates gain and offset differences across MRI acquisition protocols. 
+
+– Noise + blur (Client 4): Additive Gaussian noise N (0 , σ 2) followed by Gaussian spatial smoothing with kernel standard deviation κ. Emulates SNR differences and spatial resolution variability across field strengths. Transformation parameters are varied across four discrete heterogeneity levels (H0–H3) to enable graded stress-testing of federated robustness. Table 2 defines the parameter ranges for each level. All transformations are applied online during training and applied consistently at evaluation time for the corresponding client. This design ensures that heterogeneity strength is varied in a controlled and reproducible manner, isolating the effect of appearance shifts from other 8 Kiran Naseer and Naveed Anwer Butt Table 2: Controlled heterogeneity protocol parameter definitions across levels H0–H3. Each level applies to Clients 2–4; Client 1 always receives unmodified data. Parameters are sampled uniformly from the specified ranges per training batch. H0 represents the homogeneous baseline (no shifts); H3 represents the strongest appearance heterogeneity. All transformations are implemented using TorchIO [10]. Client Transform H0 H1 H2 H3 2 Gamma γ 1.0 [0 .8, 1.2] [0 .6, 1.5] [0 .5, 2.0]                            
+
+> 3Scale α1.0[0 .95 ,1.05] [0 .9,1.1] [0 .8,1.2]
+> Shift β0.0 [ −0.03 ,0.03] [ −0.07 ,0.07] [ −0.1,0.1]
+> 4Noise σ0.00.01 0.03 0.05
+> Blur κ(px) 0.01.02.0[3 ,5]
+
+sources of variability such as label distribution or dataset size imbalance. The four transformation types collectively cover the primary axes of MRI appearance variability reported in multi-center clinical studies: contrast response, intensity scaling, noise level, and spatial resolution [3]. 
+
+3.6 Training Protocol 
+
+All federated methods are trained for 10 communication rounds, with each client performing one local epoch per round before server aggregation. Local optimization uses the AdamW optimizer with a learning rate of 1 × 10 −4 and weight decay of 1 × 10 −5, with identical hyperparameters across all methods to ensure fair comparison. Mixed-precision training (FP16) is employed to improve computational efficiency. 
+
+Justification for 10-round schedule. Ten communication rounds were chosen as FedAvg and FedProx reach stable performance plateau by round 8–9 (Figure 2, Table 6), and robustness rankings are consistent from round 6 onward, reflecting realistic constraints in cross-silo deployments [12]. While FedBN shows continued improvement through round 10, suggesting longer training schedules may further benefit normalisation-based methods. 
+
+3.7 Evaluation Metrics 
+
+Segmentation performance is evaluated using the Dice similarity coefficient for each tumor subregion (WT, TC, ET). Class-wise Dice scores are averaged to obtain a mean Dice score. To assess robustness across hospitals, we additionally report client-wise per-formance metrics: 
+
+– Worst-client mean Dice 
+
+– Best-client mean Dice 
+
+– Best–worst performance gap Stress-Testing Cross-Hospital Segmentation in FL 9
+
+– Mean Dice across clients These metrics explicitly capture performance disparities that may remain hidden when reporting only global averages. 
+
+# 4 Experiments and Results 
+
+4.1 Dataset and Experimental Setup 
+
+We evaluate the proposed stress-testing protocol using the BraTS 2020 dataset [1, 8], which contains multi-modal MRI scans with expert annotations for brain tumor subregions. Each case includes four MRI modalities (T1, T1ce, T2, and FLAIR) together with voxel-level segmentation labels for Whole Tumor (WT), Tumor Core (TC), and Enhancing Tumor (ET). The federated partitioning was performed at the case level to ensure that slices from the same patient were not distributed across multiple clients. To simulate a federated multi-hospital setting, the dataset is partitioned into four clients representing independent institutions. Each client receives a disjoint subset of cases. To emulate cross-hospital appearance variability, we apply client-specific intensity transformations as defined in Section 3.5. These transformations simulate scanner differences and preprocessing variations commonly observed in real clinical deployments. All methods are trained using identical training schedules and hyperparameters to ensure fair comparison. Model performance is evaluated on a fixed validation set consisting of slices sampled from all clients. All MRI volumes were preprocessed using intensity normalization and resampled to a consistent spatial resolution. Training used 2D slices extracted from axial volumes. Code and experiment configurations will be publicly released on GitHub upon acceptance to support reproducibility. 
+
+4.2 Global Convergence 
+
+Figure 2 illustrates the convergence behavior of the evaluated federated methods across communication rounds. All methods exhibit stable optimization under the proposed heterogeneous setting. FedAvg converges rapidly during early rounds and achieves strong global Dice performance. FedProx with μ=0.1 shows degraded convergence under strong appearance heterogeneity, likely because aggressive proximal regularization prevents adequate local adaptation to client-specific intensity distributions. We therefore report μ=0.01 as the stronger FedProx configuration. FedBN shows a similar convergence trend while maintaining im-proved robustness across heterogeneous clients. This suggests that separating normalization statistics does not hinder optimization and may help stabilize training when feature distributions differ across hospitals. Notably, all federated methods remain within 2.0 mean Dice points of the centralized upper bound (0.8323), suggesting that the federated paradigm imposes 10 Kiran Naseer and Naveed Anwer Butt 1 2 3 4 5 6 7 8 9 10   
+
+> Communication Round
+> 0.3
+> 0.4
+> 0.5
+> 0.6
+> 0.7
+> 0.8
+> Mean Dice (Fixed-slice Val)
+> Federated Convergence (Global Evaluation)
+> FedAvg
+> FedBN (global eval)
+> FedProx ( = 0.01)
+> FedProx ( = 0.1)
+
+Fig. 2: Federated convergence across communication rounds. FedAvg and FedBN show stable convergence under heterogeneous MRI distributions. FedProx with μ=0.1 exhibits degraded performance under strong appearance heterogeneity; μ=0.01 is the stronger configuration and is used in all subsequent analysis. 
+
+only modest accuracy costs under the proposed heterogeneity setting—a cost that is substantially outweighed by the privacy preservation benefit in clinical deployments. The consistent plateau behaviour observed from round 8 onward across all methods confirms that the 10-round training schedule is sufficient for stable robustness characterization, as argued in Section 3.6. Stress-Testing Cross-Hospital Segmentation in FL 11 Table 3: Global brain tumor segmentation performance on fixed-slice validation (Dice). We report Dice scores for Whole Tumor (WT), Tumor Core (TC), and Enhancing Tumor (ET), along with mean Dice. The centralized upper bound is trained on pooled data without privacy constraints. The federated methods collectively close ∼98% of the gap to centralized performance on WT and TC, with a modest difference on ET reflecting the known difficulty of enhancing tumor segmentation under appearance shifts. FedProx results are reported at μ= 0.01 , which achieved higher global Dice than μ=0.1       
+
+> across all rounds (see Figure 2). Method WT TC ET Mean Centralized (2D U-Net) 0.8088 0.8265 0.8618 0.8323 FedAvg 0.8030 0.8037 0.8410 0.8159 FedProx ( μ=0 .01 )0.7981 0.7925 0.8349 0.8085 FedBN 0.7997 0.8097 0.8232 0.8109
+
+4.3 Robustness Visualization 
+
+Figure 3 visualizes the worst-client Dice and best–worst performance gap across methods. The figure highlights that while global performance differences remain small, robustness improvements are substantial. FedBN consistently improves worst-client performance while reducing cross-hospital performance disparity, supporting the hypothesis that client-specific normalization mitigates appearance-driven distribution shifts. Table 4 reports client-wise robustness metrics under strong appearance hetero-geneity. While global performance differences remain modest, FedBN significantly improves worst-client performance and reduces the inter-hospital disparity com-pared with FedAvg and FedProx. In all rounds, Client 1 - receiving unaltered clean MRI data - has the highest per-client Dice score, which shows that appearance shift is the primary factor that can lead to performance degradation. 12 Kiran Naseer and Naveed Anwer Butt Table 4: Client-wise robustness evaluation under strong appearance heterogeneity. Worst-client and best-client denote the lowest and highest mean Dice across participating hospitals. The best–worst gap measures inter-hospital performance disparity, where smaller values indicate more consistent segmentation performance across sites. Method Worst-client Best-client Best–Worst Gap Mean Dice FedAvg 0.7309 0.8159 0.0850 0.8159 FedBN 0.7656 0.8159 0.0503 0.8109 FedProx 0.7421 0.8085 0.0664 0.8085 FedAvg FedBN FedProx 
+
+0.7
+
+0.74 
+
+0.78 
+
+0.82 
+
+> Dice
+
+Worst-client and Mean Dice Worst-client Mean 
+
+> (a) Robustness vs average.
+
+FedAvg 
+
+FedBN 
+
+FedProx 
+
+0
+
+2 · 10 −2
+
+4 · 10 −2
+
+6 · 10 −2
+
+8 · 10 −2
+
+0.1
+
+> Gap
+
+Best–Worst Gap (Disparity) 
+
+> (b) Inter-hospital disparity.
+
+Fig. 3: Client-wise robustness under strong appearance heterogeneity. (a) FedBN im-proves worst-client performance while maintaining strong mean Dice. (b) FedBN reduces the best–worst gap, indicating lower inter-hospital disparity. Table 5: Inter-hospital performance disparity measured by the best–worst Dice gap for each tumor subregion (WT, TC, ET). The subregion gap is computed per-region and then averaged (“Mean gap” column), which differs from the mean Dice gap in Table 4 (0.0850 for FedAvg) because the averaging order is reversed: here we average gaps of per-region scores, whereas Table 4 reports the gap of already-averaged mean Dice scores. Both metrics are complementary—Table 4 captures overall worst-site reliability while this table localizes disparity to clinically distinct tumor structures. FedBN reduces subregion-level disparity across all three regions simultaneously, with the largest improvement on Enhancing Tumor (ET gap: 0.0384 → 0.0140 ), the most clinically challenging subregion. Method WT gap TC gap ET gap Mean gap FedAvg 0.1061 0.0788 0.0384 0.0494 FedProx ( μ=0 .01 ) 0.0923 0.0701 0.0298 0.0474 FedBN 0.0781 0.0492 0.0140 0.0435 Stress-Testing Cross-Hospital Segmentation in FL 13 
+
+Table 5 further decomposes inter-hospital disparity at the tumor-subregion level. Two aspects are noteworthy. First, the subregion-level mean gap (0.0494 for FedAvg) differs from the mean Dice gap reported in Table 4 (0.0850) because the metrics aggregate in opposite order: Table 5 averages per-subregion gaps, while Table 4 computes the gap of already-averaged scores. Both are valid but measure complementary aspects of disparity. Second, FedBN reduces the best–worst gap across all three subregions simultaneously—a consistent pattern that rules out the possibility that improvements on one region come at the expense of another. The largest reduction occurs on Enhancing Tumor (ET gap: 0.0384 → 0.0140 , a 63.5% reduction), which is clinically the most challenging subregion and the one most sensitive to MRI appearance shifts due to its reliance on contrast-enhancing signal characteristics. 
+
+4.4 Effect of Heterogeneity Strength 
+
+We further analyze model robustness under varying levels of appearance hetero-geneity. As transformation strength increases, the performance of all methods gradually degrades due to larger distribution shifts between clients. Table 6 shows that as heterogeneity increases from H0 to H3, the best achievable mean Dice decreases (0.818 → 0.792) and the number of rounds required to reach ≥ 0.78 increases (5 → 8). However, the degradation is more pronounced for FedAvg compared to FedBN. The results suggest that normalization mismatches contribute significantly to performance instability under cross-hospital shifts. By maintaining local normalization statistics, FedBN better adapts to client-specific intensity distributions, leading to more stable segmentation performance across hospitals under increasing heterogeneity. 
+
+# 5 Discussion 
+
+The central finding of this work is not surprising once you see it, but it is easy to miss if you only look at global averages. FedAvg is not a bad algorithm. On mean Dice it outperforms the other methods we tested. The problem is what that mean is hiding: an 8.5-point gap between the best and worst hospital, a gap that hides under strong appearance shifts and that global reporting would never surface. For a model intended for clinical use across multiple institutions, that is not a detail — it is the whole question. We believe that worst-hospital performance and inter-site disparity should be a standard reporting requirement in federated medical imaging rather than an optional supplement that researchers must explicitly request. FedBN [5] keeps batch normalisation statistics local to each hospital rather than averaging them into the global model. In practice, under strong appearance heterogeneity, it reduces the best–worst gap by 41% and lifts the weakest hospital by 3.5 Dice points — while the mean accuracy barely moves ( 0.8159 → 0.8109 ). That trade-off, half a point of average performance for a substantial gain in equity across 14 Kiran Naseer and Naveed Anwer Butt Table 6: Effect of increasing appearance heterogeneity (H0–H3) on federated convergence for FedAvg. Heterogeneity levels correspond to the parameter definitions in Table 2. We report the best mean Dice achieved across rounds, the round at which it occurs, and the number of rounds needed to reach clinically relevant performance thresholds (mean Dice ≥ 0.78 and ≥ 0.80 ). A dash (–) indicates the threshold was not reached within 10 rounds. Higher heterogeneity monotonically reduces peak performance and delays convergence, confirming that Table 2 produces a well-ordered difficulty gradient. Heterogeneity Best Mean Dice Best Round Rounds ≥ 0.78 Rounds ≥ 0.80                 
+
+> H0 0.818 956H1 0.812 968H2 0.804 10 69H3 0.792 98–
+
+sites, seems like an obvious choice in any deployment that takes clinical fairness seriously. 
+
+FedBN is not a contribution of this paper — it was introduced by Li et al. [5]. What we contribute is the evidence that method rankings change substantially when worst-hospital Dice and inter-site disparity replace global mean accuracy as primary evaluation targets. That shift in ranking is itself a finding worth reporting. The controlled heterogeneity protocol in MedFL-Stress is what makes this measurement possible. Without a reproducible, graded heterogeneity setup, you cannot distinguish whether performance differences between sites come from appearance shifts specifically or from some other source of variability. Our four-level protocol (H0 through H3) isolates that effect. It is not the most realistic simulation of real hospital data — we are the first to acknowledge that — but it is reproducible, interpretable, and graded in a way that natural data distributions are not. That combination is what makes it useful as a stress-testing tool rather than just a description of one particular dataset. Our intensity transformations (Gamma, Noise, Blur) serve as controlled proxies for SNR and contrast variations documented in multi-vendor 1.5T and 3.0T MRI studies. 
+
+Limitations. There are several things this study does not do, and they are worth naming directly rather than softening. Four clients is a small federation. It is representative of a typical cross-silo deployment, where a handful of hospitals collaborate under strict governance constraints, but it does not reflect the scale of larger federated networks. We cannot claim that the rankings we observe here would hold with twenty or fifty participating sites. That remains an open question. We also tested on a single task and a single dataset. BraTS is well established and widely used, which makes it a reasonable starting point, but brain tumor segmentation on BraTS is not the same as chest X-ray classification, retinal imaging, or pathology slide analysis. Whether MedFL-Stress generalises cleanly to those settings requires testing in those settings. Stress-Testing Cross-Hospital Segmentation in FL 15 
+
+We use 2D evaluation protocol that does not directly compare to volumetric 3D evaluations reported in previous BraTS studies; direct comparisons to these benchmarks must consider this methodological difference. The reported results reflect single-seed experiments; multi-seed variance analysis remains an important direction for confirming the stability of observed rankings. Finally, our appearance transformations — gamma contrast, scale-shift, noise, blur — approximate the kinds of variability that arise from scanner and protocol differences in multi-center studies. They do not capture annotation variability, population-level demographic differences, or the subtler distributional shifts that come from different clinical workflows. Real hospital data is messier and more complex than any controlled transformation can fully represent. Future work should validate the framework against naturally distributed multi-hospital datasets, where the source of heterogeneity is not known in advance. None of that changes the core argument. Federated medical imaging needs evaluation standards that reflect how these models will actually be used — deployed across institutions that differ from one another in ways that matter for patients. Reporting only global accuracy is not adequate for that purpose. Worst-hospital performance and inter-site disparity are not hard metrics to compute. They just need to become standard practice. The framework we provide here is designed to make that easier. It is not the final word on robustness evaluation in federated medical imaging — it is a starting point, and we hope others build on it [11, 12]. 
+
+# 6 Conclusion 
+
+We started this work with a simple frustration: federated medical imaging papers consistently report mean Dice and call it done. That number tells you how a model performs on average. It does not tell you whether the hospital with the oldest scanner and the noisiest images is being left behind. MedFL-Stress was built to answer that second question. Using a controlled, graded heterogeneity protocol applied to the BraTS 2020 dataset [1, 8] across four simulated hospital clients, we evaluated three standard federated baselines not just on global accuracy but on worst-hospital Dice and inter-hospital disparity. The results make a clear case. FedAvg leads on mean Dice ( 0.8159 ) but carries a 0.0850 best–worst gap that global reporting would hide entirely. FedBN [5] closes that gap by 41% at a cost of less than half a Dice point in average accuracy — and does so consistently across all three BraTS tumour subregions, not just one. The practical implication is straightforward. If you are evaluating a federated segmentation model for real-world deployment, mean Dice is not enough. Worst-hospital performance and inter-site disparity should be reported alongside it, not as optional extras. The metrics are not difficult to compute. What has been missing is the habit of computing them. 16 Kiran Naseer and Naveed Anwer Butt 
+
+We hope MedFL-Stress makes it easier to build that habit. Future work should extend the framework to larger client populations, additional imaging modalities, and hybrid personalisation strategies that balance site-specific adap-tation with global generalisability. By shifting the focus from global averages to the ’reliability floor’ (worst-client performance), MedFL-Stress provides a more clinically grounded framework for validating federated medical imaging models. 
+
+# References 
+
+1. Bakas, S., Reyes, M., Jakab, A., et al.: Identifying the best machine learning algorithms for brain tumor segmentation, progression assessment, and overall survival prediction in the BraTS challenge. arXiv:1811.02629 (2018) 2. Chen, R.J., Lu, M.Y., Chen, T.Y., Williamson, D.F.K., Mahmood, F.: Algorithm fairness in artificial intelligence for medicine and healthcare. Nat. Biomed. Eng. 
+
+7(6), 719–742 (2023) 3. Guan, H., Wang, Y., Li, M., Xu, Z., Han, S., Yao, Y., et al.: Federated learning for medical image analysis: A survey. Pattern Recognit. 149 , 110218 (2024) 4. Li, T., Sahu, A.K., Talwalkar, A., Smith, V.: Federated optimization in heteroge-neous networks. In: Proc. 3rd MLSys Conf. (2020) 5. Li, X., Jiang, M., Zhang, X., Kamp, M., Dou, Q.: FedBN: Federated learning on non-IID features via local batch normalization. In: Int. Conf. Learn. Represent. (ICLR) (2021) 6. Manthe, M., et al.: Federated brain tumor segmentation: An extensive benchmark. Med. Image Anal. 98 , 103348 (2024). https://doi.org/10.1016/j.media.2024.103348 7. McMahan, B., Moore, E., Ramage, D., Hampson, S., y Arcas, B.A.: Communication-efficient learning of deep networks from decentralized data. In: Proc. 20th AISTATS (2017) 8. Menze, B.H., Jakab, A., Bauer, S., et al.: The multimodal brain tumor image segmentation benchmark (BraTS). IEEE Trans. Med. Imaging 34 (10), 1993–2024 (2015) 9. Pati, S., Baid, U., Zenk, M., et al.: The Federated Tumor Segmentation (FeTS) challenge. In: Proc. MICCAI. pp. 234–241 (2021) 10. Pérez-García, F., Sparks, R., Ourselin, S.: TorchIO: A Python library for efficient preprocessing and sampling of medical images. Comput. Methods Programs Biomed. 
+
+208 , 106236 (2021) 11. Pfohl, S.R., et al.: The role of fairness in medical AI. npj Digit. Med. 4(1), 1–10 (2021) 12. Rieke, N., Hancox, J., Li, W., et al.: The future of digital health with federated learning. npj Digit. Med. 3(1), 1–7 (2020) 13. Ronneberger, O., Fischer, P., Brox, T.: U-Net: Convolutional networks for biomedical image segmentation. In: Proc. MICCAI. pp. 234–241 (2015) 14. Sheller, M.J., Edwards, B., Reina, G.A., et al.: Federated learning in medicine: Collaborative training without sharing patient data. Sci. Rep. 10 (1), 1–12 (2020) 15. Sheller, M.J., Reina, G.A., Edwards, B., et al.: Multi-institutional deep learning modeling without sharing patient data. In: Brainlesion: Glioma, MS, Stroke and TBI. pp. 92–104 (2019) 16. Xu, J., Glicksberg, B.S., et al.: Federated learning in medical imaging: A survey. Med. Image Anal. 85 , 102760 (2023) Stress-Testing Cross-Hospital Segmentation in FL 17 17. Yan, G., et al.: FedVCK: Robust federated learning for medical image analysis. In: Proc. AAAI (2025) 18. Zenk, M., Baid, U., Pati, S., et al.: Towards fair decentralized bench-marking of healthcare AI algorithms. Nat. Commun. 16 (1) (2025). https://doi.org/10.1038/s41467-025-60466-1 19. Zhou, K., Liu, Z., et al.: A survey on domain generalization in medical imaging. IEEE Trans. Med. Imaging 43 , 101–120 (2024) 20. Zhou, Z., et al.: Federated learning for medical image classifi-cation: A benchmark. IEEE J. Biomed. Health Inform. (2025). https://doi.org/10.1109/JBHI.2025.3631706
