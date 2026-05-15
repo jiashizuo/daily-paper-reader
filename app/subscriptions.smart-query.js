@@ -465,12 +465,6 @@ window.SubscriptionsSmartQuery = (function () {
 
   const loadLlmConfig = () => {
     const secret = window.decoded_secret_private || {};
-    const summarized = secret.summarizedLLM || {};
-    const baseUrl = normalizeText(summarized.baseUrl || '');
-    const apiKey = normalizeText(summarized.apiKey || '');
-    const model = normalizeText(summarized.model || '');
-    if (baseUrl && apiKey && model) return { baseUrl, apiKey, model };
-
     const chatLLMs = Array.isArray(secret.chatLLMs) ? secret.chatLLMs : [];
     if (chatLLMs.length > 0) {
       const first = chatLLMs[0] || {};
@@ -480,6 +474,12 @@ window.SubscriptionsSmartQuery = (function () {
       const cModel = normalizeText(models[0] || '');
       if (cBase && cKey && cModel) return { baseUrl: cBase, apiKey: cKey, model: cModel };
     }
+
+    const summarized = secret.summarizedLLM || {};
+    const baseUrl = normalizeText(summarized.baseUrl || '');
+    const apiKey = normalizeText(summarized.apiKey || '');
+    const model = normalizeText(summarized.model || '');
+    if (baseUrl && apiKey && model) return { baseUrl, apiKey, model };
     return null;
   };
 
@@ -806,9 +806,6 @@ window.SubscriptionsSmartQuery = (function () {
         pushUnique(`${src}/v1/chat/completions`);
         pushUnique(`${src}/chat/completions`);
       };
-
-      expandEndpoint('https://hk-api.gptbest.vip');
-      expandEndpoint('https://api.bltcy.ai');
 
       const raw = normalizeText(llm.baseUrl);
       if (!raw) {
