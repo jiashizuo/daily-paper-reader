@@ -22,6 +22,29 @@
   </a>
 </p>
 
+## OpenAI-compatible relay setup
+
+This fork can use an OpenAI-compatible relay instead of BLT for the scheduled
+workflow. Add these GitHub Actions secrets:
+
+```text
+OPENAI_API_KEY
+OPENAI_BASE_URL
+OPENAI_MODEL
+```
+
+For your relay:
+
+```text
+OPENAI_BASE_URL = https://api.apikey.fun
+OPENAI_MODEL = gpt-5.5
+OPENAI_API_KEY = your sk-... key
+```
+
+Do not commit the API key to the repository. The workflow maps these secrets to
+the existing LLM steps for query rewrite, filtering, and summaries. Since normal
+OpenAI-compatible endpoints usually do not expose BLT's `/rerank` endpoint, the
+rerank step is skipped automatically and the pipeline uses its fallback ranking.
 
 
 ## 🖼️ 界面预览
