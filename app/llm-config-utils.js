@@ -45,6 +45,12 @@
       baseUrl: 'https://api.openai.com/v1',
       models: Object.freeze(['gpt-4.1-mini', 'gpt-4.1']),
     }),
+    apikeyfun: Object.freeze({
+      key: 'apikeyfun',
+      label: 'APIKey.fun 中转站',
+      baseUrl: 'https://api.apikey.fun',
+      models: Object.freeze(['gpt-5.5']),
+    }),
   });
 
   const normalizeText = (value) => String(value || '').trim();

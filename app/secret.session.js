@@ -488,6 +488,9 @@
       const secretNameBltSummaryModel = 'BLT_SUMMARY_MODEL';
       const secretNameBltFilterModel = 'BLT_FILTER_MODEL';
       const secretNameBltRewriteModel = 'BLT_REWRITE_MODEL';
+      const secretNameOpenAIKey = 'OPENAI_API_KEY';
+      const secretNameOpenAIBaseUrl = 'OPENAI_BASE_URL';
+      const secretNameOpenAIModel = 'OPENAI_MODEL';
       const secretNameSkipRerank = 'DPR_SKIP_RERANK';
       const secretNameRerankKey = 'Reranker_LLM_API_KEY';
       const secretNameRerankUrl = 'Reranker_LLM_BASE_URL';
@@ -535,6 +538,14 @@
         { name: secretNameBltRewriteModel, value: rewriteModel || summarizedModel },
         { name: secretNameSkipRerank, value: skipRerank ? 'true' : 'false' },
       ];
+
+      if (providerType === 'openai-compatible') {
+        secrets.push(
+          { name: secretNameOpenAIKey, value: summarizedApiKey },
+          { name: secretNameOpenAIBaseUrl, value: summarizedBaseUrl },
+          { name: secretNameOpenAIModel, value: summarizedModel },
+        );
+      }
 
       if (!skipRerank && rerankerApiKey && rerankerBaseUrl && rerankerModel) {
         secrets.push(
@@ -1219,7 +1230,8 @@
 
       const syncProviderSections = () => {
         const provider = selectedProvider();
-        platoSection.style.display = 'block';
+        platoSection.style.display =
+          provider === 'openai-compatible' ? 'none' : 'block';
         customSection.style.display =
           provider === 'openai-compatible' ? 'block' : 'none';
       };
@@ -1299,13 +1311,14 @@
         const provider = selectedProvider();
         const apiKey = normalizeText(platoInput.value);
         const model = selectedPlatoModel();
-        if (!apiKey) {
+        if (provider === 'plato') {
+          if (!apiKey) {
           throw new Error('请先输入 BLT API Key。');
         }
         if (!model) {
           throw new Error('请选择用于工作流总结的大模型。');
         }
-        if (provider === 'plato') {
+        
           return {
             providerType: 'plato',
             summaryApiKey: apiKey,
@@ -1326,20 +1339,16 @@
         const customDraft = validateCustomDraft();
         return {
           providerType: 'openai-compatible',
-          summaryApiKey: apiKey,
-          summaryBaseUrl: getDefaultPlatoBaseUrl(),
-          summaryModel: model,
+          summaryApiKey: customDraft.apiKey,
+          summaryBaseUrl: customDraft.baseUrl,
+          summaryModel: customDraft.models[0],
           chatModels: customDraft.models,
           chatApiKey: customDraft.apiKey,
           chatBaseUrl: customDraft.baseUrl,
-          rewriteModel: 'gemini-3-flash-preview',
-          filterModel: 'gemini-3-flash-preview-nothinking',
-          skipRerank: false,
-          reranker: {
-            apiKey,
-            baseUrl: getDefaultPlatoBaseUrl(),
-            model: 'qwen3-reranker-4b',
-          },
+          rewriteModel: customDraft.models[0],
+          filterModel: customDraft.models[0],
+          skipRerank: true,
+          reranker: null,
         };
       };
 
@@ -1563,10 +1572,6 @@
 
         if (providerDraft.providerType === 'plato' && !platoOk) {
           setErrorText('请先验证柏拉图 API Key，或点击“测试当前配置”。', '#c00');
-          return;
-        }
-        if (providerDraft.providerType === 'openai-compatible' && !platoOk) {
-          setErrorText('请先验证 BLT API Key，工作流总结与 reranker 必须使用 BLT。', '#c00');
           return;
         }
         if (providerDraft.providerType === 'openai-compatible' && !customOk) {
