@@ -1,0 +1,2744 @@
+Title: From Message-Passing to Linearized Graph Sequence Models
+
+URL Source: https://arxiv.org/pdf/2605.12358v1
+
+Published Time: Wed, 13 May 2026 01:38:41 GMT
+
+Number of Pages: 26
+
+Markdown Content:
+# From Message-Passing to Linearized Graph Sequence Models 
+
+Jo¨ el Mathys 1 * Basil Rohner 1 * Saku Peltonen 1 Roger Wattenhofer 1
+
+## Abstract 
+
+Message-passing based approaches form the de-fault backbone of most learning architectures on graph-structured data. However, the rapid progress of modern deep learning architectures in other domains, particularly sequence modeling, raises the question of how graph learning can ben-efit from these advances. We introduce Linearized Graph Sequence Models, a framework that recasts message-passing graph computation from the per-spective of sequence modeling to simplify archi-tectural choices. Our approach systematically sep-arates the computational processing depth from the information propagation depth, allowing core graph architectural decisions to be treated as se-quence modeling choices. Specifically, we an-alyze, both empirically and theoretically, what sequence properties make methods effective for learning and preserving the graph inductive bias. In particular, we validate our findings, demonstrat-ing improved performance on long-range infor-mation tasks in graphs. Our findings provide a principled way to integrate modern sequence mod-eling advances into message-passing based graph learning. Beyond this, our work demonstrates how the separation of processing and information depth can recast central architectural questions as input modeling choices. 
+
+## 1. Introduction 
+
+Message-passing neural networks (MPNNs) (Gilmer et al., 2017) have emerged as the dominant architecture for learn-ing on graph-structured data, achieving remarkable success by iteratively aggregating information from local neighbor-hoods. To incorporate sufficient information from distant nodes in the graph, this sequential aggregation scheme must be repeated many times, resulting in deep networks. Un-fortunately, as network depth increases, fixed-sized node embeddings have to keep track of an ever-expanding, expo-
+
+> *
+
+Equal contribution 1ETH Zurich, Switzerland. Correspon-dence to: Jo¨ el Mathys <jmathys@ethz.ch >.
+
+Preprint. May 13, 2026. σ(·)   
+
+> +
+> σ(·)
+> +
+> +
+> σ(·)
+> +
+> σ(·)
+> +
+> +
+> σ(·)
+> +
+> σ(·)
+> +
+> +
+> σ(·)
+> +
+> σ(·)
+> +
+> +
+> σ(·)
+> σ(·)
+> σ(·)
+> · · ·
+> · · ·
+> · · ·
+> ............
+> . . .
+> Information Depth
+> Processing Depth
+
+Figure 1. LGSM decouples information propagation (horizontal) from non-linear processing (vertical). Unlike MPNNs that advance both dimensions simultaneously, LGSM enables information to flow across the graph through linearized computation before ap-plying non-linear transformations. This shifts graph architectural focus to the impact of the input sequences. 
+
+nentially growing receptive field, which ultimately leads to information loss and the collapse of learned representations (Alon & Yahav, 2020; Arnaiz-Rodriguez & Errica, 2025; Di Giovanni et al., 2023). Moreover, these phenomena are closely related to the difficulty of properly optimizing deep networks due to vanishing gradients (Arroyo et al., 2025). Meanwhile, modern deep learning has witnessed rapid ar-chitectural innovation, particularly in sequence modeling, where Transformers (Vaswani et al., 2017) and State-Space Models (Dao & Gu, 2024) excel at capturing complex long-range dependencies while maintaining computational efficiency and hardware-friendly designs. This raises the question how graph learning can benefit from architectural advances in modern sequence modeling without losing the inductive bias which makes GNNs effective. Adapting modern sequence modeling techniques for graph learning is not straightforward due to the question on how best to preserve the graph modality and its inductive biases. One line of work attempts to directly model graphs as se-quences by casting the graph itself into a sequence based 1
+
+> arXiv:2605.12358v1 [cs.LG] 12 May 2026 From Message-Passing to Linearized Graph Sequence Models
+
+representation. This includes graph transformers (Ma et al., 2023; Rampasek et al., 2022; Stoll et al., 2025) that model nodes as tokens, or sequence extraction through random walks (T ¨onshoff et al., 2023; Behrouz & Hashemi, 2024; Kim et al., 2024; Wang & Cho, 2024; Chen et al., 2024). Often these approaches struggle to fully preserve graph in-ductive biases and rely on auxiliary message-passing mech-anisms or graph positional encodings to retain necessary structural information (Gr ¨otschla et al., 2026). An alter-native direction focuses on the unrolled computation of message-passing neural networks itself, viewing the itera-tive updates as a sequential process. These include more sophisticated aggregation schemes (Ding et al., 2024) that leverage modern sequence models, focusing on the recur-rent update and their ability to retain information over a prolonged time while maintaining trainability (Arroyo et al., 2025) or casting the architecture directly as a sequence first process (Ceni et al., 2025; Eliasof et al., 2025). However, particularly the latter requires stacking their derived mod-ules sequentially, reintroducing the very problem of accumu-lated non-linearities that limits the depth and optimization. In this work, we introduce Linearized Graph Sequence Models (LGSM), a framework that formulates message-passing based graph learning from the perspective of se-quence modeling by explicitly decoupling two dimensions of computation: information depth, how information propa-gates through the graph, and processing depth, how many non-linear transformations are applied. In standard MPNNs, these two dimensions are tightly intertwined: each sequen-tial layer propagates information one hop further and applies a transformation. LGSM separates these aspects by viewing the unrolled computation of message-passing as a sequence. Crucially, we linearize the computation along the sequence, both ensuring information flow and enabling efficient par-allel computation through modern SSM implementations such as Mamba (Gu & Dao, 2024). This allows core ar-chitectural decisions in graph learning to be reframed as sequence modeling choices. We analyze the computation within LGSM and directly re-late the sensitivity of node embeddings (Di Giovanni et al., 2023) to the design of the input sequence. This naturally leads to the question of what makes a sequence extraction mechanism effective for graph learning. We study both empirically and theoretically how the choice of sequence af-fects important properties such as stability, sensitivity, or in-fluence, and how they can be improved. Motivated by these insights, we propose a sequence extraction method based on non-backtracking message exchange, which reduces the broadcasting of already known information. We further val-idate our framework empirically on the ECHO and LRIM benchmark (Miglior et al., 2025; Mathys et al., 2025) on both synthetic graph property prediction tasks as well as real-world molecular datasets, where LGSM achieves strong performance, demonstrating that the separation of informa-tion and processing depth is an effective framework for graph learning. Our main contributions are as follows: • We introduce Linearized Graph Sequence Models (LGSM), a framework that decouples information prop-agation depth from processing depth and allows to re-cast core message-passing architectural decisions as sequence modeling choices instead. • We provide a thorough theoretical analysis connecting the choice of sequence extraction to node sensitivity and information flow, establishing how different extrac-tion mechanisms impact learning on graphs. Further, we propose to use a sequence extraction method based on non-backtracking walks with favorable properties for information propagation. • We empirically validate our framework, confirming the effectiveness of our approach on both synthetic graph tasks as well as real-world molecular datasets. 
+
+## 2. Background 
+
+2.1. Notation 
+
+Let G = ( V, E) be an undirected graph with vertex set V
+
+and edge set E, where |V| = n and |E| = m denote the num-ber of nodes and edges in the graph. The degree of a node 
+
+v is deg( v) and N ≤k(v) denotes the set of all neighbors of v within distance k. Similarly, we denote with N k(v)
+
+the set of nodes for which there exists a path of length exactly k. We use AG ∈ Rn×n to denote the adjacency matrix defined by (AG )u,v = 1 if and only if {u, v } ∈ E .The degree matrix DG is diagonal with (DG )v,v = deg( v).We denote a multiset with {{·} }. For a matrix A ∈ Rn×n,
+
+∥A∥ = max ∥v∥2=1 ∥Av ∥2 denotes the spectral norm, un-less otherwise specified. 
+
+2.2. Graph Neural Networks 
+
+Graph Neural Networks that are based on message-passing (Gilmer et al., 2017) learn node representations through iterative neighborhood aggregation. Given initial node features H(0) = X ∈ Rd×n, each layer t updates the node representations by aggregating information from neighbors, while also applying a learnable transformation: 
+
+h(t+1)  
+
+> v
+
+= σ
+
+
+
+h(t) 
+
+> v
+
+, φ 
+
+
+
+{{h(t) 
+
+> u
+
+: u ∈ N (v)}}
+
+ 
+
+,
+
+where φ is a permutation-invariant aggregation function (e.g., sum, mean) and σ is a learnable non-linear function, typically an MLP. For many common architectures, such as GCN (Kipf & Welling, 2017), the update can be expressed in matrix notation. 
+
+H(t+1) = σ
+
+
+
+H(t)AG
+
+
+
+2From Message-Passing to Linearized Graph Sequence Models 
+
+Here, the residual connection to the previous state is mod-eled as additional self-loops of G. Crucially, each MPNN layer simultaneously propagates information exactly one hop further in the graph and applies a non-linear transfor-mation. To incorporate information from node features at distance r, at least r rounds of message-passing are required, tightly coupling the depth of non-linear processing to the information flow within the graph. 
+
+2.3. State-Space Models 
+
+State-Space Models (SSMs) are formulated to capture continuous linear dynamical systems. In order to apply them for sequence models, one considers a discretiza-tion of the system over time, essentially mapping the in-put sequence x(1) , . . . , x(ℓ) ∈ RdI to an output sequence 
+
+y(1) , . . . , y(ℓ) ∈ RdO via the linear recurrence 
+
+h(t+1) = Ah (t) + Bx (t+1) 
+
+y(t+1) = Ch (t+1) 
+
+where A ∈ RdH ×dH , B ∈ RdH ×dI , and C ∈ RdO ×dH are the system matrices, and h(t) ∈ RdH is the hidden state. In-terestingly, instead of naively unrolling the linear recurrence, it can be computed much more efficiently on modern hard-ware. Either by unrolling the recurrence to give an explicit convolution kernel or alternatively by leveraging the asso-ciativity of the update with a parallel scan computation (Gu & Dao, 2024). Moreover, it is possible to switch between the formulation to balance speed and memory requirements during training and inference respectively. A key property of modern SSMs is their ability to capture long-range dependencies through appropriate initializations such as the HiPPO framework (Gu et al., 2020; 2021). These enable the SSM to closely approximate the history of the input sequence using orthogonal polynomials. More-over, with the introduction of Mamba (Gu & Dao, 2024) that incorporates an input dependent selective update, SSMs achieve performances comparable to the transformer archi-tecture. 
+
+## 3. Related Work 
+
+There exist different lines of work to include modern archi-tectures for graph learning, however, they do differ quite a bit in the modeling perspective. Random walk based approaches, model the graph modality as a collection of sequences (Behrouz & Hashemi, 2024; Chen et al., 2024) and then use the SSM to process the walk sequence. As such, these approaches are orthogonal to our investigation into message-passing centric computation. On the other hand Huang et al. (2024) translates the convolution view of the SSM from linear sequences to graph topologies. Closely related are the approaches that include SSMs in the design of the aggregation function (Ding et al., 2024), but oth-erwise do not consider the full architecture. Some works consider SSMs to process the output of sequential non-linear MPNN (Eliasof et al., 2025; Arroyo et al., 2025) or even linearized variants (Ceni et al., 2025). However, they do not consider the separation of processing and information gath-ering and stack the blocks sequentially. This reintroduces non-linearities and prevents fully parallelizable processing and complete theoretical analysis along the full information depth. We refer to Appendix A for an in depth discussion of related works. 
+
+## 4. Method 
+
+We propose the Linearized Graph Sequence Model (LGSM) framework, to reformulate message passing based graph learning with a focus on sequence modeling. This per-spective explicitly decouples two fundamental dimensions: 
+
+processing depth , how much compute we spend on trans-forming information, and information depth , how informa-tion propagates throughout the graph. Before presenting our model in detail, we provide a motivating example showing how graph computation can be viewed as unrolled sequence computation. The key observation is that stacking L MPNN layers can be viewed as a recurrent graph update. Consider a GCN-based update rule with skip connection from the input features 
+
+X, with initial H(0) = 0. Each layer propagates infor-mation one hop and then applies a non-linearity. As such, the computational structure resembles that of a recurrent neural network, where the sequence corresponds to succes-sive rounds of neighborhood aggregation. However, unlike standard RNNs that receive an external input at each step, the GCN derives an input implicitly. As we show next, linearizing this recurrence results in a sequence structure. 
+
+H(t+1) = σ
+
+
+
+H(t)
+
+|{z} 
+
+> previous hidden state
+
+, U(t)
+
+|{z} 
+
+> next input
+
+
+
+RNN formulation 
+
+H(t+1) = X + σ(H(t)AG ) GCN formulation Where U corresponds to the input sequence of the RNN. We visualize this unrolled computation as a grid in Figure 2a, where the horizontal axis represents information depth and the vertical axis represents processing depth. The MPNN advances both dimensions simultaneously at each step. This leads to a diagonal, staircase-like computational path. Un-fortunately, this exhibits two inherent drawbacks. First, the computation has to be done in sequential order, which is hard to parallelize on modern hardware. Second, due to the repeated stacking of non-linearities, it can be hard to properly optimize these networks due to instability or van-ishing gradients. Following modern state-space approaches 3From Message-Passing to Linearized Graph Sequence Models σ(·)
+
+> +
+> σ(·)
+> +
+> σ(·)
+> +
+> σ(·)
+> +
+> +
+> σ(·)
+> +
+> σ(·)
+> +
+> σ(·)
+> +
+> σ(·)
+> +
+> +
+> σ(·)
+> +
+> σ(·)
+> +
+> σ(·)
+> +
+> σ(·)
+> +
+> +
+> σ(·)
+> +
+> σ(·)
+> +
+> σ(·)
+> +
+> σ(·)
+> +
+> +
+> σ(·)
+> σ(·)
+> σ(·)
+> σ(·)
+> σ(·)
+> Information Depth
+> Processing Depth
+
+(a) MPNN σ(·) 
+
+> +
+> σ(·)
+> +
+> σ(·)
+> +
+> σ(·)
+> +
+> +
+> σ(·)
+> +
+> σ(·)
+> +
+> σ(·)
+> +
+> σ(·)
+> +
+> +
+> σ(·)
+> +
+> σ(·)
+> +
+> σ(·)
+> +
+> σ(·)
+> +
+> +
+> σ(·)
+> +
+> σ(·)
+> +
+> σ(·)
+> +
+> σ(·)
+> +
+> +
+> σ(·)
+> σ(·)
+> σ(·)
+> σ(·)
+> σ(·)
+> Information Depth
+> Processing Depth
+
+(b) Linear MPNN σ(·) 
+
+> +
+> σ(·)
+> +
+> σ(·)
+> +
+> σ(·)
+> +
+> +
+> σ(·)
+> +
+> σ(·)
+> +
+> σ(·)
+> +
+> σ(·)
+> +
+> +
+> σ(·)
+> +
+> σ(·)
+> +
+> σ(·)
+> +
+> σ(·)
+> +
+> +
+> σ(·)
+> +
+> σ(·)
+> +
+> σ(·)
+> +
+> σ(·)
+> +
+> +
+> σ(·)
+> σ(·)
+> σ(·)
+> σ(·)
+> σ(·)
+> Information Depth
+> Processing Depth
+
+(c) LGSM (our method) 
+
+Figure 2. Visualization of computation in graph neural networks with respect to information depth and processing depth. Standard MPNNs couple both dimensions, propagating and updating information through non-linear transformations at the same time, advancing diagonally. Linear MPNNs propagate information without any non-linearities, but have limited transformation capabilities. Our method, stacks the linearized rows to combine both well-conditioned linear information flow with non-linear processing capabilities. 
+
+(Gu et al., 2021), we address these concerns by linearizing the update along the information axis. Removing the non-linearity, akin to Ceni et al. (2025), allows information to propagate without accumulating non-linear transformations. 
+
+H(t+1) = AH (t) + BU (t) linearized RNN 
+
+=
+
+tX
+
+k=0 
+
+AkBU (t−k)
+
+H(t+1) = BX + AH (t)AG linearized GCN 
+
+=
+
+tX
+
+k=0 
+
+AkB XA k
+
+G
+
+| {z } 
+
+U(t−k)
+
+Where A, B ∈ Rd×d are learnable matrices. Through this lens, the linearized MPNN is equivalent to applying an SSM to a graph-based input sequence, where each sequence ele-ment contains node features propagated through the graph: 
+
+UL:0 = X, XA G , XA 2
+
+G , . . . , XA L
+
+G . In the grid of Figure 2b, this corresponds to only traversing the horizontal axis, information flows through the graph without any non-linear transformations. We use this perspective to build our frame-work. Similarly to the architectural design of modern SSMs, we stack multiple such linearized horizontal blocks on top of each other and connect them with non-linear transfor-mations along the processing depth. The resulting model architecture depicted in Figure 2c now precisely separates information and processing depth. 
+
+4.1. Linearized Graph Sequence Model 
+
+We now describe the LGSM architecture in detail. Given an input graph G = ( V, E) with node features X ∈ Rd×n, an LGSM transforms these features through four components: sequence extraction, SSM processing, a feed-forward net-work, and graph mixing. In favor of clarity we omit some of the common optimization techniques such as skip con-nections and normalizations in the mathematical definition. A conceptual overview is shown in Figure 3. 
+
+Sequence Extraction : The Graph Sequence Encoder gets the input graph with its node features and converts them into a sequence of L node embeddings S(i)
+
+in ∈ Rd×n.
+
+S(0) 
+
+in , S(1) 
+
+in , . . . , S(L−1) 
+
+in = SEQ (X, AG )
+
+In the next section, we discuss how to extract an appropriate sequence in more detail. A simple choice could be powers of the adjacency matrix: S(i)
+
+in = XA i
+
+G .
+
+SSM Layer : The sequence is then processed by a state-space model, which operates independently on each node’s sequence. We use Mamba2 (Dao & Gu, 2024) as the SSM module. The node dimension is viewed as a batch dimension and the SSM processes L sequence elements of dimension d.
+
+S(0) 
+
+SSM , S(1) 
+
+SSM , . . . , S(L−1) 
+
+SSM = SSM (S(0) 
+
+in , S(1) 
+
+in , . . . , S(ℓ)
+
+in )
+
+This enables information to flow along the sequence dimen-sion efficiently via parallel scan computation. Afterwards, each node embedding is fed through a feed-forward network 
+
+σ1 for non-linear processing. 
+
+S(i)
+
+FFN = σ1(S(i)
+
+SSM )
+
+4From Message-Passing to Linearized Graph Sequence Models 
+
+Graph Mixing : Finally, to have information mixing between different nodes, we update the sequence elements with the graph-propagated features of the preceding element before we apply another FFN and feed the output to the next block. Note that because the previous state is mixed between nodes this does not further increase the information depth. 
+
+S(0)  
+
+> MIX
+
+= S(0)  
+
+> FFN
+
+S(i) 
+
+> MIX
+
+= σ2
+
+ S(i) 
+
+> FFN
+
++ S(i−1)  
+
+> FFN
+
+AG
+
+
+
+A complete LGSM model stacks D such blocks, where the output of one block becomes the input to the next. The final node representations are obtained from the last sequence element S(ℓ) 
+
+> out
+
+and passed to a graph decoder to predict node or graph level embeddings. The linearization along the information depth provides flex-ibility in how computation is performed. The only location, where the sequence elements all depend on each other is within the SSM module. Note, that efficient SSM implemen-tations give the option to compute row-wise, using efficient and fast parallel scans processing the entire sequence length at once. Alternatively, the computation can be unrolled column-wise, processing all nodes for a given sequence posi-tion before advancing to the next. This allows for flexibility and balancing memory and speed depending on hardware constraints and sequence length. 
+
+## 5. Theoretical Evaluation 
+
+In this section, we analyze the LGSM architecture to un-derstand how its computation makes use of the information depth. For traditional MPNNs, prior work by Di Giovanni et al. (2023) gives an upper bound for local node sensitivity: 
+
+∂h(m)
+
+> v
+
+∂h(0) 
+
+> u
+
+≤ (cσ wp 
+
+| {z } 
+
+> model
+
+)m (Sm
+
+> r,a
+
+)vu 
+
+| {z }
+
+> topology
+
+,
+
+where Sr,a := crI + caA ∈ Rn×n is the graph shift opera-tor and cσ , w, p are parameters of the models non-linearity. For nodes at least distance d apart, this bound implies that sensitivity decays with d.We now characterize sensitivity for LGSM. Consider a sin-gle LGSM block with sequence length L. We quantify the dependence of the final output embedding yv on the input feature xw.
+
+Theorem 5.1 (Local Sensitivity for 1-Block LGSM) . Con-sider a 1-block LGSM of sequence length L with an SSM defined by system matrices (A, B, C). Denote the input and output features by X, S(L) 
+
+> out
+
+∈ Rn×d, respectively, where 
+
+xv = ( X)v, :, is the feature vector of vertex v ∈ V . Sup-pose that the FNNs σSSM , σ MIX are μSSM - and μMIX -regular, D×
+
+Input             
+
+> Graph Sequence Encoder
+> n×d
+> SSM
+> Add & Norm
+> FFN
+> Add & Norm
+> Graph Mixing
+> Add & Norm
+> · · · S(0)
+> in S(1)
+> in S(L−1)
+> in
+> · · · S(0)
+> SSM S(1)
+> SSM S(L−1)
+> SSM
+> · · · S(0)
+> FFN S(1)
+> FFN S(L−1)
+> FFN
+> n×L×D
+> Graph Decoder
+
+Output   
+
+> n×d
+
+Figure 3. Overview of the LGSM architecture. The Graph Se-quence Encoder converts graph input into a sequence. Then, each block applies an SSM for each node along the sequence dimension with additional non-linear transformations and graph mixing. The number of stacked blocks controls the processing depth while the length of the sequence controls information depth. 
+
+respectively, and that A is normal with spectral radius 
+
+ρ(A) ≈ 1. Then, for any vertex v ∈ V :
+
+∂S(L)
+
+> out
+
+∂xv
+
+≤ γ
+
+> L
+
+X
+
+> k=0
+
+∂S(k)
+
+> in
+
+∂xv
+
++ γ∥AG ∥
+
+> L−1
+
+X
+
+> k=0
+
+∂S(k)
+
+> in
+
+∂xv
+
+where γ is a constant in ∥B∥, ∥C∥, μ SSM , and μMIX .
+
+The bound reveals two complementary mechanisms which are at play. The first term (weighted by AG ) captures sensi-5From Message-Passing to Linearized Graph Sequence Models 
+
+tivity through graph mixing, which propagates information between nodes via the adjacency structure. The second term captures sensitivity through the SSM dynamics, which pro-cesses the sequence regardless of graph topology. Therefore, the SSM ensures that there is a direct sensitivity contribu-tion between the nodes that depends on the initial extracted sequence. This ensures sensitivity is maintained as long as there is at least one sequence element j which is sufficiently dependent on the pair v, w ∈ V so that ∂s(j) 
+
+> v
+> ∂xw
+
+is large. We extend our analysis to the full LGSM model with stacked blocks. For clarity, we present the bound without graph mixing here. For the complete bound and proof we refer to the Appendix. Note that the graph mixing component only contributes additional gradient flows, thus improving the bound in Theorem 5.2. 
+
+Theorem 5.2 (Local Sensitivity for LGSM) . Consider a 
+
+D-block LGSM without graph mixing layers and of se-quence length L, with an SSM defined by system matri-ces (A, B, C). Denote the input and output features by 
+
+X, S(L,D ) 
+
+> out
+
+∈ Rn×d, respectively, where xv = ( X)v, :, is the feature vector of vertex v ∈ V . Suppose that the FFN σSSM 
+
+is μSSM -regular and that A is normal with spectral radius 
+
+ρ(A) ≈ 1. Then, for any vertex v ∈ V :
+
+∂S(L,D )
+
+> out
+
+∂xv
+
+≤ γDLX
+
+> k=0
+
+L − k + D − 1
+
+D − 1
+
+ ∂S(k, 1) 
+
+> in
+
+∂xv
+
+where γ is a constant in ∥B∥, ∥C∥, and μSSM .
+
+The bound separates into two components consisting of the architectural term δd and the sequence dependent sensitiv-ities ∂s(k) 
+
+> v
+> ∂xw
+
+. The binomial coefficients count the number of distinct computational paths from input to output across the processing and information depth dimension depicted in Figure 2c. This contrasts with standard MPNNs, where the sensitiv-ity is bounded by the powers of the graph operator. Al-though LGSM also incorporates graph-dependent propa-gation through graph mixing layers, the SSM component ensures that sensitivity is not only determined by it. Instead, the bound depends on all input sequence elements, relying on the fact that at least one element captures the node pair relationship. Therefore, the LGSM framework allows us to shift key graph learning questions toward the appropriate modeling of the sequence extraction. 
+
+## 6. Sequence Extraction Mechanisms 
+
+Our theoretical analysis reveals that the sensitivity of the final node embeddings has a direct dependence on all el-ements of the extracted sequence. Specifically, for a pair of nodes v, w ∈ V the sensitivity ∂yv 
+
+> ∂xw
+
+depends on a weighted sum over ∂s(k) 
+
+> v
+> ∂xw
+
+. Crucially, it suffices for at least one sequence element to capture strong interaction between the nodes to effectively capture dependencies between them. This motivates a more systematic analysis of what proper-ties make a sequence extraction mechanism effective for graph learning. In the following, we identify five desirable properties for effective sequences: • Efficiency The sequence should be computable through preprocessing or have an efficient non-sequential formulation that leverages modern hardware. This is to avoid sequence extraction becoming a bottle-neck for the overall architecture. • Stability Sequence elements should be numerically bounded to avoid destabilizing the computation, partic-ularly as sequence length increases. • Informativeness Each sequence element should con-tain meaningful information and be sufficiently distinct from other elements. • Sensitivity For any pair of nodes v, w ∈ V the node sensitivity ∂s(k) 
+
+> v
+> ∂xw
+
+should be greater than zero for at least one sequence element k.• Relative Influence The signal from relevant node pairs should be sufficiently strong considering other nodes in the graph. More specifically consider 
+
+Iv,k (w) = eT
+
+"
+
+∂s(k)
+
+> v
+
+∂xw
+
+#
+
+e
+
+. X
+
+> u∈V
+
+eT
+
+"
+
+∂s(k)
+
+> v
+
+∂xu
+
+#
+
+e
+
+!
+
+as the relative influence of w on v on the kth sequence element, following the influence distribution of (Xu et al., 2018). Here e is the all ones vector. The most natural choice for sequence extraction is perhaps using the powers of the adjacency matrix S(i) 
+
+> A
+
+= Ai 
+
+> G
+
+X or its normalized version S(i)ˆA = ( D− 12 
+
+> G
+
+AG D− 12 
+
+> G
+
+)iX. These cor-respond closely to the message passing scheme incorporated in standard MPNN architectures, where the t-th iteration aggregates information along all walks of length t.Considering the properties above, both sequences can in principle be computed efficiently through direct powers or preprocessing of the adjacency powers. Recall, that in both variants the t-th element of the sequence corresponds to the aggregation along all walks of length t. This can quickly lead to instabilities in S(i) 
+
+> A
+
+as the number of walks increases exponentially, but can be addressed with proper degree nor-malization. If a pair of nodes is connected, eventually there will be a sequence element which ensures non-zero sensi-tivity. Note that this interaction might still be small as it is 6From Message-Passing to Linearized Graph Sequence Models 
+
+proportional to the ratio of paths of length t between u and 
+
+v over all possible paths of length t originating from them. While the adjacency powers satisfy efficiency, stability, and sensitivity, let us consider the following scenario for the last two criteria. The adjacency powers always considers 
+
+all paths of length t. This includes paths that immediately ”backtrack”, immediately traverse an edge in the other di-rection again, and therefore contain a short two cycle. As a consequence, if a node v can be reached at time t0 from 
+
+v, then for all t′ > 0 the entry will always be non-zero for (At0+2 t′ 
+
+> G
+
+)uv . Each following sequence element will contain not only new information about nodes reachable at distance t but also redundant information about nodes reach-able at shorter distances through backtracking paths. This redundancy undermines the informativeness of the sequence and also its relative influence, as the set of nodes that have non-zero sensitivity becomes increasingly larger. To address this limitation of the adjacency powers, we pro-pose to use an alternative sequence extraction mechanism based on non-backtracking walks. Instead of considering all paths of length k at step k, we only consider paths of length k which at no point immediately reverse direc-tion. Thus, eliminating the two-cycle amplification that causes excessive redundant information. We refer to the non-backtracking (NBT) matrix as BG , where (BG )uv con-tains the number of non-backtracking walks from u to v.We remark that Park et al. (2024) have also considered non-backtracking message-passing and its sensitivity, although solely by replacing them in the standard MPNN formulation. 
+
+Definition 6.1 (Non-Backtracking Matrix) . Let G = ( V, E)
+
+be an undirected simple graph. The non-backtracking matrix 
+
+BG ∈ Rn×n is defined by the recurrence 
+
+B(0)  
+
+> G
+
+= IB(1)  
+
+> G
+
+= AG
+
+B(2)  
+
+> G
+
+= A2 
+
+> G
+
+− DG
+
+B(t+2)  
+
+> G
+
+= AG B(t+1)  
+
+> G
+
+− (DG − I)B(t)
+
+> G
+
+While the computation is sequential, we can still precompute the sequence of I, BG , B2 
+
+> G
+
+, ... Bl 
+
+> G
+
+if necessary or directly multiply with the feature matrix to avoid large multipli-cations between adjacency matrices. The key benefit of non-backtracking walks over the regular adjacency powers lies in their improved relative influence for distant nodes by reducing the amount of redundant backtracking information. 
+
+Theorem 6.2 (Relative Influence of NBT) . Let c < 1 and let IAv,k (w) (resp. IBv,k (w)) denote the influence of w on the 
+
+kth sequence element of v captured using the adjacency sequence A (resp. non-backtracking B). There exists an infinite family of graphs G where IAv,k (w) decays exponen-tially faster with distance k compared to IBv,k (w):
+
+IAv,k (w)
+
+IBv,k (w) ≤ ck−1,
+
+See Appendix G for the proof. We also validate these insights empirically by testing the different sequence methods on the ECHO eccentricity task. In Figure 4, we train LGSM models with different sequence lengths and the considered sequence types. While the per-formance increases for all sequence types the longer the sequences are, using naive adjacency powers leads to nu-merical instabilities for longer sequences. Moreover, the 
+
+BG exhibit better performance compared to the adjacency matrices across all considered sequence lengths. 8 16 24 32 40 
+
+> Sequence Length
+> 15
+> 20
+> 25
+> 30
+> 35
+> Validation MSE
+> Sequence Type
+> NBT
+> NBT normalized
+> ADJ
+> ADJ symmetric
+
+Figure 4. Comparison of sequence extraction mechanisms on the ECHO eccentricity task with graphs of diameter up to 40. We evaluate non-backtracking (NBT) and adjacency powers, both orig-inal and normalized. Each datapoint represent the mean of three trained models of a specific sequence length using four LGSM blocks. Therefore the number of trainable parameters is the same for all sequence lengths. We observe that the performance consis-tently improves for longer sequences. Moreover, non-backtracking sequences are more informative and lead to consistently better performance across all considered sequence lengths. The unnor-malized adjacency sequence causes numerical instabilities, leading to NaN values in computation. 
+
+## 7. Empirical Evaluation 
+
+After investigating the design and theoretical properties of LGSM, we evaluated its empirical performance. We consider the recently proposed ECHO benchmark (Miglior et al., 2025), LRIM Graph Benchmark (Mathys et al., 2025) as well as the Peptides tasks from the LRGB collection (Dwivedi et al., 2022). On Peptides we find that LGSM performs similarly to standard message-passing, meaning that the impact of processing and information depth seems negligible. This is perhaps not as surprising considering that 7From Message-Passing to Linearized Graph Sequence Models 
+
+Table 1. Performance on synthetic graph property prediction tasks from ECHO-Synth, which are designed to be challenging for long-range information exchange. Results show MSE and MAE for diameter (DIAM), eccentricity (ECC), and single-source shortest path (SSSP) prediction. LGSM demonstrates strong performance across all datasets, particularly on the eccentricity prediction. DATASET DIAM ECC SSSP 
+
+MSE ↓ MAE ↓ MSE ↓ MAE ↓ MSE ↓ MAE ↓
+
+A-DGN 4.818 ± 0.108 1.151 ± 0.038 35.967 ± 0.492 4.981 ± 0.037 4.425 ± 0.879 1.176 ± 0.140 
+
+DR EW 3.756 ± 0.170 1.243 ± 0.047 32.247 ± 0.148 4.651 ± 0.020 6.589 ± 0.015 1.279 ± 0.011 
+
+GCN 22.872 ± 2.766 3.832 ± 0.262 39.706 ± 0.460 5.233 ± 0.034 9.743 ± 0.757 2.102 ± 0.094 
+
+GCNII 9.696 ± 0.568 2.005 ± 0.093 39.911 ± 0.518 5.241 ± 0.030 10.369 ± 3.575 2.128 ± 0.429 
+
+GIN 7.238 ± 1.153 1.630 ± 0.161 34.454 ± 1.201 4.869 ± 0.092 11.868 ± 2.689 2.234 ± 0.271 
+
+GPS 10.454 ± 0.610 2.160 ± 0.098 33.346 ± 0.226 4.758 ± 0.021 1.255 ± 0.113 0.472 ± 0.050 
+
+GRIT 3.877 ± 0.295 1.014 ± 0.046 38.667 ± 1.903 5.091 ± 0.158 0.147 ± 0.083 0.121 ± 0.013 
+
+GRAPH CON 16.427 ± 1.419 2.969 ± 0.189 43.505 ± 0.017 5.474 ± 0.001 52.104 ± 0.016 5.734 ± 0.011 
+
+PH-DGN 6.699 ± 2.728 1.627 ± 0.398 37.510 ± 1.416 5.068 ± 0.126 4.656 ± 3.013 1.323 ± 0.485 
+
+SWAN 4.950 ± 0.265 1.121 ± 0.070 34.208 ± 0.578 4.840 ± 0.045 2.905 ± 1.556 0.896 ± 0.232 
+
+LGSM ( OURS ) 3.089 ± 0.389 0.859 ± 0.044 13.549 ± 0.539 2.430 ± 0.070 0.040 ± 0.008 0.076 ± 0.009 
+
+Table 2. Performance on molecular property prediction tasks from ECHO-Chem. Results show MSE and MAE for atomic partial charge (CHARGE) and total molecular energy (ENERGY) predic-tion. LGSM exhibits strong performance on both tasks, demon-strating its applicability beyond synthetic settings for real-world prediction which require capturing non-local atomic interactions. DATASET CHARGE ENERGY                                                                                                                                            
+
+> MSE ↓ × 10 4MAE ↓ × 10 3MSE ↓ × 10 −3MAE ↓
+> A-DGN 1.456 ±0.032 6.543 ±0.146 1.415 ±0.799 12.486 ±1.621
+> DR EW 3.669 ±0.459 9.086 ±0.473 1.281 ±0.733 11.325 ±2.394
+> GCN 3.126 ±0.263 8.421 ±0.512 4.561 ±0.176 28.112 ±1.239
+> GCNII 3.490 ±0.147 8.829 ±0.021 1.560 ±0.653 13.235 ±2.630
+> GIN 5.750 ±0.239 10.784 ±0.059 12.215 ±2.878 47.851 ±10.154
+> GPS 1.620 ±0.065 6.182 ±0.219 0.180 ±0.045 5.257 ±0.842
+> GRIT 1.765 ±0.071 7.134 ±6.090 0.512 ±0.149 25.508 ±2.507
+> GRAPH CON 13.250 ±0.265 19.629 ±0.195 0.975 ±0.242 14.295 ±0.807
+> PH-DGN 2.562 ±0.144 7.915 ±0.269 1.359 ±0.408 16.080 ±1.123
+> SWAN 1.251 ±0.029 6.109 ±0.103 2.652 ±2.257 12.629 ±1.157
+> LGSM ( OURS )1.411 ±0.038 5.556 ±0.068 0.152 ±0.022 3.272 ±0.186
+
+recent techniques within two layers have achieved strong performances (Adamczyk et al., 2025) leveraging inductive bias. We refer to Appendix E for more details. There-fore, to properly evaluate if LGSM can provide sufficient information and processing depth, we focus on more recent, specialized benchmarks, which were designed to evaluate these capabilities: ECHO-Synth, ECHO-Chem, and LRIM. ECHO-Synth evaluates models on synthetic graph prop-erty prediction tasks consisting of predicting graph diameter (DIAM), node eccentricity (ECC), and single-source short-est paths (SSSP). Note that these tasks should require infor-mation depth, especially for graph families which exhibit a high graph diameter. As such the synthetic datasets provide an ideal testbeds to evaluate LGSM’s information depth capabilities. On the other hand, ECHO-Chem provides real-world molecular property prediction tasks, including atomic partial charge prediction (ECHO-Charge) and total molecu-lar energy prediction (ECHO-Energy). These tasks require models to capture non-local atomic interactions. This is particularly interesting because we can evaluate whether our desired model properties and capabilities apply beyond synthetic settings. Moreover, the baselines provided encom-pass a wide range of common graph learning benchmarks, including classic MPNNs, more sophisticated multi-hop and differential equation inspired message-passing as well as graph transformers. For more details on the details of our training setup and dataset details, we refer to Appendix E. Following the recommended setup, we train all our models to minimize logMSE during training and report both the MSE and MAE score metric in Table 2 and Table 1, respec-tively. We report the baseline scores directly from the ECHO benchmark, all our model results are averaged over three random seeds. Note that the models are not trained to mini-mize MAE directly and only the MSE metric is optimized during training. LGSM surpasses the baselines across most tasks in the ECHO benchmark. The model demonstrates par-ticularly strong performance on the synthetic graph property prediction tasks. In the ablation presented in Figure 4, we evaluate the performance of the model with respect to the se-quence length. The processing depth and, as a consequence, the parameter budget stay fixed. Nevertheless, we observe that, with increasing sequence length, performance consis-tently improves. This confirms that the ability to properly handle large information depths through sequence modeling is one of the key elements for the performance of LGSM on these datasets. In addition, the framework achieves good performance on real-world molecular property prediction tasks. Moreover, we evaluate on the LRIM-16-hard dataset, which is a dataset specifically designed to contain provable long-range interactions which require information gathering throughout the graph. In Figure 5 we observe that when we ablate over the LGSM configurations both the sequence length (information) and the number of blocks (process-ing) are indeed beneficial for the task, especially since for longer sequences the increase in pure information depth yields diminishing returns. We refer to the Appendix for the 8From Message-Passing to Linearized Graph Sequence Models 1 2 4 8 16 24 32  
+
+> Sequence Length
+> 4
+> 3
+> 2
+> 1
+> 0
+> 1
+> best_val/logMSE
+> Num Blocks
+> 1 blocks
+> 2 blocks
+> 4 blocks
+> 8 blocks
+> Figure 5. Reporting validation logMSE (lower is better) on the LRIM-16-hard dataset. We ablate the impact of scaling either information depth or processing depth with LGSM. We validate that both increasing the sequence length and the model depth has a positive effect. This underscores the ability of the LGSM architecture to incorporate both axis in a principled and effective manner.
+
+complete results on the LRIM Benchmark. This includes an in-depth ablation study on the individual components of LGSM and a discussion on empirical runtime. 
+
+## 8. Limitations 
+
+While LGSM is designed with computational efficiency in mind, such as linearization and parallel scan algorithms, sequence preprocessing, row or columnwise forward passes to balance resources, we do not systematically explore these computational trade-offs in this work. We also acknowledge that there are other factors which can impact the perfor-mance of graph architectures such as regularization or do-main inductive-bias besides the information and processing depth. We do not claim our framework to be universally optimal, instead, we aim to provide a theoretically based and principled understanding of the design principles of message-passing-based architectures. 
+
+## 9. Conclusion 
+
+We introduce Linearized Graph Sequence Models, a frame-work that views message-passing based graph learning from the perspective of sequence modeling by explicitly decou-pling two fundamental dimensions of computation: informa-tion depth and processing depth. Unlike standard message-passing networks where these dimensions advance simulta-neously, LGSM linearizes propagation along the informa-tion axis, enabling information to flow across arbitrary graph distances while confining non-linear transformations to the processing dimension. This separation allows leveraging modern state-space model implementations for efficient par-allel computation. Moreover, it enables proper information and gradient flow throughout and as a consequence reframes architectural choices in graph learning as questions about sequence extraction. Our theoretical analysis fully character-izes the architecture and directly connects node sensitivity to the choice of sequence extraction. Based on this insight, we leverage non-backtracking walk sequences, which offer favorable properties, especially for long-range information propagation. Our empirical evaluation on the ECHO bench-mark demonstrates that LGSM achieves strong performance on both synthetic tasks for graph property prediction and on real-world molecular tasks. Our work demonstrates how the simplification of the architecture and the clear separation of information and processing depth can shift key architectural questions into input modeling choices, providing a princi-pled way for integrating modern deep learning techniques into graph learning. 
+
+## References 
+
+Adamczyk, J., Ludynia, P., and Czech, W. Molecular Fin-gerprints Are Strong Models for Peptide Function Pre-diction, October 2025. URL http://arxiv.org/ abs/2501.17901 . arXiv:2501.17901 [q-bio] version: 2. Alon, U. and Yahav, E. On the Bottleneck of Graph Neu-ral Networks and its Practical Implications. October 2020. URL https://openreview.net/forum? id=i80OPhOCVH2 .Arnaiz-Rodriguez, A. and Errica, F. Oversmoothing, Over-squashing, Heterophily, Long-Range, and more: Demys-tifying Common Beliefs in Graph Machine Learning, June 2025. URL http://arxiv.org/abs/2505. 15547 . arXiv:2505.15547 [cs]. Arnaiz-Rodrıiguez, A., Begga, A., Escolano, F., and Oliver, N. M. DiffWire: Inductive Graph Rewiring via the 9From Message-Passing to Linearized Graph Sequence Models 
+
+Lov ´asz Bound. In Proceedings of the First Learning on Graphs Conference , pp. 15:1–15:27. PMLR, December 2022. URL https://proceedings.mlr.press/ v198/arnaiz-rodri-guez22a.html . ISSN: 2640-3498. Arroyo, A., Gravina, A., Gutteridge, B., Barbero, F., Gallicchio, C., Dong, X., Bronstein, M. M., and Van-dergheynst, P. On Vanishing Gradients, Over-Smoothing, and Over-Squashing in GNNs: Bridging Recurrent and Graph Learning. October 2025. URL https: //openreview.net/forum?id=N4cyRMuLyl& referrer=%5Bthe%20profile%20of% 20Federico%20Barbero%5D(%2Fprofile% 3Fid%3D˜Federico_Barbero1) .Behrouz, A. and Hashemi, F. Graph Mamba: Towards Learning on Graphs with State Space Models. In Proceed-ings of the 30th ACM SIGKDD Conference on Knowl-edge Discovery and Data Mining , KDD ’24, pp. 119– 130, New York, NY, USA, August 2024. Association for Computing Machinery. ISBN 979-8-4007-0490-1. doi: 10.1145/3637528.3672044. URL https://dl.acm. org/doi/10.1145/3637528.3672044 .Ceni, A., Gravina, A., Gallicchio, C., Bacciu, D., Schon-lieb, C.-B., and Eliasof, M. Message-Passing State-Space Models: Improving Graph Learning with Modern Se-quence Modeling, May 2025. URL http://arxiv. org/abs/2505.18728 . arXiv:2505.18728 [cs]. Chen, D., Schulz, T. H., and Borgwardt, K. Learning Long Range Dependencies on Graphs via Random Walks. October 2024. URL https://openreview.net/ forum?id=kJ5H7oGT2M .Chen, M., Wei, Z., Huang, Z., Ding, B., and Li, Y. Simple and Deep Graph Convolutional Networks. In 
+
+Proceedings of the 37th International Conference on Machine Learning , pp. 1725–1735. PMLR, November 2020. URL https://proceedings.mlr.press/ v119/chen20v.html .Cohen, S. and Agmon, N. Convexified Graph Neural Net-works for Distributed Control in Robotic Swarms. vol-ume 3, pp. 2307–2313, August 2021. doi: 10.24963/ ijcai.2021/318. URL https://www.ijcai.org/ proceedings/2021/318 . ISSN: 1045-0823. Dao, T. and Gu, A. Transformers are SSMs: general-ized models and efficient algorithms through structured state space duality. In Proceedings of the 41st Interna-tional Conference on Machine Learning , volume 235 of 
+
+ICML’24 , pp. 10041–10071, Vienna, Austria, July 2024. JMLR.org. Di Giovanni, F., Giusti, L., Barbero, F., Luise, G., Li `o, P., and Bronstein, M. On over-squashing in message passing neural networks: the impact of width, depth, and topology. In Proceedings of the 40th International Conference on Machine Learning , volume 202 of ICML’23 , pp. 7865– 7885, Honolulu, Hawaii, USA, July 2023. JMLR.org. Ding, Y., Orvieto, A., He, B., and Hofmann, T. Recur-rent Distance Filtering for Graph Representation Learn-ing. In Proceedings of the 41st International Conference on Machine Learning , pp. 11002–11015. PMLR, July 2024. URL https://proceedings.mlr.press/ v235/ding24d.html .Dwivedi, V. P., Ramp ´avsek, L., Galkin, M., Parviz, A., Wolf, G., Luu, A. T., and Beaini, D. Long range graph benchmark. In Proceedings of the 36th International Con-ference on Neural Information Processing Systems , NIPS ’22, pp. 22326–22340, Red Hook, NY, USA, November 2022. Curran Associates Inc. ISBN 978-1-7138-7108-8. Eliasof, M., Gravina, A., Ceni, A., Gallicchio, C., Bac-ciu, D., and Sch ¨onlieb, C.-B. Graph Adaptive Au-toregressive Moving Average Models. In Proceed-ings of the 42nd International Conference on Ma-chine Learning , pp. 15232–15265. PMLR, October 2025. URL https://proceedings.mlr.press/ v267/eliasof25a.html .Gilmer, J., Schoenholz, S. S., Riley, P. F., Vinyals, O., and Dahl, G. E. Neural message passing for Quantum chemistry. In Proceedings of the 34th International Con-ference on Machine Learning - Volume 70 , ICML’17, pp. 1263–1272, Sydney, NSW, Australia, August 2017. JMLR.org. URL https://dl.acm.org/doi/10. 5555/3305381.3305512 .Gravina, A., Bacciu, D., and Gallicchio, C. Anti-Symmetric DGN: a stable architecture for Deep Graph Networks. September 2022. URL https://openreview. net/forum?id=J3Y7cgZOOS .Gravina, A., Eliasof, M., Gallicchio, C., Bacciu, D., and Sch ¨onlieb, C.-B. On Oversquashing in Graph Neural Net-works Through the Lens of Dynamical Systems. Proceed-ings of the AAAI Conference on Artificial Intelligence , 39 (16):16906–16914, April 2025. ISSN 2374-3468. doi: 10. 1609/aaai.v39i16.33858. URL https://ojs.aaai. org/index.php/AAAI/article/view/33858 .Grover, A. and Leskovec, J. node2vec: Scalable Feature Learning for Networks. In Proceedings of the 22nd ACM SIGKDD International Conference on Knowledge Discovery and Data Mining , KDD ’16, pp. 855–864, New York, NY, USA, August 2016. Association for Computing Machinery. ISBN 978-1-4503-4232-2. doi: 10 From Message-Passing to Linearized Graph Sequence Models 
+
+10.1145/2939672.2939754. URL https://dl.acm. org/doi/10.1145/2939672.2939754 .Gr ¨otschla, F., Xie, J., and Wattenhofer, R. Benchmarking Positional Encodings for GNNs and Graph Transform-ers, January 2026. URL http://arxiv.org/abs/ 2411.12732 . arXiv:2411.12732 [cs]. Gu, A. and Dao, T. Mamba: Linear-Time Se-quence Modeling with Selective State Spaces. August 2024. URL https://openreview.net/forum? id=tEYskw1VY2 .Gu, A., Dao, T., Ermon, S., Rudra, A., and R ´e, C. HiPPO: recurrent memory with optimal polynomial pro-jections. In Proceedings of the 34th International Con-ference on Neural Information Processing Systems , NIPS ’20, pp. 1474–1487, Red Hook, NY, USA, December 2020. Curran Associates Inc. ISBN 978-1-7138-2954-6. URL https://dl.acm.org/doi/10.5555/ 3495724.3495849 .Gu, A., Goel, K., and Re, C. Efficiently Modeling Long Sequences with Structured State Spaces. October 2021. URL https://openreview.net/forum? id=uYLFoz1vlAC .Gutteridge, B., Dong, X., Bronstein, M., and Di Giovanni, F. DRew: dynamically rewired message passing with delay. In Proceedings of the 40th International Conference on Machine Learning , volume 202 of ICML’23 , pp. 12252– 12267, Honolulu, Hawaii, USA, July 2023. JMLR.org. Heilig, S., Gravina, A., Trenta, A., Gallicchio, C., and Bac-ciu, D. Port-Hamiltonian Architectural Bias for Long-Range Propagation in Deep Graph Networks. October 2024. URL https://openreview.net/forum? id=03EkqSCKuO .Huang, Y., Miao, S., and Li, P. What Can We Learn from State Space Models for Machine Learning on Graphs? October 2024. URL https://openreview.net/ forum?id=xAM9VaXZnY .Keriven, N. Not too little, not too much: a theoretical analysis of graph (over)smoothing. In Proceedings of the 36th International Conference on Neural Information Processing Systems , NIPS ’22, pp. 2268–2281, Red Hook, NY, USA, November 2022. Curran Associates Inc. ISBN 978-1-7138-7108-8. Kim, J., Zaghen, O., Suleymanzade, A., Ryou, Y., and Hong, S. Revisiting Random Walks for Learning on Graphs. October 2024. URL https://openreview.net/ forum?id=SG1R2H3fa1 .Kipf, T. N. and Welling, M. Semi-Supervised Classifi-cation with Graph Convolutional Networks. February 2017. URL https://openreview.net/forum? id=SJU4ayYgl .Ma, L., Lin, C., Lim, D., Romero-Soriano, A., Dokania, P. K., Coates, M., Torr, P. H., and Lim, S.-N. Graph inductive biases in transformers without message passing. In Proceedings of the 40th International Conference on Machine Learning , volume 202 of ICML’23 , pp. 23321– 23337, Honolulu, Hawaii, USA, July 2023. JMLR.org. Mathys, J. and Wattenhofer, R. A New Perspective for Graph Learning Architecture Design: Linearize Your Depth Away. October 2025. URL https:// openreview.net/forum?id=lybxAx4Msq .Mathys, J., Christiansen, H., Errica, F., Maruyama, T., and Alesiani, F. LRIM: a Physics-Based Benchmark for Prov-ably Evaluating Long-Range Capabilities in Graph Learn-ing. October 2025. URL https://openreview. net/forum?id=IAZXEX1dVV .Micheli, A. Neural network for graphs: a contextual con-structive approach. Trans. Neur. Netw. , 20(3):498–511, March 2009. ISSN 1045-9227. doi: 10.1109/TNN.2008. 2010350. URL https://doi.org/10.1109/TNN. 2008.2010350 .Miglior, L., Tolloso, M., Gravina, A., and Bacciu, D. Can You Hear Me Now? A Benchmark for Long-Range Graph Propagation. May 2025. URL https: //openreview.net/forum?id=PcKkRJdX4n .Park, S., Ryu, N., Kim, G., Woo, D., Yun, S.-Y., and Ahn, S. Non-backtracking Graph Neural Networks. Transactions on Machine Learning Research , June 2024. ISSN 2835-8856. URL https://openreview.net/forum? id=64HdQKnyTc .Perozzi, B., Al-Rfou, R., and Skiena, S. DeepWalk: on-line learning of social representations. In Proceedings of the 20th ACM SIGKDD international conference on Knowledge discovery and data mining , KDD ’14, pp. 701– 710, New York, NY, USA, August 2014. Association for Computing Machinery. ISBN 978-1-4503-2956-9. doi: 10.1145/2623330.2623732. URL https://dl.acm. org/doi/10.1145/2623330.2623732 .Rampasek, L., Galkin, M., Dwivedi, V. P., Luu, A. T., Wolf, G., and Beaini, D. Recipe for a General, Powerful, Scal-able Graph Transformer. October 2022. URL https: //openreview.net/forum?id=lMMaNf6oxKM .Rusch, T. K., Chamberlain, B., Rowbottom, J., Mishra, S., and Bronstein, M. Graph-Coupled Oscillator Networks. In Proceedings of the 39th International Conference 
+
+11 From Message-Passing to Linearized Graph Sequence Models 
+
+on Machine Learning , pp. 18888–18909. PMLR, June 2022. URL https://proceedings.mlr.press/ v162/rusch22a.html .Scarselli, F., Gori, M., Tsoi, A. C., Hagenbuchner, M., and Monfardini, G. The Graph Neural Network Model. 
+
+IEEE Transactions on Neural Networks , 20(1):61–80, January 2009. ISSN 1941-0093. doi: 10.1109/TNN. 2008.2005605. URL https://ieeexplore.ieee. org/document/4700287 .Stoll, T., M ¨uller, L., and Morris, C. Generalizable Insights for Graph Transformers in Theory and Prac-tice. October 2025. URL https://openreview. net/forum?id=ROfYsQ2KNV&referrer= %5Bthe%20profile%20of%20Timo%20Stoll% 5D(%2Fprofile%3Fid%3D˜Timo_Stoll1) .T ¨onshoff, J., Ritzert, M., Wolf, H., and Grohe, M. Walk-ing Out of the Weisfeiler Leman Hierarchy: Graph Learning Beyond Message Passing. Transactions on Machine Learning Research , April 2023. ISSN 2835-8856. URL https://openreview.net/forum? id=vgXnEyeWVY .T ¨onshoff, J., Ritzert, M., Rosenbluth, E., and Grohe, M. Where Did the Gap Go? Reassessing the Long-Range Graph Benchmark. Transactions on Machine Learning Research , January 2024. ISSN 2835-8856. URL https: //openreview.net/forum?id=Nm0WX86sKv .Vaswani, A., Shazeer, N., Parmar, N., Uszkoreit, J., Jones, L., Gomez, A. N., Kaiser, L., and Polosukhin, I. Attention is All you Need. In Advances in Neural Information Processing Systems , volume 30. Curran Associates, Inc., 2017. URL https://papers. nips.cc/paper_files/paper/2017/hash/ 3f5ee243547dee91fbd053c1c4a845aa-Abstract. html .Wang, Y. and Cho, K. Non-convolutional graph neu-ral networks. November 2024. URL https:// openreview.net/forum?id=JDAQwysFOc .Wu, F., Souza, A., Zhang, T., Fifty, C., Yu, T., and Wein-berger, K. Simplifying Graph Convolutional Networks. In Proceedings of the 36th International Conference on Machine Learning , pp. 6861–6871. PMLR, May 2019. URL https://proceedings.mlr.press/v97/ wu19e.html . ISSN: 2640-3498. Xu*, K., Hu*, W., Leskovec, J., and Jegelka, S. How Powerful are Graph Neural Networks? September 2018. URL https://openreview.net/forum? id=ryGs6iA5Km .Xu, K., Li, C., Tian, Y., Sonobe, T., Kawarabayashi, K.-i., and Jegelka, S. Representation Learning on Graphs with Jumping Knowledge Networks. In Pro-ceedings of the 35th International Conference on Ma-chine Learning , pp. 5453–5462. PMLR, July 2018. URL https://proceedings.mlr.press/v80/ xu18c.html . ISSN: 2640-3498. 12 From Message-Passing to Linearized Graph Sequence Models 
+
+## A. Extended Related Work 
+
+Message-passing With the establishment of message-passing (Micheli, 2009; Scarselli et al., 2009) as the core component to incorporate the graph bias, several different architectures have been proposed (Xu* et al., 2018; Gilmer et al., 2017). Most of them consider message-passing on the adjacency or a normalized version of it (Kipf & Welling, 2017). As such, all share the inherent mechanism that leads to loss of information due to repeated deep aggregations (Alon & Yahav, 2020; Di Giovanni et al., 2023; Arnaiz-Rodriguez & Errica, 2025). This has motivated considering complementary mechanisms such as virtual compute structures Arnaiz-Rodrıiguez et al. (2022) or entirely different approaches, such as graph transformers Ma et al. (2023); Stoll et al. (2025). However, in particular the latter often requires additional modeling of inductive bias by positional embeddings (Gr ¨otschla et al., 2026) or re-incorporating in the message-passing (Rampasek et al., 2022). Alternatively, the connection to discretizing differential equations has led to insights for mitigating vanishing node sensitivity and proper optimization by restricting the weight spaces (Gravina et al., 2022; 2025; Heilig et al., 2024; Arroyo et al., 2025). Finally, different linearization approaches have been considered for mathematical analysis (Keriven, 2022), ease of optimization (Cohen & Agmon, 2021) or efficiency considerations (Ceni et al., 2025; Wu et al., 2019; Mathys & Wattenhofer, 2025). 
+
+Non-backtracking Walk based methods (Grover & Leskovec, 2016; Perozzi et al., 2014) for graph learning have seen a resurgence in recent years (Behrouz & Hashemi, 2024; Chen et al., 2024; Wang & Cho, 2024; Kim et al., 2024), due to leveraging powerful sequence processing architectures. Most of these make use of non-backtracking walks and further employ some kind of local memory to incorporate neighboring nodes and edges as sliding windows (T ¨onshoff et al., 2023). Moreover, modeling the same behavior for message-passing architectures by explicitly changing the aggregation to be edge state dependent has favorable properties, such as better sensitivity and spectral properties (Park et al., 2024). 
+
+## B. Detailed Architecture 
+
+A detailed specification of the LGSM architecture is provided in Algorithm 1. The model operates on graph-structured data by first transforming the input graph features X ∈ Rd×n and adjacency matrix AG ∈ Rn×n into a latent sequence representation. Specifically, a sequence extractor ( SEQ ) maps the inputs (X, AG ) to an initial sequence S(0)  
+
+> in
+
+, . . . , S(L−1)  
+
+> in
+
+.This sequence is subsequently processed through a stack of D blocks, each comprising three components: a State-Space Model (SSM), a Feed-Forward Network ( σ1), and a Graph Mixing layer. In the first step of each layer, the SSM processes the input sequence S(0)  
+
+> in
+
+, . . . , S(L−1)  
+
+> in
+
+to an output sequence. The output is stabilized via a residual connection and layer normalization ( LAYER NORM ) to obtain S(0) 
+
+> SSM
+
+, . . . , S(L−1)  
+
+> SSM
+
+. Subsequently, the sequence are passed through a element-wise non-linear FFN, followed by a second residual connection and normalization step to produce S(0) 
+
+> FFN
+
+, . . . , S(L−1)  
+
+> FFN
+
+. Finally, the Graph Mixing layer updates the sequence elements with the graph-propagated features of the preceding element. This combined representation is processed by a second non-linearity ( σ2), refined with a skip connection, and normalized. 13 From Message-Passing to Linearized Graph Sequence Models 
+
+Algorithm 1 Pseudocode of LGSM Architecture 
+
+1: Input: X ∈ Rd×n, AG ∈ Rn×n, L ∈ N, D ∈ N
+
+2: Output: Sout ∈ Rd×n
+
+3: ▷ Initial sequence extraction 
+
+4: S(0)  
+
+> in
+
+, . . . , S(L−1)  
+
+> in
+
+← SEQ (X, AG)
+
+5: for d = 1 , . . . , D do 
+
+6: ▷ SSM Layer 
+
+7: S(0) 
+
+> SSM
+
+, . . . , S(L−1)  
+
+> SSM
+
+← SSM (S(0)  
+
+> in
+
+, . . . , S(L−1)  
+
+> in
+
+)
+
+8: for ℓ = 0 , . . . , L − 1 do 
+
+9: S(ℓ) 
+
+> SSM
+
+← LAYER NORM (S(ℓ) 
+
+> SSM
+
++ S(ℓ) 
+
+> in
+
+)
+
+10: ▷ FFN layer 
+
+11: S(ℓ) 
+
+> FFN
+
+← σ1(S(ℓ)
+
+> SSM
+
+)
+
+12: S(ℓ) 
+
+> FFN
+
+← LAYER NORM (S(ℓ) 
+
+> FFN
+
++ S(ℓ)
+
+> SSM
+
+)
+
+13: end for 
+
+14: ▷ Graph mixing layer 
+
+15: S(0)  
+
+> MIX
+
+← S(0) 
+
+> FFN
+
+16: for ℓ = 0 , . . . , L − 1 do 
+
+17: S(ℓ) 
+
+> MIX
+
+← σ2(S(ℓ) 
+
+> FFN
+
++ AGS(ℓ−1)  
+
+> FFN
+
+)
+
+18: S(ℓ) 
+
+> MIX
+
+← LAYER NORM (S(ℓ) 
+
+> MIX
+
++ S(ℓ)
+
+> FFN
+
+)
+
+19: end for 
+
+20: S(0)  
+
+> in
+
+, . . . , S(L−1)  
+
+> in
+
+← S(0) 
+
+> MIX
+
+, . . . , S(L−1) 
+
+> MIX
+
+21: end for 
+
+22: ▷ Final graph decoder 
+
+23: Sout ← DEC (S(L−1)  
+
+> in
+
+)
+
+24: return Sout 
+
+14 From Message-Passing to Linearized Graph Sequence Models 
+
+## C. Theoretical Results 
+
+Let αt := C Ptk=0 AkBS (t−k) 
+
+> in
+
+be the closed-form expression for Y(t) in the SSM recurrence (1) -(2) with initial condition 
+
+X(−1) = 0 , which follows by induction on t:
+
+X(t) = AX (t−1) + BS (t) 
+
+> in
+
+(1) 
+
+Y(t) = CX (t) (2) In particular, αt = Y(t). We begin with a helper lemma that bounds the sensitivity of a single SSM block in the absence of graph mixing. This will serve as a building block for the subsequent proofs. 
+
+Lemma C.1. Consider a 1-block LGSM of sequence length L with an SSM defined by the system matrices (A, B, C), input features xv and output features Sout . Suppose that the FFN σSSM is μSSM -regular, and that A is normal with spectral radius 
+
+ρ(A) ≈ 1. Then: 
+
+∂σ SSM (αL)
+
+∂xv
+
+≤ γ
+
+> L
+
+X
+
+> k=0
+
+∂S(k)
+
+> in
+
+∂xv
+
+Where γ := μSSM ∥B∥∥ C∥.Proof. By a direct computation: 
+
+∂σ SSM (αL)
+
+∂xv
+
+≤ ∂σ SSM (αL)
+
+∂α L
+
+∂α L
+
+∂xv
+
+(submultiplicativity of ∥ · ∥ )
+
+≤ μSSM 
+
+∂α L
+
+∂xv
+
+(μSSM -regularity of σSSM )
+
+≤ μSSM 
+
+∂∂xv
+
+C
+
+> L
+
+X
+
+> k=0
+
+AkBS (L−k) 
+
+> in
+
+(def. αL)
+
+≤ μSSM C
+
+> L
+
+X
+
+> k=0
+
+AkB ∂S(L−k)
+
+> in
+
+∂xv
+
+(A, B, C independent of xv )
+
+≤ μSSM ∥C∥
+
+> L
+
+X
+
+> k=0
+
+AkB ∂S(L−k)
+
+> in
+
+∂xv
+
+(submultiplicativity and triangle inequality )
+
+≤ μSSM ∥C∥
+
+> L
+
+X
+
+> k=0
+
+∥Ak∥∥ B∥ ∂S(L−k)
+
+> in
+
+∂xv
+
+(submultiplicativity )
+
+≤ μSSM ∥C∥∥ B∥
+
+> L
+
+X
+
+> k=0
+
+ρ(A)k ∂S(L−k)
+
+> in
+
+∂xv
+
+(A normal )
+
+≤ μSSM ∥C∥∥ B∥
+
+> L
+
+X
+
+> k=0
+
+∂S(L−k)
+
+> in
+
+∂xv
+
+(ρ(A) ≈ 1) 
+
+≤ γ
+
+> L
+
+X
+
+> k=0
+
+∂S(k)
+
+> in
+
+∂xv
+
+(re-indexing , k 7 → L − k)
+
+Which concludes this proof. 15 From Message-Passing to Linearized Graph Sequence Models 
+
+We now extend this result to a full 1-block LGSM by additionally incorporating the graph mixing layer. We use this lemma to show the following theorems. Next we show: 
+
+Theorem 5.1 (Local Sensitivity for 1-Block LGSM) . Consider a 1-block LGSM of sequence length L with an SSM defined by system matrices (A, B, C). Denote the input and output features by X, S(L) 
+
+> out
+
+∈ Rn×d, respectively, where xv = ( X)v, :,is the feature vector of vertex v ∈ V . Suppose that the FNNs σSSM , σ MIX are μSSM - and μMIX -regular, respectively, and that 
+
+A is normal with spectral radius ρ(A) ≈ 1. Then, for any vertex v ∈ V :
+
+∂S(L)
+
+> out
+
+∂xv
+
+≤ γ
+
+> L
+
+X
+
+> k=0
+
+∂S(k)
+
+> in
+
+∂xv
+
++ γ∥AG ∥
+
+> L−1
+
+X
+
+> k=0
+
+∂S(k)
+
+> in
+
+∂xv
+
+where γ is a constant in ∥B∥, ∥C∥, μ SSM , and μMIX .Proof. Let βL := σSSM (αL) + AG σSSM (αL−1) denote the value of the LGSM output before the application of the FFN 
+
+σMIX , such that S(L) 
+
+> out
+
+= σMIX (βL). Then: 
+
+∂S(L)
+
+> out
+
+∂xv
+
+≤ ∂σ MIX (βL)
+
+∂β L
+
+∂β L
+
+∂xv
+
+(def. 1-block LGSM )
+
+≤ ∂σ MIX (βL)
+
+∂β L
+
+∂β L
+
+∂xv
+
+(submultiplicativity )
+
+≤ μMIX 
+
+∂β L
+
+∂xv
+
+(μMIX -regularity of σMIX )
+
+≤ μMIX 
+
+∂σ SSM (αL)
+
+∂xv
+
++ AG
+
+∂σ SSM (αL−1)
+
+∂xv
+
+(def. βL)
+
+≤ μMIX 
+
+ ∂σ SSM (αL)
+
+∂xv
+
++ ∥AG ∥ ∂σ SSM (αL−1)
+
+∂xv
+
+
+
+(triangle ineq. and submult. )
+
+≤ μMIX γ′
+
+> L
+
+X
+
+> k=0
+
+∂S(k)
+
+> in
+
+∂xv
+
++ ∥AG ∥γ′
+
+> L−1
+
+X
+
+> k=0
+
+∂S(k)
+
+> in
+
+∂xv
+
+!
+
+(Lemma C.1 )
+
+≤ γ
+
+> L
+
+X
+
+> k=0
+
+∂S(k)
+
+> in
+
+∂xv
+
++ γ∥AG ∥
+
+> L−1
+
+X
+
+> k=0
+
+∂S(k)
+
+> in
+
+∂xv
+
+(γ := μMIX γ′)
+
+Before extending to a general D-block LGSM, we first analyze the sensitivity of a D-block LGSM without graph mixing layers. That is, a D-fold stack of alternating SSM layers and an FFN σMIX .
+
+Theorem 5.2 (Local Sensitivity for LGSM) . Consider a D-block LGSM without graph mixing layers and of sequence length L, with an SSM defined by system matrices (A, B, C). Denote the input and output features by X, S(L,D ) 
+
+> out
+
+∈ Rn×d,respectively, where xv = ( X)v, :, is the feature vector of vertex v ∈ V . Suppose that the FFN σSSM is μSSM -regular and that 
+
+A is normal with spectral radius ρ(A) ≈ 1. Then, for any vertex v ∈ V :
+
+∂S(L,D )
+
+> out
+
+∂xv
+
+≤ γDLX
+
+> k=0
+
+L − k + D − 1
+
+D − 1
+
+ ∂S(k, 1) 
+
+> in
+
+∂xv
+
+where γ is a constant in ∥B∥, ∥C∥, and μSSM .Proof. Define the shorthand 
+
+G(L, D ) := ∂S(L,D )
+
+> out
+
+∂xv
+
+16 From Message-Passing to Linearized Graph Sequence Models 
+
+By Lemma C.1 and the identity S(k,D ) 
+
+> in
+
+= S(k,D −1)  
+
+> out
+
+, for D > 0 we obtain the recurrence 
+
+G(L, D ) ≤ γ
+
+> L
+
+X
+
+> k=0
+
+G(k, D − 1) (3) where γ = μSSM ∥B∥∥ C∥.
+
+Base cases. If D = 0 we apply no SSM blocks, thus we have S(L, 0)  
+
+> out
+
+= S(L, 1)  
+
+> in
+
+and 
+
+G(L, 0) = ∂S(L, 1) 
+
+> in
+
+∂xv
+
+≤ γ0
+
+> L
+
+X
+
+> k=0
+
+L − k − 1
+
+−1
+
+ ∂S(k, 1) 
+
+> in
+
+∂xv
+
+(4) Let L = 0 and D > 0. By repeatedly applying (3) and then (4) we obtain: 
+
+G(0 , D ) ≤ γD G(0 , 0) ≤ γD
+
+> 0
+
+X
+
+> k=0
+
+0 − k − 1
+
+−1
+
+ ∂S(0 ,1) 
+
+> in
+
+∂xv
+
+= γD
+
+> 0
+
+X
+
+> k=0
+
+0 − k − 1
+
+D − 1
+
+ ∂S(0 ,1) 
+
+> in
+
+∂xv
+
+Inductive step. Let D > 0, L > 0, then: 
+
+G(L, D ) ≤ γ
+
+> L
+
+X
+
+> k=0
+
+G(k, D − 1) (3) 
+
+≤ γ
+
+> L
+
+X
+
+> k=0
+
+γD−1
+
+> k
+
+X
+
+> j=0
+
+k − j + D − 2
+
+D − 2
+
+ ∂S(j, 1) 
+
+> in
+
+∂xv
+
+(IH )
+
+≤ γD X
+
+> 0≤j≤k≤L
+
+k − j + D − 2
+
+D − 2
+
+ ∂S(j, 1) 
+
+> in
+
+∂xv
+
+≤ γDLX
+
+> j=0
+
+∂S(j, 1) 
+
+> in
+
+∂xv
+
+> L
+
+X
+
+> k=j
+
+k − j + D − 2
+
+D − 2
+
+
+
+≤ γDLX
+
+> j=0
+
+∂S(j, 1) 
+
+> in
+
+∂xv
+
+> L−j
+
+X
+
+> k=0
+
+k + D − 2
+
+D − 2
+
+
+
+≤ γDLX
+
+> j=0
+
+∂S(j, 1) 
+
+> in
+
+∂xv
+
+L − j + D − 1
+
+D − 1
+
+
+
+(Hockey-Stick Lemma )
+
+≤ γDLX
+
+> j=0
+
+L − j + D − 1
+
+D − 1
+
+ ∂S(j, 1) 
+
+> in
+
+∂xv
+
+Establishing the claim. 17 From Message-Passing to Linearized Graph Sequence Models 
+
+Finally we generalize the statement to general D-block LGSM. 
+
+Theorem C.2 (Local Sensitivity for entire LGSM) . Consider a D-block LGSM of sequence length L, with an SSM defined by system matrices (A, B, C). Denote the input and output features by X, S(L,D ) 
+
+> out
+
+∈ Rn×d, respectively, where xv = ( X)v, :,is the feature vector of vertex v ∈ V . Suppose that the FFNs σSSM , σ MIX are μSSM - and μMIX -regular, respectively, and that 
+
+A is normal with spectral radius ρ(A) ≈ 1. Then, for any vertex v ∈ V :
+
+∂S(L,D )
+
+> out
+
+∂xv
+
+≤ γDLX
+
+> k=0
+
+∂S(L−k, 1) 
+
+> in
+
+∂xv
+
+> min {k,D }
+
+X
+
+> m=0
+
+k − m + D − 1
+
+D − 1
+
+ Dm
+
+
+
+∥AG ∥m
+
+where γ is a constant in ∥B∥, ∥C∥, μ SSM , and μMIX .Proof. We use G(L, D ) := ∥∂S(L,D ) 
+
+> out
+
+/∂ xv ∥ from earlier. By Theorem 5.1 we have: 
+
+G(L, D ) ≤ γ
+
+> L
+
+X
+
+> k=0
+
+G(k, D − 1) + γ∥AG ∥
+
+> L−1
+
+X
+
+> k=0
+
+G(k, D − 1) (5) 
+
+Base cases. If D = 0 we apply no SSM blocks, thus we have S(L, 0)  
+
+> out
+
+= S(L, 1)  
+
+> in
+
+and 
+
+G(L, 0) = ∂S(L, 1) 
+
+> in
+
+∂xv
+
+≤ γ0
+
+> L
+
+X
+
+> k=0
+
+∂S(L−k, 1) 
+
+> in
+
+∂xv
+
+> min {k, 0}
+
+X
+
+> m=0
+
+k − m − 1
+
+−1
+
+ 0
+
+m
+
+
+
+∥AG ∥m (6) Let L = 0 and D > 0. By repeatedly applying (5) and then (6) we obtain: 
+
+G(0 , D ) ≤ γD G(0 , 0) ≤ γD
+
+> 0
+
+X
+
+> k=0
+
+∂S(0 −k, 1) 
+
+> in
+
+∂xv
+
+> min {k,D }
+
+X
+
+> m=0
+
+k − m + D − 1
+
+D − 1
+
+ Dm
+
+
+
+∥AG ∥m
+
+Inductive step. Let D > 0, L > 0, then: 
+
+G(L, D ) ≤ γ
+
+> L
+
+X
+
+> k=0
+
+G(k, D − 1) + γ∥AG ∥
+
+> L−1
+
+X
+
+> k=0
+
+G(k, D − 1) (5) 
+
+≤ γDLX
+
+> k=0
+> k
+
+X
+
+> j=0
+
+∂S(k−j, 1) 
+
+> in
+
+∂xv
+
+> min {j,D −1}
+
+X
+
+> m=0
+
+j − m + D − 2
+
+D − 2
+
+ D − 1
+
+m
+
+
+
+∥AG ∥m
+
++ γD ∥AG ∥
+
+> L−1
+
+X
+
+> k=0
+> k
+
+X
+
+> j=0
+
+∂S(k−j, 1) 
+
+> in
+
+∂xv
+
+> min {j,D −1}
+
+X
+
+> m=0
+
+j − m + D − 2
+
+D − 2
+
+ D − 1
+
+m
+
+
+
+∥AG ∥m (IH )= γDLX
+
+> k=0
+> k
+
+X
+
+> j=0
+
+∂S(k−j, 1) 
+
+> in
+
+∂xv
+
+> min {j,D −1}
+
+X
+
+> m=0
+
+j − m + D − 2
+
+D − 2
+
+ D − 1
+
+m
+
+
+
+∥AG ∥m
+
+18 From Message-Passing to Linearized Graph Sequence Models 
+
++ γDLX
+
+> k=1
+> k−1
+
+X
+
+> j=0
+
+∂S(k−1−j, 1) 
+
+> in
+
+∂xv
+
+> min {j,D −1}
+
+X
+
+> m=0
+
+j − m + D − 2
+
+D − 2
+
+ D − 1
+
+m
+
+
+
+∥AG ∥m+1 (k 7 → k−1) = γDLX
+
+> k=0
+> k
+
+X
+
+> j=0
+
+∂S(k−j, 1) 
+
+> in
+
+∂xv
+
+> min {j,D −1}
+
+X
+
+> m=0
+
+j − m + D − 2
+
+D − 2
+
+ D − 1
+
+m
+
+
+
+∥AG ∥m
+
++ γDLX
+
+> k=1
+> k
+
+X
+
+> j=1
+
+∂S(k−j, 1) 
+
+> in
+
+∂xv
+
+> min {j−1,D −1}
+
+X
+
+> m=0
+
+j −m+D−3
+
+D − 2
+
+ D − 1
+
+m
+
+
+
+∥AG ∥m+1 (j 7 → j −1) = γDLX
+
+> k=0
+> k
+
+X
+
+> j=0
+
+∂S(k−j, 1) 
+
+> in
+
+∂xv
+
+> min {j,D −1}
+
+X
+
+> m=0
+
+j − m + D − 2
+
+D − 2
+
+ D − 1
+
+m
+
+
+
+∥AG ∥m
+
++ γDLX
+
+> k=1
+> k
+
+X
+
+> j=1
+
+∂S(k−j, 1) 
+
+> in
+
+∂xv
+
+> min {j,D }
+
+X
+
+> m=1
+
+j − m + D − 2
+
+D − 2
+
+ D − 1
+
+m − 1
+
+
+
+∥AG ∥m (m 7 → m−1) 
+
+≤ γDLX
+
+> k=0
+> k
+
+X
+
+> j=0
+
+∂S(k−j, 1) 
+
+> in
+
+∂xv
+
+> min {j,D −1}
+
+X
+
+> m=0
+
+j − m + D − 2
+
+D − 2
+
+ D − 1
+
+m
+
+
+
+∥AG ∥m
+
++ γDLX
+
+> k=0
+> k
+
+X
+
+> j=0
+
+∂S(k−j, 1) 
+
+> in
+
+∂xv
+
+> min {j,D }
+
+X
+
+> m=0
+
+j − m + D − 2
+
+D − 2
+
+ D − 1
+
+m − 1
+
+
+
+∥AG ∥m (extend;  D−1
+
+> −1
+
+ = 0) = γDLX
+
+> k=0
+> k
+
+X
+
+> j=0
+
+∂S(k−j, 1) 
+
+> in
+
+∂xv
+
+> min {j,D }
+
+X
+
+> m=0
+
+j −m+D−2
+
+D − 2
+
+  D−1
+
+m
+
+
+
++
+
+D−1
+
+m−1
+
+ 
+
+∥AG ∥m (merge;  D−1
+
+> D
+
+ = 0) = γDLX
+
+> k=0
+> k
+
+X
+
+> j=0
+
+∂S(k−j, 1) 
+
+> in
+
+∂xv
+
+> min {j,D }
+
+X
+
+> m=0
+
+j − m + D − 2
+
+D − 2
+
+ Dm
+
+
+
+∥AG ∥m (Pascal’s identity )= γDLX
+
+> k=0
+
+∂S(L−k, 1) 
+
+> in
+
+∂xv
+
+> min {k,D }
+
+X
+
+> m=0
+
+Dm
+
+
+
+∥AG ∥mk−mX
+
+> s=0
+
+s + D − 2
+
+D − 2
+
+
+
+(re-index; swap sums )= γDLX
+
+> k=0
+
+∂S(L−k, 1) 
+
+> in
+
+∂xv
+
+> min {k,D }
+
+X
+
+> m=0
+
+k−m+D−1
+
+D − 1
+
+ Dm
+
+
+
+∥AG ∥m (Hockey-Stick )
+
+Establishing the claim. 19 From Message-Passing to Linearized Graph Sequence Models 
+
+Remark. We want to comment on the assumptions made in Theorem 5.1, Theorem 5.2, and Theorem C.2. The μSSM -and μMIX -regularity of σSSM and σMIX respectively, are justified since we initialize the σSSM and σMIX FFN with MLPs consisting of dense hidden layers with GELU activations. Since GELU is smooth and Lipschitz on bounded domains, each such MLP has bounded Jacobian norm, ensuring μ-regularity for a finite constant μ > 0 determined by the network weights. The assumption that A is normal with spectral radius ρ(A) ≈ 1 is standard in structured SSM architectures. In practice, 
+
+A is initialized as a diagonal matrix (e.g., via the HiPPO framework), which is trivially normal. The condition ρ(A) ≈ 1
+
+reflects the design choice of placing eigenvalues near the unit circle to enable long-range information propagation without exponential growth or decay of the hidden state across sequence steps. 
+
+## D. Dataset Details 
+
+ECHO (Miglior et al., 2025) (Evaluating Communication over long HOps) is a comprehensive benchmarke designed to eval-uate the long-range modeling capabilities of GNNs. The benchmark is categorized into two collections of datasets 
+
+ECHO-Synth and ECHO-Chem . ECHO-Synth evaluates GNNs on the synthetic graph property prediction tasks 
+
+ECHO-DIAM graph diameter, ECHO-ECC node eccentricity and ECHO-SSSP single-source shortest path. ECHO-Chem 
+
+provides real-world challenges derived from computational chemistry, requiring GNNs to capture non-local atomic interac-tions. The dataset ECHO-Charge is focused on predicting atomic charge distributions while ECHO-Energy is centered around predicting total molecular energy. Statistics for all datasets used are listed in Table 3 and 4. 
+
+Table 3. Summary of ECHO datasets, taken from Miglior et al. (2025). 
+
+Dataset Node Features Edge Features Target 
+
+ECHO-Synth Random scalar, source indicator for sssp None diam , sssp , ecc ECHO-Chem Atomic number, distance from center of mass Bond type, bond length Partial charges, Total energy 
+
+Table 4. Statistics of the ECHO datasets, taken from.                                                                                 
+
+> Dataset # Graphs Avg Nodes Avg Deg. Avg Edges Avg Diam # Node Feat # Edge Feat # Tasks
+> ECHO-Synth 10,080 83.69 ±66 .24 2.53 ±1.19 211.63 ±209 .39 28.50 ±6.92 2None 3
+> line 1,680 75.60 ±27 .32 2.37 ±0.10 90.10 ±33 .89 28.50 ±6.92 2None 3
+> ladder 1,680 56.52 ±13 .82 2.92 ±0.02 82.54 ±20 .72 28.50 ±6.92 2None 3
+> grid 1,680 193.10 ±93 .10 2.95 ±0.12 288.32 ±145 .29 28.50 ±6.92 2None 3
+> tree 1,680 60.42 ±17 .17 1.96 ±0.01 59.42 ±17 .17 28.50 ±6.92 2None 3
+> caterpillar 1,680 34.71 ±7.96 1.94 ±0.02 33.71 ±7.96 28.50 ±6.92 2None 3
+> lobster 1,680 81.79 ±25 .46 1.97 ±0.01 80.79 ±25 .46 28.50 ±6.92 2None 3
+> ECHO-Chem ECHO-Charge 170,367 72.49 ±12 .48 2.09 ±0.04 151.32 ±25 .16 23.54 ±2.54 221
+> ECHO-Energy 196,528 73.73 ±13 .22 2.09 ±0.04 153.84 ±26 .58 23.61 ±2.59 221
+
+## E. Experimental Details 
+
+All models are implemented using PyTorch and PyTorch Geometric (PyG). We use the official Mamba2 (Dao & Gu, 2024) implementation for the SSM backbone. We will release the codebase upon acceptance of the paper. We report the key architectural hyperparameters in Table 8. The Feed-Forward Networks (FFN) throughout the model consist of two-layer MLPs with hidden dimension 4× the input dimension and GeLU activation. We apply LayerNorm after each component (SSM, FFN, Graph Mixing) following standard practice. For graph-level tasks, the graph decoder pools node representations using max, sum, and mean pooling, concatenates these representations, and projects them linearly to the hidden dimension before applying the decoder MLP. For node-level tasks, the decoder operates directly on node representations. We use the AdamW optimizer with no weight decay, and gradient clipping with maximum norm 1.0. All models are trained to minimize log MSE. Following the ECHO benchmark convention, we normalize the labels during training for ECHO-Synth tasks and use original labels for ECHO-Chem tasks. For ECHO-Energy predictions, we report 10 prediction as specified in the ECHO benchmark repository. 20 From Message-Passing to Linearized Graph Sequence Models  
+
+> Table 5. Overview of the used LRIM Graph Benchmark taken from (Mathys et al., 2025)
+
+Dataset σ
+
+easy 
+
+σ
+
+hard Graphs Nodes Edges Avg. Eff. Resistance Avg. Short. Path Diameter LRIM-16 1.5 0.6 10,000 256 512 0.49 8.03 16                     
+
+> Table 6. Statistics of the Peptides LRGB datasets taken from (Dwivedi et al., 2022).
+> Dataset Total Graphs Total Nodes Avg Nodes Mean Deg. Total Edges Avg Edges Avg Short.Path. Avg Diameter
+> Peptides Func 15,535 2,344,859 150.94 2.04 4,773,974 307.30 20.89 ±9.79 56.99 ±28.72 Peptides Struct 15,535 2,344,859 150.94 2.04 4,773,974 307.30 20.89 ±9.79 56.99 ±28.72
+
+Baseline Comparisons. We take the baselines reported by the ECHO benchmark (Miglior et al., 2025): namely A-DGN (Gravina et al., 2022), DREW (Gutteridge et al., 2023), GCN (Kipf & Welling, 2017), GCNII (Chen et al., 2020), GIN (Xu* et al., 2018), GPS (Rampasek et al., 2022), GRIT (Ma et al., 2023), GraphCON (Rusch et al., 2022), PH-DGN (Heilig et al., 2024), SWAN (Gravina et al., 2025). 
+
+E.1. LGSM Component Ablation 
+
+We ablate the impact of key design choices of the LGSM blocks, baseline refers to the best performing methods as reported in Table 8. Recall, that models are trained to minimize logMSE (and MAE is an eval metric). We vary the sequence lengths, number of blocks, graph mixing amongst other components. Further, we ablate replacing the Mamba architectures with as simplified SSM, which consists of learnable matrices A,B,C. The results in Table 7 indicate that both the sequence length and processing depth, but also the graph mixing and role of the SSM are important for the final performances on the ECHO Synth Datasets. 
+
+E.2. Evaluation on LRIM Graph Benchmark 
+
+In order to further evaluate the capabilities of our LGSM method, we evaluate on the LRIM Graph Benchmark (Mathys et al., 2025), a benchmark specifically tailored to the precise assessment of long-range capabilities. We evaluate and report the performance in Table 10, where LGSM performs better than the message-passing baselines and comparable to the computationally more expensive transformer based approaches. Further, we ablate the impact of the information and processing depth, which are central parts of the LGSM design. Figure 6 illustrates that both dimensions contribute towards better performance, however, solely increasing processing depth without also increasing the information depth yields diminishing returns. 
+
+E.3. Evaluation on Peptides Datasets 
+
+We follow the setup from T ¨onshoff et al. (2024): AdamW with cosine scheduling for 250 epochs, decoder head, batch size 200 and ran a small selection of hyperparameters (seq. type, length, num blocks). We did not observe a similar improvement with longer sequences. Instead, on Peptides it seemed to matter most to have choices which implicitly regularize more (shorter sequences, adj) in order to incentivize good generalization. Moreover, we observed consistent (and significant) gaps between train and validation performances which might suggest that regularization is more important for this task compared to the impact of the architecture. 
+
+## F. Empirical Runtime Measurement 
+
+We quantitatively evaluate our method on sparse ER graph (connectivity log n /n) of size 256 for various sequence lengths (layers respectively). Moreover, we provide results for fixed sequence/layers=16 for variously sized sparse ER graphs. We also consider a simple GCN and GPS baseline based on the pyg modules with FFNs. We also provide LGSM baselines with 1,2 blocks as well as the simplified SSM variant (learned A,B,C matrices instead of Mamba). Note that as mentioned in our limitations the empirical efficiency was not our main focus. As such, we recompute the sequences each forward pass and compute row-wise (which requires more memory than columnwise). Therefore, memory grows proportional to the sequence 21 From Message-Passing to Linearized Graph Sequence Models 
+
+Table 7. Model component ablation for LGSM on the ECHO-Synth Datasets. We report both logMSE, which is optimized as a loss during training as well as the mean absolute error. The ablated components are either part of the sequence design (length, normalization) or of the block design. There we also ablate either using a simplified SSM with learnable matrices A,B,C or not using the ssm module at all. All values are reported over 3 seeds and are evaluated on the validation split. 
+
+Variant DIAM SSSP ECC logMSE ↓ MAE ↓ logMSE ↓ MAE ↓ logMSE ↓ MAE ↓
+
+baseline 0.450 ± 0.025 0.829 ± 0.033 -1.405 ± 0.184 0.077 ± 0.013 1.122 ± 0.008 2.381 ± 0.053 
+
+seq length 1 0.943 ± 0.006 1.839 ± 0.065 1.738 ± 0.000 5.970 ± 0.001 1.640 ± 0.000 5.497 ± 0.000 
+
+seq length 5 0.538 ± 0.022 0.855 ± 0.028 1.545 ± 0.000 4.338 ± 0.015 1.573 ± 0.002 5.068 ± 0.011 
+
+seq length 10 0.567 ± 0.076 0.916 ± 0.092 1.231 ± 0.001 2.494 ± 0.019 1.538 ± 0.002 4.848 ± 0.012 
+
+seq length 20 0.462 ± 0.011 0.867 ± 0.023 0.380 ± 0.006 0.601 ± 0.020 1.386 ± 0.018 3.807 ± 0.065 
+
+seq normalization none 0.549 ± 0.041 0.911 ± 0.069 – – 1.201 ± 0.013 2.613 ± 0.023 
+
+seq normalization row – – -0.538 ± 0.073 0.167 ± 0.031 – –num blocks 1 0.430 ± 0.028 0.830 ± 0.029 -0.119 ± 0.094 0.457 ± 0.064 1.191 ± 0.016 2.721 ± 0.071 
+
+num blocks 2 0.429 ± 0.052 0.816 ± 0.072 -0.713 ± 0.161 0.181 ± 0.030 1.155 ± 0.009 2.507 ± 0.028 
+
+use graph mixing False 0.521 ± 0.007 0.928 ± 0.048 -1.224 ± 0.153 0.079 ± 0.009 1.128 ± 0.002 2.423 ± 0.025 
+
+use simple ssm True 0.551 ± 0.105 1.023 ± 0.144 -1.280 ± 0.008 0.075 ± 0.012 1.627 ± 0.000 5.413 ± 0.003 
+
+Table 8. Best LGSM hyperparameter configurations per task on the ECHO benchmark, selected by validation logMSE. 
+
+Task Seq. Type Length Seq. Normalization Hidden Dim Blocks Batch Size Learning Rate ×10 −4 Max Epochs ECHO-Charge NBT 40 row 64 4 32 3 200 ECHO-Diam NBT 40 row 64 4 32 3 200 ECHO-Ecc NBT 40 row 64 4 32 3 200 ECHO-Energy NBT 32 none 64 2 32 3 200 ECHO-Sssp NBT 40 none 64 4 32 3 200 
+
+length and graph size. Measurements are taken over 200 graphs and measured on an RTX 3090 with 24 GB VRAM. In Figure 7 we measure timing and memory requirements for a fixed graph of size 256 for multiple sequence lengths. Similarly, in Figure 8 we report time and memory measurements for a fixed sequence length (or number of layers) of 16 across graphs up to size 8192. 22 From Message-Passing to Linearized Graph Sequence Models 
+
+Table 9. Results for Peptides-func and Peptides-struct averaged over 3 training seeds. Baseline results are taken from (Dwivedi et al., 2022), (Gutteridge et al., 2023) and Eliasof et al. (2025). Note that all MPNN-based methods include structural and positional encoding, whereas ours does not. 
+
+Model Peptides-func Peptides-struct 
+
+AP ↑ MAE ↓
+
+Multi-hop GNNs 
+
+DIGL+MPNN 64.69 ±00 .19 0.3173 ±0.0007 
+
+DIGL+MPNN+LapPE 68.30 ±00 .26 0.2616 ±0.0018 
+
+MixHop-GCN 65.92 ±00 .36 0.2921 ±0.0023 
+
+MixHop-GCN+LapPE 68.43 ±00 .49 0.2614 ±0.0023 
+
+DRew-GCN 69.96 ±00 .76 0.2781 ±0.0028 
+
+DRew-GCN+LapPE 71.50 ±0.44 0.2536 ±0.0015 
+
+DRew-GIN 69.40 ±0.74 0.2799 ±0.0016 
+
+DRew-GIN+LapPE 71.26 ±0.45 0.2606 ±0.0014 
+
+DRew-GatedGCN 67.33 ±0.94 0.2699 ±0.0018 
+
+DRew-GatedGCN+LapPE 69.77 ±0.26 0.2539 ±0.0007 
+
+Transformers 
+
+Transformer+LapPE 63.26 ±1.26 0.2529 ±0.0016 
+
+SAN+LapPE 63.84 ±1.21 0.2683 ±0.0043 
+
+GraphGPS+LapPE 65.35 ±0.41 0.2500 ±0.0005 
+
+Modified and Re-evaluated ‡
+
+GCN 68.60 ±0.50 0.2460 ±0.0007 
+
+GINE 66.21 ±0.67 0.2473 ±0.0017 
+
+GatedGCN 67.65 ±0.47 0.2477 ±0.0009 
+
+DRew-GCN+LapPE 69.45 ±0.21 0.2517 ±0.0011 
+
+GraphGPS+LapPE 65.34 ±0.91 0.2509 ±0.0014 
+
+GCN+ 72.61 ±0.11 0.2421 ±0.0016 
+
+GIN+ 70.59 ±0.89 0.2429 ±0.0019 
+
+GatedGCN+ 70.06 ±0.33 0.2431 ±0.0020 
+
+GNNs 
+
+GRAND 57.89 ±0.62 0.3418 ±0.0015 
+
+GraphCON 60.22 ±0.68 0.2778 ±0.0018 
+
+A-DGN 59.75 ±0.44 0.2874 ±0.0021 
+
+SWAN 67.51 ±0.39 0.2485 ±0.0009 
+
+Graph-Mamba 67.39 ±0.87 0.2478 ±0.0016 
+
+Neural Walker 70.96 ±0.78 0.2463 ±0.0005 
+
+GMN 70.71 ±0.83 0.2473 ±0.0025 
+
+GRAMA GATED GCN 70.49 ±0.51 0.2459 ±0.0020 
+
+Ours 
+
+LGSM (ours) 66.85 ±1.36 0.2470 ±0.0019 
+
+Table 10. Evaluation of LGSM on the LRIM Graph Benchmark. We report both asymptotic runtime which is dependent on if the input sequence is preprocessed or not as well as the performance metric in logMSE. The LGSM uses 8 blocks with sequence length 32 and surpasses the message-passing based baselines while being very close in performance to the computationally more expensive transformer based approaches. 
+
+Preprocessing Computation LRIM-16-hard ↓
+
+GIN - O(L · E) -2.406 ± 0.148 
+
+GatedGCN - O(L · E) -3.919 ± 0.223 
+
+GatedGCN-VN G O(N ) O(L · E + L · N ) -3.756 ± 0.063 
+
+GPS-Base - O(L · N 2) -4.340 ± 0.101 
+
+GPS-RWSE O(k · N 2) O(L · N 2) -4.345 ± 0.065 
+
+GPS-LapPE O(k2 · E) O(L · N 2) -4.248 ± 0.110 
+
+LGSM O(L · E)† or O(1) ‡ O(D · L · E) -4.284 ± 0.133 
+
+23 From Message-Passing to Linearized Graph Sequence Models 1 2 4 8
+
+Number of Blocks 
+
+> 124816 24 32
+> Sequence Length
+
+1.336 1.336 1.336 1.336 
+
+0.633 0.633 0.633 0.633 
+
+-0.423 -0.440 -0.439 -0.435 
+
+-1.582 -1.658 -1.664 -1.647 
+
+-2.259 -3.110 -3.506 -3.639 
+
+-2.235 -3.213 -3.394 -3.910 
+
+-2.242 -3.234 -3.549 -4.225 4
+
+3
+
+2
+
+1
+
+0
+
+1
+
+> best_val/logMSE
+
+Figure 6. Ablation of the impact of scaling either information depth or processing depth with LGSM evaluated on the LRIM Graph Benchmark. We see that increasing either dimension has a positive effect, while solely increasing processing depth without incorporating additional information yields diminishing returns. 
+
+Figure 7. Measurements for varying number of layers on ER graphs of size 256. LGSM memory grows roughly linearly with L. Memory use is clearly driven by sequence length rather than number of blocks. The timing of LGSM stays almost constant over a range of small to medium graphs. For large graphs, the forward pass time of GPS blows up the most due to global attention, while LGSM stays between GCN and GPS. 
+
+24 From Message-Passing to Linearized Graph Sequence Models 
+
+Figure 8. Measurements for fixed number of layers (16) across multiple graph sizes. The timing of LGSM stays almost constant over a range of small to medium graphs. For large graphs, the forward pass time of GPS blows up the most due to global attention, while LGSM stays between GCN and GPS. LGSM memory use increases steadily with graph size, scaling linearly and better than GPS for large graphs. 
+
+25 From Message-Passing to Linearized Graph Sequence Models 
+
+## G. Sequence Extraction 
+
+We consider two different sequence extraction mechanisms. Let ˜AG = D− 12 
+
+> G
+
+AG D− 12 
+
+> G
+
+be the normalized adjacency matrix, and let BG be the non-backtracking matrix as defined in Definition 6.1. Depending on the choice of matrix, the kth sequence element is given by S(k) = ˜Ak 
+
+> G
+
+X and S(k) = B(k) 
+
+> G
+
+X, respectively. We analyze the influence of different nodes in the sequence extraction. The influence of node w on the kth sequence element of v is defined as 
+
+Iv,k (w) = eT
+
+"
+
+∂s(k)
+
+> v
+
+∂xw
+
+#
+
+e
+
+. X
+
+> u∈V
+
+eT
+
+"
+
+∂s(k)
+
+> v
+
+∂xu
+
+#
+
+e
+
+!
+
+(7) where e is the all ones vector. Note that this definition is similar to the definition of influence distributions in (Xu et al., 2018), which analyzes influence distribution in a GNN, whereas we focus on the sequence extraction part. 
+
+Proposition G.1. Let Z(k) be either B(k) 
+
+> G
+
+or ˜Ak 
+
+> G
+
+. The influence of node w on the kth sequence element of v is given by 
+
+Iv,k (w) = Z(k) 
+
+> vw
+
+/ P 
+
+> u∈V
+
+Z(k) 
+
+> vu
+
+.Proof. Since feature dimensions are independent, we have 
+
+"
+
+∂(s(k) 
+
+> v
+
+)i
+
+∂(xw)j
+
+#
+
+=
+
+(
+
+Z(k) 
+
+> vw
+
+i = j
+
+0 i̸ = j
+
+Hence eT
+
+h ∂s(k)
+
+> v
+> ∂xw
+
+i
+
+e = d · Z(k) 
+
+> vw
+
+. After normalizing, Iv,k (w) = Z(k) 
+
+> vw
+
+/ P 
+
+> u∈V
+
+Z(k)
+
+> vu
+
+We show that there can be an exponential difference between the influence of a node w on v, depending on which matrix is used for sequence extraction. 
+
+Theorem 6.2 (Relative Influence of NBT) . Let c < 1 and let IAv,k (w) (resp. IBv,k (w)) denote the influence of w on the kth sequence element of v captured using the adjacency sequence A (resp. non-backtracking B). There exists an infinite family of graphs G where IAv,k (w) decays exponentially faster with distance k compared to IBv,k (w):
+
+IAv,k (w)
+
+IBv,k (w) ≤ ck−1,
+
+Lemma G.2. Suppose v, w satisfy dist( v, w ) = k and the radius-k neighborhood of v is a d-regular tree. Let IAv,k (w) (resp. 
+
+IBv,k (w)) denote the influence of w on the kth sequence element at v induced by adjacency extraction S(k) = ˜Ak 
+
+> G
+
+X (resp. non-backtracking extraction S(k) = B(k) 
+
+> G
+
+X). Then 
+
+IAv,k (w)
+
+IBv,k (w) =
+
+ d − 1
+
+d
+
+k−1
+
+,
+
+and in particular IAv,k (w) is exponentially smaller than IBv,k (w) in k.Proof. Since dist (v, w ) = k, there is exactly one path from v to w, which means (Ak 
+
+> G
+
+)vw = 1 = ( B(k) 
+
+> G
+
+)vw . We have 
+
+( ˜Ak 
+
+> G
+
+)vw = d−k, since for d-regular graphs, ˜Ak 
+
+> G
+
+= d−kAk 
+
+> G
+
+.To compute the influence distributions, we need to compute the denominators. In a d-regular graph, the number of different walks of length k from v is dk, which is also given by P 
+
+> u∈V
+
+(Ak 
+
+> G
+
+)vu . Hence, P 
+
+> u∈V
+
+( ˜Ak 
+
+> G
+
+)vu = dk/d k = 1 .For the non-backtracking matrix, normalization is done by P 
+
+> u∈V
+
+(B(k) 
+
+> G
+
+)vu = d · (d − 1) k−1, since a walk from node v can first use any of d edges and then only has d − 1 options for the next steps. Putting these together, we have 
+
+IAv,k (w)
+
+IBv,k (w) = d−k
+
+1/d (d − 1) k−1 =
+
+ d − 1
+
+d
+
+k−1
+
+26

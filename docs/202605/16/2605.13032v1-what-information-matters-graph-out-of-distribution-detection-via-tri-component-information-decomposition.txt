@@ -1,0 +1,1544 @@
+Title: What Information Matters? Graph Out-of-Distribution Detection via Tri-Component Information Decomposition
+
+URL Source: https://arxiv.org/pdf/2605.13032v1
+
+Published Time: Thu, 14 May 2026 00:47:00 GMT
+
+Number of Pages: 28
+
+Markdown Content:
+# What Information Matters? Graph Out-of-Distribution Detection via Tri-Component Information Decomposition 
+
+Danny Wang 1 Ruihong Qiu 1 Zi Huang 1
+
+Abstract 
+
+Graph neural networks are widely used for node classification, but they remain vulnerable to out-of-distribution (OOD) shifts in node features and graph structure. Prior work established that meth-ods trained with standard supervised learning (SL) objectives tend to capture spurious signals from either features and/or structure, leaving the model fragile under distributional changes. To address this, we propose T IDE , a novel and effective Tri-Component I nformation De composition 
+
+framework that explicitly decomposes informa-tion into feature-specific, structure-specific and joint components. T IDE aims to preserve only 
+
+the label-relevant part of the joint information while filtering out spurious feature- and structure-specific information, thereby enhancing the sep-aration between in-distribution (ID) and OOD nodes. Beyond the framework, we provide theo-retical and empirical analyses showing that an information bottleneck objective is preferable to standard SL for graph OOD detection, with higher ID confidence and a greater entropy gap between ID and OOD data. Extensive experi-ments across seven datasets confirm the efficacy of T IDE , achieving up to a 34% improvement in FPR95 over strong baselines while maintaining competitive ID accuracy. Code is available at §.
+
+1. Introduction 
+
+Graph neural networks (GNNs) have become a dominant approach for node classification across real-world domains; however, they remain vulnerable to out-of-distribution (OOD) shifts in node features and/or graph structure, limit-ing reliable deployment in real-world applications (Li et al., 2022a; Wu et al., 2023b; Gui et al., 2022; Yang et al., 2022; 
+
+> 1
+
+The University of Queensland, Australia. Correspondence to: Danny Wang <danny.wang@uq.edu.au >.
+
+Proceedings of the 43 rd International Conference on Machine Learning , Seoul, South Korea. PMLR 306, 2026. Copyright 2026 by the author(s). 𝐀 𝐗                
+
+> 𝐘
+> 𝑰 (𝐗 ;𝐘 |𝐙 )𝑰 (𝐀 ;𝐘 |𝐙 )
+> (Node Features) (Graph Structure)
+> (Label)
+> Feature -specific
+> Label Info.
+> 𝑰 (𝐙 ;𝐘 )
+> Structure -specific
+> Label Info.
+> Joint -Input
+> Label Info.
+> Irrelevant Info.
+> 𝐀 𝐗
+> 𝐘
+> (Node Features) (Graph Structure)
+> (Label)
+> GIB TIDE
+> SL repr . Z
+> TIDE repr . Z
+> GIB repr . Z
+> +Overfitting
+
+Figure 1. Comparison of information captured by standard supervised learning (SL), GIB (Wu et al., 2020), and T IDE . The dashed red circle shows that SL mixes label-relevant and irrelevant feature and structure signals, causing spurious correlations that make OOD nodes appear ID. The gridded region indicates that GIB suppresses label-irrelevant noise but still keeps input-specific spurious cues. Contrary, T IDE (solid red triangle) isolates the joint label-relevant information by decomposing spurious feature-/structure-specific components, thereby improving OOD detection. 
+
+Shen et al., 2024; Giuffr `e & Shung, 2023). In biomedical graphs, node features like biomarkers may correlate with health outcomes in one hospital but shift in another, de-grading performance despite stable patient-symptom links (feature shift ). In e-commerce graphs, co-purchase links can change as shopping patterns evolve, even when product attributes remain stable ( structural shift ). In social net-works, new communities may alter both posting behaviour and friendship links, causing simultaneous changes in fea-tures and structure signals ( joint shift ) (Wang et al., 2025b). Given these challenges, OOD detection is critical for identifying nodes beyond the in-distribution (ID) training data (Lang et al., 2023; Zhou et al., 2022; Bazhenov et al., 2022). Existing graph OOD methods typically handle shifts by learning invariant node representations, using topology-aware metrics to capture node irregularities (Li et al., 2022b; Song & Wang, 2022; Bao et al., 2024), or applying post-hoc scoring functions to separate ID from OOD nodes (Wang et al., 2021; Liu et al., 2020; Wu et al., 2023b; Hendrycks & Gimpel, 2017; Hendrycks et al., 2022; Lee et al., 2018b). Others incorporate contrastive learning or OOD exposure when auxiliary OOD data is available (Hendrycks et al., 2019; Yang et al., 2024b). While effective, many existing approaches rely on a mixed representation of a graph’s features and structure , with-out explicitly modelling the separate contributions of fea-1
+
+> arXiv:2605.13032v1 [cs.LG] 13 May 2026 TIDE : Graph Out-of-Distribution Detection via Tri-Component Information Decomposition
+
+tures X and structure A (Wu et al., 2023b). This mixed representation corresponds to the node embeddings Z =
+
+f (X, A) learned by a GNN f under a standard supervised-learning (SL) objective. As shown in Figure 1, this rep-resentation (red dotted circle) mixes label-irrelevant infor-mation (shaded area) with three label-related signals: the feature-specific signal that depends only on X, the structure-specific signal from A, and the joint-input signal arising from features-structure interactions. Although all three sig-nals can be predictive in-distribution, prior work has shown that feature-only and structure-only signals often reflect spurious correlations with the label, which become prob-lematic under distribution shifts (Chen et al., 2023; 2024; Fan et al., 2024). For example, under a feature shift with ID-like structure (XOOD , AID ), a model that exploits spuri-ous structure-label correlations may confidently treat OOD nodes as ID. Similarly, under a structure shift with ID-like features (XID , AOOD ), reliance on feature-only correlations can again yield overconfident predictions that evade de-tection. In contrast, the joint-input signal is more shift-indicative because mismatches between features and struc-ture are exposed during encoding. Thus, OOD detection can fail under SL when the model relies on spurious single-input correlations (from X or A) rather than on joint-input information. A typical example with distribution visuali-sations is shown in Figure 2. When the dataset contains samples with ID features but OOD structure (XID , AOOD ),a standard SL-trained OOD detector (top left) fails to clearly separate OOD data from ID. Yet an expected behaviour from a successful detector should be a well separation given the structural shift as in bottom left or top right in Figure 2. Ideally, to handle real-world distribution shifts, an effective graph OOD detector should prioritise the label-relevant joint-input information while filtering out feature- and structure-specific spurious correlations . Figure 1 illus-trates this motivation: SL mixes feature-only, structure-only, and joint signals together with label-irrelevant infor-mation (red dotted circle); in contrast, compressing the learned representation toward the triangle-like overlap (red solid triangle) preserves primarily joint-input signals, which improves ID-OOD separation. To achieve this, we pro-pose T IDE , a Tri-Component Information Decomposition framework. Unlike prior OOD detection methods that treat feature and structure information as a single unified sig-nal, T IDE guides learning toward the desired joint-input re-gion by explicitly decomposing predictive label information 
+
+I(X, A; Y) into: feature-specific information I(X; Y|Z),structure-specific information I(A; Y|Z), and joint-input information I(Z; Y). T IDE preserves the joint-input signal while suppressing individual-input components (indicated by the left and right arrows →). Moreover, we employ an information bottleneck (IB) objective to filter out label-irrelevant noise (indicated by the upward arrow ↑), pro-           
+
+> (a) Standard SL Detector (b) Joint Cls. Network
+> (c) Struc. Network (d) Feat. Network
+> Figure 2. ID-OOD representation distributions for standard SL trained detector and T IDE ’s joint classification (Cls.), structure (Struc.) and feature (Feat.) networks on Cora-Structure with a structure shift and ID-like features (XID ,AOOD ).
+
+ducing a compact and shift-indicative representation. We provide theoretical insights showing that, compared to SL, IB increases ID confidence and improves ID-OOD separa-tion for logit-based detection. Thus, our contributions are: 1. Methodological: We propose TIDE , a novel tri-component information decomposition framework for graph OOD detection that decomposes predictive informa-tion into feature-specific , structure-specific , and joint 
+
+components, and introduces novel regularisers to suppress label-irrelevant and spurious correlations. 2. Theoretical: We show that IB increases ID confidence and widens the entropy gap between ID and OOD relative to standard SL, improving logit-based OOD detection. 3. Empirical: On seven real-world and synthetic datasets, TIDE achieves up to 34% improvement in FPR95 over baselines while maintaining competitive ID accuracy. 
+
+2. Related Work 
+
+Graph OOD detection builds on several lines of research. 
+
+1) Scoring-based methods rely on ID data to design OOD scores (Lee et al., 2018a; Koo et al., 2024; Ding & Shi, 2023; Ma et al., 2023; Liu et al., 2023; Hendrycks & Gim-pel, 2017). 2) OOD exposure approaches incorporate auxiliary OOD data during training for improved detec-tion (Hendrycks et al., 2019; Liu et al., 2020; Park et al., 2023; Zhu et al., 2023; Yang et al., 2024b; Bao et al., 2024). 
+
+3) IB principle has been applied to image and graph rep-resentation learning (Wu et al., 2020; Alemi et al., 2017; Tishby et al., 2000), but its role in OOD detection has mainly been studied in Euclidean domains (Zhao & Cao, 2023; Li et al., 2023b; Wu & Deng, 2024). Prior work analysed overconfidence only under the standard supervised objec-tive for ID ( max I(Z; Y)) (Hu et al., 2024), whereas our 
+
+theoretical contribution (Sec. 5) characterises how the full IB objective improves ID confidence and logit-based OOD 2TIDE : Graph Out-of-Distribution Detection via Tri-Component Information Decomposition 
+
+detection – a gap unaddressed in earlier studies (Hu et al., 2024; Alemi et al., 2018). 4) Graph-specific methods in-clude GNNS AFE /++ with propagation-based detection (Wu et al., 2023b), NODES AFE /++ with constrained energy scores (Yang et al., 2024b), DeGEM with multi-hop energy-based modelling for heterophilic graphs (Chen et al., 2025), and GOLD with pseudo-OOD embedding synthesis (Wang et al., 2025a). Detailed review is in Appendix H. 
+
+3. Preliminary 
+
+Node Classification and Graph Representation. For node classification, a graph is represented as G = ( X, A), where 
+
+X ∈ Rn×d is the node feature matrix and A ∈ Rn×n is the adjacency matrix, with number of nodes n and feature dimension d. Given C classes, each node i has a label 
+
+yi ∈ { 1, 2, . . . , C }. In this paper, we consider two tasks: 
+
+Task 1: In-distribution Classification. Given test nodes from the same distribution as training ( Ptrain (X, A) = 
+
+Ptest (X, A) and Ptrain (y|X, A) = Ptest (y|X, A)), the goal is to train an L-layer GNN to predict node labels ˆy ∈
+
+Rn (refer to Appendix D for further details on GNN): 
+
+ˆy = Softmax (GNN (X, A)) .
+
+Task 2: Out-of-distribution Detection. Here, the ob-jective is to identify test nodes from a different distribu-tion ( Ptrain (X, A)̸ = Ptest (X, A) or Ptrain (y|X, A)̸ =
+
+Ptest (y|X, A)). This is formulated by an OOD detector F
+
+with scoring function S and threshold τ :
+
+F (x, A; GNN ) = 
+
+(
+
+OOD , S(x, A; GNN ) ≥ τ, 
+
+ID , S(x, A; GNN ) < τ. (1) Extended definitions for structure, feature, joint, and label shifts are in Appendix I (Gui et al., 2022). 
+
+Energy-Based OOD Detection. The energy score is an effective scoring function for distinguishing OOD from ID samples (Liu et al., 2020). For a node i, the energy score is: 
+
+S(xi, A; GNN ) = ei = − log XC−1 
+
+> c=0
+
+exp( ℓi,c ), (2) where ei ∈ R indicates the energy score, ℓi ∈ RC are the logits from GNN (X, A). GNNS AFE (Wu et al., 2023b) adapts this to graphs via energy propagation: 
+
+e(k) = αe(k−1) + (1 − α)D−1Ae (k−1) , (3) where α controls propagation and D is the degree matrix. For OOD exposure, (Liu et al., 2020) further introduces energy regularisation to separate ID and OOD scores with thresholds tID and tOOD :
+
+max LEReg , where LEReg = Ei∼PID [max(0 , t ID − ei)] 2
+
++ Ej∼POOD [max(0 , e j − tOOD )] 2 .
+
+(4) 
+
+4. Method 
+
+Motivation. Graph data is inherently multi-modal with node features X and graph structure A. However, the typical SL objective does not distinguish whether predictive signals arise jointly from (X, A) or from individual inputs. Shown in Figure 1, this mixing of information (dotted circle) allows SL-trained models to rely on feature- or structure-specific spurious correlations that may be predictive under ID but misleading under shifts (Li et al., 2023a). Thus, our aim is to learn the desired label-relevant joint signal while filtering out the label-irrelevant and spurious feature-/structure-only cues, as shown in Figure 1’s solid triangle region. In light of this, we propose T IDE , a novel graph-tailored tri-component decomposition that separates label-relevant in-formation into joint, feature-specific, and structure-specific components (Figure 3). The key idea is for the joint repre-sentation Z to capture stable feature-structure interactions, while auxiliary networks isolate spurious feature-only V
+
+and structure-only Q signals. In the following sections, we present our novel tri-component information decom-position paradigm (Section 4.1) and propose the TIDE 
+
+framework (Section 4.2) for practical optimisation .
+
+4.1. Information Based Decomposition Paradigm 
+
+To begin, we formalise the relationship between inputs, encoded representation, and labels as follows. 
+
+Proposition 4.1. Given a representation Z encoded from inputs (X, A) by a network f parametrised by θ, and is max-imised for predicting label Y, we have I(Z; Y|X, A) = 0 
+
+and I(X, A; Y) = I(X, A, Z; Y).
+
+Here, I(X, A; Y) represents the maximum information that we have about the prediction of Y given inputs (X, A).Proposition 4.1 thus states that Z cannot contain more in-formation about Y than is already present in (X, A). The proof is in Appendix C.1. This leads to the decomposition: 
+
+I(X, A; Y) = I(X, A, Z; Y) Chain rule for mutual information 
+
+= I(Z; Y) + I(X, A; Y|Z)
+
+| {z }
+
+> residual
+
+,
+
+(5) where the last term captures label information not encoded by Z. To isolate input-specific signals, this residual in Eq. 5 is decomposed into feature and structure components. 
+
+I(X, A; Y) = I(Z; Y) + I(X; Y|Z) + I(A; Y|Z, X)
+
+| {z }
+
+> residual
+
+.
+
+(6) To effectively decouple X and A, we enforce a conditional independence constraint A ⊥⊥ X | Z, which is not a restric-tive dataset assumption but a modelling objective. More discussions is provided in Sec 4.2. This constraint guides Z
+
+to retain all label-relevant joint information while reducing residual dependence between X and A:
+
+p(X, A|Z) = p(X|Z)p(A|Z). (7) 3TIDE : Graph Out-of-Distribution Detection via Tri-Component Information Decomposition Labelled Nodes  
+
+> Unlabelled Nodes
+
+Input Graph              
+
+> GNN Classifier N etwork
+> Decoder
+> 𝜇
+> 𝜎
+> +
+> Z
+> 𝐀
+> 𝐗
+> 𝐘
+> 𝐙
+> 𝑰 (𝐗 ;𝐘 |𝐙 )
+> 𝑰 (𝐀 ;𝐘 |𝐙 )
+> 𝑰 (𝐙 ;𝐘 )
+> Feature
+> Network
+> Structure
+> Network
+> 𝒎𝒂 𝒙 𝛉 𝐕 𝐈 𝐁 𝐕 −𝐏𝐌 𝐈 𝐕 ;𝐙 ,𝐐
+> 𝒎𝒂 𝒙 𝛉 𝐐 𝐈 𝐁 𝐐 −𝐏𝐌 𝐈 𝐐 ;𝐙 ,𝐕
+> 𝒎𝒂 𝒙 𝛉 𝐙 𝐈 𝐁 𝐙 −𝐏𝐌 𝐈 𝐙 ;𝐕 ,𝐐
+> −𝐂𝐈𝐧 𝐝 𝐗 ;𝐀 |𝐙
+> V
+> Q
+> (X, A)
+> …
+> Encoder
+> 𝜇
+> 𝜎
+> +
+> 𝜇
+> 𝜎
+> +
+
+Figure 3. Framework of T IDE : an information decomposition approach that preserves joint label-relevant information in Z while suppressing spurious feature-only ( V) and structure-only ( Q) signals. 
+
+By Eq. 6, the mutual information I(X, A; Y) thus becomes: 
+
+I(X, A; Y) = I(Z; Y)
+
+| {z }
+
+> joint
+
++ I(X; Y|Z)
+
+| {z }
+
+> feature
+
++ I(A; Y|Z)
+
+| {z }
+
+> structural
+
+. (8) This illustrates our tri-component information decomposi-tion paradigm in Figure 1. By separating label information into feature, structure, and joint components, we obtain a compact, robust joint representation Z for predicting Y,free of spurious correlations from individual inputs. 
+
+4.2. T IDE Framework 
+
+The decomposition described in Eq. 8 motivates the design of T IDE for OOD detection. Instead of a single represen-tation, T IDE employs three dedicated modules (Figure 3): (1) a joint encoder Z = f (X, A), which serves as the primary encoder network for classification and OOD detection by capturing joint-input label-relevant informa-tion between X, A and Y. By focusing on the joint-input correlations, the model becomes more sensitive to shifts, making OOD cases (e.g., (XOOD , AID )) more distinguish-able from ID; (2) a feature-specific network V = gX (X);and (3) a structure-specific network Q = gA(A), which isolate residual feature-only ( X) and structure-only ( A) sig-nals, respectively. By separating these components, T IDE 
+
+reduces spurious single-input correlations and improves de-tection of feature- and structure-driven distribution shifts. Given the three networks, the tri-component decomposition paradigm in Eq. 8 can be realised as: 
+
+I(X, A; Y) ≈ I(Z; Y)
+
+| {z }
+
+> joint
+
++ I(V; Y)
+
+| {z }
+
+> feature
+
++ I(Q; Y)
+
+| {z }
+
+> structural
+
+. (9) 
+
+Summary: This construction allows Z to learn the joint-input information useful for classification and OOD detec-tion, while V and Q isolate feature- and structure-specific signals that may encode misleading spurious correlations, leading to clearer ID-OOD separation in Z. A demonstra-tion of this design with different behaviours from these networks is presented in Figure 2. 
+
+Principled Regularisers. To ensure a meaningful decom-position that separates joint, label-relevant signals in Z from spurious feature- and structure-specific correlations captured by V and Q, T IDE introduces two principled regularisers: a 
+
+conditional independence constraint (Eq. 7) and a pairwise mutual information minimisation constraint. Together, these regularisers realise the theoretical decomposition in Eq. 8 under the three-network design in Eq. 9. 
+
+1) Conditional independence regulariser . Its role is to encourage Z to capture meaningful feature-structure interac-tions, treating any remaining dependence as spurious. This realises the independence constraint in Eq. 7, defined as: 
+
+min LCInd X,A,Z , where LCInd X,A,Z = I(A; X|Z). (10) This is not a dataset assumption that features and structure are independent. Instead, it is an optimisation regulariser that serves as an inductive bias: once Z captures the label-relevant joint signal needed for OOD detection, any re-maining dependence between X and A is treated as spu-rious , encouraging I(X; A|Z) → 0. In practice, this cor-responds to approximating p(X, A|Z) ≈ p(X|Z)p(A|Z).This design reflects realistic OOD situations: for example in social graphs, user attributes like name may remain sta-ble while connectivity evolves, whereas in fraud detection, transaction features may change while the network structure is preserved. Once joint semantics are captured in Z, isolat-ing residual feature- and structure-only signals is therefore essential, as these spurious cues can mislead OOD detection. 
+
+2) Pairwise mutual information minimisation . Intuitively, since the three networks in Eq. 9 are designed to capture different input information, we need to prevent them from redundantly encoding the same or overlapping information. Thus, we penalise pairwise overlaps among the three learned representations by minimising their mutual information: 
+
+min LPMI Z,V,Q , where 
+
+LPMI Z,V,Q = α1I(Z; V) + α2I(Z; Q)+ α3I(V; Q),
+
+(11) where α1,2,3 are scalar weights. Minimising this loss keeps 
+
+Z focused on the desired joint signal, while V and Q remain disentangled and feature-/structure-specific respectively. 
+
+Information bottleneck (IB) objective. To unify the encod-ing objective with the proposed regularisation, we train all encoders under an IB backbone. Each of the joint, feature-specific, and structure-specific encoders is optimised to keep 4TIDE : Graph Out-of-Distribution Detection via Tri-Component Information Decomposition 
+
+label-relevant information while reducing label-irrelevant noise that blurs the ID-OOD boundary (details on IB are in Appendix E). This aligns with our decomposition (Eq. 8, Eq. 9): Z captures the joint-input label information, while 
+
+V and Q capture the residual feature- and structure-specific components. By reducing spurious input correlations, IB strengthens OOD detection over standard SL, with theoreti-cal analysis detailed in Section 5, Proposition 5.3. IB Z = max I(Z; Y) − βZI(X, A; Z)
+
+IB V = max I(V; Y) − βVI(X; V),
+
+IB Q = max I(Q; Y) − βQI(A; Q)max LIB Z;V;Q , where LIB Z;V;Q = IB Z + IB V + IB Q,
+
+(12) 
+
+Final Objective. The final T IDE objective combines these terms and regularisers to realise the objective in Eq. 9. 
+
+max  
+
+> θZ,θ V,θ Q
+
+LTIDE Z;V;Q =max  
+
+> θZ,θ V,θ Q
+
+LIB Z;V;Q − λCInd LCInd X,A,Z − L PMI Z,V,Q , (13) where λCInd is a loss coefficient and the scale weight for 
+
+LPMI is handled by α1,2,3 in Eq. 11. 
+
+We highlight that the final objective components are complementary rather than conflicting. The IB terms encourage each network to retain label-relevant information from its own inputs while discarding label-irrelevant noise. The PMI regulariser does not suppress task-relevant content; instead, it penalises redundant encoding of the same infor-mation, regulating where predictive information is learned. Thus, shared label-relevant feature-structure interactions are captured in Z, while V and Q encode the remaining com-plementary signals. Moreover, the compression term for Z
+
+can be rewritten as (1 − βZ)I(Z; Y) − βZI(X, A; Z | Y),which for a moderate βZ, preserves joint information that contributes to prediction rather than eliminating it. LCInd is then applied to suppress residual feature-structure correla-tions that are not explained by Z. Together, this formulation ensures Z provides a stable classification and OOD detec-tion backbone, while V and Q act only as training regularis-ers, guiding disentanglement without affecting inference. 
+
+4.3. Practical Implementation and Inference 
+
+We note that direct computation of mutual information in the final objective (Eq. 13) is intractable , so we adopt standard variational approximations. IB terms are estimated via VIB (Alemi et al., 2017), while reconstruction loss and CLUB (Cheng et al., 2020) are used for the conditional in-dependence and PMI regularisers. Appendix K discusses alternative MI estimators. Due to the page limit, and to emphasise our primary contribution , the detailed discus-sion on obtaining the tractable objective is instead pro-vided in Appendix F, and a neural network parameter-isation of T IDE is given in Appendix G. Each encoder is 
+
+Algorithm 1 TIDE Framework 
+
+Input: ID graph G = (X, A), randomly initialised GNN classifier ( GNN CLS-Z), MLP feature network ( MLP Feat-V), structure network ( GNN Struct-Q) with pa-rameters θZ, θ V, θ Q respectively, loss coefficients α1, α2,
+
+α3, λCInd .
+
+Output: Optimised GNN CLS-Z.
+
+while train do 
+
+Update: 
+
+1. Minimising −L VIB Z;V;Q Eq. 38 
+
+GNN CLS-Z ← − VIB Z
+
+MLP Feat-V ← − VIB V
+
+GNN Struct-Q ← − VIB Q
+
+2. Minimising LVCIND X,A,Z Eq. 39 
+
+GNN CLS-Z ← λCInd LVCIND X,A,Z
+
+3. Minimising LVPMI Z;V;Q Eq. 41 
+
+GNN CLS-Z ← α1IVCLUB Z;V + α2IVCLUB Z;Q
+
+MLP Feat-V ← α1IVCLUB Z;V + α3IVCLUB V;Q
+
+GNN Struct-Q ← α2IVCLUB Z;Q + α3IVCLUB V;Q
+
+end while Algorithm 2 TIDE Inference 
+
+1: Input: Test graph G = ( X, A), optimised GNN classi-fier (GNN CLS-Z) with parameter θZ.
+
+2: Output: Predicted labels and energy scores. 
+
+3: 1. Inference: Obtain logits 
+
+4: ℓ ← GNN CLS-Z(G)
+
+5: 2. Score calculation 
+
+6: Energy: e ← Eq. 2, 3 using ℓ.
+
+7: Prediction: ˆY ← Softmax (ℓ).trained only with losses corresponding to its intended infor-mation component: the Z network is optimised by the IB Z
+
+term and regularisers to capture joint-input signals, whereas the V and Q networks are trained with their own IB ob-jectives and pairwise MI penalties to isolate feature- and structure-specific signals. Without loss of generality, in the following sections, we refer to the mutual information and T IDE objective as their tractable variational forms (i.e., 
+
+LVIB , LVCInd , LVPMI ).Algorithm 1 outlines the full optimisa-tion loop, including the forward pass through all modules, computation of VIB, CLUB, and reconstruction terms, and joint gradient updates for all parameters of T IDE . At in-ference time (Algorithm. 2), only the GNN classifier for 
+
+Z will be used for OOD detection with the energy score in Eq. 3 derived from prediction logits. Auxiliary networks 
+
+V and Q act solely as training-time regularisers and do not participate in inference. 
+
+5. How Does IB Benefit Graph OOD Detection 
+
+Building on our novel decomposition framework, we fur-ther demonstrate how IB benefits graph OOD detection over 5TIDE : Graph Out-of-Distribution Detection via Tri-Component Information Decomposition 
+
+standard SL. Unlike SL ( max I(Z; Y)), which rewards any predictive correlation, IB retains only label-supporting infor-mation, yielding two key benefits : (i) sharper ID prediction confidence and (ii) a larger ID-OOD entropy gap, which 
+
+directly improves logit-based OOD detection .
+
+Lemma 5.1 (Target-Irrelevant Information and ID Predic-tion Confidence) . Minimising the conditional mutual infor-mation I(X, A; Z | Y) reduces conditional entropy H(Z |
+
+Y), yielding a more concentrated posterior P (Y | Z).
+
+Lemma 5.1 shows that when the representation Z discards target-irrelevant information, the uncertainty of Z condi-tioned on Y decreases. In other words, the representation becomes more predictable given the label, which sharpens the posterior distribution P (Y | Z). Intuitively, as H(Z|Y)
+
+approaches zero, the peaks in the posterior become sharper, meaning the model assigns higher maximum probability to the correct class. This provides the first link between minimising irrelevant information and achieving higher con-fidence on ID predictions. Proof is shown in Appendix C.2. 
+
+Theorem 5.2 (ID Confidence Improvement for IB over SL) .
+
+Let Z = f (X, A) be an encoded representation of (X, A).With information bottleneck: max I(Z; Y) − βI (X, A; Z),
+
+where β ∈ (0 , 1) , the model attains higher in-distribution prediction confidence compared to standard supervised learning ( β = 0 ), provided I(X, A; Z | Y) is minimised. 
+
+Theorem 5.2 builds directly on Lemma 5.1. By rewriting the IB objective, we obtain: 
+
+max(1 − β)I(Z; Y) − βI (X, A; Z | Y). (14) Theorem 5.2 therefore guarantees that models trained with IB achieve higher prediction confidence on ID data than stan-dard SL (e.g., β = 0 ). Proof is provided in Appendix C.3. 
+
+Proposition 5.3 (IB Objective Increases Entropy Separation between ID and OOD) . Let Z∗ be the representation ob-tained from an optimal network trained with ID data via the IB objective (Eq. 36). Then: 
+
+1. I(Xid , Aid ; Z∗ 
+
+> id
+
+| Y) → 0,
+
+2. I(GOOD ; Z∗ 
+
+> ood
+
+| Y) ≥ I(Xid , Aid ; Z∗ 
+
+> id
+
+| Y).
+
+This induces entropy separation: 
+
+H(Y | Z∗
+
+> id
+
+) ≪ H(Y | Z∗
+
+> ood
+
+),
+
+enabling improved OOD detection via logit-based scores. 
+
+Proposition 5.3 formalises how the advantages of IB for ID confidence translate into OOD detection benefits. The proof is provided in Appendix C.4. For ID data, point (1) follows from Theorem 5.2: the conditional mutual infor-mation vanishes, which yields low entropy predictions and sharp confidence. For OOD data, point (2) shows that the information compressed into Z inevitably contains more irrelevant content, resulting in higher conditional entropy and lower confidence. The contrast between these two cases induces a larger entropy gap between ID and OOD data under IB training than under SL training. This entropy sep-aration directly improves logit-based OOD scores such as energy, making IB-trained models naturally better suited for OOD detection. Empirical evaluations in Section 6 validate this theoretical analysis for OOD detection. 
+
+6. Experiments 
+
+Datasets & Metrics. Following (Wu et al., 2023b; Yang et al., 2024b), we evaluate on seven benchmarks. Six are single-graph datasets ( Cora , Citeseer , Pubmed ,
+
+Amazon-Photo , Coauthor-CS , ogbn-Arxiv ), with OOD nodes generated via structure manipulation, feature interpolation, label exclusion, or temporal splits. We also use the multi-graph TwitchGamers-Explicit , where OOD corresponds to graphs from different regions. Perfor-mance is measured by AUROC (↑), AUPR (↑), and FPR95 
+
+(↓) for OOD detection, along with ID accuracy (ID ACC) 
+
+(↑). Details on datasets/metrics are in Appendix L/ J. 
+
+Baselines. To fairly evaluate our method , we select SOTA baselines trained with standard SL : General OOD meth-ods: MSP (Hendrycks & Gimpel, 2017), ODIN (Liang et al., 2018), Mahalanobis (Lee et al., 2018b), Energy (Liu et al., 2020). Graph-specific methods: GKDE (Zhao et al., 2020), GPN (Stadler et al., 2021), GNNS AFE (Wu et al., 2023b), NODES AFE (Yang et al., 2024b). OOD exposure method: OE (Hendrycks et al., 2019), Energy FT (Liu et al., 2020), GNNS AFE ++, NODES AFE ++. We further evaluate two advanced graph OOD detection methods, DeGEM (Chen et al., 2025) and GOLD (Wang et al., 2025a), in Table 5. 
+
+Implementation. All methods use a two-layer GCN back-bone (hidden size 64). The feature and structure networks are implemented as an MLP and a GCN, respectively, with the same architecture. For the structure network, node fea-tures are fixed to 1, while the feature network uses only raw node attributes. Additional setups, design choices, hyperpa-rameters, and sensitivity analysis are given in Appendix K. 
+
+6.1. Overall Performance As a non-OOD exposed method, T IDE markedly outper-forms SOTA non-OOD exposure baselines. Evident in Table 1, T IDE significantly enhances OOD detection per-formance across all datasets (blue highlights). On synthetic datasets such as Citeseer and Pubmed , T IDE reduces FPR95 by an average of 24% . While datasets like Ama-zon and Coauthor exhibit strong performance with exist-ing SOTA baselines, driven by high classification accuracy, which yield more discriminative energy scores for OOD 6TIDE : Graph Out-of-Distribution Detection via Tri-Component Information Decomposition 
+
+Table 1. Model performance with Non-OOD exposure. Following (Wu et al., 2023b; Yang et al., 2024b), the results are averaged over multiple OOD test sets with different difficulty levels , therefore with a relatively high variance ± across subsets. Individual subset results with a much lower variance are in Appendix M. The best and runner-up results are highlighted by best and runner-up , respectively. 
+
+Metrics MSP ODIN Maha Energy GKDE GPN GNNS AFE NODESAFE TIDE 
+
+> Cora
+
+AUROC ( ↑) 82.55 49.87 54.74 83.09 69.54 84.56 91.20 ± 3.09 93.35 ± 2.41 95.58 ± 2.12 
+
+AUPR ( ↑) 65.82 26.08 34.43 66.21 46.09 68.02 82.92 ± 4.96 84.64 ± 6.40 89.34 ± 5.32 
+
+FPR95 ( ↓) 62.39 100.00 96.30 65.21 80.51 58.30 50.53 ± 22.04 29.23 ± 12.06 20.09 ± 10.72 
+
+ID ACC ( ↑) 79.91 79.61 79.57 80.34 79.86 81.65 81.56 ± 7.01 82.66 ± 6.61 82.56 ± 6.99 
+
+> Citeseer
+
+AUROC ( ↑) 77.69 50.14 49.55 78.26 72.95 78.22 84.89 ± 5.47 87.80 ± 2.74 92.27 ± 1.53 
+
+AUPR ( ↑) 51.43 21.38 29.29 51.22 47.67 52.22 64.86 ± 3.39 72.35 ± 6.41 76.57 ± 10.34 
+
+FPR95 ( ↓) 69.42 100 95.06 65.34 71.85 67.09 60.85 ± 18.06 53.38 ± 17.47 30.79 ± 7.64 
+
+ID ACC ( ↑) 73.72 73.75 62.17 73.43 72.69 72.77 76.06 ± 12.05 73.12 ± 14.15 75.66 ± 11.19 
+
+> Pubmed
+
+AUROC ( ↑) 78.80 49.72 62.20 79.25 78.14 78.76 93.82 ± 1.93 91.08 ± 2.95 97.35 ± 0.13 
+
+AUPR ( ↑) 28.37 4.83 11.74 28.21 24.65 28.65 69.94 ± 6.32 68.56 ± 1.06 80.73 ± 1.37 
+
+FPR95 ( ↓) 76.73 100 91.26 70.69 75.04 71.06 37.71 ± 14.28 50.17 ± 0.89 12.75 ± 0.31 
+
+ID ACC ( ↑) 75.05 75.30 71.15 75.55 74.65 75.15 76.78 ± 0.31 77.32 ± 0.02 76.17 ± 0.33 
+
+> Amazon
+
+AUROC ( ↑) 96.52 80.12 73.81 96.73 66.98 92.60 97.99 ± 0.93 97.84 ± 1.11 98.16 ± 1.14 
+
+AUPR ( ↑) 95.01 77.18 72.35 95.16 71.18 90.50 98.16 ± 1.56 97.77 ± 2.11 98.08 ± 1.99 
+
+FPR95 ( ↓) 13.83 85.22 83.44 13.15 98.47 32.64 3.24 ± 5.24 3.69 ± 6.14 2.81 ± 4.61 
+
+ID ACC ( ↑) 93.83 93.88 93.80 93.85 87.71 89.54 93.79 ± 1.99 92.70 ± 2.16 93.90 ± 1.88 
+
+> Coauthor
+
+AUROC ( ↑) 95.74 51.71 82.02 96.64 69.24 69.89 98.98 ± 1.41 99.02 ± 1.45 99.27 ± 1.17 
+
+AUPR ( ↑) 96.43 56.37 87.05 97.09 80.17 72.77 99.55 ± 0.44 99.57 ± 0.47 99.70 ± 0.40 
+
+FPR95 ( ↓) 21.37 99.97 48.09 15.49 97.04 69.60 4.29 ± 6.87 4.33 ± 7.04 3.31 ± 5.45 
+
+ID ACC ( ↑) 93.37 93.29 93.29 93.57 87.74 89.39 93.65 ± 1.50 93.21 ± 1.86 93.48 ± 1.74 
+
+> Twitch
+
+AUROC ( ↑) 33.59 58.16 55.68 51.24 46.48 51.73 66.33 ± 15.32 66.48 ± 15.44 89.72 ± 5.42 
+
+AUPR ( ↑) 49.14 72.12 66.42 60.81 62.11 66.36 72.59 ± 13.44 72.71 ± 13.43 91.92 ± 3.85 
+
+FPR95 ( ↓) 97.45 93.96 90.13 91.61 95.62 95.51 81.18 ± 19.87 80.62 ± 20.03 46.60 ± 26.47 
+
+ID ACC ( ↑) 68.72 70.79 70.51 70.40 67.44 68.09 70.75 ± 0.30 70.75 ± 0.33 68.63 ± 1.41 
+
+> Arxiv
+
+AUROC ( ↑) 63.91 55.07 56.92 64.20 58.32 OOM 70.58 ± 6.41 71.36 ± 6.35 72.72 ± 6.48 
+
+AUPR ( ↑) 75.85 68.85 69.63 75.78 72.62 OOM 79.99 ± 12.80 80.67 ± 12.37 81.62 ± 11.86 
+
+FPR95 ( ↓) 90.59 100.0 94.24 90.80 93.84 OOM 87.90 ± 2.57 86.45 ± 2.97 83.65 ± 4.14 
+
+ID ACC ( ↑) 53.78 51.39 51.59 53.36 50.76 OOM 53.21 ± 0.25 53.10 ± 0.21 52.44 ± 0.24 
+
+detection - T IDE further improves detection performance. This shows the efficacy of our dedicated information learn-ing and IB over the standard SL in GNNS AFE . For real-world datasets, T IDE delivers remarkable improvements, increasing the AUROC score by over 23% and reducing the FPR95 by 34% on the Twitch dataset. On the more chal-lenging Arxiv dataset, where performance is constrained by limited classification accuracy, T IDE still outperforms baseline methods. This highlights T IDE ’s superiority in OOD detection while maintaining strong ID classification accuracy. Extended results are in Appendix M. Moreover, TIDE achieves similar efficiency in inference speed and memory usage as SOTA methods shown in Appendix N. 
+
+6.2. IB vs. SL in OOD Detection The empirical results strongly validate IB’s superiority over SL for OOD detection. Table 2 compares SL-based and IB-based classifiers, with energy as the OOD score. Even in its simplest form, IB-based models consistently outperform their SL counterparts ( SL < IB ), highlighting IB’s fundamental advantages for OOD detection. When enhanced with effective energy propagation techniques, the 
+
+Table 2. Detection comparison between IB vs. SL.                                                   
+
+> Metrics w/o energy propagation w/ energy propagation
+> SL IB SL IB
+> Cora AUROC (↑)83.09 86.90 91.20 95.18 AUPR (↑)66.21 69.89 82.92 88.49 FPR95 (↓)65.21 46.26 50.53 22.20 Pubmed AUROC (↑)79.25 87.04 84.49 91.50 AUPR (↑)29.21 45.87 64.86 75.22 FPR95 (↓)70.69 52.73 60.85 37.42 Twitch AUROC (↑)51.24 70.59 66.33 73.50 AUPR (↑)60.81 73.26 72.59 76.67 FPR95 (↓)91.61 82.46 81.18 67.26
+
+performance gap widens further, with IB models showing significantly greater improvements. 
+
+6.3. Visualisations of T IDE 
+
+Energy Gap. To validate our information-decomposed framework and highlight the advantage of IB over the SL baseline for OOD detection, Figure 4 visualises the pre-diction confidence and energy distributions of T IDE and GNNS AFE . The first subplot supports the theoretical insight that the IB objective enhances ID prediction confidence: the blue distribution of T IDE is skewed toward higher con-fidence values than the green distribution of GNNS AFE .7TIDE : Graph Out-of-Distribution Detection via Tri-Component Information Decomposition OOD - GNNSafe         
+
+> ID -GNNSafe
+> FPR95 Thresh.
+> ID -TIDE
+> OOD -TIDE
+> FPR95 Thresh.
+
+Figure 4. Prediction confidence and energy score distributions of GNNS AFE and T IDE on Cora-Feature ; dashed line shows FPR95. 
+
+Additionally, the second and third subplot shows that TIDE 
+
+achieves a greater separation between ID and OOD en-ergy scores than GNNS AFE . This increased energy mar-gin highlights T IDE ’s efficacy in distinguishing ID from OOD data. The dashed FPR95 thresholds indicate reduced ID-OOD overlap for T IDE , explaining its stronger OOD detection while maintaining ID accuracy. Connecting this visualisation to theory, Proposition 5.3 shows that the IB objective increases ID confidence and enlarges the ID-OOD entropy gap compared to standard SL. This analysis is stated in terms of the predictive distribu-tion pθ (y | z) = Softmax( ℓ) and its entropy H(Y | Z) = 
+
+− P 
+
+> y
+
+pθ (y | z) log pθ (y | z), where ℓ are the node logits. Since the energy score (Eq. 2) is computed from the same logits and depends on the same log-partition term in the entropy, IB-induced sharpening of ID posteriors (lower en-tropy) and increased uncertainty on OOD inputs (higher en-tropy) translate into lower energies for ID nodes and higher energies for OOD nodes, as shown in Figure 4. 
+
+Representation Distribution. Under the tri-component decomposition, TIDE learns more shift-indicative repre-sentations , particularly via the joint-input network. Figure 2 compares ID and OOD representations from (1) a standard SL-trained GCN and from the (2) joint , (3) structure , and 
+
+(4) feature networks of T IDE . Notably, the joint network achieves clearer ID-OOD separation than the baseline GCN. On the structure-shifted dataset (Cora-S), the feature net-work exhibits little separation, while the structure network captures a distinct, separable topology pattern. 
+
+6.4. Ablation Study 
+
+We conduct an ablation study on the IB backbone, condi-tional independence constraint, and the full T IDE frame-work, which includes a pairwise mutual information min-imisation loss to reduce spurious correlations. Compared to GNNS AFE (standard SL trained), the IB backbone low-ers FPR95 by 20% on average, highlighting the benefit of compressing irrelevant features. Adding the independence constraint that improves joint-input modelling yields a fur-ther 17% FPR95 reduction on Twitch , which exhibits a higher correlation between structure and feature than the synthetically created data. The complete T IDE performs best overall, learning robust representations for both ID clas-sification and OOD detection. Details are in Appendix M. 
+
+Table 3. Ablation study.                                                                                                      
+
+> Metrics Cora Citeseer Pubmed Twitch Arxiv
+> GNNS AFE
+> (Lsup ) AUROC (↑)91.20 84.89 93.82 66.33 70.58 AUPR (↑)82.92 64.86 69.94 72.59 79.99 FPR95 (↓)50.53 60.85 37.71 81.18 87.90 ID ACC (↑)81.56 76.06 76.78 70.75 53.21
+> LVIB  AUROC (↑)95.18 91.50 96.58 73.50 72.15 AUPR (↑)88.49 75.22 77.34 76.67 81.13 FPR95 (↓)22.20 37.42 16.85 67.26 84.93 ID ACC (↑)82.15 75.39 74.95 70.36 52.46
+> LVIB
+> &LVCInd  AUROC (↑)95.23 91.99 96.94 87.61 72.68 AUPR (↑)88.65 76.01 78.77 90.61 81.57 FPR95 (↓)21.56 32.57 14.37 49.91 83.86 ID ACC (↑)82.12 75.24 75.18 70.33 52.43 TIDE  AUROC (↑)95.58 92.27 97.35 89.72 72.72 AUPR (↑)89.34 76.57 80.73 91.92 81.62 FPR95 (↓)20.09 30.79 12.75 46.60 83.65 ID ACC (↑)82.56 75.66 76.17 68.63 52.44
+
+6.5. T IDE against Disentanglement-Based Methods 
+
+Table 4 compares T IDE with DeGEM (Chen et al., 2025) and GraphIFE (Zeng et al., 2025). DeGEM is a specialised graph OOD detector and therefore achieves competitive performance. For a fairer comparison, we also report a T IDE -enhanced DeGEM variant, which consistently improves logit-based detection metrics, supporting our theoretical finding that the IB principle sharpens ID predictions and increases ID-OOD separation. In contrast, GraphIFE is not designed for node-level OOD detection and shows limited energy-based detection capability across all datasets, even with energy propagation, despite reasonable ID accuracy. 
+
+Table 4. Comparison with disentanglement-based method.                                                                                      
+
+> Dataset Method AUROC AUPR FPR95 IDAcc
+> Cora-S
+> TIDE 95.15 89.33 23.31 78.97 DeGEM 92.02 70.24 18.91 79.80 DeGEM + T IDE 96.43 90.18 15.03 77.80 GraphIFE 72.70 51.68 84.68 78.90 GraphIFE + Prop 83.03 75.67 77.70 –
+> Cora-F
+> TIDE 97.88 94.67 8.13 78.10 DeGEM 98.66 96.14 5.76 82.80 DeGEM + T IDE 99.05 96.86 3.62 82.20 GraphIFE 80.45 70.74 78.84 78.75 GraphIFE + Prop 84.83 75.39 73.14 –
+> Pubmed-S
+> TIDE 97.25 79.76 12.97 75.93 DeGEM 95.37 51.55 20.07 73.10 DeGEM + T IDE 97.20 55.60 8.44 78.40 GraphIFE 67.88 17.93 99.84 76.00 GraphIFE + Prop 75.35 47.39 97.55 –
+> Pubmed-F
+> TIDE 97.44 81.70 12.53 76.40 DeGEM 99.63 93.40 1.70 79.00 DeGEM + T IDE 99.67 91.73 0.59 78.70 GraphIFE 71.02 31.68 99.97 75.95 GraphIFE + Prop 74.32 42.27 89.98 –
+
+8TIDE : Graph Out-of-Distribution Detection via Tri-Component Information Decomposition 
+
+Table 5. Comparison of T IDE with advanced graph OOD detection methods. +TIDE denotes incorporating the T IDE objective. We mark an improved performance from integrating T IDE into the method in Green .                                                                                                                             
+
+> Model Cora – Label Pubmed – S Pubmed – F Amazon – F Citeseer – S
+> AUROC AUPR FPR95 ID Acc AUROC AUPR FPR95 ID Acc AUROC AUPR FPR95 ID Acc AUROC AUPR FPR95 ID Acc AUROC AUPR FPR95 ID Acc GNNS AFE 93.19 82.99 29.55 89.66 92.45 65.47 47.81 77.00 95.18 74.41 27.62 76.57 98.46 98.90 0.44 92.65 79.87 61.44 74.45 65.20 TIDE 93.70 84.03 28.84 90.61 97.25 79.76 12.97 75.93 97.44 81.70 12.53 76.40 98.65 99.04 0.30 92.70 91.89 80.11 38.41 70.03 DeGEM 92.24 78.80 31.34 91.77 95.37 51.55 20.07 73.10 99.63 93.40 1.70 79.00 97.34 96.70 3.16 91.65 94.93 84.63 17.49 70.90 + T IDE 95.85 89.24 20.59 92.41 97.20 55.60 8.44 78.40 99.67 91.73 0.59 78.70 97.71 96.49 1.84 92.32 96.92 85.63 7.24 69.70 GOLD 95.36 85.33 21.20 89.56 88.01 97.84 11.57 75.30 87.28 98.49 6.98 73.20 99.52 99.63 0.24 92.48 78.09 82.12 65.98 69.10 + T IDE 94.85 83.96 18.86 89.56 91.13 98.72 5.52 74.60 93.15 99.00 3.80 74.70 99.61 99.70 0.10 91.98 78.61 82.90 44.97 68.70
+
+6.6. Extended OOD Exposure Study With OOD exposure regularisation (Eq. 4), TIDE 
+
+achieves superior or competitive performance. Shown in Table 6, T IDE outperforms GNNS AFE ++ and N ODE -SAFE++ across multiple datasets, as highlighted in bold. For example, on Cora , T IDE achieves an AUROC of 95 .76 
+
+(vs. 93 .13 & 91 .32 ) and significantly reduces the FPR95 from 42 .48 down to 19 .34 . On larger Pubmed , T IDE im-proves AUROC to 98 .26 (vs. 93 .77 & 95 .14 ) and decreases FPR95 to 8.84 (vs. 39 .58 & 24 .87 ). On more challenging real-world OOD datasets, T IDE remains competitive on the 
+
+Twitch and Arxiv datasets. This highlights T IDE ’s adapt-ability to incorporate OOD exposure strategies, enabling it to achieve superior performance. 
+
+6.7. Comparison with Advanced Graph OOD Detectors 
+
+To further demonstrate the effectiveness of T IDE and the role of the IB objective, we compare against two advanced graph OOD detection baselines, DeGEM (Chen et al., 2025) and GOLD (Wang et al., 2025a), on Cora and Pubmed un-der structure shift, feature shift, and label shift settings in Table 5. All results were reproduced to the best of our ability Both baselines exhibit strong performance across several settings, reflecting the strength of their respective de-signs. To enable a fair comparison with our decomposition-based method, we additionally evaluate “+T IDE ” variants of GOLD and DeGEM by incorporating our T IDE objec-tive during training. These T IDE -augmented versions often improve detection over their base models, demonstrating the benefit and efficacy of our information-decomposition framework. Additional comparison with disentanglement-based methods are shown in Appendix 6.5. 
+
+7. Conclusion 
+
+We propose T IDE , a novel tri-component information decomposition framework for OOD detection on graph-structured data. By decomposing information into structural, feature, and joint components with an IB objective, T IDE 
+
+preserves shift-indicative joint-input label information while suppressing label-irrelevant and spurious correlations in in-dividual input components. We provide theoretical insights showing that the IB principle improves in-distribution con-
+
+Table 6. Comparisons of OOD exposure with best and runner-up highlighted. GS(NS)++ short for GNNSafe(NODESAFE)++. 
+
+Metrics OOD Exposure TIDE 
+
+OE Energy FT GS++ NS++ w/ OE 
+
+> Cora
+
+AUROC (↑) 79.76 85.13 93.13 91.32 95.76 AUPR (↑) 64.93 67.89 85.28 82.74 89.68 FPR95 (↓) 75.22 51.03 37.28 42.48 19.34 ID ACC (↑) 77.69 80.44 82.16 74.94 82.20 
+
+> Citeseer
+
+AUROC (↑) 63.75 79.81 85.69 84.29 92.16 AUPR (↑) 47.20 52.79 65.89 64.86 75.90 FPR95 (↓) 74.15 57.37 54.76 56.12 29.22 ID ACC (↑) 62.24 72.66 72.74 68.60 75.81 
+
+> Pubmed
+
+AUROC (↑) 78.38 76.25 93.77 95.14 98.26 AUPR (↑) 27.67 27.61 74.06 72.20 85.36 FPR95 (↓) 79.05 91.02 39.58 24.87 8.84 ID ACC (↑) 73.00 75.80 77.88 74.17 76.67 
+
+> Twitch
+
+AUROC (↑) 55.72 84.50 95.76 76.79 91.52 AUPR (↑) 70.18 88.04 97.45 83.97 93.59 FPR95 (↓) 95.07 61.29 29.81 34.46 33.19 ID ACC (↑) 70.73 70.52 70.36 70.07 68.74 
+
+> Arxiv
+
+AUROC (↑) 69.80 71.56 73.98 74.50 74.89 AUPR (↑) 80.15 80.47 82.50 81.55 83.25 FPR95 (↓) 85.16 80.59 79.99 77.53 77.37 ID ACC (↑) 52.39 53.26 53.28 51.32 52.41 
+
+fidence compared to standard supervised learning, which in turn benefits OOD detection. Extensive experiments validate the efficacy of T IDE , which outperforms SOTA SL-based OOD detection methods, including both non-OOD-exposed and OOD-exposed approaches. 
+
+8. Impact Statement 
+
+We hope our work inspires future research on node-level graph OOD detection in real-world settings. As a founda-tional study on OOD detection for graph-structured data, we do not identify any direct negative societal impacts. Our research relies on publicly available datasets, algorithms, and models, all of which are properly acknowledged and pose no risks requiring safeguards. While potential societal implications may exist, none warrant specific emphasis in this study. 
+
+9. Acknowledgment 
+
+This research has been supported by Australian Re-search Council Discovery Projects (DP230101196 and DE250100919). 9TIDE : Graph Out-of-Distribution Detection via Tri-Component Information Decomposition 
+
+References 
+
+Ahuja, K., Caballero, E., Zhang, D., Gagnon-Audet, J., Bengio, Y., Mitliagkas, I., and Rish, I. Invariance princi-ple meets information bottleneck for out-of-distribution generalization. In NeurIPS , 2021. Alemi, A. A., Fischer, I., Dillon, J. V., and Murphy, K. Deep variational information bottleneck. In ICLR , 2017. Alemi, A. A., Fischer, I., and Dillon, J. V. Uncertainty in the variational information bottleneck. CoRR , 2018. An, W., Zhong, W., Jiang, F., Ma, H., and Huang, J. Causal subgraphs and information bottlenecks: Redefining OOD robustness in graph neural networks. In ECCV , 2024. Bao, T., Wu, Q., Jiang, Z., Chen, Y., Sun, J., and Yan, J. Graph out-of-distribution detection goes neighborhood shaping. In ICML , 2024. Bazhenov, G., Ivanov, S., Panov, M., Zaytsev, A., and Bur-naev, E. Towards OOD detection in graph classification from uncertainty estimation perspective. CoRR , 2022. Bitterwolf, J., Meinke, A., and Hein, M. Certifiably adver-sarially robust detection of out-of distribution data. In 
+
+NeurIPS , 2020. Cao, Y., Shi, F., Yu, Q., Lin, X., Zhou, C., Zou, L., Zhang, P., Li, Z., and Yin, D. IBPL: information bottleneck-based prompt learning for graph out-of-distribution detection. 
+
+Neural Networks , 2025. Chen, G., Wang, Y., Guo, F., Guo, Q., Shao, J., Shen, H., and Cheng, X. Causality and independence enhancement for biased node classification. In CIKM , 2023. Chen, J., Li, Y., Wu, X., Liang, Y., and Jha, S. ATOM: robustifying out-of-distribution detection using outlier mining. In ECML PKDD , 2021. Chen, Y., Luo, Y., Song, Y., Dai, P., Tang, J., and Cao, X. Decoupled graph energy-based model for node out-of-distribution detection on heterophilic graphs. ICLR ,2025. Chen, Z., Xiao, T., Kuang, K., Lv, Z., Zhang, M., Yang, J., Lu, C., Yang, H., and Wu, F. Learning to reweight for generalizable graph neural network. In AAAI , 2024. Cheng, P., Hao, W., Dai, S., Liu, J., Gan, Z., and Carin, L. CLUB: A contrastive log-ratio upper bound of mutual information. In ICML , 2020. Choi, S. and Chung, S. Novelty detection via blurring. In 
+
+ICLR , 2020. Dai, E., Cui, L., Wang, Z., Tang, X., Wang, Y., Cheng, M. X., Yin, B., and Wang, S. A unified framework of graph information bottleneck for robustness and membership privacy. In KDD , 2023. Ding, Z. and Shi, J. SGOOD: substructure-enhanced graph-level out-of-distribution detection. CoRR , 2023. Djurisic, A., Bozanic, N., Ashok, A., and Liu, R. Extremely simple activation shaping for out-of-distribution detection. In ICLR , 2023. Dong, X., Guo, J., Li, A., Ting, W., Liu, C., and Kung, H. T. Neural mean discrepancy for efficient out-of-distribution detection. In CVPR , 2022. Du, X., Wang, Z., Cai, M., and Li, Y. VOS: learning what you don’t know by virtual outlier synthesis. In ICLR ,2022. Du, X., Sun, Y., Zhu, J., and Li, Y. Dream the impossible: Outlier imagination with diffusion models. In NeurIPS ,2023. Du, X., Fang, Z., Diakonikolas, I., and Li, Y. How does un-labeled data provably help out-of-distribution detection? In ICLR , 2024. Fan, S., Wang, X., Shi, C., Cui, P., and Wang, B. Generaliz-ing graph neural networks on out-of-distribution graphs. 
+
+TPAMI , 2024. Federici, M., Dutta, A., Forr ´e, P., Kushman, N., and Akata, Z. Learning robust representations via multi-view infor-mation bottleneck. In ICLR , 2020. Giles, C. L., Bollacker, K. D., and Lawrence, S. Citeseer: An automatic citation indexing system. In ACM Digital Libraries , 1998. Giuffr `e, M. and Shung, D. L. Harnessing the power of synthetic data in healthcare: innovation, application, and privacy. npj Digit. Medicine , 6, 2023. Gu, J., Qiao, Z., and Li, Z. Refining norms: A post-hoc framework for ood detection in graph neural networks. In 
+
+NeurIPS , 2025. Gui, S., Li, X., Wang, L., and Ji, S. GOOD: A graph out-of-distribution benchmark. In NeurIPS , 2022. Guo, Y., Yang, C., Chen, Y., Liu, J., Shi, C., and Du, J. A data-centric framework to endow graph neural networks with out-of-distribution detection ability. In KDD , 2023. Han, X., Rangwala, H., and Ning, Y. Decaf: A causal decoupling framework for OOD generalization on node classification. CoRR , 2024. 10 TIDE : Graph Out-of-Distribution Detection via Tri-Component Information Decomposition 
+
+Hein, M., Andriushchenko, M., and Bitterwolf, J. Why relu networks yield high-confidence predictions far away from the training data and how to mitigate the problem. In CVPR , 2019. Hendrycks, D. and Gimpel, K. A baseline for detecting misclassified and out-of-distribution examples in neural networks. In ICLR , 2017. Hendrycks, D., Mazeika, M., and Dietterich, T. G. Deep anomaly detection with outlier exposure. In ICLR , 2019. Hendrycks, D., Basart, S., Mazeika, M., Zou, A., Kwon, J., Mostajabi, M., Steinhardt, J., and Song, D. Scaling out-of-distribution detection for real-world settings. In 
+
+ICML , 2022. Hsu, Y., Shen, Y., Jin, H., and Kira, Z. Generalized ODIN: detecting out-of-distribution image without learning from out-of-distribution data. In CVPR , 2020. Hu, J., Liu, W., Chang, H., Ma, B., Shan, S., and Chen, X. An information theoretical view for out-of-distribution detection. In ECCV , 2024. Hu, W., Fey, M., Zitnik, M., Dong, Y., Ren, H., Liu, B., Catasta, M., and Leskovec, J. Open graph benchmark: Datasets for machine learning on graphs. In NeurIPS ,2020. Kawaguchi, K., Deng, Z., Ji, X., and Huang, J. How does information bottleneck help deep learning? In ICML ,2023. Kingma, D. P. and Ba, J. Adam: A method for stochastic optimization. In ICLR , 2015. Kipf, T. N. and Welling, M. Semi-supervised classification with graph convolutional networks. In ICLR , 2017. Koo, J., Choi, S., and Hwang, S. Generalized outlier ex-posure: Towards a trustworthy out-of-distribution detec-tor without sacrificing accuracy. Neurocomputing , 577: 127371, 2024. Lang, H., Zheng, Y., Li, Y., Sun, J., Huang, F., and Li, Y. A survey on out-of-distribution detection in NLP. CoRR ,2023. Lee, K., Lee, H., Lee, K., and Shin, J. Training confidence-calibrated classifiers for detecting out-of-distribution sam-ples. In ICLR , 2018a. Lee, K., Lee, K., Lee, H., and Shin, J. A simple unified framework for detecting out-of-distribution samples and adversarial attacks. In NeurIPS , 2018b. Li, H., Wang, X., Zhang, Z., and Zhu, W. Out-of-distribution generalization on graphs: A survey. CoRR , 2022a. Li, H., Wang, X., Zhang, Z., and Zhu, W. OOD-GNN: out-of-distribution generalized graph neural network. IEEE Trans. Knowl. Data Eng. , 35(7):7328–7340, 2023a. Li, H., Yu, W., He, H., Shao, J., Song, S., Zhang, J., and Letaief, K. B. Task-oriented communication with out-of-distribution detection: An information bottleneck frame-work. In GLOBECOM , pp. 3136–3141, 2023b. Li, Z., Wu, Q., Nie, F., and Yan, J. Graphde: A generative framework for debiased learning and out-of-distribution detection on graphs. In NeurIPS , 2022b. Liang, S., Li, Y., and Srikant, R. Enhancing the reliability of out-of-distribution image detection in neural networks. In ICLR , 2018. Lin, Z., Roy, S. D., and Li, Y. MOOD: multi-level out-of-distribution detection. In CVPR , 2021. Liu, W., Wang, X., Owens, J. D., and Li, Y. Energy-based out-of-distribution detection. In NeurIPS , 2020. Liu, Y., Ding, K., Liu, H., and Pan, S. GOOD-D: on unsu-pervised graph out-of-distribution detection. In WSDM ,2023. Ma, L., Sun, Y., Ding, K., and Wu, F. Score propagation as a catalyst for graph out-of-distribution detection: A theoretical and empirical study. In ICLR , 2023. McAuley, J. J., Targett, C., Shi, Q., and van den Hengel, A. Image-based recommendations on styles and substitutes. In SIGIR , 2015. Park, S., Mok, J., Jung, D., Lee, S., and Yoon, S. On the powerfulness of textual outlier exposure for visual ood detection. In NeurIPS , 2023. Rozemberczki, B. and Sarkar, R. Twitch gamers: a dataset for evaluating proximity preserving and structural role-based node embeddings. CoRR , 2021. Sen, P., Namata, G., Bilgic, M., Getoor, L., Gallagher, B., and Eliassi-Rad, T. Collective classification in network data. AI Mag. , 29(3):93–106, 2008. Shen, X., Wang, Y., Zhou, K., Pan, S., and Wang, X. Op-timizing OOD detection in molecular graphs: A novel approach with diffusion models. In KDD , 2024. Sinha, A., Shen, Z., Song, Y., Ma, H., Eide, D., Hsu, B. P., and Wang, K. An overview of microsoft academic service (MAS) and applications. In WWW , 2015. Sinha, S., Bharadhwaj, H., Goyal, A., Larochelle, H., Garg, A., and Shkurti, F. DIBS: diversity inducing information bottleneck in model ensembles. In AAAI , 2021. 11 TIDE : Graph Out-of-Distribution Detection via Tri-Component Information Decomposition 
+
+Song, Y. and Wang, D. Learning on graphs with out-of-distribution nodes. In KDD , 2022. Stadler, M., Charpentier, B., Geisler, S., Z ¨ugner, D., and G ¨unnemann, S. Graph posterior network: Bayesian pre-dictive uncertainty for node classification. In NeurIPS ,2021. Sun, Q., Li, J., Peng, H., Wu, J., Fu, X., Ji, C., and Yu, P. S. Graph structure learning with variational information bottleneck. In AAAI , 2022. Sun, Y. and Li, Y. DICE: leveraging sparsification for out-of-distribution detection. In ECCV , 2022. Sun, Y., Guo, C., and Li, Y. React: Out-of-distribution detection with rectified activations. In NeurIPS , 2021. Tishby, N., Pereira, F. C. N., and Bialek, W. The information bottleneck method. CoRR , 2000. van den Oord, A., Li, Y., and Vinyals, O. Representation learning with contrastive predictive coding. CoRR , 2018. URL http://arxiv.org/abs/1807.03748 .Vyas, A., Jammalamadaka, N., Zhu, X., Das, D., Kaul, B., and Willke, T. L. Out-of-distribution detection using an ensemble of self supervised leave-out classifiers. In 
+
+ECCV , 2018. Wang, D., Qiu, R., Bai, G., and Huang, Z. GOLD: graph out-of-distribution detection via implicit adversarial latent generation. ICLR , 2025a. Wang, D., Qiu, R., Bai, G., and Huang, Z. Text meets topology: Rethinking out-of-distribution detection in text-rich networks. EMNLP , 2025b. Wang, H., Liu, W., Bocchieri, A., and Li, Y. Can multi-label classification networks know what they don’t know? In 
+
+NeurIPS , 2021. Wang, S., Yin, J., Li, C., Xie, X., and Wang, J. V-infor: A robust graph neural networks explainer for structurally corrupted graphs. In NeurIPS , 2023. Wang, Y., Zhang, J., Xie, N., Shi, Y., Wang, S., Liu, X., Zhu, E., and Tan, Y. Towards the effect of large language models on out-of-distribution challenge in text-attributed graphs, 2024. URL https://openreview.net/ forum?id=FGIBKpOj8m .Wu, A. and Deng, C. TIB: detecting unknown objects via two-stream information bottleneck. TPAMI , 46(1):611– 625, 2024. Wu, A., Chen, D., and Deng, C. Deep feature deblurring diffusion for detecting out-of-distribution objects. In 
+
+ICCV , 2023a. Wu, Q., Chen, Y., Yang, C., and Yan, J. Energy-based out-of-distribution detection for graph neural networks. In 
+
+ICLR , 2023b. Wu, T., Ren, H., Li, P., and Leskovec, J. Graph information bottleneck. In NeurIPS , 2020. Xu, H., Yao, Z., Wang, Z., Cheng, Z., Hu, X., Li, M., and Zhao, Y. Graph synthetic out-of-distribution exposure with large language models. CoRR , 2025a. Xu, H., Yao, Z., Zhang, X., Wang, Z., He, L., Dong, Y., Yu, P. S., Li, M., and Zhao, Y. Glip-ood: Zero-shot graph ood detection with foundation model. CoRR , 2025b. Yang, L., Zheng, J., Wang, H., Liu, Z., Huang, Z., Hong, S., Zhang, W., and Cui, B. Individual and structural graph information bottlenecks for out-of-distribution general-ization. TKDE , 36(2):682–693, 2024a. Yang, N., Zeng, K., Wu, Q., Jia, X., and Yan, J. Learning substructure invariance for out-of-distribution molecular representations. In NeurIPS , 2022. Yang, S., Liang, B., Liu, A., Gui, L., Yao, X., and Zhang, X. Bounded and uniform energy-based out-of-distribution detection for graphs. In ICML , 2024b. Zeng, F., Gan, W., and Yu, P. S. Graphife: Rethinking graph imbalance node classification via invariant learning. 
+
+CoRR , 2025. URL https://doi.org/10.48550/ arXiv.2509.23616 .Zhao, X., Chen, F., Hu, S., and Cho, J. Uncertainty aware semi-supervised learning on graph data. In NeurIPS ,2020. Zhao, Z. and Cao, L. Dual representation learning for out-of-distribution detection. In TMLR , volume 2023, 2023. Zheng, H., Wang, Q., Fang, Z., Xia, X., Liu, F., Liu, T., and Han, B. Out-of-distribution detection learning with unreliable out-of-distribution sources. In NeurIPS , 2023. Zhou, Y., Kutyniok, G., and Ribeiro, B. OOD link prediction generalization capabilities of message-passing gnns in larger test graphs. In NeurIPS , 2022. Zhu, J., Geng, Y., Yao, J., Liu, T., Niu, G., Sugiyama, M., and Han, B. Diversified outlier exposure for out-of-distribution detection via informative extrapolation. In 
+
+NeurIPS , 2023. 12 TIDE : Graph Out-of-Distribution Detection via Tri-Component Information Decomposition 
+
+Appendix A. Reproducibility Statement 
+
+To support reproducible research, we summarise our efforts as below: 1. Baselines & Datasets. We follow the baseline from (Wu et al., 2023b) and utilise publicly available datasets. The details are described in Section 6 and Appendix L. 2. Model training. Detailed implementation setting is provided in Section 6 and Appendix K. 3. Evaluation Metrics. We discuss the evaluation metrics used in Section 6 and Appendix J. 4. Methodology. Our T IDE framework is fully documented in Section 4, with implementation notes provided in Section 4.3. To support implementation and reproducibility we provide a detailed discussion on obtaining the tractable objective in Appendix F, a neural network parameterisation of T IDE is given in Appendix G. In addition, we provide a detailed pseudo code of the optimisation process in Algorithm 1 and the inference process in Algorithm 2. We provide theoretical analysis and corresponding proofs in Section 5 and Appendix C. 
+
+B. Potential Limitations 
+
+In Section 4.1, we illustrate that T IDE employs two additional networks on top of the GNN classifier to effectively capture structural and feature information: a GNN for modelling structural relationships and an MLP for processing feature-based information. This multi-network architecture inevitably incurs additional computational and memory overhead during training. However, during inference, our model achieves comparable inference speeds while delivering significant performance improvements across all evaluated datasets. We argue that the increased training cost is a justifiable trade-off given the substantial gains in detection performance. The detailed computational cost is discussed in Appendix N. Described in Appendix K, a constant α and β values were applied uniformly in the current experiments, future work will explore fine-grained control of individual terms. Furthermore, currently implementation only considers a simple structure representation learning strategy (i.e., using a constant feature vector), we will investigate the use of more advanced position encoding and structure representation learning techniques in future work. This may include methods like spectral embeddings via Laplacian eigenmaps, random walk-based encodings, and learnable position encodings etc. Since our T IDE focuses on exploring the advantages of IB over standard supervised learning, we have left the comparison and integration with more advanced graph OOD detection methods and novel training frameworks like DeGEM and GOLD as future work (Chen et al., 2025; Wang et al., 2025a). Moreover, our proposed method and theoretical analysis are currently focused on node-level classification and we do not study the anomaly detection task. However, we believe the framework can be extended to graph-level OOD detection. Potential directions include applying the IB principle to the representation of entire graphs or learning compact and informative subgraphs, as explored in prior works (Dai et al., 2023; Sun et al., 2022). We also aim to investigate the impact of this framework in the context of heterophilic graphs. These extensions present promising avenues for future research. 
+
+C. Proof of Technical Insights 
+
+C.1. Proof of Proposition 4.1 
+
+Proof. Given Z is encoded from (X, A) by the network fθ . Hence, Z depends only on (X, A) or Z ⊥ Y | (X, A),and the Markov chain Y → (X, A) → Z holds. Equivalently, this implies p(z | x, a, y ) = p(z | x, a ) and we have 
+
+I(Z; Y | X, A) = 0 . More explicitly, 
+
+I(Z; Y | X, A) = Ep(x,a )
+
+DKL 
+
+ p(z, y | x, a ) ∥ p(z | x, a )p(y | x, a ) .
+
+Under the above Markov chain, p(z, y | x, a ) = p(z | x, a )p(y | x, a ), so the KL term is zero, which gives I(Z; Y | X, A) = 0. Then, by the chain rule of mutual information, 
+
+I(X, A, Z; Y) = I(X, A; Y) + I(Z; Y | X, A) = I(X, A; Y).
+
+13 TIDE : Graph Out-of-Distribution Detection via Tri-Component Information Decomposition 
+
+C.2. Proof of Lemma 5.1 
+
+Proof. Consider a deterministic encoder with encoded representation Z = f (X, A), the conditional mutual information 
+
+I(X, A; Z | Y) can be expanded as: 
+
+I(X, A; Z | Y) = H(X, A | Y) + H(Z | Y) − H(X, A, Z | Y)= H(X, A | Y) + H(Z | Y) −  H(X, A | Y) + H(Z | X, A, Y)
+
+= H(Z | Y) − H(Z | X, A, Y).
+
+(15) Since Z is a determined by X and A, the second term vanishes: 
+
+H(Z | X, A, Y) = 0 ⇒ I(X, A; Z | Y) = H(Z | Y). (16) Thus, minimising I(X, A; Z | Y) is equivalent to minimising H(Z | Y).Notably, reducing H(Z | Y) implies the conditional distribution P (Z | Y) becomes more concentrated (i.e., Z is more predictable given Y (reduced uncertainty)). Applying Bayes’ theorem, we have: 
+
+P (Y | Z) = P (Z | Y)P (Y)
+
+P (Z) . (17) Here, a more concentrated P (Z | Y) would amplify the likelihood term P (Z | Y) relative to the marginal P (Z) = 
+
+EY′ [P (Z | Y′)] . As a result, it produces sharper peaks in P (Y | Z), increasing the maximum probability max y P (Y =
+
+y | Z) and thus the prediction confidence of ID data, where: 
+
+H(Y | Z) = −EZ
+
+"X
+
+> y
+
+P (y | Z) log P (y | Z)
+
+#
+
+→ 0. (18) 
+
+C.3. Proof of Theorem 5.2 
+
+Proof. To begin, using the chain rule of mutual information, we can decompose the second mutual information term in the IB objective as: 
+
+I(X, A; Z) = I(Z; Y) + I(X, A; Z | Y). (19) Substituting into the IB objective yields: 
+
+max(1 − β)I(Z; Y) − βI (X, A; Z | Y). (20) Notably, when β = 0 , the objective reduces to the standard supervised learning goal of maximising I(Z; Y). However, this indicates that the superfluous information I(X, A; Z | Y) is preserved, meaning the encoded representation Z may contain information from X and A that is irrelevant to the label Y. This can negatively impact predictive performance, as Z is not optimised to focus solely on label-relevant information. In contrast, for β ∈ (0 , 1) , the IB objective simultaneously increases predictive information I(Z; Y) and reduces superfluous information by minimising I(X, A; Z | Y). This ensures Z can capture useful information about Y, while compressing out input information irrelevant to Y. From Lemma 5.1, minimising I(X, A; Z | Y) reduces H(Z | Y). This reduction forces 
+
+Z to discard information in X that is irrelevant to Y, leading to a sharper conditional distribution P (Y | Z). Thus, when 
+
+P (Y | Z) becomes sharper, max y P (Y = y) increases, as the probability mass is concentrated on the most likely value of 
+
+Y. Consequently, the conditional entropy decreases: 
+
+H(Y | Z) = −EZ[max  
+
+> y
+
+P (Y = y | Z)] + cross-entropy terms , (21) thereby increasing prediction confidence. In other words, the model becomes more certain about its predictions, as Z is optimised to focus on the most relevant information for predicting Y.14 TIDE : Graph Out-of-Distribution Detection via Tri-Component Information Decomposition 
+
+Additionally, an optimal trade-off occurs when β balances information compression-to-prediction. Let ∆Z = Var (I(Z; Y)) 
+
+and ∆Z|Y = Var (I(X, A; Z | Y)) represent parameter sensitivity. The critical ratio: 
+
+β < ∆Z
+
+∆Z + ∆ Z|Y
+
+(22) ensures sufficient weight on predictive information I(Z; Y). Under this condition, IB produces representations Z with minimised superfluous information and maximised prediction confidence than standard supervised learning. 
+
+Derivation of I(X, A; Z | Y) = I(X; Z | Y) + I(A; Z | Y, X). The decomposition follows from the chain rule of mutual information: 
+
+I(X, A; Z | Y) = I(X; Z | Y) + I(A; Z | Y, X)= H(Z | Y) − H(Z | Y, X)+ H(Z | Y, X) − H(Z | Y, X, A)= H(Z | Y) − H(Z | Y, X, A).
+
+(23) For deterministic encoders where Z = f (X, A), we have H(Z | X, A, Y) = 0 , by Eq. 16, we complete the derivation. 
+
+C.4. Proof of Proposition 5.3 
+
+Proof. Given an optmised network f ∗ trained with ID data (Xid , Aid ) via the IB objective. Let Z∗ = f ∗(X, A) be the encoded representation obtained from the network. We can derive the following: 
+
+Part 1: ID Data Compression From the derivation in Eq. 23, given ID inputs (Xid , Aid ) and optimal encoded ID representation Zid ∗, the second term in the IB objective in Eq. 36 can be expressed as: 
+
+I(Xid , Aid ; Z∗ 
+
+> id
+
+| Y) (24) Following directly from Lemma 5.1 and Theorem 5.2, this is equivalent to minimising H(Z∗ 
+
+> id
+
+| Y), making P (Y | Z∗
+
+> id
+
+)
+
+sharply concentrated. Thus: 
+
+H(Y | Z∗
+
+> id
+
+) = −EZ∗
+
+> id
+
+"X
+
+> y
+
+P (y | Z∗
+
+> id
+
+) log P (y | Z∗
+
+> id
+
+)
+
+#
+
+→ 0. (25) 
+
+Part 2: OOD Data Separation To investigate the effect on OOD data, without loss of generality, we consider the feature shift defined in Section I, where Pid (X)̸ = Pood (X), Pid (X|A)̸ = Pood (X|A), Pid (Y|X)̸ = Pood (Y|X), and 
+
+Pid (Y|A, X)̸ = Pood (Y|A, X). Such that we have OOD features Xood with ID structure Aid (i.e., Gfeat shift = ( Xood , Aid )) .Let Z∗ 
+
+> ood
+
+= f ∗(Xood , Aid ) denote the representation encoded from the ID trained model for the given OOD data. From the derivation in Eq. 23, we have: 
+
+I(Xid , Aid ; Z∗ 
+
+> id
+
+| Y) = I(Xid ; Z∗ 
+
+> id
+
+| Y) + I(Aid ; Z∗ 
+
+> id
+
+| Y, Xid ). (26) 
+
+I(Xood , Aid ; Z∗ 
+
+> ood
+
+| Y) = I(Xood ; Z∗ 
+
+> ood
+
+| Y) + I(Aid ; Z∗ 
+
+> ood
+
+| Y, Xood ). (27) Suppose for contradiction that: 
+
+I(Xood ; Z∗ 
+
+> ood
+
+| Y) < I (Xid ; Z∗ 
+
+> id
+
+| Y). (28) This would imply: 
+
+I(Aid ; Z∗ 
+
+> ood
+
+| Y, Xood ) ≊ I(Aid ; Z∗ 
+
+> id
+
+| Y, Xid ), (29) 
+
+⇒ I(Xood , Aid ; Z∗ 
+
+> ood
+
+| Y) ≤ I(Xid , Aid ; Z∗ 
+
+> id
+
+| Y). (30) However, this contradicts the IB optimality condition since the encoder Z∗ was never trained to compress Xood . Thus, we must have: 
+
+I(Xood ; Z∗ 
+
+> ood
+
+| Y) ≥ I(Xid ; Z∗ 
+
+> id
+
+| Y). (31) 15 TIDE : Graph Out-of-Distribution Detection via Tri-Component Information Decomposition 
+
+Similarly, since Aid is fixed but Xood is novel: 
+
+I(Aid ; Z∗ 
+
+> ood
+
+| Y, Xood ) ≥ I(Aid ; Z∗ 
+
+> id
+
+| Y, Xid ). (32) Therefore: 
+
+I(Xood , Aid ; Z∗ 
+
+> ood
+
+| Y) ≥ I(Xid , Aid ; Z∗ 
+
+> id
+
+| Y). (33) From Lemma 5.1, higher conditional mutual information implies higher H(Z∗ 
+
+> ood
+
+| Y). By Bayes’ theorem: 
+
+P (Y | Z∗
+
+> ood
+
+) = P (Z∗ 
+
+> ood
+
+| Y)P (Y)
+
+P (Z∗
+
+> ood
+
+) . (34) The diffuse P (Z∗ 
+
+> ood
+
+| Y) makes P (Y | Z∗
+
+> ood
+
+) approximately uniform, yielding: 
+
+H(Y | Z∗
+
+> ood
+
+) ≈ log C ≫ H(Y | Z∗
+
+> id
+
+), (35) where C is the number of classes. This entropy gap enables improved OOD detection through logit-based scoring methods (i.e., energy score (Liu et al., 2020), MaxLogit (Hendrycks et al., 2022)). 
+
+D. Graph Neural Network 
+
+Graph Neural Networks (GNNs) are inherently well-suited for capturing intricate dependencies between nodes in a graph. Their effectiveness largely stems from the message-passing mechanism, which progressively aggregates information from neighbouring nodes, allowing the model to learn both local and global structural and feature patterns. Let z(l) 
+
+> i
+
+represent the learned embedding of node i at layer l. A standard Graph Convolutional Network (GCN) updates node representations iteratively using the propagation rule: 
+
+Z(l) = σ
+
+
+
+D−1/2 ˜AD −1/2Z(l−1) W(l)
+
+,
+
+where Z(l−1) = [ z(l−1)  
+
+> i
+
+], and the initial node features are given by H(0) = X. Here, ˜A = A + I is the adjacency matrix with self-loops, I denotes the identity matrix, D is the diagonal degree matrix of ˜A, σ is a nonlinear activation function (e.g., ReLU), and W(l) represents the trainable weight matrix for layer l (Kipf & Welling, 2017). 
+
+E. Information Bottleneck Principle 
+
+The information bottleneck (IB) principle aims to learn a compressed representation Z with the maximum relevant information about the label Y (i.e., I(Z; Y)) while minimising the label-irrelevant information (i.e., I(X; Z)), as constrained by the Markov chain Y → X → Z (Tishby et al., 2000; Alemi et al., 2017). For graph data, Z is a function of both node features X and graph structure A (i.e., Z = GNN (X, A)) The IB objective can be defined as: 
+
+max  
+
+> Z
+
+I(Z; Y) − βI (X, A; Z), (36) where β is a Lagrange multiplier controlling the trade-off between compression and prediction. This enables the compression of the joint input information to representation Z via I(X, A; Z) and optimise its classification ability via I(Z; Y) (Wu et al., 2020; Sun et al., 2022). 
+
+F. Tractable Optimisation of T IDE 
+
+To optimise the intractable T IDE objective in Eq. 13, we approximate the IB terms via variational lower bounds (Alemi et al., 2017) and enforce the conditional independence and pairwise mutual information minimisation using reconstruction loss and contrastive loss (Cheng et al., 2020), respectively. Variational Approximation of LIB : Beginning with the first term in objective Eq. 13, without loss of generality, we provide a variational approximation bound for IB Z =
+
+I(Z; Y) − βZI(X, A; Z), and the tractable bounds for IB V and IB Q can be derived accordingly. Let q(Y|Z) and r(Z)
+
+16 TIDE : Graph Out-of-Distribution Detection via Tri-Component Information Decomposition 
+
+denote variational approximations to the true conditional distribution pZ(Y|Z), and marginal distribution p(Z), respectively. Consider a parametric Gaussian distribution as prior p(Z|X, A), we have: 
+
+p(Z|X, A) = N (Z; μ(f (X, A)) , Σ( f (X, A))) ,
+
+where f is modelled as a GNN network that encodes the input (X, A), followed by linear layers to obtain the mean and variance representations respectively. Subsequently, we apply the reparameterisation trick as Z = f (X, A, ϵ ), which ensures it is a deterministic function of X, A and the Gaussian random variable ϵ ∼ p(ϵ) = N (0, 1). Thus, given training data 
+
+Xtr = ( x1, . . . , xN), Ytr = ( y1, . . . , y N ) with adjacency matrix Atr , using the empirical data distribution, we can obtain a tractable variational lower bound for IB Z:VIB Z = 1
+
+N
+
+> N
+
+X
+
+> n=1
+
+Eϵ∼p(ϵ) [log q(yn|f (xn, A, ϵ ))] − βKL  p(Z|xn, A)|| r(Z) ≤ IB Z, (37) where r(Z) = N (Z, 0, 1) is fixed to the standard normal. The first term in Eq. 37 represents the log-likelihood of the output 
+
+Y given the representation Z, which can be calculated using the cross entropy loss to encourage Z to be predictive of Y. The second term is the Kullback-Leibler (KL) divergence between the conditional distribution p(Z | X, A) and the variational prior r(Z), which reduces the irrelevant information compressed from the joint input (X, A) into the representation Z.Following a similar approach, we can derive the lower bound for IB V and IB Q, and thus obtain the tractable variational lower bound LVIB Z;V;Q for the first term in Eq. 13 as: 
+
+max LIB Z;V;Q ≥ L VIB Z;V;Q = VIB Z + VIB V + VIB Q. (38) 
+
+Conditional Independence of LCInd : To make LCInd = I(A; X|Z) tractable, we can use a variational approximation 
+
+q(X|Z) to estimate the true distribution p(X|Z) and derive a varitional upper bound via: 
+
+min LVCInd X,A,Z = Ep(x,A,z)[log p(x|A, z)
+
+| {z }
+
+> (1)
+
+− log q(x|z)
+
+| {z }
+
+> (2)
+
+] ≥ L CInd X,A,Z . (39) Minimising this objective encourages Z to encode all the information of X that is relevant to A (via (1) ) and reducing the information of X that is independent of A (via (2) ). This ensures X and A is conditionally independent given Z.
+
+Pairwise Mutual Information Minimisation via Contrastive Learning LPMI : Similar to the variational bound for the IB terms, without loss of generality, we provide an upper bound for I(Z; V), and the bounds for I(Z; Q) and I(V; Q) can be derived accordingly. Notably, since the conditional distribution p(Z|V) is unknown, utilising the variational contrastive log-ratio upper bound of mutual information (CLUB) (Cheng et al., 2020) with samples (zn, vn), we can derive a tractable upper bound for I(Z; V):
+
+IVCLUB Z;V = 1
+
+N
+
+> N
+
+X
+
+> n=1
+
+log q(zn|vn) − 1
+
+N
+
+> N
+
+X
+
+> m=1
+
+log q(zm|vn) ≥ I(Z; V), (40) for q(Z|V) is a variational distribution to approximate p(Z|V). The first term evaluates how well the variational approxima-tion predicts the “positive” pairs (zn, vn), capturing the dependence between Z and V. The second term penalises this by evaluating the model on “negative” pairs (zm, vn), approximating the behaviour when Z and V are independent, thereby providing an effective upper bound for I(Z; V). Similarly, we can derive the upper bounds for I(Z; Q) and I(V; Q), and obtain the final tractable objective LVPMI Z;V;Q as: 
+
+min LVPMI Z;V;Q = α1IVCLUB Z;V + α2IVCLUB Z;Q + α3IVCLUB V;Q ≥ L PMI Z;V;Q . (41) Hence, minimising this loss will ensure the pairwise MI independence between Z, V, and Q. Final tractable T IDE 
+
+objective: Combining Eq. 38, 39, 41, the overall tractable objective for T IDE is given by: 
+
+max  
+
+> θZ,θ V,θ Q
+
+LVIB Z;V;Q − λCInd LVCInd X,A,Z − L VPMI Z,V,Q . (42) 17 TIDE : Graph Out-of-Distribution Detection via Tri-Component Information Decomposition 
+
+While the objective in Eq. 42 combines all losses into one expression, we optimise the networks individually using their respective losses. The optimisation process for T IDE is outlined in Algorithm 1 in the main text. In Step 1 , the individual networks are updated to capture sufficient yet minimal joint-input, structure-only, and feature-only information for predicting the label Y.
+
+Step 2 enforces mutual conditional independence between X|Z and A specifically for the GNN classifier. Finally, Step 3 minimises pairwise mutual information, updating each network only with the loss relevant to its representation. This structured approach ensures efficient and targeted optimisation for T IDE .
+
+G. Neural Network Parameterisation of T IDE 
+
+To optimise the intractable T IDE objective in Eq. 42, we parameterise the variational approximations using GNNs and MLPs: 
+
+Main Encoder Networks. Our framework uses three primary networks to encode the representations Z, V and Q and for prediction (i.e., joint-input classifier, feature network, structure network) with parameters θZ, θV, and θQ respectively: Joint-input Network: GNN CLS (X, A) ← Z (43) Feature Network: MLP feat (X) ← V (44) Structure Network: GNN struct (I, A) ← Q, (45) where X ∈ Rn×d is the node feature matrix, A ∈ Rn×n is the adjacency matrix, I ∈ Rn×n is the identity matrix (used as placeholder features), and Z, V, Q are the latent representations. To capture structural information, we leverage a GNN model that inherently provides robust structure encoding. Meanwhile, for the feature network - comprising solely feature embeddings - a lightweight MLP is more appropriate. Each network contains the following elements respectively: Variational Implementation. Following common variational approximations (Alemi et al., 2017), we model the conditional distributions of our latent representations using Gaussian distributions parameterised by the respective encoders. We use a GNN/MLP encoder to extract representations h from the given inputs, and use linear MLP layers to encode the latent variables μ and σ, this produces Gaussian distributions over the latent space: 
+
+μZ = MLP μZ (hZ ), σZ = MLP σZ (hZ ), hZ = GNN enc (X, A) (46) 
+
+μV = MLP μV (hV ), σV = MLP σV (hV ), hV = MLP enc (X) (47) 
+
+μQ = MLP μQ (hQ), σQ = MLP σQ (hQ), hQ = GNN enc (I, A). (48) Using these, we can sample the latent variables using the reparameterisation trick: 
+
+Z = μZ + σZ ⊙ ϵZ , ϵZ ∼ N (0 , I) (49) 
+
+V = μV + σV ⊙ ϵV , ϵV ∼ N (0 , I) (50) 
+
+Q = μQ + σQ ⊙ ϵQ, ϵQ ∼ N (0 , I) (51) This enable us to obtain the representations Z, V and Q for optimisation. 
+
+Auxiliary Layers. For predictions and calculation of the reconstruction loss, IB minimisation, and pairwise MI minimisation, we use the following auxiliary layers in the respective networks: Prediction Layers: GNN pred-Z (Z, A) → ˆYZ (52) MLP pred-V (V) → ˆYV (53) GNN pred-Q (Q, A) → ˆYQ (54) Reconstruction Layer: MLP recon (Z) → ˆX (55) 18 TIDE : Graph Out-of-Distribution Detection via Tri-Component Information Decomposition 
+
+G.1. Objective Components in Terms of Networks 1) Information Bottleneck Terms. For each representation Z, V, and Q, we calculate the VIB loss Eq. 37. For example, for the joint representation Z:VIB Z = EϵZ [log MLP pred-Z (Z = μZ + σZ ⊙ ϵZ )( Y)] 
+
+| {z }
+
+> CE(Z,Y)
+
+− βZ
+
+X
+
+> i
+
+ 1 + log(( σZ,i )2) − (μZ,i )2 − (σZ,i )2| {z }
+
+> KL divergence term (analytical form)
+
+(56) 
+
+2) Conditional Independence Term. For the conditional independence loss Eq. 39, we use the reconstruction network: 
+
+LCInd = EϵZ [−∥ X − MLP recon (Z = μZ + σZ ⊙ ϵZ )∥22]
+
+| {z }
+
+> Reconstruction loss (encourages Z to encode X information)
+
+(57) 
+
+3) Pairwise Mutual Information Terms. Following CLUB (Cheng et al., 2020), we estimate the pairwise mutual information terms using contrastive learning Eq. 41. For each pair of representations (i.e., Z, V), we compute: CLUB (Z, V) = 1
+
+N
+
+> N
+
+X
+
+> i=1
+
+log s(Zi, Vi)
+
+> 1
+> N
+
+PNj=1 s(Zi, Vj ) (58) (59) where s is a similarity function (e.g., dot product) between representations, N is the number of samples. 
+
+Implementation Notes In practice, we optimise this objective by: • Forward pass through all encoders to get μZ , σZ , μV , σV , μQ, σQ.• Sample Z, V, Q using the reparameterisation trick. • Compute all components of the loss using these samples. • Backpropagate through the networks to update parameters according to Algorithm 1. 
+
+H. Extended Related Work 
+
+Out-of-distribution detection is a critical task in machine learning, extensively studied across various domains. A significant body of work focuses on methods that rely solely on ID data, employing techniques such as softmax scores (Hendrycks & Gimpel, 2017; Liang et al., 2018), energy-based scoring (Liu et al., 2020; Wang et al., 2021; Yang et al., 2024b), and activation pruning (Djurisic et al., 2023; Sun & Li, 2022; Sun et al., 2021). Other strategies enhance model confidence (Hsu et al., 2020; Hein et al., 2019; Vyas et al., 2018), improve feature learning (Lin et al., 2021; Dong et al., 2022), or incorporate adversarial approaches (Bitterwolf et al., 2020; Chen et al., 2021; Choi & Chung, 2020). Beyond ID-based methods, OOD exposure leverages auxiliary OOD data during training to improve detection performance (Hendrycks et al., 2019; Liu et al., 2020; Park et al., 2023; Zhu et al., 2023; Zheng et al., 2023; Du et al., 2024; Wu et al., 2023b). Meanwhile, an emerging direction involves generating synthetic OOD data. GAN-based methods, such as ConfOOD (Lee et al., 2018a), train confidence classifiers alongside OOD data generation, while VOS (Du et al., 2022) synthesises outliers from low-probability Gaussian regions. More recently, diffusion models have been widely adopted, as seen in DFDD (Wu et al., 2023a) and Dream-OOD (Du et al., 2023). 
+
+H.1. Graph OOD Detection 
+
+Recent advancements in OOD detection have expanded to graph-structured data, addressing both node-level and graph-level detection tasks. For node-level OOD detection, several innovative methods have been developed to improve detection accuracy and robustness. GNNSafe introduces an energy propagation schema that considers the inter-dependence of node 19 TIDE : Graph Out-of-Distribution Detection via Tri-Component Information Decomposition 
+
+instances, providing a more nuanced approach to identifying OOD nodes (Wu et al., 2023b). Building on this, NODESafe incorporates additional regularization terms to reduce and bound extreme energy scores, ensuring more stable and reliable detection (Yang et al., 2024b). Meanwhile, TopoOOD explores topological shifts in graph data and proposes a node-wise Dirichlet Energy metric to measure neighbourhood turbulence, which serves as a confidence score for OOD detection (Bao et al., 2024). Other approaches, such as GKDE, employ a multi-source uncertainty framework to estimate node-level Dirichlet distributions, which aids in identifying OOD instances (Zhao et al., 2020). Similarly, GPN leverages Bayesian posterior and density estimation to quantify uncertainty at the node level, further enhancing detection capabilities (Stadler et al., 2021). Moreover, DeGEM presents a novel energy-based model training framework involving a multi-hop graph encoder and energy head, targeting the detection on heterophilic graphs (Chen et al., 2025). Additionally, GOLD presents a data-synthesis-based framework that generates pseudo-OOD embeddings without relying on pre-trained generative models or auxiliary OOD datasets. At its core is an alternating optimisation framework, which effectively balances ID representation learning with divergence-enhanced pseudo-OOD generation (Wang et al., 2025a). RAGNOR presents a post-hoc baseline that leverages embedding norms for OOD detection on both node-level and graph-level tasks (Gu et al., 2025). More recently, some works explores OOD detection on text-attributed graph using Large Language Models for zero-shot detection or generating auxiliary pseudo-OOD samples (Xu et al., 2025b;a; Wang et al., 2024). At the graph level, OOD detection methods have focused on modelling distribution shifts, adopting data-centric perspectives, and utilising unsupervised learning techniques. GraphDE models distribution shifts through a graph generative process, deriving a posterior distribution to detect OOD graphs (Li et al., 2022b). In contrast, AAGOD takes a data-centric approach by learning structural patterns in graph data through a learnable amplifier matrix, improving detection performance (Guo et al., 2023). Another notable method, GOOD-D, applies unsupervised contrastive learning to enhance graph-level OOD detection without relying on labelled OOD data (Liu et al., 2023). These methods highlight the growing emphasis on leveraging graph structure and distributional properties to improve OOD detection. 
+
+H.2. Information Bottleneck 
+
+The IB principle has been widely applied across various domains to enhance learned representations (Wu et al., 2020; Alemi et al., 2017; Tishby et al., 2000; Ahuja et al., 2021; Kawaguchi et al., 2023; Wang et al., 2023; Federici et al., 2020; Dai et al., 2023; Sun et al., 2022). Its objective is to learn a compressed representation that maximally retains label-relevant information while minimising label-irrelevant information from inputs (Tishby et al., 2000; Alemi et al., 2017). This concept has also been extended to graph-structured data, enabling robust representation learning from both node features and graph structure (Wu et al., 2020; Sun et al., 2022). Notably, IB’s potential for OOD detection has primarily been explored in Euclidean settings (Hu et al., 2024; Zhao & Cao, 2023; Li et al., 2023b; Sinha et al., 2021; Wu & Deng, 2024). For instance, DRL introduces a dual representation learning framework that learns both a target-discriminative representation and an additional distribution-discriminative representation C, capturing all information relevant to the target Y (Zhao & Cao, 2023). Meanwhile, (Hu et al., 2024) examines information from the perspective of classification-relevant and classification-irrelevant detection, providing a theoretical analysis of the overconfidence of OOD samples in models trained on ID data using supervised learning. (Alemi et al., 2018) empirically validates IB’s effectiveness for OOD detection. In contrast to these studies, our work offers theoretical insights into the advantages of IB over standard supervised learning, particularly in improving prediction confidence. For graph-structured data, IS-GIB introduces I-GIB to mitigate irrelevant information by minimising the mutual information between the input graph and its embeddings. S-GIB was further leveraged to utilise structural relationships to discard irrelevant information, establishing an effective invariant learning framework for OOD generalisation (Yang et al., 2024a). Additionally, CSIB generates and refines causal subgraphs based on invariant causal prediction and the graph information bottleneck principle, preserving essential features while filtering out spurious correlations, thereby improving graph-based OOD generalisation (An et al., 2024). Moreover, IBPL introduces a graph-level OOD detection method that effectively tackles the issue of overlapping features between ID and OOD graphs, aiming to enhance detection performance. IBPL proposes a novel graph prompt that jointly optimises node features and graph structure, enabling the generation of more discriminative ID features. By leveraging the IB principle, IBPL maximises the MI between category labels and the prompt graph while minimising the MI between perturbed graphs and the prompt graph. This dual optimisation process allows for the extraction of robust ID features while significantly reducing the influence of overlapping features (Cao et al., 2025). Unlike these approaches, our work is driven by theoretical insights into IB and mutual decomposition, demonstrating their benefits for OOD detection. We validate our findings through extensive experiments, highlighting and validating the effectiveness of IB for graph OOD detection. 20 TIDE : Graph Out-of-Distribution Detection via Tri-Component Information Decomposition 
+
+I. Defining OOD shifts 
+
+Typically, considering a message passing neural network (i.e., GNN) model, it is trained using ID data (i.e., Xtr 
+
+> ID
+
+, Atr 
+
+> ID
+
+), and the test data consists of a combination of ID and OOD instances (i.e., (Xte 
+
+> ID
+
+, Ate 
+
+> ID
+
+), (Xte 
+
+> OOD
+
+, Ate 
+
+> OOD
+
+)) . The primary objective is to identify and detect the OOD samples from the ID instances while maintaining high ID classification performance. Generally, we categorise OOD shifts into the following: Ptrain (X, A)̸ = Ptest (X, A) and the conditional distribution 
+
+Ptrain (Y|X, A)̸ = Ptest (Y|X, A). To detect OOD data, the task is to formulate an OOD scoring function F , usually built upon the output from the classifier GNN, such that it outputs F (X, A; GNN ) = 0 for data from in-distribution and 
+
+F (X, A; GNN ) = 1 for data from out-of-distribution. This definition, however, lacks the detail of the particular shift occurring alone on the feature X or among the structure A. Thus, to understand when OOD detection is possible for such an ID-trained model, we adopt the following definitions and explore the impact of each of the distribution shifts (Han et al., 2024). Feature Shift ( X): A feature shift occurs when the distribution of X and its relationship with A change between training and testing. Specifically, Ptrain (X)̸ = Ptest (X) and Ptrain (X|A)̸ = Ptest (X|A) or Ptrain (A|X)̸ = Ptest (A|X).Additionally, the conditional distribution of Y given X changes, such that Ptrain (Y|X)̸ = Ptest (Y|X). Consequently, the joint conditional distribution of Y given both X and A also shifts: Ptrain (Y|A, X)̸ = Ptest (Y|A, X). However, the conditional distribution of Y given A alone remains unchanged: Ptrain (Y|A) = Ptest (Y|A). Structural Shift (A): A structural shift occurs when the distribution of A and dependencies with X shifts (i.e., Ptrain (A)̸ = Ptest (A)
+
+and Ptrain (X|A)̸ = Ptest (X|A) or Ptrain (A|X)̸ = Ptest (A|X)). Additionally, the conditional distribution of Y given A
+
+changes, such that Ptrain (Y|A)̸ = Ptest (Y|A). Consequently, the joint conditional distribution of Y given both X and 
+
+A also shifts: Ptrain (Y|A, X)̸ = Ptest (Y|A, X). However, the conditional distribution of Y given X remains invariant: 
+
+Ptrain (Y|X) = Ptest (Y|X). Joint Shift ( X, A): More realistically, distributional shifts typically occur jointly on X, A, thus, we consider a joint distribution shift on both the feature and structure (i.e., Ptrain (A)̸ = Ptest (A), Ptrain (X)̸ = Ptest (X), and 
+
+Ptrain (X|A)̸ = Ptest (X|A) or Ptrain (A|X)̸ = Ptest (A|X)). The joint conditional distribution of Y given both X and A also shifts: Ptrain (Y|A, X)̸ = Ptest (Y|A, X). Semantic Shift ( Y): Consider Ytrain and Ytest as the label space of the train and test data respectively. OOD data with semantic shift is defined to consist of unknown labels Y that do not belong to any of the classes seen in the ID label space Ytrain , i.e., Ytrain ⊂ Y test or Ytrain ∩ Y test = Ø. 
+
+J. Evaluation Metrics 
+
+To evaluate the performance of OOD detection, we followed common practices (Wu et al., 2023b; Liu et al., 2020; 2023; Yang et al., 2024b) and utilised three key metrics: 1. Area Under the Receiver Operating Characteristic curve (AUROC), 2. Area Under the Precision-Recall curve (AUPR), 3. False positive rate at 95% true positive rate (FPR95). These metrics are independent of the threshold, avoiding the need to select τ . AUROC captures the balance between the true positive rate (TPR) and false positive rate (FPR) across varying thresholds, offering an overall assessment of the model’s ability to differentiate between ID and OOD samples. However, when OOD instances are rare in highly imbalanced datasets, AUROC can yield overly optimistic results. In contrast, AUPR accounts for both precision and recall, making it more suited for such imbalanced scenarios. Meanwhile, FPR95 emphasises performance under high-sensitivity conditions by measuring the rate at which ID samples are misclassified as OOD when the true positive rate is fixed at 95%. This metric highlights improvements in detection performance under stricter criteria, where a lower FPR95 indicates a more significant gain in the model’s ability to differentiate between ID and OOD instances. 
+
+K. Implementation Details 
+
+We follow (Wu et al., 2023b; Yang et al., 2024b) and use the publicly available benchmark datasets. The datasets were downloaded via Pytorch Geometric 2.0.3 and OGB 1.3.3 under the MIT license. Experiments were conducted using Python 3.9.19 and PyTorch 2.3.1 with Cuda 12.2 on a single NVIDIA RTX A6000 GPU with 48GB of memory. We follow (Wu et al., 2023b; Yang et al., 2024b) for the selection of baselines. We conducted experiments across three seeds for GNNS AFE 
+
+and NODES AFE . Result inconsistencies with original reported statistics may stem from software environment, dataset 21 TIDE : Graph Out-of-Distribution Detection via Tri-Component Information Decomposition 
+
+differences, and unavailable hyperparameters. We reproduced results to the best of our ability, while results for other baselines were sourced from (Wu et al., 2023b; Yang et al., 2024b). Our design choices for the auxiliary networks directly follow their intended roles in T IDE ’s decomposition framework: V
+
+should capture feature-only information, and Q should capture structure-only information. The architectures are chosen to enforce this disentanglement rather than model preference. • Feature network V = MLP (captures feature-only information) 
+
+The purpose of V is to isolate feature-specific components that do not rely on graph propagation. We feed only the raw node attributes into an MLP to ensure that depends solely on features and does not inadvertently encode structural context. A GNN with identity adjacency could simulate “no propagation,” but this would introduce unnecessary complexity. A simple MLP is therefore the appropriate choice. • Structure network Q = GCN (captures structure-only information) 
+
+The purpose of Q is to encode predictive information arising purely from graph topology. To enforce this, we use a GCN with constant node features (all-ones input). This ensures that Q encodes only structural variation from the adjacency matrix. More expressive alternatives (learnable positional encodings, spectral embeddings, structure-only encoders) can be explored in future work. CLUB (Cheng et al., 2020) is used for implementing the PMI regulariser. However, we also compare the effect with alternative MI estimator like InfoNCE (van den Oord et al., 2018) in Table 10, where the performance remains consistent. This indicates that T IDE ’s performance is driven by the overall information decomposition design rather than any specific MI estimator, and that optimisation remains stable under reasonable perturbations of these approximations. The trade-off parameters β for the individual IB losses are searched through the range β ∈ { 0.0001 , 0.001 , 0.01 , 0.1, 1}, with a default value of β = 0 .001 . A constant αi ∈ { 0.0001 , 0.001 , 0.01 , 0.1, 1} is applied uniformly to all three mutual information terms in Eq. 11. The loss coefficient λCInd for LVCInd was tuned based on the dataset with values taking ranges of 
+
+λCInd ∈ { 0.0001 , . . . , 1}. Following (Wu et al., 2023b), the number of energy propagation iterations k is set to 2, with the controlling parameter α fixed at 0.5, the OOD-exposure loss coefficient λOE for LEReg is set to 1. For OOD exposure experiments, we tuned the margins tID and tOOD from the proposed ranges by (Wu et al., 2023b; Yang et al., 2024b), if not available, we tune with values from the range of {− 9, . . . , 0} for tID < t OOD for different datasets. The Adam optimiser is used for training (Kingma & Ba, 2015). For simplicity, constant β and α values were applied uniformly: α to all mutual information terms in PMI loss, and β to IB terms for the GNN classifier, structure, and feature networks. Results show performance is sensitive to these weights. A suitable β is crucial for balancing representation robustness with prediction ability, while an appropriate α encourages a compact joint representation, mitigating spurious impacts from structure and features. Tables 7, 8, and 9 presents the hyperparameter sensitivity analysis.   
+
+> Table 7. Hyperparameter analysis for λCInd . Bold highlights the optimal parameter.
+
+λCInd 
+
+Cora - S Citeseer - F AUROC AUPR FPR ID Acc AUROC AUPR FPR ID Acc 0 94.79 ± 0.22 88.41 ± 0.49 26.22 ± 2.55 78.73 93.25 ± 0.87 82.94 ± 2.15 26.96 ± 4.64 67.83 0.0001 95.01 ± 0.24 88.93 ± 0.51 24.84 ± 0.70 78.90 93.96 ± 0.73 84.67 ± 2.35 23.13 ± 3.55 68.40 
+
+0.001 94.97 ± 0.19 88.89 ± 0.44 25.55 ± 1.86 78.80 93.81 ± 0.81 84.51 ± 2.42 24.58 ± 3.31 68.37 0.01 94.93 ± 0.32 88.80 ± 0.69 25.39 ± 0.70 78.90 93.79 ± 0.83 84.53 ± 2.44 24.75 ± 4.58 68.33 0.1 94.92 ± 0.26 88.77 ± 0.60 25.65 ± 1.80 78.90 93.74 ± 0.78 84.25 ± 2.67 24.99 ± 4.20 68.37 1 95.15 ± 0.37 89.33 ± 0.57 23.31 ± 1.04 78.97 93.90 ± 0.75 84.62 ± 2.32 24.05 ± 3.94 68.30                                                                                                                                     
+
+> Table 8. Hyperparameter analysis for α– weight coefficients applied uniformly to all mutual information terms in PMI. Bold highlights the optimal parameter.
+> αCora - F PubMed - S AUROC AUPR FPR ID Acc AUROC AUPR FPR ID Acc 097.72 ±0.10 94.26 ±0.52 9.40 ±1.06 77.47 96.45 ±0.64 76.46 ±2.31 15.66 ±4.88 74.77 0.0001 97.68 ±0.13 89.16 ±9.49 8.80 ±0.79 77.77 96.55 ±0.80 77.26 ±2.72 16.21 ±5.18 74.47 0.001 97.66 ±0.10 94.51 ±0.40 8.63 ±0.94 78.00 96.54 ±0.80 77.21 ±2.71 16.15 ±4.98 74.47 0.01 97.88 ±0.24 94.67 ±0.56 8.13 ±1.32 78.10 97.25 ±0.58 79.76 ±2.17 12.97 ±3.87 75.93
+> 0.1 78.49 ±7.47 70.99 ±8.49 91.89 ±6.77 76.30 88.13 ±6.57 66.19 ±11.57 69.39 ±30.40 75.70 147.82 ±4.92 29.19 ±3.29 97.89 ±1.31 24.37 37.96 ±49.44 31.37 ±49.70 78.33 ±33.53 40.77
+
+22 TIDE : Graph Out-of-Distribution Detection via Tri-Component Information Decomposition 
+
+Table 9. Hyperparameter analysis for β – prediction-to-compression trade-off weight applied uniformly to the IB terms for the GNN classifier, structure, and feature networks. Bold highlights the optimal parameter. 
+
+β Amazon - L Twitch AUROC AUPR FPR ID Acc AUROC AUPR FPR ID Acc 0 96.92 ± 0.33 96.38 ± 0.70 9.29 ± 1.15 96.10 66.33 ± 15.32 72.59 ± 13.44 81.18 ± 19.87 70.75 0.0001 96.85 ± 0.13 95.82 ± 0.11 8.94 ± 1.45 95.89 89.72 ± 5.42 91.92 ± 3.85 46.60 ± 26.47 68.63 
+
+0.001 96.83 ± 0.39 95.78 ± 0.42 8.36 ± 3.83 96.04 89.39 ± 5.57 91.58 ± 3.82 47.75 ± 27.79 68.63 0.01 96.86 ± 0.35 95.79 ± 0.39 8.13 ± 3.55 96.07 89.04 ± 6.61 91.61 ± 4.75 48.89 ± 33.03 68.61 0.1 96.87 ± 0.31 95.80 ± 0.38 8.39 ± 3.17 94.87 82.14 ± 13.18 85.87 ± 9.48 51.07 ± 33.40 67.52 1 93.40 ± 1.77 90.85 ± 1.20 34.01 ± 30.72 82.32 57.70 ± 24.03 68.52 ± 14.31 68.30 ± 25.88 59.31 
+
+Table 10. Comparison of different mutual information estimators. Best is highlighted in bold .
+
+Dataset Method AUROC AUPR FPR ACC 
+
+Pubmed-S w/ CLUB 97.25 79.76 12.97 75.93 w/ InfoNCE 97.33 77.61 11.69 74.30 
+
+Cora-S w/ CLUB 95.15 89.33 23.31 78.97 w/ InfoNCE 94.95 88.86 24.78 78.20 
+
+Cora-F w/ CLUB 97.88 94.67 8.13 78.10 w/ InfoNCE 97.94 94.38 6.94 78.10 
+
+Citeseer-L w/ CLUB 90.97 64.92 30.84 88.55 w/ InfoNCE 90.69 63.28 31.34 87.54 
+
+Coauthor-S w/ CLUB 99.95 99.94 0.13 92.72 w/ InfoNCE 99.94 99.92 0.13 92.66 
+
+L. Dataset Details 
+
+Following the protocol outlined in (Wu et al., 2023b), we use publicly available graph benchmark datasets, sourced from the PyTorch Geometric (PyG) and the Open Graph Benchmark (OGB) 1 package 2 (Sen et al., 2008). We adhere to the provided splits and dataset generation process described in (Wu et al., 2023b). Cora This dataset represents a citation network where nodes correspond to academic papers, and edges denote citation relationships (Sen et al., 2008). Each paper is classified into one of seven categories. Cora lacks explicit domain-based partitions for OOD evaluation, thus, we follow (Wu et al., 2023b) and generate OOD data synthetically as described in Section 6 (i.e., Structure shift, Feature shift, and label-leave-out). 
+
+Table 11. Cora dataset statistics                              
+
+> Structure (ID) Structure (OOD) Feature (ID) Feature (OOD) Label (ID) Label (OOD) Nodes 2708 2708 2708 2708 904 986 Edges 10556 6696 10556 10556 10556 10556 Feature Dim 1433 1433 1433 1433 1433 1433 Classes 777733
+
+Citeseer This dataset is another citation network (Giles et al., 1998; Sen et al., 2008), where nodes represent scientific papers classified into one of six classes, and edges denote citation relationships. It contains slightly more papers with fewer edges than Cora , however, the feature dimension is larger. We follow Cora and generate three OOD data synthetically as described in Section 6 . 
+
+Pubmed This dataset is a biomedical paper citation network (Sen et al., 2008), with each paper classified into one of three classes. The nodes represent academic papers, while edges are citation relationships, we follow (Yang et al., 2024b) and generate OOD data synthetically as described in Section 6. Due to the Pubmed dataset having only three classes, the 
+
+> 1
+
+https://github.com/snap-stanford/ogb?tab=readme-ov-file 
+
+> 2
+
+https://pytorch-geometric.readthedocs.io/en/latest/modules/datasets.html 
+
+23 TIDE : Graph Out-of-Distribution Detection via Tri-Component Information Decomposition 
+
+Table 12. Citeseer dataset statistics                              
+
+> Structure (ID) Structure (OOD) Feature (ID) Feature (OOD) Label (ID) Label (OOD) Nodes 3327 3327 3327 3327 1104 1522 Edges 9104 5932 9104 9104 9104 9104 Feature Dim 3703 3703 3703 3703 3703 3703 Classes 666623
+
+NODES AFE approach designates two classes as OOD labels (i.e., OOD training and OOD testing), leaving just one class in the training set. This setup may pose challenges, as training with only one class can lead to significant imbalance and limitations in model evaluation. As a result, we exclude the label shift scenario for Pubmed from our analysis. 
+
+Table 13. Pubmed dataset statistics                    
+
+> Structure (ID) Structure (OOD) Feature (ID) Feature (OOD) Nodes 19717 19717 19717 19717 Edges 88648 74188 88648 88648 Feature Dim 500 500 500 500 Classes 3333
+
+Amazon-Photo This dataset models an item co-purchasing network, where nodes represent products, and edges indicate frequently co-purchased items (McAuley et al., 2015). Node features capture product descriptions, and labels correspond to product categories. Similar to Cora , we generate OOD data synthetically. Coauthor-CS This dataset represents 
+
+Table 14. Amazon-Photo dataset statistics                              
+
+> Structure (ID) Structure (OOD) Feature (ID) Feature (OOD) Label (ID) Label (OOD) Nodes 7650 7650 7650 7650 3095 3673 Edges 238162 149168 238162 238162 238162 238162 Feature Dim 745 745 745 745 745 745 Classes 888834
+
+a collaboration network, where nodes correspond to authors, and edges indicate co-authorships in computer science research (Sinha et al., 2015). The task involves classifying authors into their respective fields based on publication keywords. OOD graphs are generated following the synthetic protocol used for other datasets. 
+
+Table 15. Coauthor-CS dataset statistics                              
+
+> Structure (ID) Structure (OOD) Feature (ID) Feature (OOD) Label (ID) Label (OOD) Nodes 18333 18333 18333 18333 13290 3649 Edges 163788 92802 163788 163788 163788 163788 Feature Dim 6805 6805 6805 6805 6805 6805 Classes 15 15 15 15 10 4
+
+TwitchGamers - Explicit This dataset comprises multiple social network subgraphs from different geographic regions (Rozemberczki & Sarkar, 2021). Nodes represent Twitch gamers, and edges indicate follower relationships. Node features include game-based embeddings, and the classification task focuses on predicting whether a user streams mature content. We use the DE subgraph as ID data and the ES, FR, and RU subgraphs as OOD test data. OGBN-Arxiv This dataset is a large-scale citation network spanning research papers from 1960 to 2020 (Hu et al., 2020). Nodes represent papers, categorised by subject area, and edges signify citation links. Node features are derived from word embeddings of paper titles and abstracts. Following (Wu et al., 2023b), we partition the dataset using publication timestamps-papers published before 2015 are used as ID data, while papers published after 2017 serve as OOD data. 24 TIDE : Graph Out-of-Distribution Detection via Tri-Component Information Decomposition 
+
+Table 16. TwitchGamers - Explicit dataset statistics 
+
+DE (ID) ES (OOD) FR (OOD) RU (OOD) Nodes 9498 4648 6551 4385 Edges 315774 123412 231883 78993 Feature Dim 128 128 128 128 Classes 2 2 2 2
+
+Table 17. OGBN-Arxiv dataset statistics 
+
+2015 (ID) 2018 (OOD) 2019 (OOD) 2020 (OOD) Nodes 53160 29799 39711 8892 Edges 152226 622466 1061197 1166243 Feature Dim 128 128 128 128 Classes 40 40 40 40 
+
+M. Extended Experimental Results 
+
+In this section, we provide the extended results from the main paper. Table 18. Additionally, we provide the OOD detection performance for each subset of the OOD datasets in Tables 19 to 25, complementing Tables 1 and 6 in the main text. The scores reported in the subset tables are averaged across three runs, with variance reflecting performance deviation across the three seeds. Furthermore, we report an extended version of the ablation study in Tables 26 to 30, supplementing Table 3 in the main text. 
+
+Table 18. Overall Model performance comparison: out-of-distribution detection is measured by AUROC (↑) / AUPR (↑) / FPR95 (↓)(%) and in-distribution classification results are measured by accuracy (ID ACC) (↑). OOD detection performance was prioritised, with the detection results of our T IDE against Non- (Real-) OOD Exposure methods. 
+
+Metrics Non-OOD Exposure Real OOD Exposure TIDE 
+
+MSP ODIN Maha Energy GKDE GPN GNNS AFE NODESAFE OE Energy FT GNNS AFE ++ NODESAFE++ w/o OE w/ OE 
+
+> Cora
+
+AUROC 82.55 49.87 54.74 83.09 69.54 84.56 91.20 ± 3.09 93.35 ± 2.41 79.76 85.13 93.13 ± 2.62 91.32 ± 1.55 95.58 ± 2.12 95.76 ± 2.29 AUPR 65.82 26.08 34.43 66.21 46.09 68.02 82.92 ± 4.96 84.64 ± 6.40 64.93 67.89 85.28 ± 4.55 82.74 ± 4.62 89.34 ± 5.32 89.68 ± 5.95 FPR95 62.39 100.00 96.30 65.21 80.51 58.30 50.53 ± 22.04 29.23 ± 12.06 75.22 51.03 37.28 ± 16.97 42.48 ± 5.82 20.09 ± 10.72 19.34 ± 11.00 ID ACC 79.91 79.61 79.57 80.34 79.86 81.65 81.56 ± 7.01 82.66 ± 6.61 77.69 80.44 82.16 ± 7.78 74.94 ± 13.86 82.56 ± 6.99 82.2 ± 6.79 
+
+> Citeseer
+
+AUROC 77.69 50.14 49.55 78.26 72.95 78.22 84.89 ± 5.47 87.80 ± 2.74 63.75 79.81 85.69 ± 5.16 84.29 ± 7.06 92.27 ± 1.53 92.16 ± 1.53 AUPR 51.43 21.38 29.29 51.22 47.67 52.22 64.86 ± 3.39 72.35 ± 6.41 47.20 52.79 65.89 ± 2.50 64.86 ± 4.66 76.57 ± 10.34 75.90 ± 10.27 FPR95 69.42 100 95.06 65.34 71.85 67.09 60.85 ± 18.06 53.38 ± 17.47 74.15 57.37 54.76 ± 23.14 56.12 ± 22.56 30.79 ± 7.64 29.22 ± 7.10 ID ACC 73.72 73.75 62.17 73.43 72.69 72.77 76.06 ± 12.05 73.12 ± 14.15 62.24 72.66 72.74 ± 13.43 68.60 ± 18.51 75.66 ± 11.19 75.81 ± 10.95 
+
+> Pubmed
+
+AUROC 78.80 49.72 62.20 79.25 78.14 78.76 93.82 ± 1.93 91.08 ± 2.95 78.38 76.25 93.77 ± 1.31 95.14 ± 0.26 97.35 ± 0.13 98.26 ± 0.29 AUPR 28.37 4.83 11.74 28.21 24.65 28.65 69.94 ± 6.32 68.56 ± 1.06 27.67 27.61 74.06 ± 5.16 72.20 ± 5.85 80.73 ± 1.37 85.36 ± 0.21 FPR95 76.73 100 91.26 70.69 75.04 71.06 37.71 ± 14.28 50.17 ± 0.89 79.05 91.02 39.58 ± 11.44 24.87 ± 6.44 12.75 ± 0.31 8.84 ± 1.81 ID ACC 75.05 75.30 71.15 75.55 74.65 75.15 76.78 ± 0.31 77.32 ± 0.02 73.00 75.80 77.88 ± 0.35 74.17 ± 0.05 76.17 ± 0.33 76.67 ± 0.19 
+
+> Amazon
+
+AUROC 96.52 80.12 73.81 96.73 66.98 92.60 97.99 ± 0.93 97.84 ± 1.11 97.79 98.04 — — 98.16 ± 1.14 —AUPR 95.01 77.18 72.35 95.16 71.18 90.50 98.16 ± 1.56 97.77 ± 2.11 97.26 96.96 — — 98.08 ± 1.99 —FPR95 13.83 85.22 83.44 13.15 98.47 32.64 3.24 ± 5.24 3.69 ± 6.14 7.52 5.98 — — 2.81 ± 4.61 —ID ACC 93.83 93.88 93.80 93.85 87.71 89.54 93.79 ± 1.99 92.70 ± 2.16 93.54 93.38 — — 93.90 ± 1.88 —
+
+> Coauthor
+
+AUROC 95.74 51.71 82.02 96.64 69.24 69.89 98.98 ± 1.41 99.02 ± 1.45 97.65 98.17 — — 99.27 ± 1.17 —AUPR 96.43 56.37 87.05 97.09 80.17 72.77 99.55 ± 0.44 99.57 ± 0.47 98.04 98.51 — — 99.70 ± 0.40 —FPR95 21.37 99.97 48.09 15.49 97.04 69.60 4.29 ± 6.87 4.33 ± 7.04 10.61 7.76 — — 3.31 ± 5.45 —ID ACC 93.37 93.29 93.29 93.57 87.74 89.39 93.65 ± 1.50 93.21 ± 1.86 93.41 93.44 — — 93.48 ± 1.74 —
+
+> Twitch
+
+AUROC 33.59 58.16 55.68 51.24 46.48 51.73 66.33 ± 15.32 66.48 ± 15.44 55.72 84.50 95.76 ± 2.63 76.79 ± 34.23 89.72 ± 5.42 91.52 ± 6.53 AUPR 49.14 72.12 66.42 60.81 62.11 66.36 72.59 ± 13.44 72.71 ± 13.43 70.18 88.04 97.45 ± 1.69 83.97 ± 24.11 91.92 ± 3.85 93.59 ± 4.36 FPR95 97.45 93.96 90.13 91.61 95.62 95.51 81.18 ± 19.87 80.62 ± 20.03 95.07 61.29 29.81 ± 23.16 34.46 ± 29.93 46.60 ± 26.47 33.19 ± 29.86 ID ACC 68.72 70.79 70.51 70.40 67.44 68.09 70.75 70.75 70.73 70.52 70.36 70.07 68.63 68.74 
+
+> Arxiv
+
+AUROC 63.91 55.07 56.92 64.20 58.32 OOM 70.58 ± 6.41 71.36 ± 6.35 69.80 71.56 73.98 ± 6.28 74.50 ± 6.42 72.72 ± 6.48 74.89 ± 6.26 AUPR 75.85 68.85 69.63 75.78 72.62 OOM 79.99 ± 12.80 80.67 ± 12.37 80.15 80.47 82.50 ± 11.31 81.55 ± 9.37 81.62 ± 11.86 83.25 ± 10.80 FPR95 90.59 100.0 94.24 90.80 93.84 OOM 87.90 ± 2.57 86.45 ± 2.97 85.16 80.59 79.99 ± 4.62 77.53 ± 5.10 83.65 ± 4.14 77.37 ± 5.49 ID ACC 53.78 51.39 51.59 53.36 50.76 OOM 53.21 53.10 52.39 53.26 53.28 51.32 52.44 52.41 
+
+25 TIDE : Graph Out-of-Distribution Detection via Tri-Component Information Decomposition 
+
+Table 19. Cora: Extended OOD detection performance with three types of OOD ( Structure manipulation, Feature interpolation, and 
+
+Label-leave-out). GS++ is short for GNNS AFE ++ and NS++ is short for NODES AFE ++. OE indicates OOD exposure. 
+
+Dataset Metrics Non-OOD Exposure Real OOD Exposure TIDE 
+
+MSP ODIN Mahalanobis Energy GKDE GPN GNNS AFE NODES AFE OE Energy FT GS++ NS++ w/o OE w/ OE 
+
+Cora-S 
+
+AUROC 70.90 49.92 46.68 71.73 68.61 77.47 87.64 ± 0.39 92.27 ± 0.74 67.98 75.88 90.19 ± 0.46 89.57 ± 8.12 95.15 ± 0.37 95.31 ± 0.37 AUPR 45.73 27.01 29.03 46.08 44.26 53.26 77.93 ± 0.59 82.32 ± 0.61 46.93 49.18 81.37 ± 1.02 80.86 ± 9.20 89.33 ± 0.57 89.44 ± 0.41 FPR95 87.30 100.00 98.19 88.74 84.34 76.22 73.49 ± 1.91 38.06 ± 4.49 95.31 67.73 56.81 ± 0.81 45.11 ± 32.56 23.31 ± 1.04 22.62 ± 3.11 ID ACC 75.50 74.90 74.90 76.00 73.70 76.50 77.53 ± 0.38 78.97 ± 0.32 71.80 75.50 77.67 ± 0.42 67.67 ± 12.64 78.97 ± 1.22 77.90 ± 0.46 
+
+Cora-F 
+
+AUROC 85.39 49.88 49.93 86.15 82.79 85.88 92.76 ± 0.43 96.11 ± 0.14 81.83 88.15 95.22 ± 0.58 92.52 ± 4.91 97.88 ± 0.24 98.23 ± 0.14 AUPR 73.70 26.96 31.95 74.42 66.52 73.79 87.85 ± 1.07 91.87 ± 0.75 70.84 75.99 90.27 ± 1.26 88.00 ± 4.94 94.67 ± 0.56 95.74 ± 0.48 FPR95 64.88 100.00 99.93 65.81 68.24 56.17 48.56 ± 4.52 15.50 ± 1.48 83.79 47.53 29.01 ± 3.95 46.51 ± 37.56 8.13 ± 1.32 7.08 ± 0.85 ID ACC 75.30 75.00 74.90 76.10 74.80 77.00 77.50 ± 0.26 78.73 ± 0.40 73.30 75.30 77.67 ± 0.51 66.23 ± 8.94 78.10 ± 0.89 78.67 ± 0.70 
+
+Cora-L 
+
+AUROC 91.36 49.80 67.62 91.40 57.23 90.34 93.19 ± 0.11 91.68 ± 1.09 89.47 91.36 93.99 ± 0.79 91.86 ± 0.54 93.70 ± 0.04 93.73 ± 0.11 AUPR 78.03 24.27 42.31 78.14 27.50 77.40 82.99 ± 0.45 79.73 ± 2.31 77.01 78.49 84.19 ± 2.05 79.37 ± 0.16 84.03 ± 0.08 83.86 ± 0.23 FPR95 34.99 100.00 90.77 41.08 88.95 37.42 29.55 ± 2.24 34.14 ± 6.75 46.55 37.83 26.03 ± 3.76 35.80 ± 8.21 28.84 ± 0.36 28.23 ± 0.26 ID ACC 88.92 88.92 88.92 88.92 89.87 91.46 89.66 ± 0.66 90.29 ± 0.48 87.97 90.51 91.14 ± 0.32 90.93 ± 0.80 90.61 ± 0.36 90.03 ± 0.41 
+
+Table 20. Citeseer Extended OOD detection performance with three types of OOD ( Structure manipulation, Feature interpolation, and 
+
+Label-leave-out). GS++ is short for GNNS AFE ++ and NS++ is short for NODES AFE ++. OE indicates OOD exposure. 
+
+Dataset Metrics Non-OOD Exposure Real OOD Exposure TIDE 
+
+MSP ODIN Mahalanobis Energy GKDE GPN GNNS AFE NODES AFE OE Energy FT GS++ NS++ w/o OE w/ OE 
+
+Citeseer-S 
+
+AUROC 66.34 49.23 45.26 65.62 61.48 70.55 79.87 ± 0.56 87.70 ± 2.27 58.74 68.87 81.30 ± 0.43 77.32 ± 8.74 91.89 ± 0.36 91.90 ± 0.12 AUPR 34.78 23.07 21.20 33.63 31.55 41.12 61.44 ± 1.50 76.81 ± 1.13 30.07 36.01 64.59 ± 0.73 59.74 ± 6.25 80.11 ± 0.89 79.86 ± 0.96 FPR95 85.03 100.00 99.13 87.59 93.71 78.26 74.45 ± 0.59 65.99 ± 12.52 95.37 76.44 71.33 ± 2.10 72.31 ± 10.55 38.41 ± 2.29 37.09 ± 3.07 ID ACC 65.60 66.10 60.70 65.20 64.70 65.80 65.20 ± 0.50 69.47 ± 0.85 59.00 63.00 64.93 ± 1.29 52.17 ± 11.42 70.03 ± 0.78 69.63 ± 0.51 
+
+Citeseer-F 
+
+AUROC 78.32 49.86 49.92 79.19 74.69 78.46 84.07 ± 0.41 85.11 ± 11.68 72.06 79.23 84.38 ± 0.31 84.12 ± 0.41 93.96 ± 0.73 93.79 ± 0.16 AUPR 55.48 23.11 31.20 55.94 50.25 53.21 68.22 ± 0.73 75.22 ± 11.74 48.80 55.69 68.77 ± 0.84 68.84 ± 0.76 84.67 ± 2.35 83.61 ± 0.42 FPR95 71.27 100.00 99.73 69.67 71.22 73.14 67.75 ± 1.69 60.72 ± 34.01 81.09 64.08 64.64 ± 0.32 65.69 ± 3.13 23.13 ± 3.55 23.32 ± 1.02 ID ACC 66.20 65.80 53.30 64.50 64.20 63.20 64.70 ± 0.44 68.73 ± 0.47 60.50 64.40 65.03 ± 1.25 64.97 ± 1.35 68.40 ± 1.93 69.33 ± 0.21 
+
+Citeseer-L 
+
+AUROC 88.42 51.33 53.46 89.98 82.69 85.65 90.73 ± 0.17 90.59 ± 0.69 89.44 90.34 91.37 ± 0.29 91.44 ± 0.34 90.97 ± 0.23 90.77 ± 0.15 AUPR 64.03 17.97 35.47 64.10 61.21 62.32 64.93 ± 0.58 65.01 ± 1.71 62.74 66.66 64.32 ± 1.55 66.00 ± 0.49 64.92 ± 1.49 64.24 ± 1.75 FPR95 51.97 100.00 86.32 38.76 50.61 41.37 40.36 ± 1.19 33.55 ± 5.29 45.99 31.60 28.32 ± 0.95 30.35 ± 2.55 30.84 ± 0.90 27.24 ± 2.76 ID ACC 89.36 89.36 72.51 90.58 89.16 89.30 89.46 ± 0.76 89.97 ± 0.30 87.23 90.58 88.25 ± 0.17 88.66 ± 0.50 88.55 ± 0.63 88.45 ± 0.34 
+
+Table 21. Pubmed Extended OOD detection performance with two types of OOD ( Structure manipulation, Feature interpolation). GS++ is short for GNNS AFE ++ and NS++ is short for NODES AFE ++. Label-leave-out was left out as discussed in L. OE indicates OOD exposure. 
+
+Dataset Metrics Non-OOD Exposure Real OOD Exposure TIDE 
+
+MSP ODIN Mahalanobis Energy GKDE GPN GNNS AFE NODES AFE OE Energy FT GS++ NS++ w/o OE w/ OE 
+
+Pubmed-S 
+
+AUROC 74.31 49.76 55.28 74.33 74.02 74.96 92.45 ± 1.15 93.17 ± 1.15 74.41 73.54 92.84 ± 0.28 95.32 ± 0.17 97.25 ± 0.58 98.46 ± 0.10 AUPR 17.44 4.83 8.38 17.32 16.89 17.54 65.47 ± 2.38 69.31 ± 4.81 16.74 18.00 70.41 ± 0.33 68.07 ± 0.81 79.76 ± 2.17 85.51 ± 0.38 FPR95 84.08 100.00 97.59 78.90 81.52 80.33 47.81 ± 6.10 49.54 ± 15.93 83.52 92.04 47.67 ± 6.87 20.32 ± 1.83 12.97 ± 3.87 7.55 ± 0.57 ID ACC 75.10 75.30 69.30 75.60 75.20 75.80 77.00 ± 0.44 77.30 ± 0.62 72.90 75.80 77.63 ± 0.31 74.20 ± 0.10 75.93 ± 0.40 76.80 ± 0.52 
+
+Pubmed-F 
+
+AUROC 83.28 49.67 69.12 84.16 82.25 82.56 95.18 ± 0.13 89.00 ± 11.30 82.34 78.94 94.70 ± 0.51 94.96 ± 0.50 97.44 ± 0.59 98.05 ± 0.25 AUPR 39.29 4.83 15.09 39.10 32.41 39.75 74.41 ± 1.56 67.81 ± 19.39 38.60 37.21 77.71 ± 0.31 76.34 ± 2.06 81.70 ± 2.92 85.21 ± 0.85 FPR95 69.38 100.00 84.93 62.47 68.56 61.79 27.62 ± 2.55 50.80 ± 41.88 74.58 90.00 31.49 ± 5.20 29.43 ± 2.90 12.53 ± 1.63 10.12 ± 2.35 ID ACC 75.00 75.30 73.00 75.50 74.10 74.50 76.57 ± 0.35 77.33 ± 1.04 73.10 75.30 78.13 ± 0.06 74.13 ± 1.16 76.40 ± 0.60 76.53 ± 0.38 
+
+Table 22. Amazon-Photo: Extended OOD detection performance with three types of OOD ( Structure manipulation, Feature interpolation, and Label-leave-out). 
+
+Dataset Metrics Non-OOD Exposure MSP ODIN Mahalanobis Energy GKDE GPN GNNS AFE NODES AFE TIDE 
+
+Amazon-S 
+
+AUROC 98.27 93.24 71.69 98.51 76.39 97.17 98.60 ± 0.09 98.54 ± 0.05 98.97 ± 0.14 AUPR 98.54 95.26 79.01 98.72 81.58 96.39 99.22 ± 0.05 99.18 ± 0.03 99.42 ± 0.08 FPR95 6.13 65.44 99.91 4.97 99.25 11.65 0.00 ± 0.00 0.00 ± 0.00 0.00 ± 0.00 ID ACC 92.84 92.84 92.79 92.86 87.57 88.51 92.64 ± 0.44 91.36 ± 0.02 92.95 ± 0.38 
+
+Amazon-F 
+
+AUROC 97.31 81.15 76.50 97.87 58.96 87.91 98.46 ± 0.01 98.42 ± 0.03 98.65 ± 0.10 AUPR 95.16 78.47 71.14 95.64 66.76 84.77 98.90 ± 0.15 98.77 ± 0.17 99.04 ± 0.22 FPR95 8.72 100.0 76.12 6.00 99.28 49.11 0.44 ± 0.28 0.30 ± 0.05 0.30 ± 0.06 ID ACC 92.89 92.71 92.86 92.96 86.18 90.05 92.65 ± 0.55 91.55 ± 0.41 92.70 ± 0.33 
+
+Amazon-L 
+
+AUROC 93.97 65.97 73.25 93.81 65.58 92.72 96.92 ± 0.33 96.56 ± 0.35 96.86 ± 0.35 AUPR 91.32 57.80 66.89 91.13 65.20 90.34 96.38 ± 0.70 95.35 ± 0.58 95.79 ± 0.39 FPR95 26.65 90.23 74.30 28.48 96.87 37.16 9.29 ± 1.15 10.78 ± 0.99 8.13 ± 3.55 ID ACC 95.76 96.08 95.76 95.72 89.37 90.07 96.10 ± 0.29 95.20 ± 0.11 96.07 ± 0.20 
+
+26 TIDE : Graph Out-of-Distribution Detection via Tri-Component Information Decomposition 
+
+Table 23. Coauthor: Extended OOD detection performance with three types of OOD ( Structure manipulation, Feature interpolation, and Label-leave-out). 
+
+Dataset Metrics Non-OOD Exposure MSP ODIN Mahalanobis Energy GKDE GPN GNNS AFE NODES AFE TIDE 
+
+Coauthor-S 
+
+AUROC 95.30 52.14 80.46 96.18 65.87 34.67 99.80 ± 0.17 99.85 ± 0.07 99.95 ± 0.02 AUPR 94.37 48.83 76.65 95.25 72.65 40.21 99.82 ± 0.11 99.85 ± 0.06 99.94 ± 0.02 FPR95 24.75 99.92 70.75 18.02 99.48 99.57 0.26 ± 0.02 0.23 ± 0.06 0.13 ± 0.03 ID ACC 92.47 92.34 92.33 92.75 88.62 89.45 92.81 ± 0.10 92.11 ± 0.26 92.72 ± 0.11 
+
+Coauthor-F 
+
+AUROC 97.05 51.54 93.23 97.88 80.69 81.77 99.80 ± 0.14 99.86 ± 0.07 99.94 ± 0.02 AUPR 96.93 45.50 90.88 97.69 86.47 80.56 99.78 ± 0.11 99.82 ± 0.07 99.92 ± 0.04 FPR95 15.55 100.0 28.10 9.75 96.57 74.46 0.39 ± 0.11 0.30 ± 0.03 0.19 ± 0.05 ID ACC 92.45 92.39 92.34 92.75 84.72 87.05 95.38 ± 0.16 95.35 ± 0.15 95.47 ± 0.07 
+
+Coauthor-L 
+
+AUROC 94.88 51.44 85.36 95.87 61.15 93.24 97.35 ± 0.26 97.34 ± 0.27 97.92 ± 0.04 AUPR 97.99 74.79 93.61 98.34 81.39 97.55 99.03 ± 0.10 99.03 ± 0.10 99.24 ± 0.02 FPR95 23.81 100.0 45.41 18.69 94.60 34.78 12.22 ± 1.09 12.46 ± 1.22 9.60 ± 0.60 ID ACC 95.18 95.15 95.19 95.20 89.05 91.68 95.38 ± 0.16 95.35 ± 0.15 95.47 ± 0.07 
+
+Table 24. Twitch : Extended OOD detection performance on OOD Twitch sub-graphs ES, FR and RU. GS++ is short for GNNS AFE ++ and NS++ is short for NODES AFE ++. OE indicates OOD exposure. 
+
+Dataset Metrics Non-OOD Exposure Real OOD Exposure TIDE 
+
+MSP ODIN Mahalanobis Energy GKDE GPN GNNS AFE NODES AFE OE Energy FT GS++ NS++ w/o OE w/ OE 
+
+Twitch-ES 
+
+AUROC 37.72 83.83 45.66 38.80 48.70 53.00 70.20 ± 18.91 70.66 ± 18.90 55.97 80.73 94.53 ± 2.47 95.48 ± 1.20 95.97 ± 1.31 96.80 ± 1.33 AUPR 53.08 80.43 58.82 54.26 61.05 64.24 75.88 ± 17.90 76.13 ± 17.89 69.49 87.56 97.14 ± 1.33 97.42 ± 0.47 96.30 ± 0.57 97.10 ± 2.47 FPR95 98.09 33.28 95.48 95.70 95.37 95.05 90.48 ± 4.55 89.56 ± 5.20 94.94 76.76 40.36 ± 22.32 27.99 ± 17.57 17.70 ± 13.41 7.38 ± 7.06 ID ACC 68.72 70.79 70.51 70.40 67.44 68.09 70.75 ± 0.69 70.75 ± 0.69 70.73 70.52 70.36 ± 0.30 70.07 ± 0.33 68.63 ± 1.41 68.74 ± 0.79 
+
+Twitch-FR 
+
+AUROC 21.82 59.82 40.40 57.21 49.19 51.25 49.44 ± 28.72 49.38 ± 29.23 45.66 79.66 93.91 ± 1.73 37.28 ± 52.74 86.80 ± 12.59 84.22 ± 16.97 AUPR 38.27 64.63 46.69 61.48 52.94 55.37 57.81 ± 20.56 57.90 ± 20.87 54.03 81.20 95.94 ± 0.99 56.13 ± 36.96 89.05 ± 11.22 88.71 ± 12.74 FPR95 99.25 92.57 95.54 91.57 95.04 93.92 94.69 ± 7.17 94.62 ± 7.25 95.48 76.39 45.82 ± 13.57 67.09 ± 55.37 52.43 ± 40.23 65.89 ± 27.51 ID ACC 68.72 70.79 70.51 70.40 67.44 68.09 70.75 ± 0.69 70.75 ± 0.69 70.73 70.52 70.36 ± 0.30 70.07 ± 0.33 68.63 ± 1.41 68.74 ± 0.79 
+
+Twitch-RU 
+
+AUROC 41.23 58.67 55.68 57.72 46.48 50.89 79.34 ± 16.34 79.39 ± 16.59 55.72 93.12 98.79 ± 0.92 97.60 ± 0.57 86.38 ± 0.77 93.53 ± 0.79 AUPR 56.06 72.58 66.42 66.68 62.11 65.14 84.07 ± 9.53 84.09 ± 9.73 70.18 95.36 99.28 ± 0.59 98.36 ± 0.64 90.41 ± 2.50 94.95 ± 4.94 FPR95 95.01 93.98 90.13 87.57 95.62 99.93 57.37 ± 34.19 57.67 ± 34.76 95.07 30.72 3.25 ± 3.97 8.29 ± 5.27 69.67 ± 7.40 26.29 ± 18.01 ID ACC 68.72 70.79 70.51 70.40 67.44 68.09 70.75 ± 0.69 70.75 ± 0.69 70.73 70.52 70.36 ± 0.30 70.07 ± 0.33 68.63 ± 1.41 68.74 ± 0.79 
+
+Table 25. Arxiv : Extended OOD detection performance on OOD dataset of papers published in 2018, 2019, and 2020. GS++ is short for GNNS AFE ++ and NS++ is short for NODES AFE ++. OE indicates OOD exposure. 
+
+Dataset Metrics Non-OOD Exposure Real OOD Exposure TIDE 
+
+MSP ODIN Mahalanobis Energy GKDE GPN GNNS AFE NODES AFE OE Energy FT GS++ NS++ w/o OE w/ OE 
+
+Arxiv-2018 
+
+AUROC 61.66 53.49 57.08 61.75 56.29 OOM 65.94 ± 0.38 66.73 ± 0.16 67.72 69.58 69.47 ± 0.63 69.81 ± 0.58 67.97 ± 0.10 70.5 ± 0.20 AUPR 70.63 63.06 65.09 70.41 66.78 OOM 74.37 ± 0.29 75.20 ± 0.27 75.74 76.31 77.63 ± 0.64 77.68 ± 0.48 76.42 ± 0.20 78.59 ± 0.21 FPR95 91.67 100.0 93.69 91.74 94.31 OOM 89.88 ± 0.67 88.80 ± 0.37 86.67 82.10 83.43 ± 1.24 81.51 ± 1.19 86.88 ± 0.48 81.57 ± 0.25 ID ACC 53.78 51.39 51.59 53.36 50.76 OOM 53.21 ± 0.16 53.10 ± 0.79 52.39 53.26 53.28 ± 0.35 51.32 ± 0.21 52.44 ± 0.24 52.41 ± 0.29 
+
+Arxiv-2019 
+
+AUROC 63.07 53.95 56.76 63.16 57.87 OOM 67.90 ± 0.37 68.76 ± 0.16 69.33 70.58 71.32 ± .63 71.87 ± 0.59 70.09 ± 0.21 72.30 ± 0.23 AUPR 66.00 56.07 57.85 65.78 62.34 OOM 70.97 ± 0.29 71.98 ± .33 72.15 72.03 74.45 ± 0.77 74.74 ± 0.68 73.24 ± 0.24 75.56 ± 0.30 FPR95 90.82 100.0 94.01 90.96 93.97 OOM 88.83 ± 0.72 87.44 ± 0.23 85.52 81.30 81.80 ± 1.37 79.31 ± 1.13 85.10 ± 0.75 79.39 ± 0.38 ID ACC 53.78 51.39 51.59 53.36 50.76 OOM 53.21 ± 0.16 53.10 ± 0.79 52.39 53.26 53.28 ± 0.35 51.32 ± 0.21 52.44 ± 0.24 52.41 ± 0.29 
+
+Arxiv-2020 
+
+AUROC 67.00 55.78 56.92 67.70 60.79 OOM 77.90 ± 0.32 78.59 ± 0.10 72.35 74.53 81.15 ± 0.51 81.82 ± 0.50 80.10 ± 0.23 82.03 ± 0.23 AUPR 90.92 87.41 85.95 91.15 88.74 OOM 94.64 ± 0.08 94.83 ± 0.03 92.57 93.08 95.43 ± .12 92.23 ± 5.66 95.19 ± 0.07 95.59 ± 0.06 FPR95 89.28 100.0 95.01 89.69 93.31 OOM 85.00 ± 0.98 83.11 ± 0.42 83.28 78.36 74.75 ± 1.99 71.78 ± 1.32 78.98 ± 0.56 71.15 ± 0.62 ID ACC 53.78 51.39 51.59 53.36 50.76 OOM 53.21 ± 0.16 53.10 ± 0.79 52.39 53.26 53.28 ± 0.35 51.32 ± 0.21 52.44 ± 0.24 52.41 ± 0.29 
+
+Table 26. Cora: Extended ablation performance of T IDE .
+
+Model Cora-S Cora-F Cora-L 
+
+AUROC AUPR FPR95 ID Acc AUROC AUPR FPR95 ID Acc AUROC AUPR FPR95 ID Acc GNNS AFE 87.64 ± 0.39 77.93 ± 0.59 73.49 ± 1.91 77.53 ± 0.38 92.76 ± 0.43 87.85 ± 1.07 48.56 ± 4.52 77.50 ± 0.26 93.19 ± 0.11 82.99 ± 0.45 29.55 ± 2.24 89.66 ± 0.66 
+
+LVIB 94.79 ± 0.22 88.41 ± 0.49 26.22 ± 2.55 78.73 ± 0.50 97.69 ± 0.13 93.94 ± 0.36 9.45 ± 0.78 77.43 ± 0.58 93.06 ± 0.11 83.12 ± 0.11 30.93 ± 0.57 90.30 ± 0.37 
+
+LVIB & LVCInd 94.86 ± 0.29 88.48 ± 0.54 24.84 ± 0.65 78.60 ± 0.40 97.72 ± 0.10 94.26 ± 0.52 9.40 ± 1.06 77.47 ± 0.45 93.11 ± 0.16 83.20 ± 0.18 30.43 ± 0.11 90.30 ± 0.18 TIDE 95.15 ± 0.37 89.33 ± 0.57 23.31 ± 1.04 78.97 ± 1.22 97.88 ± 0.24 94.67 ± 0.56 8.13 ± 1.32 78.10 ± 0.89 93.70 ± 0.04 84.03 ± 0.08 28.84 ± 0.36 90.61 ± 0.36 
+
+27 TIDE : Graph Out-of-Distribution Detection via Tri-Component Information Decomposition 
+
+Table 27. Citeseer: Extended ablation performance of T IDE .
+
+Model Citeseer-S Citeseer-F Citeseer-L 
+
+AUROC AUPR FPR ID Acc AUROC AUPR FPR ID Acc AUROC AUPR FPR ID Acc GNNS AFE 79.87 ± 0.56 61.44 ± 1.50 74.45 ± 0.59 65.20 ± 0.50 84.07 ± 0.41 68.22 ± 0.73 67.75 ± 1.69 64.70 ± 0.44 90.73 ± 0.17 64.93 ± 0.58 40.36 ± 1.19 89.46 ± 0.76 
+
+LVIB 90.84 ± 0.57 78.76 ± 0.47 45.62 ± 3.06 69.17 ± 0.49 93.01 ± 0.64 82.83 ± 1.64 31.77 ± 5.79 69.27 ± 0.49 90.66 ± 0.10 64.06 ± 0.67 34.87 ± 3.12 87.74 ± 0.35 
+
+LVIB & LVCInd 91.85 ± 0.31 80.29 ± 0.69 39.61 ± 2.68 69.13 ± 0.21 93.25 ± 0.87 82.94 ± 2.15 26.96 ± 4.64 67.83 ± 1.42 90.88 ± 0.25 64.78 ± 1.62 31.14 ± 1.19 88.75 ± 0.31 TIDE 91.89 ± 0.36 80.11 ± 0.89 38.41 ± 2.29 70.03 ± 0.78 93.96 ± 0.73 84.67 ± 2.35 23.13 ± 3.55 68.40 ± 1.93 90.97 ± 0.23 64.92 ± 1.49 30.84 ± 0.90 88.55 ± 0.63 
+
+Table 28. Pubmed: Extended ablation performance of T IDE .
+
+Model Pubmed-S Pubmed-F 
+
+AUROC AUPR FPR95 ID Acc AUROC AUPR FPR95 ID Acc GNNS AFE 92.45 ± 1.15 65.47 ± 2.38 47.81 ± 6.10 77.00 ± 0.44 95.18 ± 0.13 74.41 ± 1.56 27.62 ± 2.55 76.57 ± 0.35 
+
+LVIB 96.18 ± 0.44 75.74 ± 1.60 17.64 ± 3.69 74.60 ± 1.71 96.98 ± 0.41 78.94 ± 3.33 16.05 ± 1.64 75.30 ± 1.22 
+
+LVIB & LVCInd 96.45 ± 0.64 76.46 ± 2.31 15.66 ± 4.88 74.77 ± 1.86 97.42 ± 0.51 81.07 ± 3.23 13.08 ± 2.41 75.60 ± 0.46 TIDE 97.25 ± 0.58 79.76 ± 2.17 12.97 ± 3.87 75.93 ± 0.40 97.44 ± 0.59 81.70 ± 2.92 12.53 ± 1.63 76.40 ± 0.60 
+
+Table 29. Twitch: Extended ablation performance of T IDE .
+
+Model Twitch-ES Twitch-FR Twitch-RU 
+
+AUROC AUPR FPR95 ID Acc AUROC AUPR FPR95 ID Acc AUROC AUPR FPR95 ID Acc GNNS AFE 70.20 ± 18.91 75.88 ± 17.90 90.48 ± 4.55 70.75 ± 0.69 49.44 ± 28.72 57.81 ± 20.56 94.69 ± 7.17 70.75 ± 0.69 79.34 ± 16.34 84.07 ± 9.53 58.37 ± 34.19 70.75 ± 0.69 
+
+LVIB 83.29 ± 11.53 86.36 ± 10.78 56.60 ± 33.50 70.36 ± 0.35 57.97 ± 14.37 58.80 ± 12.38 88.70 ± 13.46 70.36 ± 0.35 79.23 ± 13.76 84.86 ± 8.38 62.48 ± 36.82 70.36 ± 0.35 
+
+LVIB & LVCInd 95.04 ± 0.11 96.05 ± 0.13 19.35 ± 2.60 70.33 ± 0.63 75.14 ± 1.03 80.85 ± 0.58 90.69 ± 5.46 70.33 ± 0.63 92.67 ± 2.40 94.93 ± 0.93 39.68 ± 23.80 70.33 ± 0.63 TIDE 95.97 ± 1.31 96.30 ± 0.57 17.70 ± 13.41 68.63 ± 1.41 86.80 ± 12.59 89.05 ± 11.22 52.43 ± 40.23 68.63 ± 1.41 86.38 ± 0.77 90.41 ± 2.50 69.67 ± 7.40 68.63 ± 1.41 
+
+Table 30. ArXiv: Extended ablation performance of T IDE .
+
+Model ArXiv-18 ArXiv-19 ArXiv-20 
+
+AUROC AUPR FPR95 ID Acc AUROC AUPR FPR95 ID Acc AUROC AUPR FPR95 ID Acc GNNS AFE 65.94 ± 0.38 74.37 ± 0.29 89.88 ± 0.67 53.21 ± 0.16 67.90 ± 0.37 70.97 ± 0.29 88.83 ± 0.72 53.21 ± 0.16 77.90 ± 0.32 94.64 ± 0.08 85.00 ± 0.98 53.21 ± 0.16 
+
+LVIB 67.41 ± 0.95 75.84 ± 1.02 87.72 ± 1.28 52.46 ± 0.24 69.49 ± 1.08 72.51 ± 1.09 86.35 ± 1.35 52.46 ± 0.24 79.53 ± 1.04 95.05 ± 0.27 80.72 ± 1.85 52.46 ± 0.24 
+
+LVIB & LVCInd 67.95 ± 0.11 76.40 ± 0.21 86.97 ± 0.46 52.43 ± 0.22 70.03 ± 0.25 73.20 ± 0.23 85.43 ± 0.89 52.43 ± 0.22 80.07 ± 0.25 95.12 ± 0.17 79.18 ± 0.65 52.43 ± 0.22 TIDE 67.97 ± 0.10 76.42 ± 0.20 86.88 ± 0.48 52.44 ± 0.24 70.09 ± 0.21 73.24 ± 0.24 85.10 ± 0.75 52.44 ± 0.24 80.10 ± 0.23 95.19 ± 0.07 78.98 ± 0.56 52.44 ± 0.24 
+
+N. Computational Cost 
+
+Table 31 presents a comparison of the computational cost of T IDE against GNNSafe and NODESAFE, all evaluated using the same backbone. Evidently, TIDE consistently outperforms the baselines, achieving superior OOD detection performance at the cost of a 2-3x increase in training time, a marginal rise in memory usage, and a comparable inference time . Despite the additional training cost, this trade-off is deemed acceptable due to the significantly improved detection performance and competitive inference time , as discussed in Appendix B. These results highlight the strong performance and practical applicability of T IDE for node-level graph OOD detection. 
+
+Table 31. Computation cost (single 48GB (49140MiB) NVIDIA RTX A6000 GPU) and OOD detection performance of T IDE 
+
+against SOTA Non-OOD exposure baselines. The ‘Train’ column is the training convergence time in seconds. The ‘In.’ column is the inference time in seconds. The ‘Mem.’ column is the maximum memory usage in Mebibytes (MiB). The ‘FPR95’ column is the OOD detection performance in %, the lower the better. 
+
+Cora - Structure Citeseer - Structure Pubmed - Structure Twitch Arxiv 
+
+Train In. Mem. FPR95 (↓) Train In. Mem. FPR95 (↓) Train In. Mem. FPR95 (↓) Train In. Mem. FPR95 (↓) Train In. Mem. FPR95 (↓)
+
+GNNS AFE 2.05 0.01 625 73.49 2.25 0.02 693 74.45 4.22 0.02 827 47.81 3.55 0.03 749 81.18 19.72 0.11 3055 87.90 NODESAFE 0.76 0.02 625 38.06 1.45 0.02 693 65.99 1.69 0.02 827 49.54 1.35 0.03 749 80.62 16.79 0.11 3055 86.45 TIDE 4.02 0.02 653 23.31 9.85 0.02 780 38.41 9.96 0.024 906 12.97 8.01 0.028 794 43.14 39.7 0.13 3490 83.65 
+
+28
