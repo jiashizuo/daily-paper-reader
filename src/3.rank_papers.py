@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# 使用柏拉图 Rerank API 对候选论文做重排序（简化版）。
+# 使用本地 Qwen3 Reranker 对候选论文做重排序（简化版）。
 
 import argparse
 import json
@@ -7,8 +7,6 @@ import os
 import random
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
-
-from llm import BltClient
 
 SCRIPT_DIR = os.path.dirname(__file__)
 ROOT_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, ".."))
@@ -639,7 +637,7 @@ def process_file(
 
 def main() -> None:
   parser = argparse.ArgumentParser(
-    description="步骤 3：使用 BLT Rerank API 对候选论文做重排序（简化版）。",
+    description="步骤 3：使用本地 Qwen3 Reranker 对候选论文做重排序（简化版）。",
   )
   parser.add_argument(
     "--input",

@@ -188,32 +188,21 @@
     if (typeof utils.inferProviderType === 'function') {
       return utils.inferProviderType(secret);
     }
-    const summary = resolveSummaryLLM(secret);
-    if (!summary) return 'plato';
-    return /bltcy\.ai|gptbest\.vip/i.test(summary.baseUrl) ? 'plato' : 'openai-compatible';
+    return 'deepseek';
   };
-  const getDefaultPlatoBaseUrl = () => {
+  const getDefaultDeepSeekBaseUrl = () => {
     const utils = getLLMUtils();
-    return normalizeBaseUrlForStorage(utils.DEFAULT_PLATO_BASE_URL || 'https://api.bltcy.ai/v1');
+    return normalizeBaseUrlForStorage(utils.DEFAULT_DEEPSEEK_BASE_URL || 'https://api.deepseek.com');
   };
-  const getDefaultPlatoChatModels = () => {
+  const getDefaultDeepSeekChatModels = () => {
     const utils = getLLMUtils();
-      const defaults = Array.isArray(utils.DEFAULT_PLATO_CHAT_MODELS)
-        ? utils.DEFAULT_PLATO_CHAT_MODELS
+      const defaults = Array.isArray(utils.DEFAULT_DEEPSEEK_CHAT_MODELS)
+        ? utils.DEFAULT_DEEPSEEK_CHAT_MODELS
         : [
-            'gemini-3-flash-preview-thinking-1000',
-            'deepseek-v3.2',
-            'gpt-5-chat',
-            'gemini-3-pro-preview',
+            'deepseek-chat',
+            'deepseek-reasoner',
           ];
     return sanitizeModelList(defaults, 99);
-  };
-  const getOpenAICompatiblePreset = (key) => {
-    const utils = getLLMUtils();
-    if (typeof utils.getOpenAICompatiblePreset === 'function') {
-      return utils.getOpenAICompatiblePreset(key);
-    }
-    return null;
   };
   const RERANKER_PROFILES = [
     {
@@ -514,7 +503,6 @@
       };
 
       const safeOptions = options && typeof options === 'object' ? options : {};
-      const providerType = normalizeText(safeOptions.providerType || '').toLowerCase() || 'plato';
       const summarizedApiKey = normalizeText(safeOptions.summarizedApiKey || '');
       const summarizedBaseUrl = normalizeBaseUrlForStorage(safeOptions.summarizedBaseUrl || '');
       const summarizedModel = normalizeText(safeOptions.summarizedModel || '');
@@ -550,8 +538,9 @@
       const secretNameSummaryApiKey = 'SUMMARY_API_KEY';
       const secretNameSummaryBaseUrl = 'SUMMARY_BASE_URL';
       const secretNameSummaryModel = 'SUMMARY_MODEL';
-      const secretNameBltKey = 'BLT_API_KEY';
-      const secretNameBltBase = 'BLT_PRIMARY_BASE_URL';
+      const secretNameDeepSeekKey = 'DEEPSEEK_API_KEY';
+      const secretNameDeepSeekBase = 'DEEPSEEK_BASE_URL';
+      const secretNameDeepSeekModel = 'DEEPSEEK_MODEL';
       const secretNameLlmPrimaryBase = 'LLM_PRIMARY_BASE_URL';
       const secretNameBltSummaryModel = 'BLT_SUMMARY_MODEL';
       const secretNameBltFilterModel = 'BLT_FILTER_MODEL';
@@ -606,8 +595,9 @@
         { name: secretNameSummaryApiKey, value: summarizedApiKey },
         { name: secretNameSummaryBaseUrl, value: summarizedBaseUrl },
         { name: secretNameSummaryModel, value: summarizedModel },
-        { name: secretNameBltKey, value: summarizedApiKey },
-        { name: secretNameBltBase, value: summarizedBaseUrl },
+        { name: secretNameDeepSeekKey, value: summarizedApiKey },
+        { name: secretNameDeepSeekBase, value: summarizedBaseUrl },
+        { name: secretNameDeepSeekModel, value: summarizedModel },
         { name: secretNameLlmPrimaryBase, value: summarizedBaseUrl },
         { name: secretNameBltSummaryModel, value: summarizedModel },
         { name: secretNameBltFilterModel, value: filterModel || summarizedModel },
@@ -993,7 +983,7 @@
       }, 100);
     };
 
-    // 初始化向导：第 2 步（支持 柏拉图 / OpenAI-compatible 两种模式）
+    // 初始化向导：第 2 步（仅保留 DeepSeek API）
     const renderInitStep2 = (password) => {
       setStep2Modal(true);
       const currentSecret =
@@ -1010,20 +1000,12 @@
       const defaultPlatoModels = getDefaultPlatoChatModels();
       const platoSummaryModels = [
         {
-          value: 'gpt-5-chat',
-          label: 'GPT-5 Chat · 通用高质量对话',
+          value: 'deepseek-chat',
+          label: 'DeepSeek Chat · 默认推荐',
         },
         {
-          value: 'gemini-3-flash-preview-thinking-1000',
-          label: 'Gemini 3 Flash（思考版，推荐）',
-        },
-        {
-          value: 'deepseek-v3.2',
-          label: 'DeepSeek V3.2 · 深度思考',
-        },
-        {
-          value: 'gemini-3-pro-preview',
-          label: 'Gemini 3 Pro（更强思考能力）',
+          value: 'deepseek-reasoner',
+          label: 'DeepSeek Reasoner · 推理模型',
         },
       ];
 
@@ -1031,18 +1013,8 @@
         currentSecret.github && currentSecret.github.token,
       );
       const initialApiKey = normalizeText(currentSummaryLLM.apiKey || '');
-      const initialCustomApiKey = normalizeText(currentChatEntry.apiKey || '');
-      const initialCustomBaseUrl = normalizeBaseUrlForStorage(
-        currentChatEntry.baseUrl || '',
-      );
-      const initialPlatoModel =
-        normalizeText(currentSummaryLLM.model || '') || 'gpt-5-chat';
-      const initialCustomModels = sanitizeModelList(
-        currentProviderType === 'openai-compatible'
-          ? (currentChatEntry.models || [])
-          : [],
-        3,
-      );
+      const initialDeepSeekModel =
+        normalizeText(currentSummaryLLM.model || '') || 'deepseek-chat';
 
       modal.innerHTML = `
         <h2 style="margin-top:0;">🛡️ 新配置指引 · 第二步</h2>
@@ -1070,67 +1042,74 @@
               </div>
             </div>
 
-            <div id="secret-setup-plato-section" class="secret-setup-step2-block">
-              <div class="secret-setup-step2-title">工作流 / Reranker 专用 BLT（必填）</div>
+            <div id="secret-setup-deepseek-section" class="secret-setup-step2-block">
+              <div class="secret-setup-step2-title">DeepSeek API（必填）</div>
               <p class="secret-setup-step2-note">
-                BLT 用于 query enrich、LLM refine、总结与 reranker，是工作流硬依赖。
+                DeepSeek 用于 query enrich、LLM refine、总结与聊天；Reranker 可在右侧单独选择。
               </p>
               <div class="secret-setup-input-row multi-actions">
                 <input
-                  id="secret-setup-plato"
+                  id="secret-setup-deepseek"
                   type="password"
                   autocomplete="off"
-                  placeholder="BLT API Key，例如：sk-xxxx"
+                  placeholder="DeepSeek API Key，例如：sk-xxxx"
                   style="width:100%; box-sizing:border-box; padding:6px 8px; font-size:13px;"
                 />
-                <button id="secret-setup-plato-verify" type="button" class="secret-gate-btn secondary">
-                  验证
-                </button>
-                <button id="secret-setup-plato-test" type="button" class="secret-gate-btn secondary">
+                <button id="secret-setup-deepseek-test" type="button" class="secret-gate-btn secondary">
                   测试
                 </button>
+                <button id="secret-setup-deepseek-verify" type="button" class="secret-gate-btn secondary" style="display:none;">
+                  验证
+                </button>
               </div>
-              <div id="secret-setup-plato-status" style="min-height:18px; font-size:12px; color:#999; margin-bottom:8px;">
-                将通过 <code>/v1/token/quota</code> 和一次 <code>hello world</code> 请求检查配置可用性。
+              <div id="secret-setup-deepseek-status" style="min-height:18px; font-size:12px; color:#999; margin-bottom:8px;">
+                将通过一次 <code>hello world</code> 请求检查 DeepSeek 配置可用性。
               </div>
 
               <div style="font-weight:500; margin-bottom:4px; display:flex; align-items:center; gap:4px;">
                 用于工作流总结 / 过滤的大模型
                 <span class="secret-model-tip">!
                   <span class="secret-model-tip-popup">
-                    按照 Thinking（思考模式）的高负载场景估算：<br/>
-                    <br/>
-                    总结：15k 输入 + 4k 输出（含思考）<br/>
-                    提问：16.1k 输入 + 2k 输出（含思考）<br/>
-                    <br/>
-                    模型 · 约价（单次）：<br/>
-                    - Gemini 3 Flash：总结 ¥0.0195，提问 ¥0.0141（不到 2 分钱，100 篇论文约 2 元）<br/>
-                    - DeepSeek V3：总结 ¥0.0294，提问 ¥0.0267（不到 3 分钱，长输出性价比极高）<br/>
-                    - GPT-5：总结 ¥0.0588，提问 ¥0.0401（约 6 分钱）<br/>
-                    - Gemini 3 Pro：总结 ¥0.0780，提问 ¥0.0562（约 8 分钱，一篇论文不到 1 毛钱）
+                    当前只保留 DeepSeek 官方 API。<br/>
+                    Reranker API Key 与 DeepSeek 分开配置。
                   </span>
                 </span>
               </div>
-              <div id="secret-setup-plato-models" style="font-size:13px;">
-                <select id="secret-setup-plato-model-select" class="secret-setup-select"></select>
+              <div id="secret-setup-deepseek-models" style="font-size:13px;">
+                <select id="secret-setup-deepseek-model-select" class="secret-setup-select"></select>
               </div>
             </div>
           </div>
 
           <div class="secret-setup-step2-col">
             <div class="secret-setup-step2-block">
-              <div class="secret-setup-step2-title">聊天模型来源</div>
+              <div class="secret-setup-step2-title">Reranker</div>
               <p class="secret-setup-step2-note">
-                BLT 是工作流必填项；OpenAI-compatible 入口已重新开放，但仍属于实验性能力，仅作为聊天区模型来源。
+                Step 3 使用 Qwen3 reranker 对候选论文重排。请选择本地模型或远端服务。
               </p>
-              <label class="secret-setup-provider-choice">
-                <input type="radio" name="secret-setup-provider" value="plato" />
-                <span><strong>聊天区也使用 BLT</strong>工作流总结、过滤、reranker 与聊天区统一使用柏拉图（BLTCY）模型。</span>
-              </label>
-              <label class="secret-setup-provider-choice">
-                <input type="radio" name="secret-setup-provider" value="openai-compatible" />
-                <span><strong>聊天区使用 OpenAI-compatible（实验性）</strong>工作流总结与 reranker 仍强制使用 BLT，最多 3 个自定义模型仅用于聊天区。</span>
-              </label>
+              <select id="secret-setup-reranker-profile" class="secret-setup-select" style="margin-bottom:8px;"></select>
+              <div id="secret-setup-reranker-remote-fields" style="display:none;">
+                <div class="secret-setup-input-row" style="margin-bottom:6px;">
+                  <input
+                    id="secret-setup-reranker-api-key"
+                    type="password"
+                    autocomplete="off"
+                    placeholder="Reranker API Key"
+                    style="width:100%; box-sizing:border-box; padding:6px 8px; font-size:13px;"
+                  />
+                </div>
+                <div class="secret-setup-input-row" style="margin-bottom:6px;">
+                  <input
+                    id="secret-setup-reranker-base-url"
+                    type="text"
+                    autocomplete="off"
+                    placeholder="Rerank Base URL，例如 https://api.siliconflow.cn/v1/rerank"
+                    style="width:100%; box-sizing:border-box; padding:6px 8px; font-size:13px;"
+                  />
+                </div>
+              </div>
+              <div id="secret-setup-reranker-status" style="font-size:12px; color:#666; line-height:1.6;"></div>
+              <input type="radio" name="secret-setup-provider" value="deepseek" checked style="display:none;" />
             </div>
 
             <div class="secret-setup-step2-block">
@@ -1251,7 +1230,7 @@
       const providerInputs = Array.from(
         document.querySelectorAll('input[name="secret-setup-provider"]'),
       );
-      const platoSection = document.getElementById('secret-setup-plato-section');
+      const deepseekSection = document.getElementById('secret-setup-deepseek-section');
       const customSection = document.getElementById('secret-setup-custom-section');
       const platoInput = document.getElementById('secret-setup-plato');
       const platoVerifyBtn = document.getElementById('secret-setup-plato-verify');
@@ -1286,7 +1265,7 @@
         !githubVerifyBtn ||
         !githubStatusEl ||
         !providerInputs.length ||
-        !platoSection ||
+        !deepseekSection ||
         !customSection ||
         !platoInput ||
         !platoVerifyBtn ||
@@ -1319,28 +1298,19 @@
         return;
       }
 
-      platoModelSelect.innerHTML = platoSummaryModels
+      deepseekModelSelect.innerHTML = deepseekSummaryModels
         .map((item) => `<option value="${item.value}">${item.label}</option>`)
         .join('');
 
       githubInput.value = initialGithubToken;
-      platoInput.value = initialApiKey;
-      customApiKeyInput.value =
-        currentProviderType === 'openai-compatible'
-        ? normalizeText(currentChatEntry.apiKey || '')
-        : '';
-      customBaseUrlInput.value =
-        currentProviderType === 'openai-compatible' ? initialCustomBaseUrl : '';
-      customModel1Input.value = initialCustomModels[0] || '';
-      customModel2Input.value = initialCustomModels[1] || '';
-      customModel3Input.value = initialCustomModels[2] || '';
+      deepseekInput.value = initialApiKey;
 
       providerInputs.forEach((input) => {
         input.checked = input.value === currentProviderType;
       });
-      platoModelSelect.value = initialPlatoModel || 'gpt-5-chat';
-      if (!platoModelSelect.value) {
-        platoModelSelect.value = 'gpt-5-chat';
+      deepseekModelSelect.value = initialDeepSeekModel || 'deepseek-chat';
+      if (!deepseekModelSelect.value) {
+        deepseekModelSelect.value = 'deepseek-chat';
       }
       rerankerProfileSelect.innerHTML = RERANKER_PROFILES
         .map(
@@ -1356,12 +1326,7 @@
       rerankerBaseUrlInput.value = currentReranker.baseUrl || '';
 
       let githubOk = !!initialGithubToken;
-      let platoOk = !!initialApiKey;
-      let customOk =
-        currentProviderType === 'openai-compatible'
-        && !!initialCustomApiKey
-        && !!initialCustomBaseUrl
-        && initialCustomModels.length > 0;
+      let deepseekOk = !!initialApiKey;
 
       const setErrorText = (text, color) => {
         if (!errorEl) return;
@@ -1369,13 +1334,8 @@
         errorEl.style.color = color || '#999';
       };
 
-      const selectedProvider = () => {
-        const checked = providerInputs.find((input) => input.checked);
-        return checked ? checked.value : 'plato';
-      };
-
-      const selectedPlatoModel = () => {
-        return normalizeText(platoModelSelect.value || '');
+      const selectedDeepSeekModel = () => {
+        return normalizeText(deepseekModelSelect.value || '');
       };
       const selectedRerankerProfile = () => {
         return findRerankerProfile(rerankerProfileSelect.value);
@@ -1400,12 +1360,9 @@
         rerankerBaseUrlInput.setAttribute('data-reranker-profile', profile.value);
         rerankerStatusEl.textContent = `${profile.note} 模型：${profile.model}`;
       };
-
       const syncProviderSections = () => {
-        const provider = selectedProvider();
-        platoSection.style.display = 'block';
-        customSection.style.display =
-          provider === 'openai-compatible' ? 'block' : 'none';
+        deepseekSection.style.display = 'block';
+        customSection.style.display = 'none';
       };
 
       const resetGithubStatus = () => {
@@ -1414,69 +1371,11 @@
         githubStatusEl.style.color = '#999';
       };
 
-      const resetPlatoStatus = () => {
-        platoOk = false;
-        platoStatusEl.innerHTML =
-          '将通过 <code>/v1/token/quota</code> 和一次 <code>hello world</code> 请求检查配置可用性。';
-        platoStatusEl.style.color = '#999';
-      };
-
-      const resetCustomStatus = () => {
-        customOk = false;
-        customStatusEl.innerHTML =
-          '将依次用已填写模型发送 <code>hello world</code>，检查接口与模型是否可用。';
-        customStatusEl.style.color = '#999';
-      };
-
-      const applyOpenAICompatiblePreset = (presetKey) => {
-        const preset = getOpenAICompatiblePreset(presetKey);
-        if (!preset) return;
-        providerInputs.forEach((input) => {
-          input.checked = input.value === 'openai-compatible';
-        });
-        syncProviderSections();
-        customApiKeyInput.value = '';
-        customBaseUrlInput.value = preset.baseUrl || '';
-        customModel1Input.value = preset.models[0] || '';
-        customModel2Input.value = preset.models[1] || '';
-        customModel3Input.value = preset.models[2] || '';
-        resetCustomStatus();
-        customApiKeyInput.focus();
-        setErrorText(
-          `已填入 ${preset.label} 预设，请补充 API Key 后点击“测试当前配置”。`,
-          '#666',
-        );
-      };
-
-      const validateCustomDraft = () => {
-        const apiKey = normalizeText(customApiKeyInput.value);
-        const baseUrl = normalizeBaseUrlForStorage(customBaseUrlInput.value);
-        const models = sanitizeModelList(
-          [
-            customModel1Input.value,
-            customModel2Input.value,
-            customModel3Input.value,
-          ],
-          3,
-        );
-
-        if (!apiKey) {
-          throw new Error('请先输入 OpenAI-compatible API Key。');
-        }
-        if (!baseUrl) {
-          throw new Error('请先输入 OpenAI-compatible Base URL。');
-        }
-        if (!/^https?:\/\//i.test(baseUrl)) {
-          throw new Error('Base URL 需要以 http:// 或 https:// 开头。');
-        }
-        if (!models.length) {
-          throw new Error('请至少填写 1 个模型名称。');
-        }
-        return {
-          apiKey,
-          baseUrl,
-          models,
-        };
+      const resetDeepSeekStatus = () => {
+        deepseekOk = false;
+        deepseekStatusEl.innerHTML =
+          '将通过一次 <code>hello world</code> 请求检查 DeepSeek 配置可用性。';
+        deepseekStatusEl.style.color = '#999';
       };
 
       const buildRerankerDraft = (fallbackApiKey, fallbackBaseUrl) => {
@@ -1508,11 +1407,13 @@
       };
 
       const collectProviderDraft = () => {
-        const provider = selectedProvider();
-        const apiKey = normalizeText(platoInput.value);
-        const model = selectedPlatoModel();
+        const apiKey = normalizeText(deepseekInput.value);
+        const model = selectedDeepSeekModel();
+        const rerankerProfile = selectedRerankerProfile();
+        const rerankerApiKey = normalizeText(rerankerApiKeyInput.value || '');
+        const rerankerBaseUrl = normalizeBaseUrlForStorage(rerankerBaseUrlInput.value || rerankerProfile.baseUrl || '');
         if (!apiKey) {
-          throw new Error('请先输入 BLT API Key。');
+          throw new Error('请先输入 DeepSeek API Key。');
         }
         if (!model) {
           throw new Error('请选择用于工作流总结的大模型。');
@@ -1531,18 +1432,12 @@
             reranker,
           };
         }
-
-        const customDraft = validateCustomDraft();
         return {
-          providerType: 'openai-compatible',
+          providerType: 'deepseek',
           summaryApiKey: apiKey,
-          summaryBaseUrl: getDefaultPlatoBaseUrl(),
+          summaryBaseUrl: getDefaultDeepSeekBaseUrl(),
           summaryModel: model,
-          chatModels: customDraft.models,
-          chatApiKey: customDraft.apiKey,
-          chatBaseUrl: customDraft.baseUrl,
-          rewriteModel: 'gemini-3-flash-preview',
-          filterModel: 'gemini-3-flash-preview-nothinking',
+          chatModels: defaultDeepSeekModels,
           skipRerank: false,
           reranker: {
             ...reranker,
@@ -1551,28 +1446,18 @@
       };
 
       const buildPingEntries = () => {
-        const provider = selectedProvider();
-        if (provider === 'plato') {
-          const apiKey = normalizeText(platoInput.value);
-          const model = selectedPlatoModel();
-          if (!apiKey || !model) {
-            throw new Error('请先填写柏拉图 API Key 并选择总结模型。');
-          }
-          return [
-            {
-              apiKey,
-              baseUrl: getDefaultPlatoBaseUrl(),
-              model,
-            },
-          ];
+        const apiKey = normalizeText(deepseekInput.value);
+        const model = selectedDeepSeekModel();
+        if (!apiKey || !model) {
+          throw new Error('请先填写 DeepSeek API Key 并选择模型。');
         }
-
-        const customDraft = validateCustomDraft();
-        return customDraft.models.map((model) => ({
-          apiKey: customDraft.apiKey,
-          baseUrl: customDraft.baseUrl,
-          model,
-        }));
+        return [
+          {
+            apiKey,
+            baseUrl: getDefaultDeepSeekBaseUrl(),
+            model,
+          },
+        ];
       };
 
       const bindResetOnInput = (elements, resetFn) => {
@@ -1588,12 +1473,8 @@
         githubStatusEl.style.color = '#666';
       }
       if (initialApiKey) {
-        platoStatusEl.textContent = '已载入当前加密配置；如更换 API Key 或模型，建议重新验证或点击测试按钮。';
-        platoStatusEl.style.color = '#666';
-      }
-      if (currentProviderType === 'openai-compatible' && initialCustomApiKey && initialCustomBaseUrl) {
-        customStatusEl.textContent = '已载入当前加密配置；如更换 Base URL / 模型，建议重新点击测试。';
-        customStatusEl.style.color = '#666';
+        deepseekStatusEl.textContent = '已载入当前 DeepSeek 配置；如更换 API Key 或模型，建议点击测试按钮。';
+        deepseekStatusEl.style.color = '#666';
       }
 
       syncProviderSections();
@@ -1610,25 +1491,10 @@
         input.addEventListener('change', () => {
           syncProviderSections();
           setErrorText(
-            '所有密钥信息将加密写入 GitHub Secrets（用于 GitHub Actions），并同步生成本地 secret.private 备份。',
+            'DeepSeek 密钥将加密写入 GitHub Secrets（用于 GitHub Actions），并同步生成本地 secret.private 备份。',
             '#999',
           );
         });
-      });
-      deepseekPresetBtn.addEventListener('click', () => {
-        applyOpenAICompatiblePreset('deepseek');
-      });
-      glmPresetBtn.addEventListener('click', () => {
-        applyOpenAICompatiblePreset('glm');
-      });
-      minimaxPresetBtn.addEventListener('click', () => {
-        applyOpenAICompatiblePreset('minimax');
-      });
-      kimiPresetBtn.addEventListener('click', () => {
-        applyOpenAICompatiblePreset('kimi');
-      });
-      openaiPresetBtn.addEventListener('click', () => {
-        applyOpenAICompatiblePreset('openai');
       });
 
       backBtn.addEventListener('click', () => {
@@ -1685,73 +1551,46 @@
         }
       });
 
-      platoVerifyBtn.addEventListener('click', async () => {
-        const key = normalizeText(platoInput.value);
+      deepseekVerifyBtn.addEventListener('click', async () => {
+        const key = normalizeText(deepseekInput.value);
         if (!key) {
-          platoStatusEl.textContent = '请先输入柏拉图 API Key。';
-          platoStatusEl.style.color = '#c00';
-          platoOk = false;
+          deepseekStatusEl.textContent = '请先输入 DeepSeek API Key。';
+          deepseekStatusEl.style.color = '#c00';
+          deepseekOk = false;
           return;
         }
-        platoVerifyBtn.disabled = true;
-        platoStatusEl.textContent = '正在验证柏拉图 API Key...';
-        platoStatusEl.style.color = '#666';
+        deepseekVerifyBtn.disabled = true;
+        deepseekStatusEl.textContent = '正在测试 DeepSeek 配置...';
+        deepseekStatusEl.style.color = '#666';
         try {
-          const resp = await fetch('https://api.bltcy.ai/v1/token/quota', {
-            method: 'GET',
-            headers: {
-              Authorization: `Bearer ${key}`,
-            },
-          });
-          if (!resp.ok) {
-            throw new Error(`HTTP ${resp.status}`);
-          }
-          const data = await resp.json().catch(() => null);
-          const quota = data && typeof data.quota === 'number' ? data.quota : 0;
-          const used = -quota;
-          platoStatusEl.textContent = `✅ 验证成功：已用额度约 ${used.toFixed(2)}。如需更稳妥，可继续点击“测试当前配置”。`;
-          platoStatusEl.style.color = '#28a745';
-          platoOk = true;
+          const models = await pingChatModels(buildPingEntries(), deepseekStatusEl);
+          deepseekStatusEl.textContent = `✅ 配置可用：${models.join(', ')}`;
+          deepseekStatusEl.style.color = '#28a745';
+          deepseekOk = true;
         } catch (e) {
-          platoStatusEl.textContent = `❌ 验证失败：${e.message || e}`;
-          platoStatusEl.style.color = '#c00';
-          platoOk = false;
+          deepseekStatusEl.textContent = `❌ 验证失败：${e.message || e}`;
+          deepseekStatusEl.style.color = '#c00';
+          deepseekOk = false;
         } finally {
-          platoVerifyBtn.disabled = false;
+          deepseekVerifyBtn.disabled = false;
         }
       });
 
-      platoTestBtn.addEventListener('click', async () => {
-        platoTestBtn.disabled = true;
-        platoVerifyBtn.disabled = true;
+      deepseekTestBtn.addEventListener('click', async () => {
+        deepseekTestBtn.disabled = true;
+        deepseekVerifyBtn.disabled = true;
         try {
-          const models = await pingChatModels(buildPingEntries(), platoStatusEl);
-          platoStatusEl.textContent = `✅ 配置可用：${models.join(', ')}`;
-          platoStatusEl.style.color = '#28a745';
-          platoOk = true;
+          const models = await pingChatModels(buildPingEntries(), deepseekStatusEl);
+          deepseekStatusEl.textContent = `✅ 配置可用：${models.join(', ')}`;
+          deepseekStatusEl.style.color = '#28a745';
+          deepseekOk = true;
         } catch (e) {
-          platoStatusEl.textContent = `❌ 测试失败：${e.message || e}`;
-          platoStatusEl.style.color = '#c00';
-          platoOk = false;
+          deepseekStatusEl.textContent = `❌ 测试失败：${e.message || e}`;
+          deepseekStatusEl.style.color = '#c00';
+          deepseekOk = false;
         } finally {
-          platoTestBtn.disabled = false;
-          platoVerifyBtn.disabled = false;
-        }
-      });
-
-      customTestBtn.addEventListener('click', async () => {
-        customTestBtn.disabled = true;
-        try {
-          const models = await pingChatModels(buildPingEntries(), customStatusEl);
-          customStatusEl.textContent = `✅ 配置可用：${models.join(', ')}`;
-          customStatusEl.style.color = '#28a745';
-          customOk = true;
-        } catch (e) {
-          customStatusEl.textContent = `❌ 测试失败：${e.message || e}`;
-          customStatusEl.style.color = '#c00';
-          customOk = false;
-        } finally {
-          customTestBtn.disabled = false;
+          deepseekTestBtn.disabled = false;
+          deepseekVerifyBtn.disabled = false;
         }
       });
 
@@ -1770,16 +1609,8 @@
           return;
         }
 
-        if (providerDraft.providerType === 'plato' && !platoOk) {
-          setErrorText('请先验证柏拉图 API Key，或点击“测试当前配置”。', '#c00');
-          return;
-        }
-        if (providerDraft.providerType === 'openai-compatible' && !platoOk) {
-          setErrorText('请先验证 BLT API Key，工作流总结与 reranker 必须使用 BLT。', '#c00');
-          return;
-        }
-        if (providerDraft.providerType === 'openai-compatible' && !customOk) {
-          setErrorText('请先点击“测试当前配置”，确认 OpenAI-compatible 配置可用。', '#c00');
+        if (providerDraft.providerType === 'deepseek' && !deepseekOk) {
+          setErrorText('请先点击“测试当前配置”，确认 DeepSeek 配置可用。', '#c00');
           return;
         }
 
@@ -1813,12 +1644,8 @@
               },
           chatLLMs: [
             {
-              apiKey: providerDraft.providerType === 'openai-compatible'
-                ? providerDraft.chatApiKey
-                : providerDraft.summaryApiKey,
-              baseUrl: providerDraft.providerType === 'openai-compatible'
-                ? providerDraft.chatBaseUrl
-                : providerDraft.summaryBaseUrl,
+              apiKey: providerDraft.summaryApiKey,
+              baseUrl: providerDraft.summaryBaseUrl,
               models: providerDraft.chatModels,
             },
           ],
