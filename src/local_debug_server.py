@@ -336,7 +336,7 @@ def build_command(workflow_key: str, workflow_file: str, inputs: dict[str, str])
                 "fi"
             ),
             " ".join(shlex.quote(part) for part in pipeline_cmd),
-            "python src/conference_sidebar.py "
+            f"{shlex.quote(python)} src/conference_sidebar.py "
             f"--result archive/{run_date}/rank/conference-${{CONF_TOKEN}}-${{YEAR_TOKEN}}.supabase.llm.json "
             f"--result archive/{run_date}/rank/conference-${{CONF_TOKEN}}-${{YEAR_TOKEN}}.supabase.rerank.json "
             f"--result archive/{run_date}/filtered/conference-${{CONF_TOKEN}}-${{YEAR_TOKEN}}.supabase.rrf.json "
