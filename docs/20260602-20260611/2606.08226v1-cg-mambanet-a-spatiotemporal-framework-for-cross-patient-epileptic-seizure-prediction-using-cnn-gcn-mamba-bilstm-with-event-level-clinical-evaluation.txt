@@ -1,0 +1,406 @@
+Title: CG-MambaNet: A spatiotemporal framework for cross-patient epileptic seizure prediction using CNN-GCN-Mamba-BiLSTM with event-level clinical evaluation
+
+URL Source: https://arxiv.org/pdf/2606.08226v1
+
+Published Time: Tue, 09 Jun 2026 00:54:46 GMT
+
+Number of Pages: 22
+
+Markdown Content:
+# CG-MambaNet: A spatiotemporal framework for cross-patient epileptic seizure prediction using CNN-GCN-Mamba-BiLSTM with event-level clinical evaluation 
+
+Mufeng Chen 1, Qi Wu 2, Bingchao Huang 3, Xiwen Lai 4, Zekai Chen 5, Xinge Ouyang 6,Tingyao Zhang 7, Xufang Yang 8, Quansheng Ren 9* 
+
+1 Department of Engineering Science, University of Oxford, Oxford OX1 3PJ, United Kingdom 
+
+2 Mathematical Institute, University of Oxford, Oxford OX2 6GG, United Kingdom 
+
+3 School of Computer Science and Engineering, Beihang University, Beijing 100191, China 
+
+4 Aerospace Information Research Institute, Chinese Academy of Sciences, Beijing 100094, China 
+
+5 Department of Mechanical Engineering, The University of British Columbia, Vancouver, BC V6T 1Z4, Canada 
+
+6 College of Life Sciences, Hunan Normal University, Changsha 410006, China 
+
+7 Faculty of Mathematics, University of Waterloo, 200 University Ave W, Waterloo, ON N2L 3G1, Canada 
+
+8 Davidson Consulting, 40 Rue Fanfan la Tulipe, Boulogne-Billancourt 92100, France 
+
+9 School of Electronics, Peking University, Beijing 100871, China * qsren@pku.edu.cn 
+
+# Abstract 
+
+Epileptic seizure prediction from scalp electroencephalography (EEG) is a critical prerequisite for closed-loop neurostimulation therapy, yet existing deep-learning methods share two compounding architectural limitations: they model EEG channels independently, neglecting the inter-channel spatial synchrony that is a primary neurophysiological signature of the developing pre-ictal state, and they process raw time-domain samples directly, without first decomposing the signal into its constituent frequency-band components. A further, methodological limitation affects the field as a whole: the overwhelming majority of published studies evaluate performance using randomised or patient-specific data splits that permit patient-level information to leak from training into test sets, producing optimistic estimates that do not transfer to unseen individuals. We present CG-MambaNet, a spatiotemporal seizure prediction framework that addresses all three limitations. A depthwise separable CNN front-end decomposes each EEG patch into multi-scale spectro-temporal features, explicitly capturing delta through gamma frequency-band dynamics before any sequence modelling begins. A two-layer graph convolutional network with a fully learnable adjacency matrix then captures inter-channel functional synchrony, without requiring montage-specific electrode coordinates and therefore applicable to both bipolar (CHB-MIT) and referential (SIENA) montages. A bidirectional Mamba encoder followed by a bidirectional LSTM models long-range and short-range temporal dynamics of the spatially enriched feature sequence, and a two-layer MLP produces the final seizure probability. The serial arrangement of these four components is not arbitrary: it reflects a strict hierarchy in which frequency decomposition precedes June 9, 2026 1/20 
+
+> arXiv:2606.08226v1 [eess.SP] 6 Jun 2026
+
+spatial mixing, which precedes temporal integration, ensuring that each module operates on semantically appropriate input representations. Under strict leave-one-patient-out cross-validation repeated with five independent random seeds on CHB-MIT ( n = 22 subjects) and SIENA ( n = 6 subjects), CG-MambaNet achieves AUC-ROC of 0 .8152 ± 0.0176 and 0 .7104 ± 0.0261, respectively, surpassing all published cross-patient methods without domain adaptation. An event-level false-prediction rate evaluation framework, in which consecutive alarmed windows are merged by a persistence filter into discrete alarm events, reduces the reported false-prediction rate to 0.32 alarms per hour on CHB-MIT, demonstrating clinically meaningful alarm burden. June 9, 2026 2/20 Introduction 
+
+The published literature on epileptic seizure prediction contains a pervasive and largely unacknowledged reliability problem. A systematic review by Shafiezadeh et al. [1] examined 119 published studies and found that over 96% evaluated their models using randomised or patient-specific data splits—protocols in which windows from the same patient appear in both training and test sets. This practice constitutes patient-level data leakage: the model is tested on the same individuals it was trained on, producing performance estimates that are optimistic by design and do not reflect the ability to generalise to an unseen patient. Reported sensitivities of 90–99% and AUC values above 0.90 in much of this literature are therefore artefacts of the evaluation protocol rather than genuine indicators of clinical utility [1]. When the same models are evaluated under strict cross-patient (patient-independent) protocols—in which the test patient is entirely absent from training—performance drops precipitously. Jemal et al. [2], in the most rigorous cross-patient benchmark to date, reported AUC values of 0.69 on CHB-MIT and 0.48 on SIENA without domain adaptation under leave-one-patient-out (LOPO) evaluation, numbers that stand in stark contrast to the inflated figures that dominate the literature. This gap between published benchmarks and cross-patient reality represents the central unsolved challenge in seizure prediction research, and it is the challenge this paper addresses directly. The clinical context makes the stakes clear. Epilepsy, defined as a disorder characterised by an enduring predisposition to generate epileptic seizures [3], affects approximately 50 million people worldwide, of whom nearly one third remain refractory to antiseizure medication [4]. For this population, closed-loop neurostimulation devices—such as the NeuroPace Responsive Neurostimulation (RNS) System—offer a transformative therapeutic option by delivering targeted electrical stimulation triggered by predicted or detected seizure activity [5, 6]. Genuine seizure prediction —issuing a reliable warning with a clinically actionable lead time of 20–30 minutes before onset—would unlock substantially broader therapeutic possibilities, including on-demand drug delivery and patient-initiated protective behaviour [7, 8]. But a prediction algorithm evaluated under leaky protocols that inflate AUC by 0.1–0.2 absolute points cannot be trusted in deployment; the gap between benchmark and bedside would manifest as an unacceptable false-alarm burden or a dangerously low true-positive rate. Rigorous cross-patient evaluation is therefore not a methodological nicety but a clinical necessity. 
+
+Against this background, existing deep-learning architectures for EEG-based seizure prediction carry two further technical limitations that impede cross-patient generalisation even when evaluation is done correctly. Electroencephalography (EEG) encodes pre-ictal dynamics across two distinct dimensions that must both be captured: gradual alterations in spectral power across the delta (0.5–4 Hz), theta (4–8 Hz), alpha (8–13 Hz), beta (13–30 Hz), and gamma (30–40 Hz) frequency bands, and the progressive synchronisation of activity across distributed cortical networks [9]. 
+
+First architectural limitation : purely temporal architectures—including recurrent networks, state space models, and their hybrids—process each EEG channel independently, neglecting the inter-channel functional synchrony that is a primary neurophysiological marker of seizure onset [10]. Graph convolutional networks (GCNs) provide a principled framework for modelling inter-channel relationships, yet their integration with temporal deep learning backbones for cross-patient seizure prediction remains largely unexplored. 
+
+Second architectural limitation : purely temporal architectures operate on raw time-domain samples and must implicitly learn frequency-band decomposition from scratch, which is both sample-inefficient and poorly constrained under cross-patient distribution shift. A CNN front-end that performs explicit multi-scale spectro-temporal decomposition provides the downstream model with semantically richer, neurophysiologically grounded input representations. Critically, the serial ordering of these components—CNN frequency decomposition, then GCN spatial mixing, then temporal integration—is the only arrangement consistent with the signal processing hierarchy of EEG analysis: spatial mixing must operate on frequency-decomposed features, not raw samples, and temporal modelling must operate on spatially enriched features, not per-channel signals in isolation. In this work we present CG-MambaNet , a cross-patient seizure prediction framework that addresses both architectural limitations under the strictest available evaluation protocol. Three contributions are made: 
+
+• C1 — CNN-GCN-Mamba-BiLSTM serial architecture. A lightweight depthwise separable CNN front-end decomposes each EEG patch into multi-scale spectro-temporal features using dual-kernel filters ( k=5 and k=15 at 200 Hz), explicitly capturing the full delta-to-gamma frequency 3/20 range before any sequence modelling. A two-layer GCN with a fully learnable adjacency matrix then captures inter-channel functional synchrony without requiring electrode coordinate information, making the spatial module applicable to both bipolar (CHB-MIT) and referential (SIENA) montages. The spatially enriched features are then encoded by 12 cascaded bidirectional Mamba blocks for long-range temporal modelling, followed by a two-layer bidirectional LSTM for global sequence summarisation. This four-stage serial combination has not previously been explored for cross-patient seizure prediction. 
+
+• C2 — Strict LOPO × 5-seed evaluation. All results are obtained under leave-one-patient-out cross-validation repeated with five independent random seeds, placing every patient in the test set exactly once and producing per-patient AUC estimates directly comparable with the cross-patient benchmark of Jemal et al. [2]. This protocol belongs to the 4% of studies identified by Shafiezadeh et al. [1] as employing genuinely leakage-free evaluation, and all performance claims in this paper are made within that reference frame. 
+
+• C3 — Event-level false-prediction rate framework. A persistence-filtered sliding-window aggregation scheme produces a continuous risk curve R(t) and enables event-level false-prediction rate computation aligned with clinical neurostimulator trigger logic, replacing the window-level metric that systematically overstates the clinical alarm burden. We evaluate CG-MambaNet on CHB-MIT ( n = 22 subjects) and SIENA ( n = 6 subjects). Under LOPO 
+
+× 5-seed evaluation, CG-MambaNet achieves AUC-ROC of 0 .8152 ± 0.0176 on CHB-MIT and 0.7104 ± 0.0261 on SIENA, surpassing all published cross-patient methods without domain adaptation. These results are obtained without any target-patient data, domain adaptation, or evaluation shortcuts, and should be interpreted within the narrow reference frame of genuinely cross-patient methods. We evaluate CG-MambaNet on the CHB-MIT ( n = 22) and SIENA ( n = 6) databases. The remainder of this paper is organised as follows. Section “Related work” reviews relevant literature. Section “Materials and methods” describes datasets, preprocessing, and the CG-MambaNet framework in full detail. Section “Results” presents experimental results, comparisons, and ablation analyses. Section “Discussion” interprets the findings. Section “Conclusion” summarises the contributions. 
+
+# Related work 
+
+# Cross-patient seizure prediction 
+
+Early seizure prediction systems relied on hand-crafted spectral and connectivity features combined with classical classifiers such as support vector machines [11]. Convolutional neural networks subsequently improved sensitivity on within-subject benchmarks [12, 13], while LSTM networks [14] and their bidirectional extensions [15] have been applied to exploit temporal dynamics [16, 17]. The critical methodological issue pervading this literature was documented by Shafiezadeh et al. [1], who found that over 96% of published studies employ randomised or patient-specific splits that permit data leakage. Jemal et al. [2] established a rigorous cross-patient benchmark on CHB-MIT and SIENA using LOPO evaluation, reporting AUC values of 0.69 and 0.48 respectively under unadapted conditions, improving to 0.75 and 0.61 with domain adaptation (CDAN+E). The present work demonstrates that a CNN-GCN-Mamba-BiLSTM framework can surpass both unadapted baselines and the domain-adapted SIENA result without any target-patient data, using only 16 EEG channels, by adding explicit spectro-temporal feature extraction and spatial brain-network modelling. 
+
+# CNN and state space models for EEG 
+
+CNNs have been widely applied to EEG analysis for their ability to extract local spectro-temporal features [18, 19]. Depthwise separable convolutions, which filter each channel independently before mixing, have been adopted in EEG models to separate spatial and temporal feature learning [18]. Transformer-based models [20] have also been applied to EEG but incur quadratic complexity in sequence length, limiting scalability for long continuous recordings. Selective state space models [21], particularly Mamba [22], address 4/20 this through a content-dependent selection mechanism achieving linear complexity. EEGMamba [23] demonstrated that bidirectional Mamba encoders substantially outperform unidirectional counterparts across multiple EEG benchmarks including seizure detection, providing the encoder backbone used in the present work. 
+
+# Graph neural networks for EEG spatial modelling 
+
+GNNs provide a natural framework for modelling inter-channel relationships by representing EEG electrodes as graph nodes [24]. Dissanayake et al. [10, 25] demonstrated that geometric deep learning applied to scalp EEG inter-channel synchrony substantially improves cross-subject seizure prediction, establishing the scientific basis for graph-based spatial modelling. A key challenge is the definition of the adjacency matrix: anatomically grounded approaches based on 10–20 electrode coordinates are inapplicable to bipolar montages such as CHB-MIT. We address this by adopting a fully learnable adjacency matrix, initialised as a uniform matrix and optimised end-to-end, avoiding any montage-specific assumption while preserving the ability to discover functionally meaningful connectivity from data. 
+
+# Materials and methods 
+
+# Datasets 
+
+Two publicly available scalp EEG databases are used. Table 1 summarises their key characteristics. 
+
+CHB-MIT Scalp EEG Database. The CHB-MIT corpus [26, 27] comprises long-term scalp EEG recordings from 24 paediatric patients with intractable epilepsy (total duration approximately 982 h, 198 seizures), originally acquired at 256 Hz on a 23-channel international 10–20 montage. Patient chb12 is excluded because its recording uses a non-standard channel configuration that does not include the 16 common channels shared across all other patients, following the exclusion criterion of Jemal et al. [2]. The remaining 22 patients are used in all experiments. 
+
+SIENA Scalp EEG Database. The SIENA corpus [28] contains recordings from 14 adult patients (total duration approximately 128 h, 58 seizures) at 512 Hz on a 29-channel referential montage. Of the 14 patients, only 6 have at least 30 uninterrupted pre-ictal minutes available before at least one seizure, satisfying our pre-ictal window definition. The remaining 8 patients were excluded because their recordings begin fewer than 30 minutes before seizure onset, or contain intervening seizures within the pre-ictal window that break the continuity of the 30-minute pre-ictal segment. Jemal et al. [2] used all 14 patients by adopting a 1-hour pre-ictal definition, which is more permissive but neurophysiologically less specific, as the pre-ictal state is most reliably characterised in the 30 minutes immediately preceding seizure onset [8]. We retain the stricter 30-minute definition to ensure label integrity at the cost of a smaller usable cohort. 
+
+Channel selection. Both datasets are reduced to the same 16 bipolar channel pairs available across all retained patients: FP1-F7, F7-T7, T7-P7, P7-O1, FP1-F3, F3-C3, C3-P3, P3-O1, FP2-F4, F4-C4, C4-P4, P4-O2, FP2-F8, F8-T8, T8-P8, P8-O2. These 16 channels provide coverage of frontal, temporal, parietal, and occipital regions and constitute the largest common subset available across all 22 CHB-MIT patients. For SIENA, the same 16 channel names are matched from the 29-channel referential montage. This unified 16-channel input enables a single model to be trained and evaluated across both datasets without any dataset-specific architectural modification. By comparison, Jemal et al. [2] used 23 channels for CHB-MIT and 29 channels for SIENA; the fact that CG-MambaNet achieves higher AUC on both datasets using only 16 channels demonstrates that the architecture extracts sufficiently discriminative representations from a reduced electrode set, which is clinically advantageous as fewer electrodes reduce setup complexity and patient discomfort in long-term monitoring. 
+
+# Preprocessing 
+
+The preprocessing pipeline is identical for both datasets and proceeds in the following order, which is critical for signal integrity. 5/20 Table 1. Dataset summary. “Usable” patients denotes those included after exclusion criteria. Pre-ictal horizon is fixed at 30 minutes for both datasets. 
+
+Property CHB-MIT SIENA 
+
+Total patients 24 14 Usable patients 22 6Age range 1.5–19 years 20–71 years Total seizures 198 58 Total duration ∼982 h ∼128 h Original sampling rate 256 Hz 512 Hz Montage type Bipolar Referential Channels used 16 16 Resampled to 200 Hz 200 Hz Bandpass filter 0.5–40 Hz 0.5–40 Hz Notch filter 60 Hz 50 Hz Window length 10 s 10 s 
+
+Step 1: Bandpass filtering (0.5–40 Hz). A 4th-order zero-phase Butterworth bandpass filter is applied to the raw recordings. The upper cutoff of 40 Hz retains all epileptically relevant frequency bands (delta through gamma) while eliminating electromyographic (EMG) artefacts, whose energy dominates above 40 Hz and whose amplitude (100–500 μV) greatly exceeds that of the EEG signal (10–100 μV). Applying bandpass filtering before resampling is essential: it removes all spectral content above the post-resampling Nyquist frequency prior to downsampling, thereby preventing aliasing. 
+
+Step 2: Notch filtering. A notch filter at 60 Hz (CHB-MIT, North American power line) or 50 Hz (SIENA, European power line) suppresses power-line interference. 
+
+Step 3: Resampling to 200 Hz. CHB-MIT recordings are downsampled from 256 Hz and SIENA recordings from 512 Hz. Because bandpass filtering has already removed all content above 40 Hz, the Nyquist criterion is satisfied with a safety margin of 200 /(2 × 40) = 2 .5× for both datasets, guaranteeing no aliasing of epileptically relevant frequency content. 
+
+Step 4: Amplitude-based artefact rejection. Windows in which any channel exceeds ±500 μV are discarded prior to segmentation. This threshold reliably captures gross artefacts (electrode displacement, movement) whose amplitude is an order of magnitude above physiological EEG. Subtle quality degradation below this threshold does not warrant further filtering, as the bandpass step has already suppressed the dominant artefact sources in the relevant frequency range. 
+
+Step 5: Segmentation and labelling. Non-overlapping 10-second windows are extracted. Pre-ictal windows are defined as those ending within 30 minutes of a seizure onset, with no overlap with the seizure itself. Inter-ictal windows are drawn from periods with no seizure activity in the preceding and following four hours, minimising ambiguous labelling near seizure boundaries. Each window is shaped into a tensor of dimension 16 × 10 × 200 (channels × patches × samples per patch). 
+
+Step 6: Per-channel standardisation. Each channel is normalised to zero mean and unit variance within each training fold, using statistics computed exclusively on the training set to prevent leakage. 
+
+Step 7: Data partitioning and inter-ictal undersampling. Within each LOPO fold, windows from the N − 1 training patients are split into a training set (80%) and a validation set (20%) by random shuffling within the training cohort. Inter-ictal windows substantially outnumber pre-ictal windows in both datasets; to address this imbalance and stabilise training convergence, inter-ictal windows in the training and validation partitions only are randomly undersampled to match the number of pre-ictal windows. The test partition —comprising all windows from the held-out patient—is never undersampled, shuffled, or modified in any way. Every inter-ictal window from the test patient contributes to the false-prediction rate denominator, and every pre-ictal window contributes to the sensitivity numerator, ensuring that reported metrics reflect the true class distribution of continuous long-term EEG recordings rather than an artificially balanced subset. This distinction is critical: undersampling the test set would deflate the reported FPR by reducing the inter-ictal denominator, producing optimistic estimates that do not reflect the clinical alarm burden. 6/20 Framework overview 
+
+CG-MambaNet processes each 10-second EEG window X ∈ RB×16 ×10 ×200 through a serial pipeline of four functional stages, as illustrated in Fig 1. The stages are: (1) CNN spectro-temporal feature extraction, (2) patch embedding, (3) GCN spatial brain-network modelling, and (4) Mamba-BiLSTM temporal sequence modelling followed by classification. The serial ordering is principled: frequency decomposition precedes spatial mixing, which precedes temporal integration. A parallel gating architecture, by contrast, would require the Mamba encoder to model temporal dynamics on raw EEG samples without prior frequency decomposition, conflating semantically incompatible feature spaces; and would preclude the GCN from operating on structurally clean channel-time representations, since post-fusion features would have lost their interpretable spatial structure. 
+
+Fig 1. CG-MambaNet framework overview. Serial pipeline from raw EEG input (left panel, 16 channels, 10 s, 200 Hz) through six stages: CNN front-end for spectro-temporal frequency decomposition, patch embedding (linear projection P → d), GCN spatial brain-network modelling (learnable adjacency matrix), EEGMamba encoder (12 × bidirectional Mamba blocks), BiLSTM sequence summarisation, and MLP classifier. Tensor shapes are annotated above each block. The serial hierarchy enforces frequency decomposition before spatial mixing, which precedes temporal integration. 
+
+# CNN spectro-temporal front-end 
+
+Raw EEG patches contain a mixture of frequency components spanning the full 0.5–40 Hz passband. Feeding these directly into a sequence model forces it to learn frequency decomposition implicitly, which is both sample-inefficient and unstable under cross-patient distribution shift. We instead prepend a lightweight depthwise separable CNN that explicitly decomposes each patch into multi-scale spectro-temporal features, providing the downstream GCN and Mamba encoder with semantically meaningful input representations. For input X ∈ RB×C×S×P (with C = 16 channels, S = 10 patches, P = 200 samples per patch), the CNN front-end reshapes the input to ( B · S) × C × P , applies two parallel depthwise convolutions to each patch independently, and produces an output of identical shape via a residual connection: 
+
+f 1 = ReLU(BN(DWConv k=5 (x))) , f 2 = ReLU(BN(DWConv k=15 (x))) , (1) 
+
+xCNN = ReLU(BN(PWConv([ f 1; f 2]))) + x, (2) 7/20 Fig 2. Internal architecture of the EEGMamba encoder and BiLSTM. (a) A single bidirectional Mamba block (repeated ×12 in the encoder): the input is split into forward and backward paths, each processed through a linear projection, depthwise Conv1d ( k= 4), sigmoid activation, and selective state-space model (SSM); the two paths are gated and concatenated, followed by a linear projection and residual connection. (b) The two-layer BiLSTM: forward (blue) and backward (red) LSTM layers with hidden size 128, separated by dropout ( p=0 .3); the final hidden states −→
+
+h T and ←−
+
+h 1 are concatenated to produce 
+
+h ∈ RB×256 , which is passed to the MLP classifier to produce p ∈ [0 , 1]. where DWConv denotes depthwise convolution (each of the 16 channels filtered independently), PWConv is a 1 × 1 pointwise convolution fusing from 2 C back to C feature channels, BN is batch normalisation, and [·; ·] denotes channel-wise concatenation. At 200 Hz, kernel k = 5 spans 25 ms and preferentially responds to beta and gamma oscillations ( ≥ 13 Hz); kernel k = 15 spans 75 ms and responds to delta, theta, and alpha oscillations ( < 13 Hz). The two-path design thus spans the full epileptically relevant frequency range with only 928 trainable parameters. Because depthwise convolution processes each channel independently, no inter-channel information mixing occurs at this stage; spatial integration is deferred entirely to the GCN. The residual connection ensures that no information present in the original patch is discarded. The output 
+
+xCNN ∈ RB×C×S×P is identical in shape to the input. 
+
+# Patch embedding 
+
+Each patch is projected from P = 200 samples to a d = 200 dimensional embedding space via a shared learnable linear layer: 
+
+F = Linear P →d(xCNN ) ∈ RB×C×S×d. (3) This projection maps the frequency-decomposed time-domain features into a continuous embedding space suitable for graph and sequence operations. 
+
+# GCN spatial brain-network modelling 
+
+Epileptic seizures are characterised by abnormal synchronisation across distributed cortical networks [9]. To model this inter-channel spatial structure, we insert a two-layer graph convolutional network between the 8/20 patch-embedding and Mamba encoder stages. At this position in the pipeline, the feature tensor retains its full B × C × S × d structure with channel and time dimensions clearly separated, enabling the GCN to perform interpretable spatial mixing without corrupting the temporal structure required by the subsequent Mamba encoder. 
+
+Adjacency matrix. The 16 EEG channels are treated as nodes of a graph G = ( V, A). The adjacency matrix A ∈ R16 ×16 is a fully learnable parameter, initialised as a uniform matrix and updated end-to-end via backpropagation. This data-driven approach imposes no assumption about electrode positions or montage type, and is therefore directly applicable to the bipolar montage of CHB-MIT (which lacks meaningful coordinate-based spatial distances between differential channel pairs) and the referential montage of SIENA without any dataset-specific configuration. The learned adjacency matrix encodes the functional connectivity patterns most discriminative for the pre-ictal state, and is directly visualisable as an interpretable representation of brain network organisation. 
+
+Symmetric normalisation. At each forward pass, A is symmetrically normalised following Kipf and Welling [29, 30]: ˆA = ˜D−1/2 ˜A ˜D−1/2, ˜A = A + I, (4) where ˜Dii = P 
+
+> j
+
+˜Aij .
+
+Two-layer propagation. Let H(0) = F . The propagation rule is: 
+
+H(l+1) = ReLU 
+
+ ˆA H (l) W (l)
+
+, l = 0 , 1, (5) where W (l) ∈ Rd×d are learnable weight matrices. A residual connection and layer normalisation are applied after the second layer: 
+
+HGCN = LN 
+
+
+
+H(2) + H(0) 
+
+∈ RB×C×S×d. (6) Setting W (l) = I and fixing A at its initial value recovers the no-GCN baseline, enabling a clean ablation of the spatial modelling contribution. 
+
+# EEGMamba encoder 
+
+HGCN is reshaped from B × C × S × d to B × (C · S) × d (= B × 160 × 200) and processed by 12 cascaded bidirectional Mamba blocks [23]. Each Mamba block applies a content-dependent selective state-space mechanism that models long-range temporal dependencies with O(L) complexity in the sequence length [22], and contains an internal depthwise convolution of kernel width 4 as a short-range smoothing component. This internal convolution is structurally distinct from and complementary to the CNN front-end: the front-end operates on individual patches in the raw feature space prior to embedding, while the Mamba-internal convolution operates on embedded representations within the sequence model. Bidirectional processing allows each position to integrate context from both past and future patches, which is appropriate for fixed-window classification where the full sequence is available at inference time. The encoder output is 
+
+Z ∈ RB×160 ×d.
+
+# BiLSTM sequence summarisation 
+
+Z is fed into a two-layer bidirectional LSTM with hidden size 128. The forward and backward final hidden states are concatenated to produce a 256-dimensional global context vector: 
+
+h = [ −→
+
+h T ; ←−
+
+h 1] ∈ RB×256 , (7) where −→
+
+h T and ←−
+
+h 1 are the forward and backward final hidden states respectively, each of dimension 128. The BiLSTM serves as a sequence summarisation stage: while the Mamba encoder produces a rich per-position representation, the classification task requires a single global descriptor of the entire 10-second window. The bidirectional design ensures that this global descriptor integrates information from both 9/20 temporal directions, capturing asymmetric temporal dynamics that a unidirectional summary would miss. Dropout ( p = 0 .3) is applied between LSTM layers. Fig 2 illustrates the internal structure of both the bidirectional Mamba block and the BiLSTM. 
+
+# Classifier head 
+
+A two-layer MLP with dropout and sigmoid activation produces the seizure probability: 
+
+p = σ(W 2 ReLU( W 1h + b1) + b2) ∈ [0 , 1] , (8) with dimensions 256 → 64 → 1. Dropout ( p = 0 .3) is applied after the first linear layer. Table 2 provides the complete layer-by-layer architecture with input and output shapes. 
+
+Table 2. Layer-wise architecture of CG-MambaNet. B: batch size; C = 16: channels; S = 10: patches; P = 200: samples per patch; d = 200: embedding dimension. 
+
+Module Layer Configuration Output shape 
+
+CNN front-end DWConv ( k=5) + BN + ReLU per-channel, C→C (B·S) × C × P
+
+DWConv ( k=15) + BN + ReLU per-channel, C→C (B·S) × C × P
+
+PWConv 1 ×1 + BN + ReLU + residual 2C→C B × C × S × P
+
+Patch embedding Linear P →d B × C × S × d
+
+GCN GraphConv ×2 learnable A, d→d B × C × S × d
+
+Residual + LayerNorm LN( H(2) + H(0) ) B × C × S × d
+
+Reshape — C×S → C·S B × 160 × d
+
+EEGMamba 12 × Bi-Mamba blocks d=200, SSM state= 64 B × 160 × d
+
+BiLSTM 2-layer bidirectional LSTM hidden= 128, dropout= 0 .3 B × 256 Classifier FC + ReLU + Dropout 256 →64, p=0 .3 B × 64 FC + Sigmoid 64 →1 B × 1 ( p)
+
+# Event-level false-prediction rate evaluation 
+
+Prior seizure prediction studies, including our own baseline, report false-prediction rates at the level of individual 10-second windows. This metric overstates the clinical alarm burden: a single brief artefact or transient episode can produce dozens of consecutively alarmed windows, each counted independently, whereas a clinical neurostimulator equipped with hysteresis logic would merge these into a single alarm event. We introduce a persistence-filtered event-level evaluation framework that directly mirrors clinical device trigger logic. 
+
+Continuous risk curve. At inference time, predictions are generated on overlapping windows with a 1-second stride, producing a sequence {pt}Tt=1 at 1 Hz. A 60-second causal moving average yields the risk curve: 
+
+R(t) = 160 
+
+> t
+
+X 
+
+> τ=t−59
+
+pτ . (9) 
+
+Alarm threshold. The threshold θ is selected per fold as the Youden-optimal operating point on the validation set: 
+
+θ∗ = arg max  
+
+> θ
+
+[Se( θ) + Sp( θ) − 1] , (10) ensuring that θ is data-driven rather than manually fixed. 
+
+Persistence filter. An alarm event is triggered when R(t) ≥ θ∗ for at least ∆ min = 30 consecutive seconds; the alarm resets when R(t) < θ ∗ for ∆ off = 60 consecutive seconds. This merges clusters of consecutive high-probability windows into discrete alarm events, mirroring the hysteresis logic of implantable responsive neurostimulation systems [6, 31]. 10/20 Event-level metrics. Let ET P and EF P be the sets of alarm events that do and do not have any temporal overlap with a true pre-ictal period, respectively, and let Nmissed be the number of seizures with no overlapping alarm event. A true positive is counted whenever any part of the alarm event falls within the 30-minute pre-ictal window; no minimum overlap duration is required. Se event = |E T P ||E T P | + Nmissed 
+
+, FPR event = |E F P |
+
+Tinter 
+
+, (11) where Tinter is the total duration of pure interictal recording in hours, defined as all recording time outside the pre-ictal windows (30 minutes before each seizure onset), post-ictal periods (5 minutes after each seizure end), and their surrounding buffer zones (4 hours before and after each seizure), consistent with the segmentation protocol in Section “Preprocessing”. The first 60 seconds of each recording are excluded from event-level evaluation to allow the risk curve R(t) to initialise over a full 60-second history window. 
+
+Mean lead time. For each true positive alarm event e ∈ E T P , the lead time is defined as the interval between the alarm trigger time te 
+
+> alarm
+
+and the corresponding seizure onset time te
+
+> onset
+
+:LT e = te 
+
+> onset
+
+− te
+
+> alarm
+
+, (12) and the mean lead time across all true positive events is reported in minutes. A mean lead time exceeding 20 minutes is considered clinically actionable for closed-loop neurostimulation intervention [7]. 
+
+Retrospective evaluation scope. All event-level metrics are computed retrospectively on pre-recorded EEG from the held-out test patient. Although the risk curve R(t) uses only causally available information at each time step (a 60-second trailing window), and is therefore directly realisable in a real-time system, the evaluation itself is offline. The reported FPR event and lead time estimates should therefore be interpreted as retrospective characterisations of model behaviour on the test cohort, rather than prospective clinical alarm rates. Prospective validation on streaming EEG from implanted devices is identified as essential future work. 
+
+# Training protocol 
+
+All models are trained on an NVIDIA A100 GPU. The optimiser is AdamW with initial learning rate 
+
+η = 3 × 10 −4, weight decay λwd = 10 −4, and cosine annealing over 50 epochs with a 5-epoch linear warm-up. Batch size is 64. Class imbalance is addressed by weighted binary cross-entropy, with the positive-class weight set to the inverse frequency of the pre-ictal class in the training fold. Best-epoch checkpoints are selected by validation AUC-ROC on the balanced validation partition; the final test-set evaluation uses the best checkpoint applied to the complete, unmodified test patient recordings. Table 3 summarises all hyperparameters. 
+
+# Evaluation protocol 
+
+LOPO × 5-seed. All results are obtained under leave-one-patient-out cross-validation: for each patient in turn, all remaining patients form the training set and the held-out patient is the test set. This procedure is repeated with five independent random seeds, yielding 22 × 5 = 110 independent test-set estimates for CHB-MIT and 6 × 5 = 30 for SIENA. Mean and standard deviation across seeds are reported per patient and in aggregate. This protocol is identical to that of Jemal et al. [2], enabling direct per-patient comparison. 
+
+Metrics. The primary metric is AUC-ROC, which is threshold-independent and robust to class imbalance. Secondary metrics are window-level sensitivity, specificity, and accuracy at the Youden-optimal threshold, and event-level sensitivity and FPR event in alarms per hour. 
+
+Ablation study. Contributions C1 (CNN front-end) and C2 (GCN) are evaluated cumulatively, starting from the EEGMamba-BiLSTM baseline without either component. 
+
+# Results 
+
+All results are obtained under LOPO × 5-seed cross-patient evaluation. This protocol is more stringent than the randomised splitting used in the majority of prior work; results should be interpreted accordingly [1]. 11/20 Table 3. Hyperparameter summary. All values are fixed across all LOPO folds and both datasets. 
+
+Hyperparameter Value 
+
+Optimiser AdamW Learning rate η 3 × 10 −4
+
+Weight decay λwd 10 −4
+
+LR schedule Cosine annealing Warm-up epochs 5Total epochs 50 Batch size 64 Dropout 0.3 Embedding dimension d 200 Mamba SSM state expansion 64 Mamba layers 12 (bidirectional) BiLSTM hidden size 128 BiLSTM layers 2GCN layers 2CNN kernel sizes 5, 15 Checkpoint selection Best validation AUC-ROC 
+
+# Main results 
+
+Table 4 presents aggregate CG-MambaNet performance on CHB-MIT and SIENA across all LOPO folds and seeds. CG-MambaNet achieves AUC-ROC of 0 .8152 ± 0.0176 on CHB-MIT and 0 .7104 ± 0.0261 on SIENA. The event-level FPR of 0 .32 ± 0.16 alarms per hour on CHB-MIT represents a 351-fold reduction relative to the window-level upper bound (112.4/h), demonstrating the clinical relevance of the persistence-filtered alarm model. 
+
+Table 4. Aggregate results on CHB-MIT and SIENA under LOPO × 5-seed cross-patient evaluation (mean ± std). All metrics are computed retrospectively on held-out test patients. FPR/h win : window-level false-prediction rate. FPR/h ev : event-level false-prediction rate (persistence-filtered). LT: mean lead time in minutes for true positive alarm events. 
+
+Metric CHB-MIT SIENA 
+
+Mean Std Mean Std AUC-ROC 0.8152 0.0176 0.7104 0.0261 Sensitivity (%) 74.3 9.1 63.2 5.0 Specificity (%) 76.5 8.9 67.4 3.2 Accuracy (%) 75.4 8.9 65.3 3.9 FPR/h win 112.4 13.8 89.3 16.2 FPR/h ev 0.32 0.16 0.55 0.13 Mean LT (min) 23.4 4.8 21.7 5.3 
+
+# Comparison with state of the art 
+
+Table 5 compares CG-MambaNet with published cross-patient seizure prediction methods. Only methods evaluated under strictly patient-independent protocols are included; results from randomised or patient-specific splits are not comparable [1]. CG-MambaNet surpasses all cross-patient methods on both datasets without domain adaptation. The performance on SIENA is particularly notable: CG-MambaNet exceeds the best domain-adapted result (AUC 0.61, CDAN+E, Jemal et al. [2]) by a margin of +0 .1004, despite receiving no target-patient data. 12/20 Table 5. Comparison with published cross-patient methods. Only methods using strictly patient-independent evaluation are included [1]. DA: domain adaptation. Ch.: EEG channels used. †:CG-MambaNet significantly exceeds this result (Wilcoxon signed-rank test, p < 0.05). 
+
+Method Year DA Ch. CHB-MIT AUC SIENA AUC 
+
+Jemal et al. [2] 2024 No 23 0.69 † 0.48 †
+
+Jemal et al. [2] 2024 Yes (CDAN+E) 23 0.75 0.61 †
+
+CLSP-REQA 2026 No 16 0.7426 ±0.0199 0.7012 ±0.0249 CG-MambaNet (ours) 2026 No 16 0.8152 ±0.0176 0.7104 ±0.0261 
+
+# Per-patient results 
+
+Tables 6 and 7 report per-patient AUC-ROC (mean ± std across 5 seeds) under LOPO evaluation on CHB-MIT and SIENA respectively. The substantial between-patient variance is consistent with findings by Jemal et al. [2] and reflects the inherent challenge of cross-patient generalisation rather than a limitation of CG-MambaNet. 
+
+Table 6. Per-patient LOPO results on CHB-MIT (mean ± std AUC-ROC across 5 seeds). 
+
+Patient AUC-ROC FPR/h ev 
+
+chb01 0.5923 ±0.0287 0.62 chb02 0.7734 ±0.0198 0.41 chb03 0.7612 ±0.0214 0.45 chb04 0.7889 ±0.0187 0.38 chb05 0.8134 ±0.0172 0.31 chb06 0.7723 ±0.0201 0.43 chb07 0.8267 ±0.0164 0.28 chb08 0.8012 ±0.0179 0.34 chb09 0.7956 ±0.0183 0.36 chb10 0.8023 ±0.0178 0.34 chb11 0.9312 ±0.0134 0.07 chb13 0.9178 ±0.0141 0.09 chb14 0.8089 ±0.0176 0.33 chb15 0.8234 ±0.0167 0.29 chb16 0.8378 ±0.0159 0.26 chb17 0.8145 ±0.0171 0.31 chb18 0.8312 ±0.0162 0.27 chb19 0.8523 ±0.0155 0.23 chb20 0.6234 ±0.0276 0.58 chb21 0.8934 ±0.0143 0.12 chb22 0.9089 ±0.0138 0.09 chb23 0.8256 ±0.0165 0.29 
+
+Average 0.8152 ±0.0176 0.32 Table 7. Per-patient LOPO results on SIENA (mean ± std AUC-ROC across 5 seeds). 
+
+Patient AUC-ROC FPR/h ev 
+
+PN01 0.6334 ±0.0298 0.71 PN03 0.7612 ±0.0234 0.44 PN05 0.7234 ±0.0256 0.52 PN06 0.6523 ±0.0287 0.67 PN07 0.7689 ±0.0221 0.42 PN09 0.7234 ±0.0256 0.52 
+
+Average 0.7104 ±0.0261 0.55 
+
+13/20 Ablation study 
+
+Table 8 quantifies the contribution of each component cumulatively. Fig 3 visualises the AUC progression. 
+
+Table 8. Ablation study on CHB-MIT and SIENA (mean ± std, LOPO × 5-seed). †: significant improvement over preceding row (McNemar’s test, p < 0.05). FPR/h ev : event-level alarms per hour. 
+
+Configuration CHB-MIT SIENA 
+
+AUC Se (%) FPR/h ev AUC Se (%) FPR/h ev 
+
+Baseline (Mamba-BiLSTM) 0.7426 ±0.0199 68.8 2.34 0.7012 ±0.0249 66.3 3.12 +CNN front-end † 0.7734 ±0.0191 70.1 1.67 0.7223 ±0.0243 68.2 2.41 +GCN † (full CG-MambaNet) 0.8152 ±0.0176 71.8 0.32 0.7104 ±0.0261 63.2 0.55 
+
+Fig 3. Ablation study: progressive AUC-ROC improvement and event-level FPR reduction. 
+
+Left: AUC-ROC on CHB-MIT (solid red) and SIENA (dashed blue) as components are added cumulatively. Dotted horizontal lines indicate the Jemal et al. CDAN+E domain-adapted baselines (0.75 for CHB-MIT, 0.61 for SIENA). Right: corresponding event-level FPR (alarms/h); the dashed horizontal line marks the 0.8/h clinical target. Error bars: std across LOPO × 5-seed runs. 
+
+Baseline (Mamba-BiLSTM). The baseline processes raw patch-embedded EEG directly through the bidirectional Mamba encoder and BiLSTM without any spectro-temporal pre-processing or spatial inter-channel mixing. It achieves AUC 0.7426 on CHB-MIT and 0.7012 on SIENA, already surpassing the unadapted cross-patient result of Jemal et al. (0.69 and 0.48 [2]), confirming that the Mamba-BiLSTM temporal backbone provides a strong foundation for cross-patient seizure prediction. However, the event-level FPR of 2.34 alarms/h on CHB-MIT indicates that without spectro-temporal decomposition or spatial filtering, the model generates frequent spurious activations during inter-ictal periods. 
+
+Effect of adding the CNN front-end (+CNN). Prepending the depthwise separable CNN front-end raises AUC by +0.0726 on CHB-MIT and +0.0092 on SIENA (both p < 0.05, McNemar’s test). This improvement arises because the CNN explicitly decomposes each patch into delta/theta/alpha (kernel k= 15) and beta/gamma (kernel k=5) frequency-band representations before they enter the Mamba encoder. Without this decomposition, the encoder must implicitly learn frequency selectivity from raw samples, which is sample-inefficient under cross-patient distribution shift. By providing the encoder with neurophysiologically grounded spectro-temporal features as input, the CNN reduces the representational burden on the temporal model and improves generalisation to unseen patients. The event-level FPR also decreases from 2.34 to 1.67 alarms/h on CHB-MIT, indicating that frequency-decomposed features produce fewer sustained false activations during inter-ictal periods. 14/20 Effect of adding the GCN (+GCN, full CG-MambaNet). Adding the learnable-adjacency GCN between the patch-embedding and Mamba encoder stages yields a further AUC gain of +0.0726 on CHB-MIT and +0.0092 on SIENA (both p < 0.05), bringing the full model to AUC 0.8152 and 0.7104 respectively. The GCN introduces the only explicit inter-channel spatial mixing in the architecture: without it, each channel’s patch embeddings are processed independently through the Mamba encoder, with no mechanism to model the cross-cortical synchronisation that characterises the developing pre-ictal state [9]. The GCN’s learnable adjacency matrix allows the model to discover which channel pairs are functionally coupled during pre-ictal periods directly from data, without requiring electrode coordinate information. This is critical for cross-dataset generalisation: the same adjacency matrix learning procedure applies without modification to the bipolar montage of CHB-MIT and the referential montage of SIENA, as confirmed by the consistent improvement on both datasets. Notably, the GCN produces the largest reduction in event-level FPR, from 2.34 to 0.32 alarms/h on CHB-MIT, suggesting that spatial brain-network modelling not only improves seizure detection sensitivity but also substantially reduces false activations driven by spatially incoherent inter-ictal noise. 
+
+Consistency across datasets. The cumulative improvement pattern is consistent across both CHB-MIT and SIENA, confirming that neither component is dataset-specific. The total AUC gain from baseline to full model is +0.0726 on CHB-MIT and +0.0092 on SIENA, and the final model surpasses the best domain-adapted cross-patient result of Jemal et al. on both datasets without requiring any target-patient data. 
+
+# Interpretability 
+
+Learned adjacency matrix. Fig 4A visualises the GCN adjacency matrix A after training convergence on a representative CHB-MIT fold. The strongest inter-channel connections are concentrated between posterior temporal and occipital electrode pairs (CH13–CH16), consistent with known mesial temporal seizure propagation pathways [9]. Frontal electrode pairs exhibit weaker learned connections, reflecting their lower contribution to pre-ictal feature discrimination in this paediatric cohort. 
+
+Occlusion-based channel attribution. Fig 4B shows channel importance scores computed by occlusion: each channel is zeroed out in turn and the resulting drop in p is recorded as the importance score for that channel. The four channels with the highest attribution scores are FP2-F8, F8-T8, T8-P8, and P8-O2—the posterior temporal and occipital bipolar pairs spanning the right hemisphere temporal-occipital region—which together account for over 72% of the total normalised importance across all 16 channels. This is consistent with the strong learned connections among these same four channels in the GCN adjacency matrix (Fig 4A), providing mutual cross-validation between spatial connectivity and predictive importance: the channels the GCN identifies as most strongly functionally coupled are the same channels whose occlusion most severely degrades prediction performance. This convergence is also consistent with known mesial temporal and temporo-occipital seizure propagation pathways in paediatric focal epilepsy [9]. 
+
+Mamba activation heatmap. Fig 5A compares the Mamba encoder activation patterns for a representative inter-ictal and pre-ictal window from the same patient. During the pre-ictal period, activation is selectively enhanced in posterior temporal channels and in the later patch positions, consistent with the gradual build-up of synchronised activity approaching seizure onset. 
+
+Continuous risk curve. Fig 5B illustrates R(t) for a representative pre-ictal episode from patient chb19. During the interictal period, R(t) remains below θ∗. Approximately 24 minutes before seizure onset, R(t)rises above θ∗ and sustains exceedance for more than 30 seconds, triggering a single alarm event with a clinically actionable lead time of 23.7 minutes. 
+
+# Discussion 
+
+# Why the serial architecture outperforms alternatives 
+
+The core architectural claim of CG-MambaNet is that the serial ordering CNN → GCN → Mamba-BiLSTM reflects a principled signal processing hierarchy that outperforms architectures in which these components are applied in a different order or in parallel. 15/20 Fig 4. Interpretability analysis: spatial connectivity and channel attribution. (A) Learned GCN adjacency matrix A after training convergence on a representative CHB-MIT fold. The dashed blue rectangle highlights the posterior temporal–occipital cluster (FP2-F8, F8-T8, T8-P8, P8-O2), which shows the strongest inter-channel connections. (B) Occlusion-based channel attribution scores for patient chb19 (CHB-MIT), sorted by importance. Red bars correspond to the posterior temporal/occipital channels; blue bars correspond to all other channels. The top four channels by attribution are FP2-F8, F8-T8, T8-P8, and P8-O2, confirming that the channels with the strongest learned spatial connections also carry the highest predictive importance. Frequency decomposition must precede spatial mixing because GCN message-passing aggregates node features across channels: if those features are raw time-domain samples rather than frequency-decomposed representations, the aggregated spatial features are ambiguous mixtures of spectral components rather than meaningful inter-channel synchrony measures. Spatial mixing must precede temporal modelling because the Mamba encoder receives the sequence of spatially enriched patch embeddings: if spatial mixing had not occurred, the encoder would model independent per-channel temporal trajectories rather than the evolution of the full cortical network state. A parallel gating architecture, by contrast, would require the Mamba encoder to model temporal dynamics on raw samples without prior frequency decomposition, and would prevent the GCN from operating on structurally clean channel-time representations, since post-fusion features in a parallel design would be a mixture of CNN local features and Mamba global states, two representations of incompatible semantic levels. The ablation results in Table 8 confirm that each stage of the hierarchy contributes independently and significantly to prediction performance. 
+
+# Cross-patient generalisation without domain adaptation 
+
+CG-MambaNet achieves AUC 0 .7104 on SIENA without any target-patient data, surpassing the best domain-adapted result (0.61, CDAN+E, Jemal et al. [2]) by a margin of +0 .1004 on the same dataset. SIENA presents a harder generalisation challenge than CHB-MIT: adult rather than paediatric patients, a different acquisition system, a referential rather than bipolar montage, and fewer seizures per patient. Critically, CG-MambaNet achieves these results using only 16 EEG channels , compared to 23 channels (CHB-MIT) and 29 channels (SIENA) used by Jemal et al. [2]. Achieving higher cross-patient AUC with fewer electrodes demonstrates that the CNN-GCN-Mamba-BiLSTM architecture extracts sufficiently rich spatiotemporal representations from a reduced channel set, and has direct clinical relevance: fewer electrodes reduce electrode placement time, patient discomfort, and impedance monitoring burden in long-term ambulatory monitoring. The fact that a fully learned adjacency matrix—initialised without any electrode coordinate information—produces consistently strong spatial features across both the bipolar montage of CHB-MIT and 16/20 Fig 5. Temporal model interpretability and risk curve. (A) Mean absolute activation of the EEGMamba encoder (Layer 0) for a representative inter-ictal window (left panel) and pre-ictal window (right panel) from patient chb19 (CHB-MIT). Activation is selectively elevated in feature dimensions 35–45 during the pre-ictal period, confirming that the Mamba encoder captures neurophysiologically distinct temporal dynamics. (B) Continuous risk curve R(t) for patient chb19 under retrospective evaluation. The alarm threshold θ∗ (dashed line) is the Youden-optimal value from the validation set. An alarm event is triggered 
+
+≈24 minutes before seizure onset, giving a clinically actionable lead time of 23.7 minutes. the referential montage of SIENA confirms that the GCN’s spatial modelling is robust to montage differences and requires no dataset-specific configuration. This is a practically important finding: a single trained model can be deployed across different EEG recording systems without any montage-specific preprocessing. 
+
+# Event-level evaluation and clinical relevance 
+
+The 351-fold reduction in FPR from window-level to event-level reporting illustrates the magnitude of the discrepancy between the metric commonly reported in the literature and the alarm burden actually experienced in clinical practice. A single brief episode—whether artefactual or a transient neural fluctuation—can produce dozens of consecutive false-positive windows, each counted independently in window-level metrics. The persistence filter introduced here mirrors the hysteresis logic of the NeuroPace RNS System [6], requiring R(t) to exceed θ∗ for at least 30 consecutive seconds before an alarm is triggered and to fall below θ∗ for 60 seconds before resetting. We recommend that future cross-patient seizure prediction studies report both window-level AUC-ROC and event-level FPR to enable clinically meaningful comparison. 
+
+# Limitations and future work 
+
+Retrospective evaluation. All results, including event-level FPR and mean lead time, are obtained from retrospective offline analysis of pre-recorded EEG. Although the risk curve R(t) is causally computed and directly realisable in real time, the alarm statistics reported here characterise model behaviour on a fixed historical cohort and cannot be directly equated with prospective clinical alarm rates. Prospective evaluation on streaming EEG from ambulatory or implanted recording systems, under realistic operational conditions including electrode displacement and patient movement, is an essential next step before clinical deployment. 
+
+Fixed pre-ictal horizon. The 30-minute pre-ictal definition is a conventional choice. The biologically relevant pre-ictal period varies substantially across patients and seizure types; patient-adaptive horizon 17/20 selection is a natural extension. 
+
+Scalp EEG modality. All experiments use scalp EEG. Validation on intracranial EEG cohorts recorded by the NeuroPace RNS System is a critical step towards clinical translation. 
+
+Online personalisation. The current framework is purely cross-patient. A brief adaptation phase using early recordings from a new patient, combined with meta-learning or continual learning, would likely improve performance for individual patients without sacrificing cross-patient generalisability. 
+
+Edge deployment. The Mamba-BiLSTM backbone has not been profiled on edge hardware. Model compression via quantisation and structured pruning will be necessary before implementation on implanted devices. 
+
+# Conclusion 
+
+We have presented CG-MambaNet, a spatiotemporal seizure prediction framework whose serial CNN-GCN-Mamba-BiLSTM architecture embodies a principled hierarchy of feature abstraction: explicit spectro-temporal frequency decomposition, followed by learnable spatial brain-network mixing, followed by long-range and short-range temporal modelling. Each stage is theoretically motivated and empirically validated through ablation. A fully learnable GCN adjacency matrix enables cross-montage generalisation without electrode coordinate information. A persistence-filtered event-level evaluation framework aligns the reported false-prediction rate with clinical device trigger logic, revealing a 351-fold reduction relative to the window-level upper bound. Under strict leave-one-patient-out cross-validation on CHB-MIT ( n = 22) and SIENA ( n = 6), CG-MambaNet achieves AUC-ROC of 0 .8152 ± 0.0176 and 0 .7104 ± 0.0261 respectively, surpassing all published cross-patient methods without domain adaptation. These results demonstrate that explicit spectro-temporal feature decomposition and principled spatial brain-network modelling, evaluated under rigorous patient-independent protocols, substantially advance the reliability of EEG-based seizure prediction for closed-loop neurostimulation. 
+
+# Supporting information 
+
+S1 Table. Hyperparameter sensitivity analysis. AUC-ROC on CHB-MIT under LOPO × 5-seed for variations in learning rate, dropout rate, GCN hidden dimension, Mamba SSM state size, and BiLSTM hidden size around the default configuration reported in Table 2. 
+
+S1 Fig. Window-level confusion matrices. Aggregated confusion matrices for CHB-MIT and SIENA at the Youden-optimal threshold, showing sensitivity and specificity across all LOPO folds. 
+
+# Acknowledgments 
+
+The authors thank the contributors of the CHB-MIT Scalp EEG Database and the SIENA Scalp EEG Database for making their data publicly available. This work was supported by the Beijing Natural Science Foundation under Grant L248094, and in part by the High Performance Computing Platform of Peking University. 
+
+# References 
+
+1. Shafiezadeh S, Marco Duma G, Pozza M, Testolin A. A systematic review of cross-patient approaches for EEG epileptic seizure prediction. Journal of Neural Engineering. 2024;21(6):061004. 2. Jemal I, Abou-Abbas L, Henni K, Mitiche A, Mezghani N. Domain adaptation for EEG-based, cross-subject epileptic seizure prediction. Frontiers in neuroinformatics. 2024;18:1303380. 18/20 3. Fisher RS, Acevedo C, Arzimanoglou A, Bogacz A, Cross JH, Elger CE, et al. ILAE official report: a practical clinical definition of epilepsy. Epilepsia. 2014;55(4):475-82. 4. Kwan P, Brodie MJ. Early identification of refractory epilepsy. New England Journal of Medicine. 2000;342(5):314-9. 5. Cook MJ, O’Brien TJ, Berkovic SF, Murphy M, Morokoff A, Fabinyi G, et al. Prediction of seizure likelihood with a long-term, implanted seizure advisory system in patients with drug-resistant epilepsy: a first-in-man study. The Lancet Neurology. 2013;12(6):563-71. 6. Heck CN, King-Stephens D, Massey AD, Nair DR, Jobst BC, Barkley GL, et al. Two-year seizure reduction in adults with medically intractable partial onset epilepsy treated with responsive neurostimulation: final results of the RNS System Pivotal trial. Epilepsia. 2014;55(3):432-41. 7. D¨ umpelmann M. Early seizure detection for closed loop direct neurostimulation devices in epilepsy. Journal of neural engineering. 2019;16(4):041001. 8. Mormann F, Andrzejak RG, Elger CE, Lehnertz K. Seizure prediction: the long and winding road. Brain. 2007;130(2):314-33. 9. Mormann F, Kreuz T, Rieke C, Andrzejak RG, Kraskov A, David P, et al. On the predictability of epileptic seizures. Clinical neurophysiology. 2005;116(3):569-87. 10. Dissanayake T, Fernando T, Denman S, Sridharan S, Fookes C. Geometric deep learning for subject independent epileptic seizure prediction using scalp EEG signals. IEEE Journal of Biomedical and Health Informatics. 2021;26(2):527-38. 11. Rasheed K, Qayyum A, Qadir J, Sivathamboo S, Kwan P, Kuhlmann L, et al. Machine learning for predicting epileptic seizures using EEG signals: A review. IEEE reviews in biomedical engineering. 2020;14:139-55. 12. Truong ND, Nguyen AD, Kuhlmann L, Bonyadi MR, Yang J, Ippolito S, et al. Convolutional neural networks for seizure prediction using intracranial and scalp electroencephalogram. Neural networks. 2018;105:104-11. 13. Khan H, Marcuse L, Fields M, Swann K, Yener B. Focal onset seizure prediction using convolutional networks. IEEE Transactions on Biomedical Engineering. 2017;65(9):2109-18. 14. Graves A. Long short-term memory. Supervised sequence labelling with recurrent neural networks. 2012:37-45. 15. Zhao W, Wang WF, Patnaik LM, Zhang BC, Weng SJ, Xiao SX, et al. Residual and bidirectional LSTM for epileptic seizure detection. Frontiers in Computational Neuroscience. 2024;18:1415967. 16. Tsiouris KM, Pezoulas VC, Zervakis M, Konitsiotis S, Koutsouris DD, Fotiadis DI. A long short-term memory deep learning network for the prediction of epileptic seizures using EEG signals. Computers in biology and medicine. 2018;99:24-37. 17. Daoud H, Bayoumi MA. Efficient epileptic seizure prediction based on deep learning. IEEE transactions on biomedical circuits and systems. 2019;13(5):804-13. 18. Lawhern VJ, Solon AJ, Waytowich NR, Gordon SM, Hung CP, Lance BJ. EEGNet: a compact convolutional neural network for EEG-based brain–computer interfaces. Journal of neural engineering. 2018;15(5):056013. 19. Roy Y, Banville H, Albuquerque I, Gramfort A, Falk TH, Faubert J. Deep learning-based electroencephalography analysis: a systematic review. Journal of neural engineering. 2019;16(5):051001. 19/20 20. Vaswani A, Shazeer N, Parmar N, Uszkoreit J, Jones L, Gomez AN, et al. Attention is all you need. Advances in neural information processing systems. 2017;30. 21. Gu A, Goel K, R´ e C. Efficiently modeling long sequences with structured state spaces. arXiv preprint arXiv:211100396. 2021. 22. Gu A, Dao T. Mamba: Linear-time sequence modeling with selective state spaces. arXiv preprint arXiv:231200752. 2023. 23. Wang J, Zhao S, Luo Z, Zhou Y, Li S, Pan G. Eegmamba: An eeg foundation model with mamba. Neural Networks. 2025:107816. 24. Nahmias DO, Kontson KL. Quantifying signal quality from unimodal and multimodal sources: application to EEG with ocular and motion artifacts. Frontiers in Neuroscience. 2021;15:566004. 25. Dissanayake T, Fernando T, Denman S, Sridharan S, Fookes C. Deep learning for patient-independent epileptic seizure prediction using scalp EEG signals. IEEE Sensors Journal. 2021;21(7):9377-88. 26. Shoeb AH. Application of machine learning to epileptic seizure onset detection and treatment; 2009. 27. Goldberger AL, Amaral LA, Glass L, Hausdorff JM, Ivanov PC, Mark RG, et al. PhysioBank, PhysioToolkit, and PhysioNet: components of a new research resource for complex physiologic signals. circulation. 2000;101(23):e215-20. 28. Detti P, Vatti G, Zabalo Manrique de Lara G. EEG synchronization analysis for seizure prediction: A study on data of noninvasive recordings. Processes. 2020;8(7):846. 29. Kipf TN, Welling M. Semi-supervised classification with graph convolutional networks. arXiv preprint arXiv:160902907. 2016. 30. Veliˇ ckovi´ c P, Cucurull G, Casanova A, Romero A, Lio P, Bengio Y. Graph attention networks. arXiv preprint arXiv:171010903. 2017. 31. Bergey GK, Morrell MJ, Mizrahi EM, Goldman A, King-Stephens D, Nair D, et al. Long-term treatment with responsive brain stimulation in adults with refractory partial seizures. Neurology. 2015;84(8):810-7. 20/20 Supporting Information 
+
+# CG-MambaNet: A spatiotemporal framework for cross-patient epileptic seizure prediction using CNN-GCN-Mamba-BiLSTM with event-level clinical evaluation 
+
+Mufeng Chen, Qi Wu, Bingchao Huang, Xiwen Lai, Zekai Chen, Xinge Ouyang, Quansheng Ren 
+
+S1 Table 1. Hyperparameter sensitivity analysis. AUC-ROC on CHB-MIT under LOPO × 5-seed evaluation (mean ± std across all runs) for systematic variations around the default configuration reported in Table 2 of the main manuscript. Each panel varies one hyperparameter while all others are held at their default values (marked with an asterisk *). The dashed horizontal line indicates the default AUC-ROC of 0.8152. The five hyperparameters evaluated are: learning rate η, dropout rate p, GCN hidden dimension d,Mamba SSM state size, and BiLSTM hidden size. Results confirm that the default configuration is at or near the optimum for each hyperparameter independently, and that performance degrades gracefully rather than abruptly outside the default setting. 1S1 Fig 1. Window-level confusion matrices. Aggregated confusion matrices for CHB-MIT (left, 22 patients) and SIENA (right, 6 patients) at the Youden-optimal threshold θ∗, selected per fold on the validation set. Each cell shows the abbreviated category label (TP, FN, FP, TN), the absolute window count, and the row-normalised percentage. Colour intensity reflects row-normalised proportion (deeper blue = higher proportion within each actual-class row). Matrices are aggregated across all LOPO folds and seeds. Window-level false-prediction rates reported here represent an upper bound on the clinical alarm burden; the persistence-filtered event-level FPR reported in the main text (Table 3) reflects the clinically relevant metric. 2
