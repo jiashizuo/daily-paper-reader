@@ -1,0 +1,405 @@
+Title: Hierarchical Attention-based Graph Neural Network with Relevance-driven Pruning
+
+URL Source: https://arxiv.org/pdf/2605.09308v1
+
+Published Time: Tue, 12 May 2026 01:41:57 GMT
+
+Number of Pages: 18
+
+Markdown Content:
+# Hierarchical Attention-based Graph Neural Network with Relevance-driven Pruning 
+
+Seungwoo Kum Korea Electronics Technology Institute (KETI) Seongnam, Republic of Korea 
+
+swkum@keti.re.kr 
+
+Abstract 
+
+Graph Neural Networks (GNNs) excel at relational reasoning but face two persistent chal-lenges: the lack of interpretable attribution for heterogeneous node types, and the compu-tational overhead of message passing over large, noisy graphs. We propose the Hierarchical Attention-based Heterogeneous GNN (HA-HeteroGNN), a framework that addresses both issues through a unified explainability-to-pruning pipeline. A two-tier attention mechanism separates sensor-level and context-level computation across 16 node types and 18 edge types, producing per-node relevance scores via an attention-based GNN Explainer without requiring gradient backpropagation. These relevance scores then serve as a principled pruning criterion: removing nodes identified as consistently uninformative yields a 27% reduction in graph edges while simul-taneously improving classification accuracy by 2.4–6.1% across all model variants, challenging the conventional assumption that pruning necessarily trades accuracy for efficiency. Experi-ments on a 50,000-record synthetic dataset spanning 11 report categories demonstrate 97.5% cross-strategy explanation stability and domain consistent sensor attribution, with training-time reductions of up to 43.9% and real-time inference latency of approximately 58–60 ms per sample. 
+
+Keywords: Graph Neural Networks, Heterogeneous Graphs, Explainability, Attention Mecha-nism, Graph Pruning 
+
+# 1 Introduction 
+
+Governments worldwide operate citizen reporting platforms to handle non-emergency public safety concerns. South Korea’s Safety e-Report is a representative system that enables citizens to report safety hazards including infrastructure damage, environmental concerns, and weather related risks through mobile and web interfaces [Korea Safety Agency, 2020]. Similarly, North America’s 311 service provides a unified channel for non-emergency municipal requests across hundreds of cities in the United States and Canada [Nam and Pardo, 2014, Minkoff, 2016]. The United Kingdom’s FixMyStreet platform [mySociety, 2023] and Australia’s Snap Send Solve [Snap Send Solve, 2022] serve analogous functions in their respective jurisdictions. These systems share a common char-acteristic: reports are classified as non-emergency at the point of intake, under the assumption that they do not require immediate response. However, this static classification fails to account for rapidly evolving environmental conditions that can transform routine reports into urgent situations. Consider the following scenarios where non-emergency reports acquire unexpected urgency: a drainage maintenance request filed during a period when 80 mm of rainfall is recorded within one hour under a heavy rain alert; a leaf cleanup request coinciding with a sudden downpour that creates flash flooding conditions in the reported area; a road icing prevention request filed just as temperatures plummet below −15 ◦C with a cold wave alert approaching; or a fine dust complaint submitted during a severe yellow dust event with PM 2.5 concentrations exceeding 300 μg/m 3. In each case, the urgency cannot be determined from the report data alone–it requires integration 1
+
+> arXiv:2605.09308v1 [cs.LG] 10 May 2026
+
+of external information including real-time sensor readings, meteorological alerts, and spatial con-text. This urgency gap between static classification and dynamic situational awareness represents a critical challenge for public safety operations. The urgency assessment problem is inherently relational: the risk level of a report depends on the relationships between the report’s category, its geographic location, current weather con-ditions, active meteorological alerts, and temporal patterns. While various deep learning models could be applied to this problem, the relational structure naturally maps to a graph representa-tion where entities become nodes and their interactions become edges. Graph Neural Networks (GNNs) have demonstrated remarkable success in modeling such relational data. Kipf and Welling [2017] introduced Graph Convolutional Networks (GCN) for semi-supervised classification on graph-structured data. Hamilton et al. [2017] proposed GraphSAGE, enabling inductive learning on large scale graphs through neighborhood sampling and aggregation. Veličković et al. [2018] developed Graph Attention Networks (GAT) with attention mechanisms for adaptive neighbor weighting. For heterogeneous graphs containing multiple node and edge types, Wang et al. [2019] proposed Heterogeneous Graph Attention Networks (HAN) and Hu et al. [2020] introduced Heterogeneous Graph Transformer (HGT). In the domain of emergency management, GNNs have been applied to traffic incident prediction [Yu et al., 2018], urban event detection [Zhang et al., 2019], and disas-ter response optimization [Fan and Mostafavi, 2019], demonstrating the suitability of graph-based approaches for capturing complex interdependencies. Despite their effectiveness, GNNs face significant scalability challenges. As graph sizes increase with growing data volumes, both training and inference demand substantial computational re-sources. To address training scalability, Hamilton et al. [2017] proposed the SAGE (Sample and AggregatE) framework which samples a fixed-size neighborhood rather than using the entire graph. Chen et al. [2018] introduced FastGCN with importance sampling, Chiang et al. [2019] proposed Cluster-GCN for efficient minibatch training, and Zeng et al. [2020] developed GraphSAINT for subgraph-based sampling. A further critical distinction arises between transductive and inductive 
+
+inference paradigms. Transductive models [Kipf and Welling, 2017] operate on a fixed graph and cannot generalize to unseen nodes without retraining on the entire graph. Inductive models [Hamil-ton et al., 2017], in contrast, can generate embeddings for previously unseen nodes by aggregating information from their local neighborhoods. For continuously arriving incident reports, inductive inference is essential–each new report must be classified without rebuilding the entire graph. How-ever, inductive inference introduces its own challenge: when a single new report is converted into a graph, the resulting subgraph is extremely small (typically one report node with a handful of sensor and context nodes), providing insufficient structural context for accurate classification. To address these challenges, we propose the Hierarchical Attention-based Heterogeneous GNN (HA-HeteroGNN) framework with the following five contributions: 1. Constraint-based Synthetic Data Generation : An algorithm for generating realistic multimodal emergency scenarios with enforced spatiotemporal consistency, alert-weather con-straints, and seasonal patterns (Section 3.1). 2. Anchor-based Input Graph Construction : A technique for constructing representative anchor graphs that overcome the cold start problem in inductive GNN inference (Section 3.2). 3. Hierarchical Multihead Attention : A two-tier attention architecture that separates sensor-level and context-level attention computation, enabling fine grained attribution across hetero-geneous data modalities (Section 3.3). 4. Attention-based GNN Explainer : An explainability mechanism that leverages learned attention weights to quantify the influence of each node type on urgency predictions, without requiring computationally expensive gradient backpropagation (Section 3.4). 5. Relevance-driven Graph Pruning : A graph pruning strategy guided by explainability scores that removes low influence edges and nodes, simultaneously improving accuracy and reducing computational cost (Section 3.5). 2The remainder of this paper is organized as follows. Section 2 reviews related work in GNN archi-tectures, explainability, and graph optimization. Section 3 presents the proposed HA-HeteroGNN framework as a five-stage pipeline from data generation through graph pruning. Section 4 describes the implementation details, including graph structure and model architectures. Section 5 presents experimental results and analysis. Section 6 concludes the paper and discusses future directions. 
+
+# 2 Related Work 
+
+Graph Neural Networks have evolved rapidly since their introduction by Scarselli et al. [2009]. The spectral approach by Bruna et al. [2014] laid the theoretical foundation, followed by the computationally efficient ChebNet [Defferrard et al., 2016] and GCN [Kipf and Welling, 2017]. The spatial approach, exemplified by GraphSAGE [Hamilton et al., 2017] and Message Pass-ing Neural Networks (MPNN) [Gilmer et al., 2017], operates directly on graph topology through neighborhood aggregation. For heterogeneous graphs, Relational Graph Convolutional Networks (R-GCN) [Schlichtkrull et al., 2018] apply type specific weight matrices, Heterogeneous Graph Attention Networks (HAN) [Wang et al., 2019] use metapath-based attention for semantic-level aggregation, and Heterogeneous Graph Transformer (HGT) [Hu et al., 2020] uses type dependent parameters for attention computation. More recently, Simple-HGN [Lv et al., 2021] demonstrated that careful architecture design can achieve competitive performance without metapaths. In the context of urban computing and public safety, Geng et al. [2019] applied multigraph convolution for ride-hailing demand prediction and Zheng et al. [2020a] proposed GMAN for traffic flow prediction using spatial-temporal attention. Explainability in GNNs has become critical for safety-critical applications. GNNExplainer [Ying et al., 2019] identifies important subgraph structures and node features through mutual informa-tion maximization. PGExplainer [Luo et al., 2020] learns a parameterized mask generator for edge importance. SubgraphX [Yuan et al., 2021] employs Monte Carlo tree search to identify explanatory subgraphs. Gradient-based methods adapted from computer vision, including Inte-grated Gradients [Sundararajan et al., 2017] and Grad-CAM for GNNs [Pope et al., 2019], provide feature-level importance scores through backpropagation. However, these post-hoc methods in-cur significant computational overhead and may produce inconsistent explanations across similar inputs. Attention-based explainability offers an alternative where importance scores are intrinsic to the model’s computation–Veličković et al. [2018] showed that GAT attention weights can serve as proxies for edge importance, and Brody et al. [2022] analyzed the expressiveness of different attention formulations in GNNs. The scalability of GNNs to large graphs has motivated extensive research on memory opti-mization. Sampling-based methods including GraphSAGE [Hamilton et al., 2017], FastGCN [Chen et al., 2018], and GraphSAINT [Zeng et al., 2020] reduce memory consumption by operating on subgraphs. Graph sparsification methods directly reduce graph size: Zheng et al. [2020b] proposed spectral sparsification, Chen et al. [2021] applied the lottery ticket hypothesis to identify sparse GNN subnetworks, and DropEdge [Rong et al., 2019] randomly removes edges during training as regularization. Knowledge distillation [Yang et al., 2020] compresses large GNN models, while graph coarsening [Huang et al., 2021] reduces graph size preserving structural properties. These methods focus on general optimization without considering the semantic relevance of individual nodes. For inductive inference, GraphSAGE [Hamilton et al., 2017] enabled learning on new nodes by sampling and aggregating local neighborhoods, and PinSage [Ying et al., 2018] demonstrated scal-ability to billion node graphs. For new isolated nodes, the quality of the input graph significantly affects prediction accuracy. Fatemi et al. [2021] proposed learning graph structure jointly with node representations. The challenge is particularly acute when individual input instances produce very small graphs with limited structural information. To our knowledge, no prior work has specif-ically addressed the construction of anchor graphs for enriching single-node inductive inference in 3Stage 1 
+
+> Data Generation (§3.1)
+
+−→ 
+
+> Stage 2
+> Graph Construction (§3.2)
+
+−→ 
+
+> Stage 3
+> Multihead Attention (§3.3)
+
+−→ 
+
+> Stage 4
+> GNN Explainer (§3.4)
+
+−→      
+
+> Stage 5
+> Graph Pruning (§3.5)
+> Synthetic recordsAnchor graphsRelevance scoresNode importancePruned graph with constraints for inference per node type rankings →retrain
+
+Figure 1: HA-HeteroGNN pipeline. Each stage feeds its output to the next; the pruned graph from Stage 5 is used to retrain the model from scratch, closing the explainability-to-pruning loop. 
+
+Figure 2: Overview of the HA-HeteroGNN framework. Solid arrows indicate the primary data flow; dashed arrows indicate the feedback loop from explainability driven pruning. heterogeneous GNN settings. 
+
+# 3 Proposed Method: HA-HeteroGNN Framework 
+
+We present the Hierarchical Attention-based Heterogeneous Graph Neural Network (HA-HeteroGNN) framework, whose central objective is to improve both accuracy and effi-ciency of graph based inference through relevance driven graph pruning . The key insight is that hierarchical attention over heterogeneous node types produces per-node relevance scores that can serve as a principled pruning criterion, enabling the removal of uninformative edges from the input graph before retraining. The framework operates as a five-stage pipeline (Figure 1): (1) constraint-based synthetic data generation, (2) anchor-based input graph construction for inductive inference, (3) hierarchical multihead attention for modality-separated message passing, (4) attention-based GNN Explainer for node relevance quantification, and (5) relevance driven graph pruning. Figure 2 shows how these stages are integrated in the system architecture. 
+
+3.1 Constraint-based Synthetic Data Generation 
+
+The urgency of a non-emergency report depends on the interplay between the report category, environmental sensor readings, meteorological alert status, and spatial context. We model these relationships as a heterogeneous graph G = ( V, E) containing multiple node types: sensor nodes representing environmental measurements (rainfall, temperature, humidity, wind speed, snowfall, 4Require: N (number of records), year, risk_distribution                                                               
+
+> Ensure: Dataset D={(ri, s i, a i, l i, y i)}
+> 1: Initialize TemporalSensorManager (24-hour rolling window)
+> 2: Initialize AlertManager (alert sequence tracker)
+> 3: for i= 1 to Ndo
+> 4: report_type ←sample from REPORT_TYPES
+> 5: season ←get_season(report_type)
+> 6: timestamp ←generate_timestamp(year, season)
+> 7: risk_level ←sample from risk_distribution
+> 8: if risk_level ∈{medium, high} then
+> 9: (alert, pre_alert) ←generate_alert_sequence(report_type, risk_level)
+> 10: else
+> 11: (alert, pre_alert) ←(none, none)
+> 12: end if
+> 13: if alert ̸=none then
+> 14: sensors ←generate_constrained_sensors(alert)
+> 15: else
+> 16: sensors ←generate_risk_based_sensors(report_type)
+> 17: end if
+> 18: location ←sample_location(season)
+> 19: sensors ←enforce_temporal_consistency(sensors, location, timestamp, σ=0 .15 )
+> 20: D[i]←(report_type, sensors, alert, location, risk)
+> 21: end for return D
+
+Algorithm 1: Constraint-based Synthetic Data Generation PM 2.5, apparent temperature), alert-related nodes capturing meteorological warning status, and contextual nodes encoding spatial and structural information. Each report node is connected to its associated sensor, alert, and context nodes via typed edges, forming a rich relational structure. The specific node type encodings and graph topology are detailed in Section 4. Generating realistic synthetic data requires enforcing three types of consistency constraints. First, alert-weather constraints link 12 alert types to physical sensor value ranges: for example, a heavy rain warning requires rainfall of 90–150 mm, a cold wave warning requires temperatures between −25 ◦C and −15 ◦C, and a yellow dust warning requires PM 2.5 of 400–800 μg/m 3. Second, 
+
+alert sequence consistency enforces three progression scenarios: direct alert issuance, pre-alert followed by alert, and pre-alert followed by escalation (advisory to warning). Third, spatiotempo-ral coherence constrains sensor readings within a one-hour time window across adjacent districts to vary by at most ±15% , implemented through a TemporalSensorManager that maintains a 24-hour rolling window of readings per location. The complete generation algorithm is formalized in Algorithm 1. 
+
+3.2 Anchor-based Input Graph Construction 
+
+When processing non-emergency reports with a GNN in a production setting, each incoming report must be converted into a graph for inference. In a transductive setting, the new report would be added to the existing graph and the entire model retrained–computationally prohibitive for real-time applications. Inductive models such as our HeteroSAGE backbone can process new nodes without retraining. However, when a single report is converted to a graph in isolation, the resulting structure contains typically one report node connected to 7–12 sensor/context nodes. This minimal graph lacks the structural diversity and inter-node relationships that the model learned during training on graphs containing thousands of nodes, leading to degraded inference quality. We propose three anchor strategies that augment the input graph with representative training data. Table 1 summarizes these strategies along with the no-anchor baseline. Anchor nodes are pre-computed during training and stored alongside the model checkpoint. At inference time, anchors are selected based on the incoming report’s type and combined with the 5Table 1: Anchor graph construction strategies for inductive inference.              
+
+> Strategy Description Latency Context
+> Single-Node No anchor; input report embedded alone (baseline). ∼58 ms Minimal Synthetic Synthetic anchor generated from learned prototypes via generative sampling.
+> ∼239 ms Rich Median Per-group median training record as anchor, providing a statisti-cally central reference.
+> ∼60 ms Moderate Coverage k=5 representative anchors per group, selected via farthest point sampling to maximize feature space coverage.
+> ∼60 ms Diverse
+
+new report to form the input graph. 
+
+3.3 Hierarchical Multihead Attention 
+
+The urgency assessment graph contains fundamentally different types of information: continuous sensor measurements (rainfall, temperature, humidity), categorical alert statuses (weather warn-ings, pre-alerts), and structural context (location, drainage condition). When a flat attention mechanism is applied uniformly across all node types, these distinct modalities are conflated, mak-ing it difficult to disentangle the influence of sensor readings from contextual factors. For example, when a heavy snow incident report is classified as high risk, a domain expert would naturally ask: “Is this primarily due to the snowfall amount, or because a snow alert has been issued?” A single attention computation mixing all node types cannot cleanly separate these influences. We propose a hierarchical multihead attention mechanism operating at two levels. At 
+
+Level 1 (Intra-Category Attention) , three specialized attention modules operate on distinct subsets of neighbor nodes: (i) the Sensor Head AS attends only to the 7 sensor node types (rainfall, temperature, humidity, apparent temperature, wind speed, PM, snowfall); (ii) the Con-text Head AC attends to contextual nodes (weather alert, pre-alert type/time/severity, location, drainage condition); and (iii) the Full Head AF attends to all neighbor node types including report count and report type. Each head internally uses 4-head multihead attention with d = 128 
+
+dimensions. At Level 2 (Intercategory Fusion) , the outputs of the three heads are concatenated and projected through a learned combiner: [128 × 3] → [256] → ReLU → LayerNorm → [128] .The attention query is conditioned on the report type to enable category specific patterns. Let 
+
+hr ∈ Rd be the report embedding after GNN message passing and hrt be its report type embedding. The conditioned query is qr = hr +hrt , allowing the model to learn that a heavy snow report should attend more to snowfall sensors while a fine dust report attends more to PM sensors. For each head k ∈ { S, C, F } with allowed node types Tk:
+
+α(k) 
+
+> r,j
+
+= exp  q⊤ 
+
+> r
+
+W(k) 
+
+> Q
+
+(W(k) 
+
+> K
+
+hvj )⊤/pd/H P  
+
+> j′:tj′∈T k
+
+exp  q⊤ 
+
+> r
+
+W(k) 
+
+> Q
+
+(W(k) 
+
+> K
+
+hvj′ )⊤/pd/H  , o(k) 
+
+> r
+
+= LN 
+
+
+
+hr + P 
+
+> j
+
+α(k) 
+
+> r,j
+
+W(k) 
+
+> V
+
+hvj
+
+
+
+(1) where LN denotes LayerNorm and H=4 is the number of internal heads. The final risk prediction is ˆyr = softmax  MLP cls (MLP fuse ([ o(S) 
+
+> r
+
+∥o(C) 
+
+> r
+
+∥o(F ) 
+
+> r
+
+])) .Figure 3 illustrates the architecture. 
+
+3.4 Attention-based GNN Explainer 
+
+Because GNN models encode relational structure, the influence of each node on the final pre-diction can be quantified. Two primary approaches exist. Gradient-based methods compute feature-level importance through backpropagation: Igrad (vj ) = |∂ ˆyr/∂ hvj | · | hvj |. While theoret-ically grounded, gradient methods require a backward pass for each explanation and may suffer from gradient saturation. Attention-based methods directly use learned attention weights: 
+
+Iattn (vj ) = P 
+
+> k
+
+wk · α(k) 
+
+> r,j
+
+, requiring no additional computation beyond the forward pass. 6Figure 3: Hierarchical multihead attention architecture. The report type conditioned query qr is fed to three specialized attention heads, whose outputs are fused through concatenation and MLP projection. 
+
+Figure 4: GNN Explainer architecture. Attention weights from the hierarchical attention module produce per-node-type importance rankings without additional backward passes. While attention-based approaches generally achieve higher accuracy in node importance estima-tion, our framework specifically requires independent per-report-type node attributions–the same sensor readings should receive different importance depending on whether the report concerns heavy snow versus fine dust. This motivates our combination of HeteroSAGE message passing (which provides strong structural embeddings) with report type conditioned attention (which pro-vides category specific explanations). The attention weights from the forward pass serve directly as explainability scores, with location , report_count , and report_type excluded from impor-tance ranking to avoid trivially dominant nodes. The mean importance across a sample set S is: 
+
+¯I(type ) = (1 /|S| ) P 
+
+> s∈S
+
+Is(type ), normalized to sum to 100%. Figure 4 illustrates the GNN Explainer pipeline. 
+
+3.5 Relevance-driven Graph Pruning 
+
+The GNN Explainer (Section 3.4) produces per-node-type importance scores that quantify each node’s contribution to the final risk prediction. We exploit these scores to construct pruned graph variants by selectively removing edges associated with low importance nodes. The procedure con-sists of three steps: (1) run the Explainer on a representative sample from the training set to compute mean importance ¯I(type ) per node type, stratified by report category and risk level; (2) identify nodes that are consistently low importance across all risk levels within each report category (i.e., nodes whose ¯I falls outside the top-3 ranking for every risk level); and (3) remove all edges connecting the report node to these low importance node types. We define two pruning strategies of increasing aggressiveness: 
+
+• Bottom-excluded : Remove edges to node types that rank consistently low across all risk levels for each report category. This preserves nodes that are important in any risk scenario, yielding a conservative pruning that retains domain relevant connections. 
+
+• Top-only : Retain edges only to the top-3 most important node types per (report category, risk 7level) combination. This aggressive strategy maximizes graph compression but risks discarding nodes that carry secondary but non-negligible predictive signals. This approach differs from existing graph sparsification methods [Zheng et al., 2020b, Rong et al., 2019] in two respects. First, the pruning criterion derives from the model’s own learned attention patterns rather than from random sampling or spectral properties. Second, pruning is 
+
+category-conditioned –the same node type may be retained for one report category (e.g., Rainfall for flood incidents) and removed for another (e.g., Rainfall for fine dust reports), enabling semantically targeted graph compression. Models are retrained from scratch on the pruned graphs to fully adapt to the modified topology. 
+
+# 4 Implementation 
+
+4.1 Dataset Generation 
+
+We generated a synthetic dataset of 50,040 records spanning 11 emergency report categories across four seasonal groups: Water/Flood (Leaf Cleanup, Drainage Maintenance, Flood Prevention, Landslide Risk), Cold/Snow (Road Icing Prevention, Heavy Snow, Cold Wave), Heat (Heat Wave), and Air Quality (Fine Dust Report, Wildfire Prevention, Yellow Dust). The risk level distribution follows 25%/35%/40% for Low/Medium/High, yielding 1,321–1,855 samples per (report type, risk level) group. Each record contains 17 fields: report timestamp, classification, location (among 9 Seoul districts across 3 regions), 7 sensor values, weather alert type, pre-alert type/time/severity, drainage status, and hourly co-located report count. Data achieves 100% completeness with 93.7% constraint satisfaction across 12 alert-weather rules. The dataset is split into 80%/10%/10% for training, validation, and test sets using stratified sampling to preserve the (report type, risk level) distribution. Within the training set, we use a labeled ratio of 20%, meaning only 20% of training nodes have observed labels during GNN message passing, simulating a semi-supervised setting where labeled incident reports are scarce relative to the volume of incoming data. 
+
+4.2 Graph Structure 
+
+The heterogeneous graph consists of 16 node types and 18 bidirectional edge types. Each report node connects to 7 sensor nodes (rainfall, temperature, apparent temperature, humidity, wind speed, snowfall, PM 2.5), 4 alert-related nodes (weather alert type, pre-alert type/time/severity), and contextual nodes (location, drainage condition, co-located report count, report category). Sen-sor nodes use a 6-dimensional encoding combining 5-bin categorical quantization with a normalized continuous value. Alert nodes use one-hot encodings of 13 alert types. Location nodes encode lat-itude, longitude, region code, and distance from center in 4 dimensions. Figure 5 presents the complete schema. 
+
+4.3 Model Architectures 
+
+We implement and compare three model variants sharing the same backbone: 2-layer HeteroSAGE with d=128 hidden dimensions, mean aggregation, LayerNorm, residual connections, and dropout (p=0 .3). Training uses CrossEntropyLoss with inverse-frequency class weights, Adam optimizer (lr = 10 −3), and early stopping (patience=20). Table 2 summarizes the architectures, and Figure 6 illustrates their structural differences. 
+
+4.4 Evaluation Metrics 
+
+Our primary evaluation focus is explainability quality rather than raw classification accuracy, as the goal is to identify which environmental factors contribute most to urgency elevation. We eval-uate: (i) node-type importance scores –mean attention-weight-based importance (%) per node 8Figure 5: Heterogeneous graph schema. Each report node connects to sensor, alert, and context nodes. Location nodes additionally form spatial adjacency edges (not shown). Table 2: Model architectures compared in this study.           
+
+> Model Description Params Explain.
+> Inductive HeteroSAGE Base model with SAGEConv + mean aggre-gation. No attention.
+> ∼180K Gradient Attention HeteroSAGE Single cross-attention head over all neighbor types with report type conditioned query.
+> ∼350K Attention Multihead Attn. HeteroSAGE Proposed. Three specialized heads (Sen-sor/Context/Full) with intercategory fusion.
+> ∼520K Hierarchical
+
+type, normalized to 100% per sample; (ii) cross-strategy agreement –the fraction of samples for which all four anchor strategies identify the same top-1 most important node type; (iii) domain appropriateness –whether identified important nodes align with physical domain knowledge; (iv) 
+
+inference latency –per-sample wall-clock time including graph construction and inference. For high risk reports, we aim to identify high-influence nodes (candidates for retention) and low influ-ence nodes (candidates for graph pruning). 
+
+4.5 Experimental Design 
+
+We evaluate the interaction between three model architectures and four anchor strategies (Table 1). For each combination, we perform stratified sampling of 100 records per (report type, risk level) group, yielding 11 × 3 × 100 = 3 ,300 samples per strategy. The primary experiment uses the Attention HeteroSAGE model (trained on the full dataset for 10 epochs with 20% labeled ratio) with the Coverage anchor strategy to establish baseline explainability results, followed by comparison across strategies. 
+
+# 5 Experimental Results 
+
+5.1 Inference Latency 
+
+Table 3 reports per-sample inference latency measured over 3,300 samples on a single GPU ( cuda:2 ). Single-Node, Median, and Coverage strategies achieve comparable latency ( ≈58–60 ms), while Syn-thetic is approximately 4 × slower due to real-time prototype generation. This demonstrates that pre-computed anchor strategies provide enriched context with negligible overhead. 9Figure 6: Three model architectures: (a) base inductive without attention; (b) single cross-attention; (c) proposed hierarchical multihead attention. Table 3: Per-sample inference latency (ms) over 3,300 samples.                
+
+> Strategy Mean (ms) Std (ms) Median (ms)
+> Single-Node 57.6 18.0 53.8 Synthetic 239.3 40.6 228.4 Median 59.6 17.8 56.3 Coverage 60.0 18.4 56.1
+
+5.2 Cross-Strategy Robustness 
+
+We measure the top-1 node agreement rate : the fraction of samples for which all four anchor strategies produce the same most-important node type. Table 4 presents results by risk level and by report type. The overall agreement of 97.5% ( ±1.2% across three independent runs with different random seeds) confirms that learned attention patterns are a stable property of the model, not an artifact of graph construction. The slight decrease at Low Risk (95.1%) reflects inherent ambiguity in low severity scenarios where no single factor strongly dominates. We verified that the Inductive HeteroSAGE (using gradient-based attribution) achieves a comparable agreement rate of 94.8%, confirming that explanation stability is not exclusive to attention-based models but a property of the learned graph representations. 
+
+Node importance by report type and risk level. Table 5 reports the three most important sensor node types per report category and risk level under the Coverage strategy ( N =100 samples per cell). Non-sensor contextual nodes (Weather Alert, Pre-Alert Time/Severity) are marked with †.
+
+5.3 Graph Pruning Evaluation 
+
+To evaluate the relevance-driven pruning strategies described in Section 3.5, we constructed three graph variants from the dataset_50k_10_20 dataset: the original unpruned graph ( ∼950k edges), the bottom-excluded graph ( ∼696k edges, −27% ), and the top-only graph ( ∼558k edges, 
+
+−41% ). All three model architectures were retrained from scratch on each graph variant using iden-tical hyperparameters (epochs=50, batch_size=256, hidden_dim=256, lr=0.001) on an NVIDIA RTX A6000 GPU. Table 6 presents the complete results across all nine (model, graph) combina-tions, covering classification accuracy, high risk false positive (FP) and false negative (FN) rates, and training time. 
+
+> ∗
+
+Multihead original was trained on Apple Silicon (MPS) rather than A6000; direct time comparison is approximate. FP and FN denote the false positive rate (1 −precision) and false negative rate (1 −recall) for the high risk class, respectively. Note that absolute accuracy differences across models reflect the specific training constraints of this pruning benchmark (fixed hyperparameters, heterogeneous hardware) rather than a controlled architecture comparison; the table is designed to evaluate the relative effect of pruning within each architecture. 10 Table 4: Top-1 node type agreement rate (%) across four anchor strategies.                       
+
+> By Risk Level Agree (%) By Report Type Agree (%)
+> Low Risk 95.1 Leaf Cleanup 98.7 Medium Risk 99.4 Road Icing Prev. 99.7 High Risk 98.1 Fine Dust Report 99.7
+> Overall 97.5 Drainage Maint. 99.0 Wildfire Prev. 94.7 Landslide Risk 92.0 Flood Prev. 95.3 Heavy Snow 100.0 Heat Wave 99.3 Cold Wave 95.7 Yellow Dust 98.7
+
+Accuracy and error rate analysis. The bottom-excluded strategy improves accuracy across all three models, with gains ranging from +2.39% (Attention) to +6.14% (Multihead). This counter-intuitive result–that removing 27% of edges improves performance–demonstrates that the removed edges were not merely uninformative but actively harmful, introducing noise into the message pass-ing aggregation. In heterogeneous graphs with 16 node types and 18 edge types, many structural connections exist between nodes that share no meaningful statistical relationship for a given inci-dent category. Removing these spurious edges sharpens the signal-to-noise ratio at each aggregation step. Notably, the Multihead Attention model benefits most from pruning (+6.14%), suggesting that architectures with greater representational capacity are more susceptible to noise from irrele-vant edges and consequently gain the most from relevance-driven pruning. The bottom-excluded strategy also consistently reduces both FP and FN rates or maintains them within acceptable bounds. By contrast, the aggressive top-only strategy degrades Attention ( −4.32%) and Multihead (−1.15%) accuracy, and exhibits a critical failure mode in safety-sensitive contexts. The Inductive + top-only combination reduces FP dramatically (18.3% → 3.8%) but quadruples FN (4.4% →
+
+18.8%), representing a dangerous trade-off–nearly one in five high risk incidents would be missed. This indicates that mid-ranked nodes (approximately 4th through 10th in importance) carry gen-uine predictive value; removing them discards meaningful secondary correlations that the model uses for nuanced risk assessment, particularly at the low risk level where multiple weak signals must be combined. 
+
+Graph size reduction and edge efficiency. The bottom-excluded strategy removes 27% of edges by eliminating nodes that the GNN Explainer identified as consistently uninformative across all three risk levels. Despite this substantial reduction (from approximately 950k to 696k edges), ev-ery model variant achieves higher accuracy on the pruned graph. The top-only strategy removes a larger proportion ( −41%), but the additional 14% compression beyond bottom-excluded yields diminishing or negative returns–confirming that aggressive signal concentration is counterproduc-tive. 
+
+Training time reduction. The computational savings from graph pruning scale with model complexity. The lightweight Inductive HeteroSAGE trains in approximately 33 seconds regardless of graph size, as its bottleneck is the small number of learnable parameters rather than message passing volume. By contrast, attention-based models exhibit substantial speedups because attention weight computation scales with the number of neighbor edges at each aggregation layer. The Attention HeteroSAGE reduces training time from 3h 8m to 2h 47m ( −11.5%), while the Multihead model benefits most dramatically: 13h 4m to 7h 20m ( −43.9%). This nearly 6-hour reduction per training run enables more frequent model retraining, faster hyperparameter search, and reduced GPU energy consumption. Notably, both bottom-excluded and top-only achieve similar training times for a given model (e.g., 2h 47m vs. 2h 45m for Attention; 7h 20m vs. 7h 29m for Multihead). This convergence suggests 11 Table 5: Mean attention-based importance (%) of top-3 nodes per (report type, risk level) under Coverage ( N =100 ). † = non-sensor contextual node.                                                      
+
+> Report Type Low Risk Medium Risk High Risk
+> Water/Flood  Leaf Cleanup Humidity 15.7, App.Temp 2.8, Wind 1.6 Rainfall 72.6, Humidity 14.4, App.Temp 1.5 Rainfall 70.8, Humidity 10.5, App.Temp 1.3 Drainage Maint. Humidity 14.5, App.Temp 4.0, Wind 1.3 Rainfall 72.7, Humidity 15.2, App.Temp 2.5 Rainfall 68.5, Alert †53.3, PreTime †49.9 Flood Prev. Humidity 12.9, App.Temp 4.9, Wind 1.6 Rainfall 72.7, Humidity 13.4, App.Temp 2.5 Rainfall 69.9, Alert †55.5, Humidity 9.2 Landslide App.Temp 6.7, PM 2.0, Temp 2.0 Rainfall 74.4, Humidity 25.0, Wind 0.1 Rainfall 68.7, Alert †52.1, Humidity 15.4 Cold/Snow  Road Icing Rainfall 61.9, Snow 45.5, App.Temp 15.4 Snow 69.4, Rainfall 64.2, Humidity 25.0 Snow 66.3, Rainfall 63.8, PreTime †
+> 35.6 Heavy Snow Snow 51.5, Humidity 16.7, App.Temp 4.2 Alert †65.4, Snow 51.4, Humidity 19.0 Snow 68.1, PreTime †48.9, Sev. †
+> 18.7 Cold Wave Snow 47.4, Humidity 19.9, PM 5.7 Snow 66.6, Humidity 18.3, PM 5.3 Snow 66.0, Humidity 15.4, PM 4.3 Heat Heat Wave Rainfall 60.0, Humidity 14.4, App.Temp 9.3 Rainfall 64.1, Humidity 16.3, App.Temp 3.5 Rainfall 57.7, Humidity 14.9, PM 1.0 Air Quality  Fine Dust PM 36.2, Humidity 22.5, Wind 18.0 PM 75.7, Humidity 21.1, Wind 1.0 PM 66.6, Humidity 16.8, Wind 0.2 Wildfire PM 60.3, Wind 6.2, App.Temp 2.9 PM 47.5, Humidity 25.3, Wind 3.9 PM 38.0, Humidity 16.5, Wind 8.4 Yellow Dust PM 37.2, Humidity 20.9, Wind 18.2 PM 74.3, Humidity 20.8, App.Temp 1.1 PM 65.3, PreTime †49.9, PreAlert †
+> 25.0
+
+that the training-time bottleneck is dominated by the removal of the first 27% of low-value edges rather than by further compression. 
+
+Inference time and deployment implications. For real-time emergency triage, inference latency is equally critical. Each GNN inference involves two rounds of message passing (2 SAGEConv layers), where every node aggregates features from its neighbors. With 27% fewer edges, each aggregation step processes proportionally fewer neighbors, reducing per-sample inference time. Combined with the latencies reported in Table 3 (57–60 ms for pre-computed anchor strategies), preliminary mea-surements on the pruned graph show per-sample latency of 43–47 ms for the Coverage strategy (compared to 57–60 ms on the original graph), well within the requirements of real-time incident triage systems. The deployment advantages compound across scale. A metropolitan 311 system processing 500,000 annual reports (approximately 1,370 per day) benefits from three multiplicative effects: (i) reduced graph construction time per report due to fewer node types requiring data retrieval; (ii) faster GNN inference due to fewer message passing edges; and (iii) lower memory footprint enabling deployment on edge devices or lower cost GPU instances. For organizations with budget constraints, the bottom-excluded strategy allows the use of smaller GPU instances without sacrificing accuracy. The best overall configuration is Attention HeteroSAGE + bottom-excluded : 88.74% ac-curacy, 8.02% FP, 9.37% FN, with 27% fewer edges and 11.5% faster training. The bottom-excluded strategy achieves a rare outcome in graph neural network optimization: simultaneous improvement in accuracy, error balance, training efficiency, and inference speed. This is possible because the pruning is explanation driven –it leverages the GNN Explainer’s domain learned attribution scores rather than arbitrary structural heuristics, ensuring that only genuinely uninformative connections are removed. 
+
+5.4 Analysis and Discussion 
+
+Domain appropriateness of primary sensors. The results demonstrate strong alignment between model attention and physical domain knowledge. Water/flood incidents are consistently dominated 12 Table 6: Pruning effect comparison across all model–graph combinations. Best accuracy per model in bold . † = FN > 15%.                                                    
+
+> Model Graph Edges Acc. (%) FP (%) FN (%) Train Time
+> Inductive Original ∼950k 84.05 18.26 4.39 33 s Bottom-excl. ∼696k ( −27%) 87.53 9.67 9.36 34 s Top-only ∼558k ( −41%) 84.74 3.82 18.81 †33 s Attention Original ∼950k 86.35 9.96 10.45 3h 8m Bottom-excl. ∼696k ( −27%) 88.74 8.02 9.37 2h 47m ( −11.5%) Top-only ∼558k ( −41%) 82.03 15.62 12.07 2h 45m ( −12.2%) Multihead Original ∼950k 79.73 17.07 11.52 13h 4m ∗
+> Bottom-excl. ∼696k ( −27%) 85.87 15.94 8.18 7h 20m ( −43.9%) Top-only ∼558k ( −41%) 78.58 17.37 17.10 †7h 29m ( −42.7%)
+
+by Rainfall at medium and high risk (68.5–74.4%), with Humidity as a secondary factor. Cold/snow incidents show Snowfall as the primary driver (47–69%). Air quality incidents are dominated by Particulate Matter (36–76%). These attributions emerged entirely from the model’s learning process without handcrafted feature engineering. 
+
+Heat Wave anomaly. The Heat Wave category presents a counterintuitive finding: Rainfall consistently ranks first (58–64%) across all risk levels. This reflects a learned negative correlation– low-rainfall periods coincide with prolonged heat events in the training data, enabling the model to use rainfall as a proxy for heat persistence. Humidity serves as a consistent secondary factor, aligning with heat-index formulations. 
+
+Risk level transition pattern. A key structural finding is the low risk ambiguity transition : at Low Risk, attention is distributed across multiple sensors with no single dominant factor (maximum importance rarely exceeds 20%), whereas at Medium and High Risk, one or two sensors capture 65–75% of total attention. This indicates the model has learned to shift from background weather monitoring to hazard specific signal detection as severity increases. 
+
+Emergence of alert nodes at high risk. Weather Alert and Pre-Alert Time nodes emerge as high importance signals at High Risk for five report categories: Flood Prevention (Alert 55.5%), Land-slide Risk (Alert 52.1%), Drainage Maintenance (Alert 53.3%, Pre-Alert Time 49.9%), Heavy Snow (Pre-Alert Time 48.9%), and Yellow Dust (Pre-Alert Time 49.9%). For Heavy Snow at Medium Risk, Weather Alert (65.4%) even surpasses Snowfall, confirming that the model appropriately integrates structured meteorological warnings alongside raw sensor data. 
+
+# 6 Conclusion and Future Work 
+
+This paper presented the HA-HeteroGNN framework for assessing the urgency of non-emergency incident reports through the integration of diverse environmental data sources in a heterogeneous graph structure. Our key contributions and findings are summarized as follows. 
+
+Explainability and domain consistency. The GNN Explainer achieves 97.5% top-1 node agree-ment across four structurally different anchor strategies, demonstrating that the model’s attribution is robust to input perturbation. The attributed sensor types align with physical domain knowledge: Rainfall dominates flood related incidents (68–74%), Snowfall drives cold weather events (47–69%), and Particulate Matter governs air quality categories (36–76%). These attributions emerge entirely from the learning process without handcrafted feature engineering. Additionally, Weather Alert and Pre-Alert Time nodes emerge as discriminative signals at high risk for 5 of 11 report categories, confirming that the model integrates structured meteorological warnings alongside raw sensor data. 
+
+Explanation-driven graph pruning. A central contribution of this work is the demonstration that GNN Explainer attributions can be repurposed as a principled graph pruning criterion. The bottom-excluded strategy–removing only nodes identified as consistently uninformative across all risk levels–yields a 27% reduction in graph edges while simultaneously improving classification ac-13 curacy across all three model architectures (+2.4% to +6.1%). This outcome challenges the conven-tional assumption that graph pruning necessarily trades accuracy for efficiency. The improvement arises because the removed edges actively introduce noise into message passing aggregation; their elimination sharpens the signal-to-noise ratio at each GNN layer. In contrast, the aggressive top-only strategy ( −41% edges) degrades accuracy for two of three models and produces dangerously elevated false negative rates (up to 18.8%) in safety-critical high risk classification. 
+
+Computational efficiency gains. The pruned graph delivers substantial reductions in training time that scale with model complexity: 11.5% faster for the Attention model (3h 8m → 2h 47m) and 43.9% faster for the Multihead model (13h 4m → 7h 20m). These savings enable more fre-quent model retraining as new incident data accumulates and reduce GPU energy consumption during deployment. Inference-time message passing also benefits proportionally, with fewer neigh-bor aggregation operations per sample, enabling sub-50 ms prediction latency suitable for real-time emergency triage. The best overall configuration–Attention HeteroSAGE with bottom-excluded pruning–achieves 88.74% accuracy with balanced error characteristics (FP 8.02%, FN 9.37%) while requiring 27% less computation than the unpruned baseline. 
+
+Real-time deployment feasibility. Three of four anchor strategies achieve per-sample inference latency of approximately 58–60 ms, confirming that the framework can process incoming reports within the tight time constraints of operational 311 and Safety e-Report systems. Combined with the pruned graph’s reduced memory footprint, the system can be deployed on lower cost GPU instances or edge devices, broadening accessibility for municipalities with limited computational budgets. The causal analysis capabilities demonstrated by our GNN Explainer open a promising direction toward agentic AI systems for emergency management. Consider a scenario where a new flood prevention report arrives during heavy rainfall. The GNN Explainer identifies Rainfall and Weather Alert as the dominant influence factors. An agentic AI system could then use this attribution to plan which external data sources to query next–real-time precipitation radar, upstream river gauge readings, and active alert bulletins–rather than retrieving all possible data indiscriminately. The system would generate an urgency assessment with supporting evidence and route it to the appropriate response department. Over time, the system could learn which data retrieval plans are most effective for each report category and risk level, creating a feedback loop between explainability and action planning. This integration of explainability driven planning with autonomous data retrieval represents a natural evolution from passive classification to proactive situational awareness. Several avenues for future research remain. First, the explanation driven pruning method-ology should be evaluated on larger-scale real-world datasets to characterize its behavior under distribution shift and class imbalance beyond the current synthetic setting. Second, the synthetic data generation pipeline should be validated against real-world incident data from operational Safety e-Report and 311 systems. Third, the hierarchical attention mechanism could be extended to accommodate additional modalities such as satellite imagery, social media signals, and IoT sensor networks. Fourth, counterfactual perturbation tests–systematically masking or replacing high-attribution nodes and measuring the resulting change in model output–would provide causal validation of the pruning decisions beyond the current correlational evidence. Fifth, adaptive pruning strategies–where the pruning threshold is dynamically adjusted based on incoming data characteristics–could further optimize the accuracy-efficiency trade-off. Finally, the integration with agentic AI frameworks–where the GNN Explainer guides autonomous data retrieval and decision support–represents a high impact direction for operational deployment. 
+
+# References    
+
+> Korea Safety Agency. Safety e-Report Annual Report 2020. Ministry of the Interior and Safety, Republic of Korea, 2020. T. Nam and T. A. Pardo. The changing face of a city government: A case study of Philly311. Gov. Information Quarterly , 31:S1–S9, 2014.
+
+14 S. L. Minkoff. NYC 311: A tract-level analysis of citizen–government contacting in New York City. Urban Affairs Review , 52(2):211–246, 2016. mySociety. FixMyStreet: Report, view, or discuss local problems. https://www.fixmystreet.com/ , 2023. Snap Send Solve Pty Ltd. Snap Send Solve. https://www.snapsendsolve.com/ , 2022. T. N. Kipf and M. Welling. Semi-supervised classification with graph convolutional networks. In Proc. ICLR , 2017. W. L. Hamilton, R. Ying, and J. Leskovec. Inductive representation learning on large graphs. In Proc. NeurIPS , pp. 1024–1034, 2017. P. Veličković, G. Cucurull, A. Casanova, A. Romero, P. Liò, and Y. Bengio. Graph attention networks. In 
+
+Proc. ICLR , 2018. X. Wang, H. Ji, C. Shi, B. Wang, Y. Ye, P. Cui, and P. S. Yu. Heterogeneous graph attention network. In 
+
+Proc. WWW , pp. 2022–2032, 2019. Z. Hu, Y. Dong, K. Wang, and Y. Sun. Heterogeneous graph transformer. In Proc. WWW , pp. 2704–2710, 2020. B. Yu, H. Yin, and Z. Zhu. Spatio-temporal graph convolutional networks: A deep learning framework for traffic forecasting. In Proc. IJCAI , pp. 3634–3640, 2018. C. Zhang, D. Song, C. Huang, A. Swami, and N. V. Chawla. Heterogeneous graph neural network. In Proc. KDD , pp. 793–803, 2019. C. Fan and A. Mostafavi. A graph-based method for social sensing of infrastructure disruptions in disasters. 
+
+Comput.-Aided Civ. and Infrastruct. Eng. , 34(12):1055–1070, 2019. J. Chen, T. Ma, and C. Xiao. FastGCN: Fast learning with graph convolutional networks via importance sampling. In Proc. ICLR , 2018. W. Chiang, X. Liu, S. Si, Y. Li, S. Bengio, and C. Hsieh. Cluster-GCN: An efficient algorithm for training deep and large graph convolutional networks. In Proc. KDD , pp. 257–266, 2019. H. Zeng, H. Zhou, A. Srivastava, R. Kanber, and V. Prasanna. GraphSAINT: Graph sampling based inductive learning method. In Proc. ICLR , 2020. F. Scarselli, M. Gori, A. C. Tsoi, M. Hagenbuchner, and G. Monfardini. The graph neural network model. 
+
+IEEE Trans. Neural Networks , 20(1):61–80, 2009. J. Bruna, W. Zaremba, A. Szlam, and Y. LeCun. Spectral networks and locally connected networks on graphs. In Proc. ICLR , 2014. M. Defferrard, X. Bresson, and P. Vandergheynst. Convolutional neural networks on graphs with fast localized spectral filtering. In Proc. NeurIPS , pp. 3844–3852, 2016. J. Gilmer, S. S. Schoenholz, P. F. Riley, O. Vinyals, and G. E. Dahl. Neural message passing for quantum chemistry. In Proc. ICML , pp. 1263–1272, 2017. M. Schlichtkrull, T. N. Kipf, P. Bloem, R. van den Berg, I. Titov, and M. Welling. Modeling relational data with graph convolutional networks. In Proc. ESWC , pp. 593–607, 2018. Q. Lv et al. Are we really making much progress? Revisiting, benchmarking and refining heterogeneous graph neural networks. In Proc. KDD , pp. 1150–1160, 2021. X. Geng et al. Spatiotemporal multigraph convolution network for ride-hailing demand forecasting. In Proc. AAAI , pp. 3656–3663, 2019. C. Zheng, X. Fan, C. Wang, and J. Qi. GMAN: A graph multi-attention network for traffic prediction. In 
+
+Proc. AAAI , pp. 1234–1241, 2020. R. Ying, D. Bourgeois, J. You, M. Zitnik, and J. Leskovec. GNNExplainer: Generating explanations for graph neural networks. In Proc. NeurIPS , pp. 9244–9255, 2019. D. Luo et al. Parameterized explainer for graph neural network. In Proc. NeurIPS , pp. 19620–19631, 2020. H. Yuan, H. Yu, J. Wang, K. Li, and S. Ji. On explainability of graph neural networks via subgraph explorations. In Proc. ICML , pp. 12241–12252, 2021. M. Sundararajan, A. Taly, and Q. Yan. Axiomatic attribution for deep networks. In Proc. ICML , pp. 3319– 3328, 2017. P. E. Pope, S. Kolouri, M. Rostami, C. E. Martin, and H. Hoffmann. Explainability methods for graph convolutional neural networks. In Proc. CVPR , pp. 10772–10781, 2019. S. Brody, U. Alon, and E. Yahav. How attentive are graph attention networks? In Proc. ICLR , 2022. C. Zheng et al. Robust graph representation learning via neural sparsification. In Proc. ICML , pp. 11458– 11468, 2020. T. Chen et al. A unified lottery ticket hypothesis for graph neural networks. In Proc. ICML , pp. 1695–1706, 2021. Y. Rong, W. Huang, T. Xu, and J. Huang. DropEdge: Towards deep graph convolutional networks on node classification. In Proc. ICLR , 2019. Y. Yang et al. Distilling knowledge from graph convolutional networks. In Proc. CVPR , pp. 7074–7083, 
+
+15 2020. Z. Huang et al. Scaling up graph neural networks via graph coarsening. In Proc. KDD , pp. 675–685, 2021. R. Ying et al. Graph convolutional neural networks for web-scale recommender systems. In Proc. KDD ,pp. 974–983, 2018. B. Fatemi, L. El Asri, and S. M. Kazemi. SLAPS: Self-supervision improves structure learning for graph neural networks. In Proc. NeurIPS , pp. 22667–22681, 2021. 
+
+16 A Alert-Weather Constraints and Report Classifications 
+
+Table 7 lists the 12 alert-weather constraints. Table 8 summarizes the 11 report categories. Table 7: Alert-weather constraint rules for synthetic data generation. 
+
+Alert Type Sensor Advisory Range Warning Range 
+
+Heavy Rain Rainfall (mm) 60–90 90–150 Heat Wave Temperature ( ◦C) 30–35 35–40 Cold Wave Temperature ( ◦C) −20 to −10 −25 to −15 
+
+Heavy Snow Snowfall (cm) 20–50 50–100 Yellow Dust PM 2.5 (μg/m 3) 200–400 400–800 Typhoon Wind Speed (m/s) 20–35 35–50 
+
+# B Node Type Feature Specifications 
+
+17 Table 8: The 11 emergency report classifications and seasonal assignments. 
+
+Season Report Type Primary Sensor 
+
+Spring Yellow Dust Report PM 2.5
+
+Fine Dust Report PM 2.5
+
+Wildfire Prevention Humidity, Wind Summer Drainage Maint. Rainfall Landslide Risk Rainfall Heat Wave Temperature Flood Prevention Rainfall Autumn Leaf Cleanup Rainfall Winter Heavy Snow Snowfall Road Icing Prev. Snowfall, Temp Cold Wave Snowfall, Temp 
+
+Table 9: Complete node type specifications for the heterogeneous graph. 
+
+Category Node Type Encoding Dim 
+
+Sensor 
+
+sensor_rainfall 5-bin categorical + norm 6
+
+sensor_temperature 5-bin categorical + norm 6
+
+sensor_humidity 5-bin categorical + norm 6
+
+sensor_apparent_temp 5-bin categorical + norm 6
+
+sensor_wind_speed 5-bin categorical + norm 6
+
+sensor_pm 5-bin categorical + norm 6
+
+sensor_snowfall 5-bin categorical + norm 6Alert 
+
+weather_alert One-hot (13 types) 13 
+
+pre_alert_type One-hot (13 types) 13 
+
+pre_alert_time One-hot (6 bins) 6
+
+pre_alert_severity One-hot (3 levels) 2Context drainage 3-category one-hot 3
+
+location Lat/lon + region + dist 4Report 
+
+report Report ID 1
+
+report_type Semantic embedding 8
+
+report_count 5-bin categorical 5
+
+18
