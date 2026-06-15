@@ -6,65 +6,68 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-06-14
-- 运行时间：2026-06-14 21:29:53 UTC
+- 最新运行日期：2026-06-15
+- 运行时间：2026-06-15 21:58:52 UTC
 - 运行状态：成功
-- 本次总论文数：15
-- 精读区：3
+- 本次总论文数：16
+- 精读区：4
 - 速读区：12
 
 ### 今日简报（AI）
-今日精读聚焦静息态脑网络整合与深度睡眠脑电分类，速读覆盖脑区功能选择、肿瘤分类及多模态脑机接口。最值得关注的是《From topography to connectome》提出的脑地形与连接组整合框架（9.0分），以及《Deep Sleep Classification》基于脑电临界性的被动BCI方法（8.0分）。建议优先精读这两篇高分论文，再根据兴趣浏览速读中的脑肿瘤特征融合或多智能体认知对齐研究。
-- 详情：[/202606/14/README](/202606/14/README)
+今日精读4篇、速读12篇，聚焦脑疾病诊断与神经解码前沿。最值得关注的是《GMN4AD》用图匹配网络实现阿尔茨海默病跨中心诊断，以及《FAConformer》通过频率感知卷积提升听觉注意力解码精度。建议优先精读这两篇，并关注《BiXformer》中双向交叉注意力对神经动力学的解耦分析。
+- 详情：[/202606/15/README](/202606/15/README)
 
 ### 精读区论文标签
-1. [From topography to connectome: Towards an integrated understanding of the resting brain](/202606/14/biorxiv-10-64898-2026-06-06-730493-v1-from-topography-to-connectome-towards-an-integrated-understanding-of-the-resting-brain)  
-   标签：评分：9.0/10、query:fmri-brain-network
-   evidence：深度学习从拓扑图翻译连接组
-2. [Deep Sleep Classification via EEG Signal Criticality: A Passive BCI Approach for Sleep-Improvement Neurofeedback](/202606/14/2606.13017v1-deep-sleep-classification-via-eeg-signal-criticality-a-passive-bci-approach-for-sleep-improvement-neurofeedback)  
-   标签：评分：8.0/10、query:eeg-llm-agent
-   evidence：基于EEG临界性特征的被动脑机接口用于睡眠分期
-3. [Mechanistic corticostriatal circuit model predicts learning-dependent fMRI dynamics and individual reward bias in humans](/202606/14/biorxiv-10-64898-2026-05-28-728582-v2-mechanistic-corticostriatal-circuit-model-predicts-learning-dependent-fmri-dynamics-and-individual-reward-bias-in-humans)  
+1. [GMN4AD: Graph Matching Network for Alzheimer's Disease Diagnosis with Test-Time Domain Adaptation using Multi-centered Structure Magnetic Resonance Imaging](/202606/15/2606.13919v1-gmn4ad-graph-matching-network-for-alzheimers-disease-diagnosis-with-test-time-domain-adaptation-using-multi-centered-structure-magnetic-resonance-imaging)  
    标签：评分：8.0/10、query:fmri-brain-network
-   evidence：机制模型预测fMRI动态
+   evidence：图匹配网络，阿尔茨海默诊断，结构MRI
+2. [FAConformer: Frequency-Aware Convolutional Transformer for Auditory Attention Decoding](/202606/15/2606.14120v1-faconformer-frequency-aware-convolutional-transformer-for-auditory-attention-decoding)  
+   标签：评分：8.0/10、query:eeg-llm-agent
+   evidence：基于EEG的听觉注意力解码深度学习模型
+3. [Prediction of fMRI activity using vector autoregressive models: a comparison of sparse and low-rank approaches](/202606/15/biorxiv-10-64898-2026-06-11-731556-v1-prediction-of-fmri-activity-using-vector-autoregressive-models-a-comparison-of-sparse-and-low-rank-approaches)  
+   标签：评分：8.0/10、query:fmri-brain-network
+   evidence：VAR模型用于fMRI功能连接估计
+4. [Lesion-Gradient Mapping in Semantic Aphasia: Comparisons of Observed and Simulated Effects of Stroke on Connectivity Gradients](/202606/15/biorxiv-10-64898-2026-06-12-731654-v1-lesion-gradient-mapping-in-semantic-aphasia-comparisons-of-observed-and-simulated-effects-of-stroke-on-connectivity-gradients)  
+   标签：评分：8.0/10、query:fmri-brain-network
+   evidence：静息态fMRI功能连接梯度
 
 ### 速读区论文标签
-1. [Discovering Functionally Selective Brain Regions with a Deep Topographic Multimodal Model](/202606/14/2606.09770v1-discovering-functionally-selective-brain-regions-with-a-deep-topographic-multimodal-model)  
+1. [Joint Nuclear and $\ell_1$ Regularization for Logistic Matrix Regression with Applications to Brain Imaging](/202606/15/2606.14436v1-joint-nuclear-and-ell1-regularization-for-logistic-matrix-regression-with-applications-to-brain-imaging)  
    标签：评分：7.0/10、query:fmri-brain-network
-   evidence：使用神经影像的深度拓扑多模态模型发现脑区
-2. [Multimodal Brain Tumour Classification Using Feature Fusion](/202606/14/2606.11107v1-multimodal-brain-tumour-classification-using-feature-fusion)  
+   evidence：脑成像矩阵回归方法
+2. [Distinct Neural Systems Supporting Afferent and Efferent Autonomic Activity](/202606/15/biorxiv-10-64898-2026-06-03-729710-v1-distinct-neural-systems-supporting-afferent-and-efferent-autonomic-activity)  
    标签：评分：7.0/10、query:fmri-brain-network
-   evidence：多模态脑肿瘤分类，结合MRI和影像组学特征
-3. [Multi-Modal Multi-Agent Robotic Cognitive Alignment enabled by Non-Invasive Consumer Brain Computer Interfaces: A Proof of Concept Exploration](/202606/14/2606.13190v1-multi-modal-multi-agent-robotic-cognitive-alignment-enabled-by-non-invasive-consumer-brain-computer-interfaces-a-proof-of-concept-exploration)  
+   evidence：BOLD fMRI数据分析脑-自主神经耦合
+3. [BiXformer: A Bidirectional Cross Attention Transformer for Disentangling Inter-Regional Neural Dynamics](/202606/15/biorxiv-10-64898-2026-06-05-730511-v1-bixformer-a-bidirectional-cross-attention-transformer-for-disentangling-inter-regional-neural-dynamics)  
+   标签：评分：7.0/10、query:fmri-brain-network
+   evidence：双向交叉注意力变压器用于神经动力学
+4. [Neurophysiological Functional Connectivity Changes during Difficult Listening in Older and Younger Adults](/202606/15/biorxiv-10-64898-2026-06-06-730575-v2-neurophysiological-functional-connectivity-changes-during-difficult-listening-in-older-and-younger-adults)  
+   标签：评分：7.0/10、query:fmri-brain-network
+   evidence：MEG功能连接分析用于言语理解
+5. [The electro-MICA toolbox for integrating electrophysiology within multimodal imaging and connectomics workflows](/202606/15/biorxiv-10-64898-2026-06-08-730888-v1-the-electro-mica-toolbox-for-integrating-electrophysiology-within-multimodal-imaging-and-connectomics-workflows)  
    标签：评分：7.0/10、query:eeg-llm-agent
-   evidence：非侵入式消费级脑机接口用于认知对齐
-4. [Masked and Predictive Self-Supervised Foundation Models for 3D Brain MRI](/202606/14/2606.13315v1-masked-and-predictive-self-supervised-foundation-models-for-3d-brain-mri)  
-   标签：评分：7.0/10、query:fmri-brain-network
-   evidence：用于3D脑MRI疾病检测的自监督基础模型
-5. [Dynamic Reversal of IT-PFC Information Flow Orchestrates Visual Categorization Under Perceptual Uncertainty](/202606/14/biorxiv-10-64898-2025-12-17-695044-v2-dynamic-reversal-of-it-pfc-information-flow-orchestrates-visual-categorization-under-perceptual-uncertainty)  
-   标签：评分：7.0/10、query:fmri-brain-network
-   evidence：提出模型化表征连接性分析框架追踪信息流
-6. [Successful single-session neural self-regulation through neurofeedback varies between features](/202606/14/biorxiv-10-64898-2026-01-07-698228-v2-successful-single-session-neural-self-regulation-through-neurofeedback-varies-between-features)  
-   标签：评分：7.0/10、query:eeg-llm-agent
-   evidence：神经反馈和脑机接口学习动态分析
-7. [How Much MRI Preprocessing Is Enough? A Cost-Utility Study for Brain MRI Foundation Models](/202606/14/2606.08164v1-how-much-mri-preprocessing-is-enough-a-cost-utility-study-for-brain-mri-foundation-models)  
+   evidence：EEG分析工具箱，整合电生理与多模态成像和连接组学
+6. [Decoding Semantic Categories from Picture-Naming EEG](/202606/15/2606.14614v1-decoding-semantic-categories-from-picture-naming-eeg)  
+   标签：评分：6.0/10、query:eeg-llm-agent
+   evidence：使用预训练编码器的EEG解码
+7. [A Computational Perspective on the No-Strong-Loops Principle in Brain Networks](/202606/15/biorxiv-10-1101-2025-09-24-678310-v2-a-computational-perspective-on-the-no-strong-loops-principle-in-brain-networks)  
    标签：评分：6.0/10、query:fmri-brain-network
-   evidence：脑MRI基础模型的预处理成本效用研究
-8. [Large language models selectively converge with human-shared neural semantic representations](/202606/14/2606.11598v1-large-language-models-selectively-converge-with-human-shared-neural-semantic-representations)  
-   标签：评分：6.0/10、query:eeg-llm-agent
-   evidence：使用MEG比较大型语言模型与人类神经语义表征
-9. [Multifractal human signals at the edge of life reveal a heart-brain anti-correlation](/202606/14/2606.12600v1-multifractal-human-signals-at-the-edge-of-life-reveal-a-heart-brain-anti-correlation)  
-   标签：评分：6.0/10、query:eeg-llm-agent
-   evidence：使用多重分形方法分析EEG信号
-10. [Reducing the Complexity of Deep Learning Models for EEG Analysis on Wearable Devices](/202606/14/2606.12742v1-reducing-the-complexity-of-deep-learning-models-for-eeg-analysis-on-wearable-devices)  
-   标签：评分：6.0/10、query:eeg-llm-agent
-   evidence：面向可穿戴设备EEG分析的深度学习模型复杂度降低
-11. [Unified MRI Brain Image Translation via Hierarchical Tumor Structure Comparison](/202606/14/2606.13096v1-unified-mri-brain-image-translation-via-hierarchical-tumor-structure-comparison)  
+   evidence：脑网络组织，连接不对称性，脑网络计算建模
+8. [Hierarchical Reconfiguration of Neurocognitive Task Set Representations Mediates Cognitive Flexibility](/202606/15/biorxiv-10-64898-2026-01-20-700694-v3-hierarchical-reconfiguration-of-neurocognitive-task-set-representations-mediates-cognitive-flexibility)  
    标签：评分：6.0/10、query:fmri-brain-network
-   evidence：多模态MRI脑图像翻译用于临床诊断
-12. [Source-space EEG functional connectivity and prediction of cognition in Parkinsons disease: No added benefit of individualized head models over standard templates](/202606/14/biorxiv-10-64898-2026-05-07-723671-v2-source-space-eeg-functional-connectivity-and-prediction-of-cognition-in-parkinsons-disease-no-added-benefit-of-individualized-head-models-over-standard-templates)  
+   evidence：fMRI研究认知灵活性和任务集重构
+9. [The ENIGMA MEG Pipeline: Automated cortically localized spectral analysis of multi-site resting state MEG datasets](/202606/15/biorxiv-10-64898-2026-06-03-729876-v1-the-enigma-meg-pipeline-automated-cortically-localized-spectral-analysis-of-multi-site-resting-state-meg-datasets)  
+   标签：评分：6.0/10、query:fmri-brain-network
+   evidence：多站点MEG分析神经影像流程
+10. [Brainana: an end-to-end preprocessing framework for macaque neuroimaging](/202606/15/biorxiv-10-64898-2026-06-03-729972-v1-brainana-an-end-to-end-preprocessing-framework-for-macaque-neuroimaging)  
+   标签：评分：6.0/10、query:fmri-brain-network
+   evidence：猕猴神经影像预处理框架，包含深度学习模型
+11. [Emotion Representation and Neural Synchrony: Decoding Valence and Arousal with Wearable EEG](/202606/15/biorxiv-10-64898-2026-06-03-730031-v1-emotion-representation-and-neural-synchrony-decoding-valence-and-arousal-with-wearable-eeg)  
    标签：评分：6.0/10、query:eeg-llm-agent
-   evidence：源空间EEG功能连接用于帕金森病认知预测
+   evidence：可穿戴EEG情绪解码
+12. [Evaluating agentic AI for biological discovery in autonomous and copilot settings](/202606/15/biorxiv-10-64898-2026-06-04-729919-v1-evaluating-agentic-ai-for-biological-discovery-in-autonomous-and-copilot-settings)  
+   标签：评分：6.0/10、query:eeg-llm-agent
+   evidence：评估智能体AI用于生物发现
 
 
 <div class="dpr-home-promo-card">
