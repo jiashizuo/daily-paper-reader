@@ -6,68 +6,77 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-06-15
-- 运行时间：2026-06-15 21:58:52 UTC
+- 最新运行日期：2026-06-17
+- 运行时间：2026-06-17 22:27:01 UTC
 - 运行状态：成功
-- 本次总论文数：16
-- 精读区：4
+- 本次总论文数：19
+- 精读区：7
 - 速读区：12
 
 ### 今日简报（AI）
-今日精读4篇、速读12篇，聚焦脑疾病诊断与神经解码前沿。最值得关注的是《GMN4AD》用图匹配网络实现阿尔茨海默病跨中心诊断，以及《FAConformer》通过频率感知卷积提升听觉注意力解码精度。建议优先精读这两篇，并关注《BiXformer》中双向交叉注意力对神经动力学的解耦分析。
-- 详情：[/202606/15/README](/202606/15/README)
+今日推荐19篇论文，精读7篇，重点聚焦脉冲神经网络与情感认知表征学习。最值得关注的是膜电位对齐的脉冲神经网络测试时自适应方法（9.0分）和掩码区域-通道-时间建模的情感认知学习框架（9.0分）。建议优先精读这两篇高分论文，它们分别代表了神经解码和情感计算领域的前沿突破。
+- 详情：[/202606/17/README](/202606/17/README)
 
 ### 精读区论文标签
-1. [GMN4AD: Graph Matching Network for Alzheimer's Disease Diagnosis with Test-Time Domain Adaptation using Multi-centered Structure Magnetic Resonance Imaging](/202606/15/2606.13919v1-gmn4ad-graph-matching-network-for-alzheimers-disease-diagnosis-with-test-time-domain-adaptation-using-multi-centered-structure-magnetic-resonance-imaging)  
+1. [Test-Time Adaptation of Spiking Neural Networks for Intracortical Neural Decoding using Membrane Potential Alignment](/202606/17/2606.14866v1-test-time-adaptation-of-spiking-neural-networks-for-intracortical-neural-decoding-using-membrane-potential-alignment)  
+   标签：评分：9.0/10、query:eeg-llm-agent
+   evidence：脑机接口自适应
+2. [RECTOR: Masked Region-Channel-Temporal Modeling for Affective and Cognitive Representation Learning](/202606/17/2606.15278v1-rector-masked-region-channel-temporal-modeling-for-affective-and-cognitive-representation-learning)  
+   标签：评分：9.0/10、query:eeg-llm-agent
+   evidence：自监督EEG表征学习
+3. [DynFS-MoE: Dynamic Functional-Structural Mixture-of-Experts for Post-Traumatic Epilepsy Diagnosis](/202606/17/2606.16203v2-dynfs-moe-dynamic-functional-structural-mixture-of-experts-for-post-traumatic-epilepsy-diagnosis)  
+   标签：评分：9.0/10、query:fmri-brain-network
+   evidence：多模态MRI用于临床诊断
+4. [Directed Human Structural Connectome Reveals Hierarchical Organization and Shapes Large-Scale Brain Dynamics](/202606/17/biorxiv-10-64898-2026-06-16-732559-v1-directed-human-structural-connectome-reveals-hierarchical-organization-and-shapes-large-scale-brain-dynamics)  
+   标签：评分：9.0/10、query:fmri-brain-network
+   evidence：有向人类结构连接组揭示层级组织
+5. [GMN4AD: Graph Matching Network for Alzheimer's Disease Diagnosis with Test-Time Domain Adaptation using Multi-centered Structure Magnetic Resonance Imaging](/202606/17/2606.13919v2-gmn4ad-graph-matching-network-for-alzheimers-disease-diagnosis-with-test-time-domain-adaptation-using-multi-centered-structure-magnetic-resonance-imaging)  
    标签：评分：8.0/10、query:fmri-brain-network
-   evidence：图匹配网络，阿尔茨海默诊断，结构MRI
-2. [FAConformer: Frequency-Aware Convolutional Transformer for Auditory Attention Decoding](/202606/15/2606.14120v1-faconformer-frequency-aware-convolutional-transformer-for-auditory-attention-decoding)  
+   evidence：使用图匹配网络进行阿尔茨海默病诊断
+6. [EEGDash: An open-source platform for machine learning on public neurophysiological data](/202606/17/2606.16041v1-eegdash-an-open-source-platform-for-machine-learning-on-public-neurophysiological-data)  
    标签：评分：8.0/10、query:eeg-llm-agent
-   evidence：基于EEG的听觉注意力解码深度学习模型
-3. [Prediction of fMRI activity using vector autoregressive models: a comparison of sparse and low-rank approaches](/202606/15/biorxiv-10-64898-2026-06-11-731556-v1-prediction-of-fmri-activity-using-vector-autoregressive-models-a-comparison-of-sparse-and-low-rank-approaches)  
-   标签：评分：8.0/10、query:fmri-brain-network
-   evidence：VAR模型用于fMRI功能连接估计
-4. [Lesion-Gradient Mapping in Semantic Aphasia: Comparisons of Observed and Simulated Effects of Stroke on Connectivity Gradients](/202606/15/biorxiv-10-64898-2026-06-12-731654-v1-lesion-gradient-mapping-in-semantic-aphasia-comparisons-of-observed-and-simulated-effects-of-stroke-on-connectivity-gradients)  
-   标签：评分：8.0/10、query:fmri-brain-network
-   evidence：静息态fMRI功能连接梯度
+   evidence：用于EEG等神经生理数据机器学习的开源平台
+7. [Learning aligned EEG representations with subject-specific encoders](/202606/17/2606.16462v1-learning-aligned-eeg-representations-with-subject-specific-encoders)  
+   标签：评分：8.0/10、query:eeg-llm-agent
+   evidence：针对跨被试EEG解码的特定被试编码器
 
 ### 速读区论文标签
-1. [Joint Nuclear and $\ell_1$ Regularization for Logistic Matrix Regression with Applications to Brain Imaging](/202606/15/2606.14436v1-joint-nuclear-and-ell1-regularization-for-logistic-matrix-regression-with-applications-to-brain-imaging)  
-   标签：评分：7.0/10、query:fmri-brain-network
-   evidence：脑成像矩阵回归方法
-2. [Distinct Neural Systems Supporting Afferent and Efferent Autonomic Activity](/202606/15/biorxiv-10-64898-2026-06-03-729710-v1-distinct-neural-systems-supporting-afferent-and-efferent-autonomic-activity)  
-   标签：评分：7.0/10、query:fmri-brain-network
-   evidence：BOLD fMRI数据分析脑-自主神经耦合
-3. [BiXformer: A Bidirectional Cross Attention Transformer for Disentangling Inter-Regional Neural Dynamics](/202606/15/biorxiv-10-64898-2026-06-05-730511-v1-bixformer-a-bidirectional-cross-attention-transformer-for-disentangling-inter-regional-neural-dynamics)  
-   标签：评分：7.0/10、query:fmri-brain-network
-   evidence：双向交叉注意力变压器用于神经动力学
-4. [Neurophysiological Functional Connectivity Changes during Difficult Listening in Older and Younger Adults](/202606/15/biorxiv-10-64898-2026-06-06-730575-v2-neurophysiological-functional-connectivity-changes-during-difficult-listening-in-older-and-younger-adults)  
-   标签：评分：7.0/10、query:fmri-brain-network
-   evidence：MEG功能连接分析用于言语理解
-5. [The electro-MICA toolbox for integrating electrophysiology within multimodal imaging and connectomics workflows](/202606/15/biorxiv-10-64898-2026-06-08-730888-v1-the-electro-mica-toolbox-for-integrating-electrophysiology-within-multimodal-imaging-and-connectomics-workflows)  
+1. [GMN4AD: Graph Matching Network for Alzheimer's Disease Diagnosis with Test-Time Domain Adaptation using Multi-centered Structure Magnetic Resonance Imaging](/202606/17/2606.13919v3-gmn4ad-graph-matching-network-for-alzheimers-disease-diagnosis-with-test-time-domain-adaptation-using-multi-centered-structure-magnetic-resonance-imaging)  
+   标签：评分：8.0/10、query:fmri-brain-network
+   evidence：使用图匹配网络进行阿尔茨海默病诊断
+2. [DynFS-MoE: Dynamic Functional-Structural Mixture-of-Experts for Post-Traumatic Epilepsy Diagnosis](/202606/17/2606.16203v1-dynfs-moe-dynamic-functional-structural-mixture-of-experts-for-post-traumatic-epilepsy-diagnosis)  
+   标签：评分：8.0/10、query:fmri-brain-network
+   evidence：fMRI脑网络分析的AI方法与临床诊断
+3. [SUP-MCRL: Subject-aware Unified Pseudo-feature Coded Multimodal Contrastive Representation Learning for EEG Visual Decoding](/202606/17/2606.16615v1-sup-mcrl-subject-aware-unified-pseudo-feature-coded-multimodal-contrastive-representation-learning-for-eeg-visual-decoding)  
+   标签：评分：8.0/10、query:eeg-llm-agent
+   evidence：用于脑机接口EEG视觉解码的多模态对比学习
+4. [BrainWorld: A Structural-Prior-Conditioned Generative Model for Whole-Brain 4D fMRI Dynamics](/202606/17/2606.17742v1-brainworld-a-structural-prior-conditioned-generative-model-for-whole-brain-4d-fmri-dynamics)  
+   标签：评分：8.0/10、query:fmri-brain-network
+   evidence：全脑4D fMRI动态生成模型，利用结构先验
+5. [Reducing the Complexity of Deep Learning Models for EEG Analysis on Wearable Devices](/202606/17/2606.12742v2-reducing-the-complexity-of-deep-learning-models-for-eeg-analysis-on-wearable-devices)  
    标签：评分：7.0/10、query:eeg-llm-agent
-   evidence：EEG分析工具箱，整合电生理与多模态成像和连接组学
-6. [Decoding Semantic Categories from Picture-Naming EEG](/202606/15/2606.14614v1-decoding-semantic-categories-from-picture-naming-eeg)  
+   evidence：可穿戴设备上EEG分析的深度学习模型复杂度降低
+6. [Hybrid Classical-Quantum (HCQ) Alzheimer's Classification via Supervised $β$-VAE and Quantum Kernels](/202606/17/2606.14194v1-hybrid-classical-quantum-hcq-alzheimers-classification-via-supervised--vae-and-quantum-kernels)  
+   标签：评分：7.0/10、query:fmri-brain-network
+   evidence：AI医疗健康：使用混合经典-量子流水线从结构MRI进行阿尔茨海默病分类
+7. [Learning Sparse Latent Predictive Foundation Model for Multimodal Neuroimaging](/202606/17/2606.14957v1-learning-sparse-latent-predictive-foundation-model-for-multimodal-neuroimaging)  
+   标签：评分：7.0/10、query:fmri-brain-network
+   evidence：多模态神经影像基础模型与潜预测目标
+8. [Harnessing cortical geometry, wiring, and function as inductive biases for recurrent neural networks](/202606/17/2606.14975v1-harnessing-cortical-geometry-wiring-and-function-as-inductive-biases-for-recurrent-neural-networks)  
+   标签：评分：7.0/10、query:fmri-brain-network
+   evidence：利用功能连接组学数据构建生物启发的循环神经网络
+9. [Unifying Acoustic Features and Text with Multimodal LLMs for Neurodegenerative Screening](/202606/17/2606.14788v1-unifying-acoustic-features-and-text-with-multimodal-llms-for-neurodegenerative-screening)  
    标签：评分：6.0/10、query:eeg-llm-agent
-   evidence：使用预训练编码器的EEG解码
-7. [A Computational Perspective on the No-Strong-Loops Principle in Brain Networks](/202606/15/biorxiv-10-1101-2025-09-24-678310-v2-a-computational-perspective-on-the-no-strong-loops-principle-in-brain-networks)  
-   标签：评分：6.0/10、query:fmri-brain-network
-   evidence：脑网络组织，连接不对称性，脑网络计算建模
-8. [Hierarchical Reconfiguration of Neurocognitive Task Set Representations Mediates Cognitive Flexibility](/202606/15/biorxiv-10-64898-2026-01-20-700694-v3-hierarchical-reconfiguration-of-neurocognitive-task-set-representations-mediates-cognitive-flexibility)  
-   标签：评分：6.0/10、query:fmri-brain-network
-   evidence：fMRI研究认知灵活性和任务集重构
-9. [The ENIGMA MEG Pipeline: Automated cortically localized spectral analysis of multi-site resting state MEG datasets](/202606/15/biorxiv-10-64898-2026-06-03-729876-v1-the-enigma-meg-pipeline-automated-cortically-localized-spectral-analysis-of-multi-site-resting-state-meg-datasets)  
-   标签：评分：6.0/10、query:fmri-brain-network
-   evidence：多站点MEG分析神经影像流程
-10. [Brainana: an end-to-end preprocessing framework for macaque neuroimaging](/202606/15/biorxiv-10-64898-2026-06-03-729972-v1-brainana-an-end-to-end-preprocessing-framework-for-macaque-neuroimaging)  
-   标签：评分：6.0/10、query:fmri-brain-network
-   evidence：猕猴神经影像预处理框架，包含深度学习模型
-11. [Emotion Representation and Neural Synchrony: Decoding Valence and Arousal with Wearable EEG](/202606/15/biorxiv-10-64898-2026-06-03-730031-v1-emotion-representation-and-neural-synchrony-decoding-valence-and-arousal-with-wearable-eeg)  
+   evidence：使用多模态大语言模型进行神经退行性疾病语音筛查
+10. [Agentic AI-based Framework for Mitigating Premature Diagnostic Handoff and Silent Hallucination in Healthcare Applications](/202606/17/2606.18068v1-agentic-ai-based-framework-for-mitigating-premature-diagnostic-handoff-and-silent-hallucination-in-healthcare-applications)  
    标签：评分：6.0/10、query:eeg-llm-agent
-   evidence：可穿戴EEG情绪解码
-12. [Evaluating agentic AI for biological discovery in autonomous and copilot settings](/202606/15/biorxiv-10-64898-2026-06-04-729919-v1-evaluating-agentic-ai-for-biological-discovery-in-autonomous-and-copilot-settings)  
+   evidence：基于LLM的多智能体医疗框架
+11. [Distinct neural correlates for focusing on similar memory contents originating from current or previous experience](/202606/17/biorxiv-10-64898-2026-06-05-730490-v1-distinct-neural-correlates-for-focusing-on-similar-memory-contents-originating-from-current-or-previous-experience)  
    标签：评分：6.0/10、query:eeg-llm-agent
-   evidence：评估智能体AI用于生物发现
+   evidence：EEG与眼动追踪记忆任务
+12. [Modulation index-based phase-amplitude coupling does not encode temporal polarity](/202606/17/biorxiv-10-64898-2026-06-05-730524-v1-modulation-index-based-phase-amplitude-coupling-does-not-encode-temporal-polarity)  
+   标签：评分：6.0/10、query:eeg-llm-agent
+   evidence：EEG相位-振幅耦合分析
 
 
 <div class="dpr-home-promo-card">
