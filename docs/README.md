@@ -6,77 +6,77 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-06-18
-- 运行时间：2026-06-18 22:09:11 UTC
+- 最新运行日期：2026-06-20
+- 运行时间：2026-06-20 21:44:33 UTC
 - 运行状态：成功
 - 本次总论文数：19
 - 精读区：7
 - 速读区：12
 
 ### 今日简报（AI）
-今日推荐19篇脑科学论文，精读7篇，重点聚焦皮层功能分区与多模态神经影像建模。最值得关注的是《Precision Functional Parcellation》通过静息态与任务态fMRI融合实现高精度皮层分区（9.0分），以及《Learning Sparse Latent Predictive Foundation Model》提出稀疏潜在预测模型处理多模态数据（8.0分）。建议优先精读这两篇高分论文，速读中《Structural MRI Synthesis》的阿尔茨海默病结构MRI合成方法也值得快速浏览。
-- 详情：[/202606/18/README](/202606/18/README)
+今日精读7篇，速读12篇，聚焦脑电视觉解码与ICU爆发抑制检测。最值得关注的是SUP-MCRL模型（9.0分）在脑电视觉解码中引入主体感知统一伪特征，以及EEG基础模型在ICU事件检测中的评估（9.0分）。建议优先精读这两篇高分论文，再浏览多模态神经影像稀疏预测模型与皮层功能分区研究。
+- 详情：[/202606/20/README](/202606/20/README)
 
 ### 精读区论文标签
-1. [Precision Functional Parcellation of the Human Cortex via Rest-Task fMRI Fusion](/202606/18/biorxiv-10-64898-2026-06-11-731643-v2-precision-functional-parcellation-of-the-human-cortex-via-rest-task-fmri-fusion)  
+1. [SUP-MCRL: Subject-aware Unified Pseudo-feature Coded Multimodal Contrastive Representation Learning for EEG Visual Decoding](/202606/20/2606.16615v2-sup-mcrl-subject-aware-unified-pseudo-feature-coded-multimodal-contrastive-representation-learning-for-eeg-visual-decoding)  
+   标签：评分：9.0/10、query:eeg-llm-agent
+   evidence：EEG视觉解码用于脑机接口
+2. [Evaluation of EEG Foundation Models for Event-Based Burst-Suppression Detection in ICU](/202606/20/2606.20074v1-evaluation-of-eeg-foundation-models-for-event-based-burst-suppression-detection-in-icu)  
+   标签：评分：9.0/10、query:eeg-llm-agent
+   evidence：EEG基础模型，爆发抑制检测，ICU
+3. [From topography to connectome: Towards an integrated understanding of the resting brain](/202606/20/biorxiv-10-64898-2026-06-06-730493-v2-from-topography-to-connectome-towards-an-integrated-understanding-of-the-resting-brain)  
    标签：评分：9.0/10、query:fmri-brain-network
-   evidence：fMRI脑分区与功能连接
-2. [Learning Sparse Latent Predictive Foundation Model for Multimodal Neuroimaging](/202606/18/2606.14957v1-learning-sparse-latent-predictive-foundation-model-for-multimodal-neuroimaging)  
+   evidence：深度学习用于静息态fMRI连接组翻译
+4. [Robust probabilistic measurement of structural-functional module consistency in infant brain development](/202606/20/2606.19739v1-robust-probabilistic-measurement-of-structural-functional-module-consistency-in-infant-brain-development)  
    标签：评分：8.0/10、query:fmri-brain-network
-   evidence：多模态MRI神经影像基础模型
-3. [Sensory Restoration via Brain-Computer Interfaces: A Unified 2 x 2 Framework and Convergence Roadmap](/202606/18/2606.15091v1-sensory-restoration-via-brain-computer-interfaces-a-unified-2-x-2-framework-and-convergence-roadmap)  
+   evidence：脑网络结构-功能模块一致性
+5. [Functional Templates in fMRI: Building Accurate and Interpretable Group-Level Decoders](/202606/20/biorxiv-10-64898-2026-05-21-726781-v2-functional-templates-in-fmri-building-accurate-and-interpretable-group-level-decoders)  
+   标签：评分：8.0/10、query:fmri-brain-network
+   evidence：fMRI功能对齐与群体级解码器
+6. [Adaptive Neural Reorganization Enables Real-Time Finger-Level Robotic Control in BCI-Naïve Stroke Survivors](/202606/20/biorxiv-10-64898-2026-06-15-732267-v1-adaptive-neural-reorganization-enables-real-time-finger-level-robotic-control-in-bci-naive-stroke-survivors)  
    标签：评分：8.0/10、query:eeg-llm-agent
-   evidence：脑机接口框架
-4. [A Surface-based Multimodal Framework for Multitask Analysis in Alzheimer's Disease](/202606/18/2606.15692v1-a-surface-based-multimodal-framework-for-multitask-analysis-in-alzheimers-disease)  
-   标签：评分：8.0/10、query:fmri-brain-network
-   evidence：阿尔茨海默病的多模态AI分析框架
-5. [Topological Flow Matching](/202606/18/2606.15897v1-topological-flow-matching)  
-   标签：评分：8.0/10、query:fmri-brain-network
-   evidence：针对fMRI脑图的拓扑流匹配方法
-6. [Artemis: Anatomy-Resolved inTervention for Eliminating Multimodal NeuroImage confounderS](/202606/18/2606.18287v1-artemis-anatomy-resolved-intervention-for-eliminating-multimodal-neuroimage-confounders)  
-   标签：评分：8.0/10、query:fmri-brain-network
-   evidence：多模态神经影像fMRI DTI图神经网络脑网络混杂因素
-7. [SwitchBraidNet: Quantisation-Aware Lightweight Architecture for Hybrid Brain-Computer Interface](/202606/18/2606.18816v1-switchbraidnet-quantisation-aware-lightweight-architecture-for-hybrid-brain-computer-interface)  
+   evidence：基于EEG的脑机接口用于中风康复
+7. [Intracortical BCI Performance is Robust to Changes in Attentional Load During Dual-Tasking](/202606/20/biorxiv-10-64898-2026-06-16-732398-v1-intracortical-bci-performance-is-robust-to-changes-in-attentional-load-during-dual-tasking)  
    标签：评分：8.0/10、query:eeg-llm-agent
-   evidence：混合脑机接口EEG分类
+   evidence：皮层内脑机接口性能与注意力负荷
 
 ### 速读区论文标签
-1. [Structural MRI Synthesis for Alzheimer's Disease via Conditional Diffusion on Anatomical Masks](/202606/18/2606.18354v1-structural-mri-synthesis-for-alzheimers-disease-via-conditional-diffusion-on-anatomical-masks)  
+1. [Learning Sparse Latent Predictive Foundation Model for Multimodal Neuroimaging](/202606/20/2606.14957v1-learning-sparse-latent-predictive-foundation-model-for-multimodal-neuroimaging)  
    标签：评分：8.0/10、query:fmri-brain-network
-   evidence：医疗健康中的人工智能神经影像
-2. [Precision Functional Parcellation of the Human Cortex via Rest-Task fMRI Fusion](/202606/18/biorxiv-10-64898-2026-06-11-731643-v1-precision-functional-parcellation-of-the-human-cortex-via-rest-task-fmri-fusion)  
+   evidence：多模态神经影像基础模型
+2. [Learning Sparse Latent Predictive Foundation Model for Multimodal Neuroimaging](/202606/20/2606.14957v2-learning-sparse-latent-predictive-foundation-model-for-multimodal-neuroimaging)  
    标签：评分：8.0/10、query:fmri-brain-network
-   evidence：通过静息态与任务态fMRI融合实现精确功能分区
-3. [Sensory Restoration via Brain-Computer Interfaces: A Unified 2 x 2 Framework and Convergence Roadmap](/202606/18/2606.15091v2-sensory-restoration-via-brain-computer-interfaces-a-unified-2-x-2-framework-and-convergence-roadmap)  
-   标签：评分：7.0/10、query:eeg-llm-agent
-   evidence：BCI框架用于感觉恢复
-4. [Unified Multimodal Model for Brain MRI Imputation and Understanding](/202606/18/2606.16484v1-unified-multimodal-model-for-brain-mri-imputation-and-understanding)  
+   evidence：神经影像基础模型，多模态MRI，人工智能医疗
+3. [Precision Functional Parcellation of the Human Cortex via Rest-Task fMRI Fusion](/202606/20/biorxiv-10-64898-2026-06-11-731643-v2-precision-functional-parcellation-of-the-human-cortex-via-rest-task-fmri-fusion)  
+   标签：评分：8.0/10、query:fmri-brain-network
+   evidence：fMRI脑分区，人工智能方法
+4. [Structural Connectivity Selectively Constrains Intrinsic BOLD Timescales through Graph-Smooth Neural Activity](/202606/20/biorxiv-10-64898-2026-06-14-732146-v1-structural-connectivity-selectively-constrains-intrinsic-bold-timescales-through-graph-smooth-neural-activity)  
+   标签：评分：8.0/10、query:fmri-brain-network
+   evidence：静息态fMRI，结构连接，图信号处理，BOLD时间尺度
+5. [SMART: A Flexible, Interpretable, and Scalable Spatio-temporal Brain Atlas from High-Resolution Imaging Data](/202606/20/2606.18753v1-smart-a-flexible-interpretable-and-scalable-spatio-temporal-brain-atlas-from-high-resolution-imaging-data)  
    标签：评分：7.0/10、query:fmri-brain-network
-   evidence：神经影像AI医疗、脑MRI、多模态大语言模型
-5. [Learning Cardiac Electrophysiology Digital Twins Through Agentic Discovery of Hybrid Structure](/202606/18/2606.18154v1-learning-cardiac-electrophysiology-digital-twins-through-agentic-discovery-of-hybrid-structure)  
+   evidence：时空脑图谱，高分辨率成像，可解释
+6. [SL-S4Wave: Self-Supervised Learning of Physiological Waveforms with Structured State Space Models](/202606/20/2606.19888v1-sl-s4wave-self-supervised-learning-of-physiological-waveforms-with-structured-state-space-models)  
    标签：评分：7.0/10、query:eeg-llm-agent
-   evidence：LLM智能体用于自动化生物医学信号分析
-6. [Retrieval-Based Brain Decoding by Alignment, not Complexity](/202606/18/2606.19081v1-retrieval-based-brain-decoding-by-alignment-not-complexity)  
+   evidence：自监督学习用于生理波形（包括ECG），与神经信号表示学习相关
+7. [Alzheimer's Disease Diagnosis using a Multimodal Approach with 3D MRI and PET](/202606/20/2606.20037v1-alzheimers-disease-diagnosis-using-a-multimodal-approach-with-3d-mri-and-pet)  
    标签：评分：7.0/10、query:fmri-brain-network
-   evidence：fMRI脑解码基础模型对齐
-7. [Retinotopic coding organizes the interaction between internally and externally oriented brain networks](/202606/18/biorxiv-10-1101-2024-09-25-615084-v5-retinotopic-coding-organizes-the-interaction-between-internally-and-externally-oriented-brain-networks)  
-   标签：评分：7.0/10、query:fmri-brain-network
-   evidence：使用7T静息态fMRI进行脑网络分析
-8. [EEG-based classification models reveal differential neural processing of words and images](/202606/18/biorxiv-10-64898-2026-03-16-712233-v3-eeg-based-classification-models-reveal-differential-neural-processing-of-words-and-images)  
+   evidence：阿尔茨海默病诊断，多模态MRI和PET，神经影像AI
+8. [A multimodal human-computer interaction dataset for neurocognitive user state evaluation](/202606/20/biorxiv-10-1101-2025-09-03-673947-v2-a-multimodal-human-computer-interaction-dataset-for-neurocognitive-user-state-evaluation)  
    标签：评分：7.0/10、query:eeg-llm-agent
-   evidence：基于EEG的分类模型揭示神经处理差异
-9. [Deep Temporal Modeling and Ensemble Fusion for Multimodal Emotion Recognition from Physiological Signals](/202606/18/2606.15026v1-deep-temporal-modeling-and-ensemble-fusion-for-multimodal-emotion-recognition-from-physiological-signals)  
+   evidence：包含EEG的多模态神经认知状态评估数据集
+9. [Learning a Sampling-Free Variational DNN Plugin from Tiny Training Sets to Refine OOD Segmentation With Uncertainty Estimation](/202606/20/2606.15837v1-learning-a-sampling-free-variational-dnn-plugin-from-tiny-training-sets-to-refine-ood-segmentation-with-uncertainty-estimation)  
+   标签：评分：6.0/10、query:fmri-brain-network
+   evidence：用于医学图像分割精化的变分DNN
+10. [BrainFusionNet: a deep learning and XAI model to understand local, global, and sequential features of MRI images for improved brain tumour detection](/202606/20/2606.18675v1-brainfusionnet-a-deep-learning-and-xai-model-to-understand-local-global-and-sequential-features-of-mri-images-for-improved-brain-tumour-detection)  
+   标签：评分：6.0/10、query:fmri-brain-network
+   evidence：深度学习，MRI，脑肿瘤检测，可解释AI
+11. [Robust and replicable effects of ageing on resting state brain electrophysiology measured with MEG.](/202606/20/biorxiv-10-1101-2025-08-01-668093-v3-robust-and-replicable-effects-of-ageing-on-resting-state-brain-electrophysiology-measured-with-meg)  
    标签：评分：6.0/10、query:eeg-llm-agent
-   evidence：深度学习生理信号情绪识别
-10. [A comparative and critical study of EEGNet for fNIRS-driven cognitive load classification](/202606/18/2606.16160v1-a-comparative-and-critical-study-of-eegnet-for-fnirs-driven-cognitive-load-classification)  
-   标签：评分：6.0/10、query:eeg-llm-agent
-   evidence：EEGNet用于fNIRS认知负荷分类
-11. [Synergizing Zero-Shot Cross-Lingual Alzheimer Detection with Language-Invariant Multimodal Bi-Geometric Adversarial Learning](/202606/18/2606.17254v1-synergizing-zero-shot-cross-lingual-alzheimer-detection-with-language-invariant-multimodal-bi-geometric-adversarial-learning)  
-   标签：评分：6.0/10、query:eeg-llm-agent
-   evidence：使用语音和文本的零样本跨语言阿尔茨海默检测
-12. [AI-based Cognitive-linguistic Features for Dementia Assessment in Picture Description](/202606/18/2606.18054v1-ai-based-cognitive-linguistic-features-for-dementia-assessment-in-picture-description)  
-   标签：评分：6.0/10、query:eeg-llm-agent
-   evidence：使用大语言模型进行痴呆症评估
+   evidence：静息态脑电生理学（MEG/EEG）
+12. [Temporal structure of task engagement reorganizes infra-slow BOLD dynamics](/202606/20/biorxiv-10-64898-2026-05-27-727996-v2-temporal-structure-of-task-engagement-reorganizes-infra-slow-bold-dynamics)  
+   标签：评分：6.0/10、query:fmri-brain-network
+   evidence：任务态fMRI，BOLD动力学，频率分析
 
 
 <div class="dpr-home-promo-card">
