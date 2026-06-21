@@ -707,9 +707,22 @@ window.SubscriptionsManager = (function () {
         : '请选择至少一个词条。';
     }
     if (conferenceHintEl) {
-      conferenceHintEl.textContent = selectedProfileCount > 0
-        ? `已选 ${selectedProfileCount} 个词条。`
-        : '先勾选词条，再勾选年份。';
+      const confCount = selectedConferenceYearPairs.size;
+      if (confCount >= 5) {
+        conferenceHintEl.textContent = `最多同时选择 5 个会议年份（已选 ${confCount} 个），请取消部分后再添加。`;
+        conferenceHintEl.style.color = '#c00';
+      } else if (confCount > 0) {
+        const estMin = confCount * 5;
+        const estCost = (confCount * 0.2).toFixed(1);
+        conferenceHintEl.textContent = `已选 ${confCount} 个会议年份，预计耗时约 ${estMin} 分钟，费用约 ¥${estCost}`;
+        conferenceHintEl.style.color = '';
+      } else if (selectedProfileCount > 0) {
+        conferenceHintEl.textContent = '每勾选一个会议约需 5 分钟处理，费用约 ¥0.2';
+        conferenceHintEl.style.color = '';
+      } else {
+        conferenceHintEl.textContent = '先勾选词条，再勾选年份。';
+        conferenceHintEl.style.color = '';
+      }
     }
     if (hasUnsavedChanges && quickRunMsgEl) {
       quickRunMsgEl.textContent = '有未保存修改，请先保存。';
@@ -1635,6 +1648,12 @@ window.SubscriptionsManager = (function () {
         if (selectedConferenceYearPairs.has(key)) {
           selectedConferenceYearPairs.delete(key);
         } else {
+          if (selectedConferenceYearPairs.size >= 5) {
+            // 超过上限，不添加，显示提示
+            renderConferenceChoiceButtons();
+            refreshQuickRunButtons();
+            return;
+          }
           selectedConferenceYearPairs.add(key);
         }
         renderConferenceChoiceButtons();
