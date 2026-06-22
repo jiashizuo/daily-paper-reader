@@ -1,0 +1,299 @@
+Title: BrainG3N: A Dual-Purpose Tokenizer for Controllable 3D Brain MRI Generation
+
+URL Source: https://arxiv.org/pdf/2606.19651v1
+
+Published Time: Fri, 19 Jun 2026 00:21:56 GMT
+
+Number of Pages: 16
+
+Markdown Content:
+# BrainG3N: A Dual-Purpose Tokenizer for Controllable 3D Brain MRI Generation 
+
+Max Van Puyvelde ∗1,2
+
+maxvpuyv@stanford.edu 
+
+H. Ibrahim Gulluk ∗3
+
+gulluk@stanford.edu 
+
+Wim Van Criekinge 2
+
+wim.vancriekinge@ugent.be 
+
+Olivier Gevaert 1
+
+ogevaert@stanford.edu 
+
+> 1
+
+Department of Biomedical Data Science, Stanford University School of Medicine 
+
+> 2
+
+Department of Mathematical Modelling, Statistics & Bioinformatics, Ghent University 
+
+> 3
+
+Department of Electrical Engineering, Stanford University 
+
+## Abstract 
+
+Three-dimensional (3D) brain MRI is central to clinical neurology and neuro-oncology, where generative models could augment under-represented cohorts, simulate disease trajectories, and support privacy-preserving data sharing. La-tent diffusion has been the go-to solution for modeling imaging data, but it places two competing demands on the tokenizer: encoder embeddings must retain the clinical information that downstream tasks act on, and the decoder must recon-struct anatomically faithful volumes. Existing reconstruction-driven tokenizers achieve the second at the expense of the first. To address this, we introduce a fully volumetric masked-autoencoder (MAE) based tokenizer for 3D brain MRI latent diffusion, decoupling encoder and decoder: a frozen 3D MAE encoder produces clinically informative embeddings, while a dedicated CNN decoder reconstructs voxels from a linear projection of those embeddings. We pretrain the encoder on 35,309 volumes from 18 public cohorts spanning four modalities, ten disease cat-egories, and 200+ acquisition sites, and demonstrate its dual utility in two settings. First, on a 23-task linear-probing benchmark, the encoder outperforms or matches SOTA models (i.e., BrainIAC, BrainSegFounder, and MedicalNet) on 21 of 23 tasks. Second, a conditional diffusion transformer (DiT) trained on these clinically informative embeddings supports both conditional generation across six variables and patient-specific longitudinal forecasting. Together these results establish a single 3D brain-MRI embedding space capable of both downstream clinical tasks and controllable generation. 
+
+## 1 Introduction 
+
+In neurology and neuro-oncology, brain MRI informs clinical decisions ranging from tumor di-agnosis and treatment planning to staging and monitoring of neurodegenerative diseases such as Alzheimer’s and Parkinson’s, and supports population-scale research on brain development and ag-ing. Generative models on 3D brain MRI could extend this practice in several directions: augment-ing under-represented patient cohorts, producing patient-specific digital twins [35] that simulate counterfactual disease trajectories, and enabling privacy-preserving cohort sharing across institu-tions where regulatory and logistical barriers currently prevent access to real imaging. Realizing 
+
+> *Equal contribution. Preprint.
+> arXiv:2606.19651v1 [cs.AI] 17 Jun 2026
+
+these applications requires generative models at full 3D resolution, yet much of the field still oper-ates on 2D slices. Because direct voxel-space generation is computationally infeasible at that scale, generative pipelines have broadly converged on latent diffusion [34]: an encoder–decoder tokenizer first compresses volumes into a low-dimensional latent space, and a diffusion model is then trained on those embeddings. Conditional generation in this setting places two distinct demands on the tokenizer. First, the encoder embeddings must carry the clinical information needed for both condi-tional generation and downstream clinical tasks. Second, the decoder must reconstruct anatomically faithful voxel volumes. Existing 3D radiographic latent diffusion pipelines [31, 18, 44, 41, 17] train a single encoder–decoder against a reconstruction objective, which biases the encoder toward voxel fidelity at the expense of clinical content; the resulting latent space is typically evaluated only on voxel-level reconstruction metrics. We propose a dual-purpose self-supervised approach for 3D brain MRI in which a frozen masked-autoencoder (MAE) encoder produces an embedding space that serves two roles: a clinical repre-sentation for downstream tasks, and the feature space of a conditional diffusion transformer (DiT). To use this embedding space within a latent-diffusion pipeline, the encoder is paired with a CNN de-coder via a linear projection of the embeddings (§2). Using an MAE as a tokenizer for downstream diffusion has recent 2D precedent [9]; whether the same approach transfers to 3D radiographic data, where corpora are orders of magnitude smaller, the input dimensionality is higher, the relevant axes are subvisual phenotypes rather than visible object categories, is the question we address here. Our work makes two main contributions. First, the frozen MAE encoder, pretrained on 35,309 brain MRI volumes from 18 cohorts, produces clinically informative embeddings: on a 23-task linear-probing benchmark (§3.2) the frozen encoder outperforms or matches BrainIAC [36], Brain-SegFounder [11], and MedicalNet [10] on 21 of 23 tasks; for example, the encoder reaches AUC 
+
+0.937 on isocitrate dehydrogenase 1 (IDH1) mutation status prediction, a key genomic biomarker for glioma diagnosis and treatment stratification; AUC 0.921 on tumor grade classification; a mean absolute error of 4.43 years on brain age regression; and AUC 0.967 on sex prediction. Second, a conditional diffusion transformer (DiT) [29, 24] trained on the same embeddings supports con-trollable generation across six variables (§3.3) and patient-specific longitudinal forecasting (§3.4); generated embeddings are mapped back to high-fidelity 3D voxel volumes by the CNN decoder. In both cases, generated samples are correctly recovered by classifiers trained on real data: for ex-ample, Pearson r=0 .93 on cross-sectional age conditioning and Pearson r=0 .72 on longitudinal age progression. This transfer test connects the embedding’s encoding of clinical phenotypes to its generative controllability. 
+
+## 2 Method 
+
+Pretraining corpus. Our pretraining corpus comprises 35,309 brain MRI volumes from 17,399 unique subjects across 18 public cohorts and 200+ acquisition sites. Volumes span four modalities (T1, T2, fluid-attenuated inversion recovery [FLAIR], and T1 contrast-enhanced [T1c]) and ten clinical categories covering healthy controls, neurodegenerative disease (Alzheimer’s, Parkinson’s), neurodevelopmental conditions, psychiatric disorders, and brain tumors; subject ages range from 5 to 98 years. A single harmonized preprocessing pipeline registers every volume to the SRI24 atlas [33] via ANTs affine registration [4], performs skull stripping with HD-BET [22], and corrects intensity inhomogeneity with N4 bias-field correction [38], producing 160 ×192 ×160 volumes at 
+
+1 mm isotropic spacing. Cohort-specific entry points handle raw inputs at different preprocessing stages (already-stripped, defaced, native DICOM, etc.) without double-processing. The full dataset card and per-cohort pipelines are in Appendices A and B. 
+
+MAE encoder. The encoder is a 3D masked autoencoder [19] built on a 12-layer vision trans-former [15] with hidden dimension 1152 and 16 3 patches, producing 1200 tokens per volume. Dur-ing pretraining, 70% of patches are randomly masked: the encoder processes only the 360 visible patches, and a separate transformer decoder reconstructs the 840 masked patches from the encoder output under a per-patch mean-squared-error loss. Reconstructing 840 missing patches from 360 visible ones requires modeling long-range anatomical context, which forces the encoder to capture global structural relationships rather than local voxel statistics. This property is what we exploit downstream, both for clinical prediction and as the input space for the diffusion tokenizer. 2(a) Two-phase tokenizer                   
+
+> (b) Conditional flow-matching DiT Figure 1: Architecture. (a) Phase 1 pretrains a 3D MAE encoder on 70% masked-patch reconstruction; Phase 2 freezes the encoder and trains a linear projection P∈R1152 ×32 + 3D CNN decoder under voxel ℓ1.The same frozen feature space z′=zP is consumed by the probe and produced by the DiT. (b) Noised tokens xt
+> pass through a 12-block DiT stack with adaLN-Zero modulation by a conditioning vector c, producing the 32-channel velocity ˆv. Categorical conditions use embedding lookups with a K+1 st null slot for CFG dropout; age uses a sinusoidal +MLP head.
+
+Two-phase tokenizer (Fig. 1(a)). The tokenizer couples the frozen MAE encoder to a 3D CNN decoder through a linear projection. The pretrained encoder is frozen; a linear projection P ∈
+
+R1152 ×d′
+
+compresses each of the 1200 tokens from 1152 to d′=32 channels; and a 3D CNN decoder 
+
+ϕ reconstructs voxels from the projected tokens under an ℓ1 loss: 
+
+z = Enc( x) [frozen] , z′ = zP, ˆx = ϕ(z′). (1) Jointly training encoder and decoder against the same reconstruction objective, as in CNN-VAE tokenizers, drifts the encoder toward local intensity fidelity and degrades its clinical content. The bottleneck d′=32 is a deliberate trade-off: a smaller bottleneck reduces the diffusion model’s input dimensionality, while still preserving most of the encoder’s clinical content (sweep in Table 5). 
+
+Linear probing. We evaluate the clinical content of the frozen encoder embeddings via linear probing, the standard protocol in self-supervised representation learning: a single linear classifier is fit per task on top of the frozen embeddings, with no fine-tuning of the encoder. The input to each probe is the encoder’s 1200-token output mean-pooled to a single d=1152 vector per volume. We use logistic regression for classification tasks and ridge regression for regression tasks, evaluated under 5-fold subject-grouped stratified cross-validation so that no subject appears in both the training and test splits of any fold. The full 23-task panel and per-modality breakdown are in Appendix E. 
+
+Conditional latent diffusion (Fig. 1(b)). A flow-matching diffusion transformer (DiT) [29, 24] is trained on the projected token sequences z′ ∈ R1200 ×32 . The DiT has 12 blocks, hidden dimension 
+
+1152 , and 18 attention heads, and is trained with the flow-matching objective 
+
+xt = (1 −t) x1 + t ε, L = ∥vθ (xt, t, c) − (ε − x1)∥22, (2) where x1 is a real latent, ε ∼ N (0 , I ), and the conditioning vector c is the sum of six condition embeddings routed through adaLN-Zero modulation [29], modulate( h; c) = h (1 + scale( c)) + shift( c). The six conditions are disease (8-way), sex, modality (4-way, never dropped), acquisi-tion site (19-way), age (continuous), and IDH1 mutation status (binary). Classifier-free guidance 3(CFG) [20, 12] is implemented by independently replacing each condition with a null embedding at probability p=0 .1 during training; at sampling time the velocity is extrapolated per condition as v = vuncond + s (vcond − vuncond ) with s=2 .0 (CFG-scale sensitivity in Appendix G). Modality is never dropped because it is always specified at inference, so a null-modality branch would only waste capacity. The longitudinal variant of the DiT (§3.4) reuses the same frozen tokenizer and adaLN-Zero conditioning, replacing the noise-to-data interpolant with a baseline-to-followup latent bridge for patient-specific forecasting at requested time horizons. 
+
+## 3 Experiments 
+
+Section 3.1 validates the architectural choice on a small-scale benchmark; Sections 3.2–3.4 evalu-ate the resulting embeddings in three settings: cross-sectional probing, conditional generation, and longitudinal forecasting. 
+
+3.1 Architectural validation at matched scale 
+
+Before scaling to the full corpus, we validated two architectural choices on a 1100-volume tumor cohort (UCSF-PDGM + UPENN-GBM): the projection bottleneck d′, and the choice of MAE–CNN versus CNN-VAE tokenizer. 
+
+Bottleneck dimension d′. We sweep the projection dimension over d′ ∈ { 32 , 128 , 512 } and train the Phase-2 decoder at each value. Reconstruction quality increases monotonically with d′, with diminishing returns above d′=128 . To assess whether the projection preserves the clinical informa-tion that downstream tasks depend on, we additionally probe the projected features z′ at each d′
+
+with linear classifiers. The IDH1 probing AUC at d′=32 is 0.861 , 0.022 below the AUC obtained by probing the raw 1152-dim encoder embeddings ( 0.883 ) at less than 3% of the total dimensionality (38K vs 1.4M); the corresponding gap on WHO tumor grade is 0.055 . We therefore adopt d′=32 for the remainder of the paper: the smaller bottleneck reduces the diffusion model’s input dimensional-ity and training cost, while the linear projection preserves enough of the encoder’s clinical content in z′ to support downstream conditioning (full sweep in Appendix D, Table 5). 
+
+Tokenizer architecture. We compare the frozen MAE–CNN tokenizer against an AutoencoderKL (AKL) [31], the canonical 3D medical generative tokenizer, trained from scratch on the same cohort at matched compute. At the matched-dimensionality comparison ( d′=512 vs AKL, both 614K total elements), MAE outperforms AKL on linear probing by +0 .064 AUC on IDH1 and +0 .046 AUC on WHO tumor grade. The same pattern obtains at smaller MAE bottlenecks: at our chosen d′=32 
+
+(38K vs AKL’s 614K), MAE outperforms AKL on IDH1 ( +0 .060 AUC) and matches it on tumor grade. MAE is also more compute-efficient at training: the 70% masking ratio means only 360 of 
+
+1200 tokens enter the encoder per step, supporting larger per-GPU batches than full-volume CNN-VAE training at the same memory budget. Based on this small-scale validation, we then pretrained the full MAE–CNN tokenizer on the entire 35,309-volume corpus; this full-scale tokenizer is the one used throughout the rest of the paper, with representative reconstructions shown in Figure 2. 
+
+3.2 Frozen linear probing of clinical variables Head-to-head vs published brain-MRI foundation models. We re-ran frozen-feature lin-ear probes for the three published 3D brain-MRI foundation models with public encoders, BrainIAC [36], BrainSegFounder [11], and MedicalNet [10], on our 35,309-volume corpus using identical splits and probe code; a more recent fourth, BrainDINO [43], has not released encoder weights or pretraining code. On 8 representative clinical and acquisition-related tasks (Table 1), our frozen encoder outperforms all three competitors on 7 of 8 tasks; on the 8th (modality recovery) all encoders are essentially at ceiling. Across the full 23-task panel (Appendix F, 15 classification + 8 regression), we outperform or match competitors on 21 of 23 tasks; the two non-wins, Geri-atric Depression Scale (GDS) and the third part of the Unified Parkinson’s Disease Rating Scale (UPDRS-III), are near-floor regression tasks for every encoder. As a sanity check, our reproduction of BrainIAC’s frozen-feature brain-age MAE on T1 is 7.33 y, close to its published 7.51 y, confirm-ing the implementation follows BrainIAC’s protocol. The most recent brain-MRI foundation model, BrainDINO, is a 2D slice-based DINOv3-style model; the authors report brain-age MAE 5.54 y and 4Figure 2: Voxel reconstructions from the frozen-MAE + CNN-decoder tokenizer at d′=32 . Rows: a healthy young adult and an Alzheimer’s case. Within each view (axial, coronal, 3D rendered), left = ground truth, right = reconstruction. Cortical folding, ventricular geometry, and overall morphology are preserved across age and disease state. Table 1: Head-to-head linear probing on the 35,309-volume corpus. All four encoders evaluated on identical splits with identical probe code; the modality used per task (in parentheses) is fixed across encoders and chosen for clinical relevance. AUC ( ↑) for classification, MAE ( ↓) for regression, mean ± std across 5 subject-grouped folds. Shown: 8 above-floor tasks; full 23-task panel (best modality per encoder) in Appendix F. Abbreviations: CDR (Clinical Dementia Rating), MMSE (Mini-Mental State Examination). Task (modality) Metric BrainIAC BSF MedicalNet Ours IDH1 mutation (T1c) AUC 0.805 ± .042 0.780 ± .042 0.636 ± .042 0.937 ± .020                                                                                            
+
+> Tumor grade (T1) AUC 0.855 ±.029 0.799 ±.036 0.763 ±.051 0.921 ±.019
+> Disease 8-way (all) AUC 0.908 ±.004 0.891 ±.005 0.811 ±.006 0.948 ±.002
+> CDR staging (T1) AUC 0.626 ±.007 0.586 ±.008 0.599 ±.016 0.717 ±.025
+> Sex (T1) AUC 0.787 ±.007 0.793 ±.005 0.613 ±.008 0.967 ±.004
+> Modality 4-way (all) AUC 1.000 ±.000 1.000 ±.000 0.991 ±.001 1.000 ±.000
+> Brain age (T1) MAE (y) 7.33 ±.11 8.90 ±.15 12.54 ±.17 4.43 ±.07
+> MMSE (all) MAE 2.16 ±.03 2.36 ±.06 2.29 ±.06 1.91 ±.03
+
+IDH1 AUC 0.901 at 100% supervision under a lightweight task-head fine-tune, vs 4.43 y and 0.937 
+
+from our frozen linear probes on the corresponding tasks, positioning it below our fully volumetric self-supervised approach. 
+
+3.3 Probe-to-controllability transfer Protocol. For each DiT condition c, we (i) train a probe for c on real volumes, (ii) draw 64 samples from the DiT under each requested class of c and a matching set under null conditioning, (iii) apply the frozen real-data probe to both sets. A controllable condition recovers the requested attribute under COND and falls back to the class prior (or dataset mean) under NULL ; the COND –NULL gap measures the conditional signal the sampler preserves. 
+
+Results. Real-data probes reliably recover the requested clinical attributes from samples generated under classifier-free guidance (Table 2a). Disease HC-vs-AD recovers at 0.99 agreement under  
+
+> COND
+
+and collapses to the class prior under NULL (92% HC vs 91% prior); control extends to the other three disease contrasts (MCI vs AD: Cond 0.90; HC vs MCI: 0.80; HC vs PD: 0.82). Under NULL , HC vs PD and MCI vs AD collapse to the majority class as expected, while HC vs MCI shows a residual MCI bias (0.67 MCI vs 0.30 MCI prior), suggesting the unconditional model preferentially produces disease-leaning samples on this contrast. Sex reaches 0.93 against a 0.72 NULL baseline; modality, which is never dropped during training, is perfectly recovered (cond agreement 1.00 across the four classes). Age tracks the requested sweep at Pearson r=0 .93 , with predicted means 35 .4 / 54 .4 / 76 .0 for requested 30 / 50 / 70 years and null generations centered at the dataset mean of 55 .5 y. IDH1 is the hardest axis (mean cond agreement 0.52 against an 88% wildtype prior; balanced-probe variant 0.56 ), reflecting that classifier-free guidance struggles 5Table 2: DiT generation evaluation under CFG ( s=2 .0). (a) Controllability: real-data probes applied to gener-ated samples. Real : probe AUC on real held-out data (Pearson r for age), the ceiling. Cond : agreement with the requested class. Null : probe output on CFG-null samples. Prior : dataset class frequency. Modality is never dropped during training, hence no null branch. Disease, sex, and age use T1; IDH1 uses T1c (glioblastoma [GBM] subset). (b) 3D-FID per condition and pooled across 14 arms; per-arm decomposition in Appendix H. Disease classes: HC = healthy control, AD = Alzheimer’s disease, MCI = mild cognitive impairment, PD = Parkinson’s disease. (a) Cross-sectional controllability Condition Task Real Cond Null Prior Disease HC vs AD 0.99 0.99 0.92 HC 0.91 HC Disease HC vs MCI 0.90 0.80 0.67 MCI 0.70 HC Disease MCI vs AD 0.76 0.90 0.97 MCI 0.80 MCI Disease HC vs PD 0.96 0.82 0.97 HC 0.87 HC Sex F vs M 0.97 0.93 0.72 F 0.43 F Modality 4-way 1.00 1.00 — 0.25 Age 30 / 50 / 70 y r=0 .98 r=0 .93 ˆa=55 .5 mean 55 .5
+
+IDH1 wt vs mut 0.94 0.52 1.00 wt 0.88 wt (b) 3D-FID ( ↓)Condition vs recons vs real Disease 28.6 136.3 Sex 46.0 116.3 Modality 47.3 116.0 Age 29.8 122.6 IDH1 19.0 132.5 Pooled 34.4 107.3 
+
+Figure 3: Same-noise counterfactual generation under the conditional DiT (CFG s=1 .5). Each row fixes the initial latent noise (seeds 109 and 113); columns sweep one set of conditioning attributes at a time. Leftmost column: 3D rendering of the unconditioned baseline. The remaining seven columns sweep age (HC, 30 vs. 75 y), disease (HC vs. AD at 75 y), modality (T1, T2, FLAIR), and tumor (GBM IDH1-wildtype on T1c). Within a row, identity-preserving anatomy is largely retained while the swapped attribute drives the visible change. 
+
+to steer toward the rare mutant class on the small T1c tumor subset rather than a probe artefact; the null branch collapses fully to wildtype. Figure 3 shows same-noise counterfactual sweeps: holding the noise seed fixed and varying one conditioning attribute at a time produces the expected visible change (ventricular enlargement under AD, modality contrast switching, GBM enhancing tumor mass on T1c) while preserving the overall anatomical layout. 
+
+Generation fidelity. Pooled across all 14 conditional arms, the FID between generated samples and the tokenizer’s reconstructions ( gen-vs-recons ) is 34 .4, and between generated samples and raw real volumes ( gen-vs-real ) is 107 .3 (Table 2a; nreal =2000 vs ngen =1088 ). Both are competitive with prior 3D medical generative work (FIDs 40 –120 [31]). The tokenizer’s own reconstruction floor against the real volumes ( recons-vs-real ) is 77 .4; since gen-vs-recons is tighter than this floor, most of the gen-vs-real gap reflects the tokenizer’s compression of high-frequency scanner-specific detail rather than generator quality. A sweep over the CFG scale s (Appendix G) confirms s=2 .0 sits on a near-optimal plateau, and a nearest-neighbor audit in latent space [8] finds no evidence of training-set memorization: generated latents sit 1.55 × farther from their nearest training latent than training latents do from each other, with zero of 1088 generated samples falling below the 5th -percentile real-to-real neighbor distance (Appendix H). 
+
+3.4 Patient-specific longitudinal forecasting 
+
+Sections 3.2 and 3.3 evaluated the frozen embeddings cross-sectionally and as the input space for conditional generation. We now test whether the same frozen tokenizer supports intra-patient tem-6Figure 4: Real vs model-forecast longitudinal change for held-out ADNI subjects. Each row: baseline; |real diff |; real follow-up at ∆t; |forecast diff |; model forecast at ∆t. All volumes pass through the d′=32 MAE– CNN tokenizer. Diff cells use independent intensity scaling (hot colormap); absolute magnitudes (z-score) printed beneath. Forecast diffs capture the same anatomical loci (ventricle, sulci edges) as real diffs at damped magnitude (slope 0.268 in §3.4). 
+
+poral extrapolation: given a single baseline latent and a requested ∆t, does the model produce a follow-up scan whose predicted brain age, as read by a real-data brain-age probe, increases by ∆t?
+
+Setup. Using the frozen tokenizer of §2 unchanged, we train a longitudinal flow-matching DiT on ∼ 25 k ADNI T1 baseline–followup latent pairs (subject-level split, 2.9k validation pairs). The model is conditioned on diagnosis (healthy control, mild cognitive impairment, or Alzheimer’s dis-ease), sex, baseline age, Clinical Dementia Rating (CDR) score, and the time horizon ∆t in years. The training interpolant couples baseline xb and follow-up xtf with a vanishing-endpoint Brownian envelope [2]: 
+
+xt = (1 −t) xb + t x tf
+
+| {z }
+
+> interpolant
+
++ σpt(1 −t) ε
+
+| {z }
+
+> envelope , σ =0 .5
+
+.
+
+The interpolant alone admits a closed-form shortcut that lets the velocity ignore ∆t; the envelope is zero at both endpoints (so xt hits xb at t=1 and xtf at t=0 in expectation) but non-zero in the interior, breaking the shortcut and forcing the velocity to use ∆t. Sampling is deterministic Euler integration; the noise is training-only. We use CFG s=1 .0 rather than s=2 .0 as in §3.3, since higher guidance scales amplify bridge-sampler artefacts in CSF; s=1 .0 was selected based on visual quality (CFG sweep in Appendix G). 
+
+Evaluation and results. For each of 64 held-out validation baselines (no subject overlap with training), we forecast latents at ∆t ∈ { 0, 1, 2, 5, 10 } y under classifier-free guidance ( s=1 .0, 100-step Euler integration), decode through the frozen tokenizer, and apply a brain-age probe trained on ADNI T1 (mean absolute error of 3.97 years on held-out cross-sectional data). The model recovers approximately 27% of true aging in magnitude (slope 0.268 , Pearson r=0 .716 between predicted and requested ∆t), with the anatomical change correctly localized to ventricles and sulci (Figure 4). The magnitude attenuation is consistent with the stochastic-bridge regularizer interpolating toward the conditional mean. Per-∆t sweep visualizations are in Appendix I. 
+
+Scope. Specialised longitudinal brain-MRI LDMs [32, 40] target volumetric ROI fidelity under task-specific losses and use CNN-VAE tokenizers. In contrast, the longitudinal variant here reuses the same frozen self-supervised embeddings used for cross-sectional probing and conditional gen-eration, showing that this single embedding space also supports intra-patient temporal forecasting without retraining the encoder. 
+
+## 4 Discussion 
+
+Our work makes two main contributions. First, a self-supervised two-phase MAE-CNN tokenizer for 3D brain MRI in which a frozen MAE encoder is decoupled from a dedicated CNN decoder: the encoder produces clinically informative embeddings (outperforming or matching the three published 73D brain-MRI foundation baselines on 21 of 23 linear-probing tasks; the two non-wins, GDS de-pression and UPDRS-III, are near-floor regression for every encoder), and the decoder reconstructs voxels faithfully. Second, a conditional flow-matching DiT trained on those frozen embeddings supports controllable generation: real-data probes applied to DiT samples recover the requested con-dition under classifier-free guidance, with COND –NULL gaps consistent with each probe’s real-data signal. This supports our hypothesis that the MAE serves as a viable tokenizer for downstream diffusion in 3D brain MRI. Both contributions are delivered by a single MAE encoder, MAE-CNN tokenizer, and DiT that span all four structural MRI modalities (T1, T2, FLAIR, T1c) across pretraining, probing, and condi-tional generation, in contrast to alternative approaches that rely on 2D slicewise pretraining or train separate per-modality models. 
+
+Broader impact. The variables recovered by the linear probes (§3.2) drive routine clinical deci-sions in neurology and neuro-oncology that today rely on invasive or costly ancillary procedures: for instance, IDH1 mutation status currently requires tumor biopsy, apolipoprotein E (APOE) geno-typing requires blood draw, and cognitive scores such as CDR, MMSE, and the Montreal Cognitive Assessment (MoCA) require dedicated examiner time. Predicting these directly from MRI could therefore provide an image-only readout, with two operating points: linear probing on frozen em-beddings (no GPU required at inference; sites without dedicated infrastructure can fit and apply task-specific classifiers on cached features) or supervised fine-tuning for higher performance when GPU compute is available. Brain-age regression similarly yields a continuous biomarker (the brain-age gap) that could serve as an indicator of accelerated neurodegeneration risk. The same variables condition the DiT (§3.3), allowing patient-specific longitudinal forecasting (§3.4), counterfactual generation by changing conditioning labels (e.g., “what would this patient look like under alterna-tive disease status”), and clinically grounded synthetic data for augmentation of under-represented patient cohorts and privacy-preserving cohort sharing. 
+
+Limitations. Findings are established on brain MRI; transfer to other 3D modalities (CT, whole-body MRI, ultrasound) is untested. On longitudinal forecasting (§3.4), the bridge sampler recovers the trajectory direction and anatomical loci of true aging but only ∼27% of its magnitude (slope 
+
+0.268 ), consistent with the stochastic-bridge regularizer interpolating toward the conditional mean. The AKL comparison that motivates the two-phase choice is at 1100 volumes (Appendix D); the architectural verdict at 35,309-volume scale rests on the head-to-head against published foundation models rather than a re-run AKL. Pretraining distributions differ across the published baselines, with cohort overlap with our corpus ranging from substantial to none, so a portion of the head-to-head gaps conflates architecture and method with distribution mismatch. Acquisition confounders are detectable on the embeddings (field-strength and scanner-vendor probes exceed 0.94 AUC), so cohort-matched evaluation is required for any downstream application. 
+
+Reproducibility. Code, model weights, and deterministic splits will be released under a research-use license. Approximate total training: 200 H100-hours; probing runs on a 16-core CPU in ≈ 2 hper task. Hyperparameters in Appendix C. 
+
+## References 
+
+[1] C. J. Aine et al. Multimodal neuroimaging in schizophrenia: Description and dissemination. 
+
+Neuroinformatics , 15(4):343–364, 2017. [2] Michael S. Albergo, Mark Goldstein, Nicholas M. Boffi, Rajesh Ranganath, and Eric Vanden-Eijnden. Stochastic interpolants with data-dependent couplings. In ICML , 2024. arXiv:2310.03725. [3] Lindsay M. Alexander et al. An open resource for transdiagnostic research in pediatric mental health and learning disorders. Scientific Data , 2017. [4] Brian B. Avants, Charles L. Epstein, Murray Grossman, and James C. Gee. Symmetric diffeo-morphic image registration with cross-correlation. Medical Image Analysis , 2008. [5] Spyridon Bakas et al. The University of Pennsylvania glioblastoma (UPenn-GBM) cohort. 
+
+Scientific Data , 2022. 8[6] Bharat B. Biswal et al. Toward discovery science of human brain function. PNAS , 2010. [7] Evan Calabrese et al. The UCSF-PDGM: A public radiology-pathology dataset for diffuse glioma. Radiology: Artificial Intelligence , 2022. [8] Nicholas Carlini, Jamie Hayes, Milad Nasr, Matthew Jagielski, Vikash Sehwag, Florian Tramèr, Borja Balle, Daphne Ippolito, and Eric Wallace. Extracting training data from dif-fusion models. In USENIX Security , 2023. [9] Hao Chen, Yujin Han, Fangyi Chen, Xiang Li, Yidong Wang, Jindong Wang, Ze Wang, Zicheng Liu, Difan Zou, and Bhiksha Raj. Masked autoencoders are effective tokenizers for diffusion models. In ICML , 2025. arXiv:2502.03444. [10] Sihong Chen, Kai Ma, and Yefeng Zheng. Med3d: Transfer learning for 3d medical image analysis. arXiv:1904.00625 , 2019. [11] Joseph Cox, Peng Liu, Skylar E. Stolte, Yunchao Yang, Kang Liu, Kyle B. See, Huiwen Ju, and Ruogu Fang. BrainSegFounder: Towards 3D foundation models for neuroimage segmentation. 
+
+Medical Image Analysis , 2024. arXiv:2406.10395. [12] Prafulla Dhariwal and Alex Nichol. Diffusion models beat GANs on image synthesis. In 
+
+NeurIPS , 2021. [13] A. Di Martino et al. The autism brain imaging data exchange. Molecular Psychiatry , 2014. [14] A. Di Martino et al. Enhancing studies of the connectome in autism using the Autism Brain Imaging Data Exchange II. Scientific Data , 2017. [15] Alexey Dosovitskiy et al. An image is worth 16x16 words: Transformers for image recognition at scale. In ICLR , 2021. [16] Randy L. Gollub et al. The MCIC collection: A shared repository of multi-modal, multi-site brain image data from a clinical investigation of schizophrenia. Neuroinformatics , 11(3):367– 388, 2013. [17] Ibrahim Ethem Hamamci, Sezgin Er, Furkan Almas, Ayse Gulnihan Simsek, Sevval Nil Esir-gun, Irem Dogan, Muhammed Furkan Dasdelen, Bastian Wittmann, Enis Simsar, Mehmet Simsek, et al. GenerateCT: Text-conditional generation of 3D chest CT volumes. In ECCV ,2024. arXiv:2305.16037. [18] Ibrahim Ethem Hamamci, Sezgin Er, Suprosanna Shit, Hadrien Reynaud, Dong Yang, Pengfei Guo, Marc Edgar, Daguang Xu, Bernhard Kainz, and Bjoern Menze. Better tokens for bet-ter 3D: Advancing vision-language modeling in 3D medical imaging. In NeurIPS , 2025. arXiv:2510.20639. [19] Kaiming He, Xinlei Chen, Saining Xie, Yanghao Li, Piotr Dollár, and Ross Girshick. Masked autoencoders are scalable vision learners. In CVPR , 2022. [20] Jonathan Ho and Tim Salimans. Classifier-free diffusion guidance. NeurIPS Workshop , 2021. [21] Avram J. Holmes et al. Brain Genomics Superstruct Project initial data release with structural, functional, and behavioral measures. Scientific Data , 2015. [22] Fabian Isensee et al. Automated brain extraction of multisequence MRI using artificial neural networks. Human Brain Mapping , 2019. [23] IXI Project. IXI dataset. https://brain-development.org/ixi-dataset/ . Accessed 2025. [24] Yaron Lipman, Ricky T.Q. Chen, Heli Ben-Hamu, Maximilian Nickel, and Matt Le. Flow matching for generative modeling. In ICLR , 2023. [25] Daniel S. Marcus et al. Open access series of imaging studies (OASIS). Journal of Cognitive Neuroscience , 2007. 9[26] Daniel S. Marcus et al. Open access series of imaging studies (OASIS): Longitudinal MRI data in nondemented and demented older adults. Journal of Cognitive Neuroscience , 2010. [27] Kenneth Marek et al. The parkinson progression marker initiative (PPMI). Progress in Neuro-biology , 2011. [28] Kate Brody Nooner et al. The NKI-Rockland sample: A model for accelerating the pace of discovery science in psychiatry. Frontiers in Neuroscience , 2012. [29] William Peebles and Saining Xie. Scalable diffusion models with transformers. In ICCV , 2023. [30] Ronald C. Petersen et al. Alzheimer’s Disease Neuroimaging Initiative (ADNI): Clinical char-acterization. Neurology , 74(3):201–209, 2010. [31] Walter H. L. Pinaya, Petru-Daniel Tudosiu, Jessica Dafflon, Pedro F. Da Costa, Virginia Fernan-dez, Parashkev Nachev, Sebastien Ourselin, and M. Jorge Cardoso. Brain imaging generation with latent diffusion models. arXiv:2209.07162 , 2022. [32] Lemuel Puglisi, Daniel C. Alexander, and Daniele Ravì. Enhancing spatiotemporal dis-ease progression models via latent diffusion and prior knowledge. In MICCAI , 2024. arXiv:2405.03328. [33] Torsten Rohlfing, Natalie M. Zahr, Edith V. Sullivan, and Adolf Pfefferbaum. The SRI24 multichannel atlas of normal adult human brain structure. Human Brain Mapping , 31(5), 2010. [34] Robin Rombach, Andreas Blattmann, Dominik Lorenz, Patrick Esser, and Björn Ommer. High-resolution image synthesis with latent diffusion models. In CVPR , 2022. [35] Christoph Sadée, Stefano Testa, Thomas Barba, Katherine Hartmann, Maximilian Schuessler, Alexander Thieme, George M. Church, Ifeoma Okoye, Tina Hernandez-Boussard, Leroy Hood, Ilya Shmulevich, Ellen Kuhl, and Olivier Gevaert. Medical digital twins: enabling precision medicine and medical artificial intelligence. The Lancet Digital Health , 7(7):e100864, 2025. doi: 10.1016/j.landig.2025.02.004. [36] Divyanshu Tak, Biniam A. Garomsa, Anna Zapaishchykova, Tafadzwa L. Chaunzwa, Juan Car-los Climent Pardo, Zezhong Ye, John Zielke, Yashwanth Ravipati, Suraj Pai, Sri Vajapeyam, et al. A generalizable foundation model for analysis of human brain MRI. Nature Neuroscience ,29:945–956, 2026. [37] The ADHD-200 Consortium. The ADHD-200 consortium: A model to advance the transla-tional potential of neuroimaging in clinical neuroscience. Frontiers in Systems Neuroscience ,2012. [38] Nicholas J. Tustison et al. N4ITK: Improved N3 bias correction. IEEE TMI , 2010. [39] David C. Van Essen et al. The WU-Minn human connectome project: An overview. NeuroIm-age , 2013. [40] Cheng Wan, Bahram Jafrasteh, Ehsan Adeli, Miaomiao Zhang, and Qingyu Zhao. Anatomi-cally guided latent diffusion for brain MRI progression modeling. arXiv:2601.14584 , 2026. [41] Haoshen Wang, Zhentao Liu, Kaicong Sun, Xiaodong Wang, Dinggang Shen, and Zhiming Cui. 3D MedDiffusion: A 3D medical latent diffusion model for controllable and high-quality medical image generation. arXiv:2412.13059 , 2024. [42] Lei Wang et al. SchizConnect: Mediating neuroimaging databases on schizophrenia and re-lated disorders for large-scale integration. NeuroImage , 124:1155–1167, 2016. [43] Yizhou Wu, Shansong Wang, Yuheng Li, Mojtaba Safari, Mingzhe Hu, Chih-Wei Chang, Harini Veeraraghavan, and Xiaofeng Yang. BrainDINO: A brain MRI foundation model for generalizable clinical representation learning. arXiv preprint arXiv:2604.27277 , 2026. [44] Yongrui Yu, Yannian Gu, Shaoting Zhang, and Xiaofan Zhang. MedDiff-FM: A diffusion-based foundation model for versatile medical image applications. arXiv:2410.15432 , 2024. [45] Xi-Nian Zuo et al. An open science resource for establishing reliability and reproducibility in functional connectomics. Scientific Data , 2014. 10 A Dataset card 
+
+Aggregation. 35,309 preprocessed brain MRI volumes from 17,399 unique subjects across 18 public cohorts and 200+ acquisition sites worldwide. Four imaging modalities (T1, T2, FLAIR, T1c). Ages 5–98. 6,576 subjects have longitudinal (multi-visit) scans. 
+
+Table 3: Per-cohort composition. Dominant diagnoses listed; full per-subject labels in volumes.csv .Diagnosis abbreviations: HC (healthy control), AD (Alzheimer’s disease), MCI (mild cognitive impair-ment), PD (Parkinson’s disease), GBM (glioblastoma), ASD (autism spectrum disorder), ADHD (attention-deficit/hyperactivity disorder), SCZ (schizophrenia).                                                                                 
+
+> Cohort Volumes Subjects Modalities Dominant diagnoses ADNI [30] 10,910 2,592 T1 HC, MCI, AD PPMI [27] 3,908 1,484 T1, T2, FLAIR HC, PD NKI-RS [28] 2,455 1,326 T1 HC UPENN-GBM [5] 2,444 611 T1/T2/FLAIR/T1c GBM HCP-YA [39] 2,226 1,113 T1, T2 HC HBN [3] 2,135 2,135 T1 Paediatric UCSF-PDGM [7] 1,980 495 T1/T2/FLAIR/T1c GBM, Glioma BGSP [21] 1,636 1,568 T1 HC ABIDE-II [14] 1,430 1,082 T1 HC, ASD FCON1000 [6] 1,197 1,197 T1 HC IXI [23] 1,159 582 T1, T2 HC ABIDE-I [13] 984 947 T1 HC, ASD SCHIZO [1, 16, 42] 670 335 T1, T2 HC, SCZ ADHD-200 [37] 598 598 T1 HC, ADHD CoRR [45] 546 546 T1 HC OASIS-1 [25] 436 416 T1 HC, MCI, AD OASIS-2 [26] 373 150 T1 HC, MCI, AD NKI-RS 2 [28] 222 222 T1 HC Total 35,309 17,399 4 modalities 10 classes
+
+Disease coverage. HC 15,274, MCI 5,808, GBM 4,028, PD 3,381, paediatric-mixed 2,130, AD 1,458, ASD 1,061, Glioma (non-GBM) 396, SCZ 328, ADHD 247. Healthy subjects dominate (43% of the corpus) by design: the probing benchmark requires a large HC pool to separate clinical signal from healthy-brain variability, and the generative model benefits from a well-represented null distribution. 
+
+Clinical metadata. Coverage of key fields: age-at-scan 90%, sex 90%, dx 96%, CDR 34% (99% within AD/MCI), MMSE 41% (99% within AD/MCI), MoCA 18%, APOE 41%, tumor grade 8% (100% within tumor cohorts), IDH1 7% (91% within tumor cohorts), MGMT 6% (69% within tumor cohorts), site 78%. 
+
+## B Preprocessing pipeline 
+
+All volumes pass through a single harmonized pipeline before entering the model. Raw NIfTI/DICOM inputs first undergo N4 bias-field correction [38] to remove low-frequency intensity inhomogeneity from RF coil sensitivity profiles. HD-BET [22] then performs skull stripping, remov-ing skull, meninges, and extracranial tissue. The resulting skull-stripped brain is affine-registered to the SRI24 atlas [33, 4] at 240 ×240 ×155 voxels, 1 mm isotropic, LPS orientation. For multi-modality studies, T1 is registered as the “center” modality and T2/FLAIR/T1c are co-registered through T1’s transform (avoiding independent re-registration that would create cross-modal align-ment drift). Negative voxels from registration interpolation are clipped to zero. Intensity normal-ization is not applied at preprocessing time; per-volume z-scoring is performed in the training dat-aloader. For modeling, volumes are center-cropped/padded to 160 ×192 ×160 .11 C Hyperparameters 
+
+Table 4: Training hyperparameters for each stage. 
+
+Component Hyperparameter Value MAE encoder (Phase 1) Architecture ViT, 12 layers, hidden 1152 , MLP 4608 , 16 heads Decoder ViT, 8 layers, hidden 1152 , MLP 4608 , 16 heads Patch size 16 3; 1200 tokens / volume Masking ratio 0.70 Batch / GPUs 16 / 4 ×H100 Optimizer AdamW, lr 1×10 −4, cosine Epochs 100 Final train / val loss 0.117 / 0.121 patch MSE Phase 2 tokenizer (frozen enc. +
+
+proj. + CNN dec.) Projection linear P ∈R1152 ×32 
+
+CNN decoder ResBlocks + attn, 4×↑ 2, 43.7M params Loss voxel ℓ1
+
+Batch / GPUs 12 / 4 ×H100, bf16 Optimizer AdamW, lr 1×10 −4
+
+Epochs 80, early-stop patience 40 Conditional DiT (§3.3) Architecture DiT-L: 12 blocks, hidden 1152 , 18 heads, MLP 4×
+
+Conditions 6 (disease, sex, modality [never-drop], site, age, IDH1) CFG dropout per-condition p = 0 .1
+
+Batch / GPUs 28 / 4 ×H100, bf16 Optimizer AdamW, lr 5×10 −5, wd 0.01 , clip 0.5
+
+EMA decay 0.9999 
+
+Sampling Euler ODE, 50 steps, CFG s=2 .0
+
+Longitudinal DiT (§3.4) Architecture shares Conditional-DiT backbone (12 blocks, hidden 1152 , 18 
+
+heads) Training data ∼ 25 k ADNI T1 baseline–followup latent pairs (subject-level split) Conditions 5 (disease, sex, baseline age, CDR, ∆t in years) Interpolant vanishing-endpoint Brownian bridge, σ=0 .5 [2] CFG dropout per-condition p = 0 .1 (∆t and disease never-drop) Batch / GPUs 28 / 1×H100, bf16 Optimizer AdamW, lr 5×10 −5, wd 0.01 , clip 0.5, EMA 0.9999 
+
+Sampling deterministic Euler ODE, 100 steps, CFG s=1 .0, EMA epoch-75 Probing Features frozen encoder, mean-pool over 1200 tokens, d=1152 
+
+Classifier logistic regression ( max_iter=1000 )Regressor ridge ( α = 1 .0)CV 5-fold stratified group k-fold (subject-grouped) Seed 2025 
+
+Approximate total training cost: ≈ 200 H100-hours (100 epochs MAE pretraining + 80 epochs Phase 2 + ≈ 1100 DiT epochs). Probing runs on a 16-core CPU in ≈ 2 h per task. 
+
+## D AKL baseline training details 
+
+The AutoencoderKL (AKL) baseline reported in Table 5 is the canonical CNN-VAE tokenizer ar-chitecture from the 3D medical generative literature [31]. We train AKL from scratch on the same 1100-volume tumor cohort (UCSF-PDGM + UPENN-GBM) as the MAE+CNN tokenizer, with reconstruction + KL loss; the resulting latent has 614K total elements, matching the MAE+CNN 
+
+d′=512 configuration. Held-out reconstruction metrics are reported on the 20% test split; clinical probing uses 5-fold subject-grouped cross-validation with logistic regression. 
+
+Table 5: Architectural validation on the 1100-volume tumor cohort: MAE+CNN at projection bottlenecks d′
+
+vs an AutoencoderKL (AKL) baseline (matched compute). Reconstruction on held-out volumes; probing AUC under 5-fold logistic regression. Bold: best probing per column. Dims MSE ↓ PSNR ↑ SSIM ↑ IDH1 AUC ↑ Grade AUC ↑
+
+AKL ( d=8 ) 614K 0.093 33.62 0.868 0.801 0.793 MAE ( d′=32 , chosen) 38K 0.119 32.54 0.859 0.861 0.791 MAE ( d′=128 ) 154K 0.075 34.60 0.912 0.877 0.827 MAE ( d′=512 ) 614K 0.066 35.16 0.921 0.865 0.839 MAE ( d′=1152 , no proj.) 1.4M 0.057 35.79 0.932 0.883 0.846 
+
+12 Reconstruction-vs-probing trade-off. On voxel reconstruction, AKL is competitive with MAE+CNN at d′=32 (PSNR 33.62 vs 32.54), but MAE exceeds AKL at d′≥128 (Table 5). On clinical probing, MAE outperforms AKL on IDH1 at every bottleneck and on WHO tumor grade at every bottleneck above d′=32 , where the two are essentially tied. The MAE-as-tokenizer advantage is driven by what the encoder embedding captures rather than by raw voxel detail preservation. 
+
+## E Full 23-task probing breakdown (per modality) 
+
+Table 6: Frozen linear-probe performance per task and modality split, 35,309-volume corpus, 5-fold stratified group k-fold grouped by subject. AUC for classification, R2 for regression. Dashes: too few samples in that modality subset. Bold = best modality per task. Abbreviations: APOE (apolipoprotein E), IDH1 (isocitrate dehydrogenase 1), MGMT (O 6-methylguanine-DNA methyltransferase promoter methylation), CDR (Clinical Dementia Rating), MMSE (Mini-Mental State Examination), MoCA (Montreal Cognitive Assessment), GDS (Geriatric Depression Scale), UPDRS-III (Unified Parkinson’s Disease Rating Scale, motor), SCOPA-AUT (Scale for Outcomes in PD-Autonomic). 
+
+Task all T1 T1c T2 FLAIR patient-pooled Disease (8-way, AUC) 0.948 0.919 0.959 0.997 0.967 0.972 Sex (AUC) 0.961 0.967 0.924 0.946 0.957 0.944 Modality (4-way, AUC) 1.000 — — — — 1.000 Site (19-way, AUC) 0.998 0.996 1.000 1.000 1.000 0.999 Field strength (binary, AUC) 0.986 0.986 — — — 0.980 Handedness (binary, AUC) 0.595 0.596 — 0.500 0.529 0.640 
+
+Ethnicity (binary, AUC) 0.652 0.678 — 0.860 0.664 0.715 APOE e4 carrier (binary, AUC) 0.637 0.639 — 0.395 0.484 0.655 
+
+APOE genotype (3-way, AUC) 0.583 0.580 — 0.480 0.491 0.600 
+
+Race (binary, AUC) 0.904 0.906 — 0.837 0.756 0.913 
+
+Scanner vendor (binary, AUC) 0.993 0.993 — — — 0.983 IDH1 mutation (AUC) 0.916 0.905 0.937 0.905 0.931 0.928 MGMT methylation (AUC) 0.641 0.622 0.647 0.656 0.643 0.653 Tumor grade (3-way, AUC) 0.937 0.921 0.959 0.936 0.949 0.951 CDR staging (5-way, AUC) 0.717 0.717 — — — 0.761 
+
+Brain age ( R2) 0.942 0.954 0.692 0.891 0.699 0.952 MMSE ( R2) 0.427 0.416 — −0.074 — 0.374 CDR continuous ( R2) 0.316 0.316 — — — 0.300 MoCA ( R2) 0.234 0.218 — −0.217 −0.224 0.285 
+
+Education years ( R2) 0.118 0.130 — −0.303 −0.232 0.455 
+
+GDS depression ( R2) −0.103 −0.098 — −0.402 −0.269 −0.038 
+
+UPDRS-III ( R2) −0.166 −0.153 — −0.275 −0.075 −0.017 
+
+SCOPA autonomic ( R2) −0.022 −0.012 — −0.392 −0.119 0.177 
+
+## F Head-to-head competitor probing — full 23-task breakdown 
+
+Complement to Table 1: all 23 probed tasks, four frozen encoders on identical splits and probe code (35,309-volume corpus, 5-fold stratified subject-grouped CV). Each bar shows the best-performing modality slice for that encoder on that task, so each encoder is reported at its strongest configuration. Table 1 fixes the modality slice across encoders on 8 representative tasks for a directly comparable head-to-head. 13 Figure 5: Frozen-feature linear probing across all 23 tasks, best modality per encoder. Left: 15 classification tasks, AUC ( ↑). Right: 8 regression tasks, R2 (↑). Ours outperforms or matches every competitor on 21 of 23 tasks; the two non-wins (GDS depression, UPDRS-III) are near-floor regression for every encoder. 
+
+## G CFG scale sensitivity 
+
+We sweep CFG scale s ∈ { 1.5, 2.0, 3.0} at n=32 samples per arm (Table 7). CFG s=1 .5 and 
+
+s=2 .0 are within noise on every controllable condition; at s=3 .0 the continuous age axis degrades (Pearson r drops 0.94 → 0.82 ) as strong guidance over-extrapolates away from the conditional manifold. IDH1 stays near chance throughout the sweep (mean agreement 0.51 –0.52 ), reflecting CFG’s difficulty steering toward the rare mutant class on the small T1c tumor subset rather than a CFG-scale effect. We use s=2 .0 throughout the paper as a point on the near-optimal plateau.                          
+
+> Table 7: Probe recovery of conditional attributes under different CFG scales. Columns: probe agreement with requested class (disease HC-vs-AD, sex F-vs-M, IDH1 wt-vs-mut) and Pearson rbetween requested and predicted age on the 30 / 50 / 70 sweep, with the per-requested-age predicted means. CFG sDisease Sex Age rAge pred (30 / 50 / 70) y IDH1 1.5 1.00 0.92 0.95 30.9 / 49.4 / 72.4 0.52
+> 2.0 0.98 0.92 0.94 35.4 / 54.8 / 75.7 0.52 3.0 1.00 0.97 0.82 47.9 / 58.3 / 78.5 0.51
+
+## H Generation fidelity — full decomposition 
+
+Protocol. 3D-FID is computed via Inception-V3 on 2D slices. For each volume we extract 5
+
+central slices per anatomical view ( ×3 views) = 15 slices/volume. Real reference sets are drawn from the 35,309-volume corpus under the stated filter; generated samples are drawn from the condi-tional DiT under CFG s=2 .0, 50 -step Euler ODE. For each controllability arm we report three FIDs: 
+
+gen-vs-real (generated vs real volumes), gen-vs-recons (generated vs the same real volumes passed through the tokenizer and reconstructed), and recons-vs-real (reconstructions vs real, i.e. the tokenizer floor). 14 Table 8: FID decomposition across controllability arms. gen-vs-recons measures how well the generator matches the tokenizer’s conditional latent distribution; recons-vs-real is the tokenizer floor. Lower is better. Arm gen-vs-real gen-vs-recons recons-vs-real Disease HC (T1) 137.0 31.8 112.6 Disease AD (T1) 135.6 25.5 124.7 Sex F (T1) 114.8 37.4 106.6 Sex M (T1) 117.7 54.6 93.4 Modality T1 118.7 53.3 94.0 Modality T2 100.6 64.6 79.8 Modality FLAIR 111.7 55.6 89.2 Modality T1c 133.1 15.8 121.0 Age ≈30 (T1) 123.8 27.7 118.3 Age ≈50 (T1) 121.5 32.6 109.2 Age ≈70 (T1) 122.5 29.1 111.2 IDH1 wildtype (T1c, GBM) 133.8 15.8 121.3 IDH1 mutant (T1c, GBM) 131.2 22.2 123.2 T1 pooled 118.6 53.4 94.0 
+
+Pooled across all arms 107.3 34.4 77.4 
+
+Memorization audit. Nearest-neighbor L 2 distances computed in the 1200 ×32 token latent (38 ,400 -dim flattened), real pool n=33 ,639 , synthetic n=1088 . Real-to-real NN: mean 37 .2, me-dian 33 .4, 5th percentile 14 .4, min 2.95 , max 116 .3. Synthetic-to-real NN: mean 57 .7, median 60 .4,min 23 .6, max 75 .0. Ratio of means = 1 .55 ; zero synthetic samples fall below the 5th -percentile real-to-real threshold. Verdict: no memorization. 
+
+Figure 6: Nearest-neighbor L 2 distributions in the 38 ,400 -dim latent space. Real-to-real (slate) versus generated-to-real (coral). The synthetic distribution sits entirely to the right of the real distribution’s lower tail; zero of 1088 generated samples falls below the 5th -percentile real-to-real threshold (dashed line, 14 .4). 
+
+## I Longitudinal sweep visualization 
+
+Complement to §3.4: per-∆t self-consistency of the bridge sampler. The same two held-out ADNI cases shown in Figure 4 are bridge-sampled at requested ∆t ∈ { 1, 2, 5} y, and each forecast is compared to the ∆t=0 sample to isolate ∆t-driven structural change (subtracting the round-trip sampler noise floor). Figure 7 shows that the difference maps grow monotonically with requested 
+
+∆t and concentrate along the same cortex and ventricle loci that the real-vs-forecast comparison in Figure 4 highlights. 15 Figure 7: Longitudinal forecasting at fixed baseline. Two held-out ADNI cases (HC 75-yr-old male, AD 77-yr-old male) bridge-sampled at requested ∆t ∈ { 1, 2, 5} y. Each pair: forecasted axial slice (left) and the absolute voxel difference | sample (∆ t)−sample (0) | (right, hot colormap, γ=1 .5); subtracting the round-trip noise floor isolates ∆t-driven structural change. Difference maps grow with requested ∆t and concentrate along cortex and ventricles, the expected loci of age-related change. T1. 
+
+16
