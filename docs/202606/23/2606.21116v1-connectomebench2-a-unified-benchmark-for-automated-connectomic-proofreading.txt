@@ -1,0 +1,484 @@
+Title: ConnectomeBench2: A Unified Benchmark for Automated Connectomic Proofreading
+
+URL Source: https://arxiv.org/pdf/2606.21116v1
+
+Published Time: Tue, 23 Jun 2026 00:38:40 GMT
+
+Number of Pages: 26
+
+Markdown Content:
+# ConnectomeBench2: A Unified Benchmark for Automated Connectomic Proofreading 
+
+Jeff Brown ∗
+
+MIT 
+
+jffbrwn@mit.edu 
+
+Tim Farkas ∗
+
+MIT 
+
+Gleb Razgar 
+
+The Open University 
+
+Edward S. Boyden 
+
+Mindspan Institute Yang Tan Collective McGovern Institute MIT Departments of Brain and Cognitive Sciences and Biological Engineering 
+
+edboyden@mit.edu 
+
+# Abstract 
+
+Proofreading—correcting segmentation errors in 3D brain reconstructions—is the rate-limiting step in synapse-resolution connectomics. We release Connec-tomeBench2, a unified multi-species dataset of over 716,485 expert-labeled proof-reading decisions with >4,500,000 associated images spanning four major open connectomes (mouse, human, zebrafish, fly), spanning both split and merge er-ror correction. Trained on this dataset, a single Vision Transformer with shared encoders for mesh geometry and electron microscopy reaches human-level accu-racy across species for split error correction and merge error identification, with performance scaling with data size and modality. Beyond accuracy, we show that the model is well-calibrated within distribution, that measures of distribution distance predict where calibration and accuracy will degrade on unseen data, and that connectomics-specific pretraining and active learning-based sample selection show potential to substantially reduce the labeling effort needed to extend to new species and brain regions. The benchmark provides the infrastructure to train and evaluate increasingly capable vision models for connectomic proofreading. 
+
+Data and code availability. The ConnectomeBench2 dataset is released on Hugging Face at https://huggingface.co/datasets/jeffbbrown2/ ConnectomeBench2 . The accompanying codebase is available on GitHub at 
+
+https://github.com/timfarkas/ConnectomeBench2 .
+
+# 1 Introduction 
+
+Connectomics aims to map the structure of nervous systems at the level of individual neurons and their connections [38, 41, 10]. To produce these maps, brain tissue is imaged at high resolution using electron or expansion microscopy [40]. 3D segmentation algorithms partition the imaging volumes into biological structures such as neurons, glia, and blood vessels [16, 35]. State-of-the-art segmentation algorithms have improved substantially over the years, but they still introduce errors that must be manually corrected afterward, a process known as “proofreading.” There are two types of errors corrected during proofreading: split errors, when a single neuron’s segment is falsely split into multiple pieces; and merge errors, where the segments of multiple neurons are fused together. The 
+
+> ∗indicates equal contribution Preprint.
+> arXiv:2606.21116v1 [cs.CV] 19 Jun 2026
+
+goal of proofreading is to remove these errors, trace out complete neurons, and annotate connections between neurons (e.g., synapses). Given that it is highly time-intensive [9, 10], proofreading remains the primary bottleneck in generating synapse-resolution connectivity maps of whole brains. Many automated proofreading approaches have been proposed to accelerate this process [6, 15, 12, 3, 42, 29, 20, 22, 32, 31, 25, 17, 23, 36, 28, 39]. We seek to extend on this prior work by leveraging key lessons of modern machine learning (ML): Namely that, (i) simple methods that scale often yield strong performance; (ii) multi-task and joint training across related distributions often outperform siloed per-task or per-distribution models; and (iii) pretrained representations transfer efficiently to new data. Furthermore, on the evaluation side, deployment-ready systems are evaluated not just on accuracy but on calibration of their uncertainty, on detection of out-of-distribution (OOD) inputs, and on sample efficiency when adapting to new distributions. Our work thus makes three contributions: 1. A labeled multi-task, multi-species dataset of >4,500,000 proofreading samples. We establish a unified visual formulation of proofreading drawing on expert proofreader labels extracted from the four major open-source connectomics projects in mouse, human, zebrafish, and fly. 2. Human-level accuracy in split error correction and false merge identification in unified vision models trained and evaluated on the dataset. Performance scales with data size and diversity. 3. Strong calibration and comprehensive evaluation of generalization. We show that models are well-calibrated within their training distribution, and that measures of distribution shift can be used to predict reduction of performance and calibration. We demonstrate that strategic sample selection improves generalization to unseen data. Together, these results establish that bringing modern training and evaluation practices to proofreading yields concrete deployment-relevant gains, and that the benchmark provides the infrastructure for the field to continue extending them. 
+
+Figure 1: Connectomic proofreading, and leveraging expert proofreading labels for machine learning. A: Scanning and segmentation of brain tissue (Cartoon). B: Exemplary traced neuron meshes of each of the four connectomes included. C: Examples of Split Error and Merge Error. D: Manual Proof-reading Community Effort. E: Structured extraction of manual edits for connectomic proofreading model training and evals. 22 Related Work 
+
+Automated Proofreading methods. A range of automated proofreading systems have been devel-oped, varying along several axes. Most use machine learning, with 3D CNNs being the most common architectural choice [46, 29, 20, 22, 14], alongside 2D CNN approaches operating on projections or context regions [12, 32], or point-cloud methods [3, 42]. Other methods avoid machine learning entirely, applying hand-crafted rules over geometric or graph representations [6, 17, 23, 36, 28]. These methods also differ in which errors they target. Some address only merge errors [6, 29, 20, 32, 23], others only splits [31, 22, 3, 17, 7, 14], and a smaller set handle both [46, 12, 25, 42, 15, 36, 28], though typically as separate sub-models. Inputs vary similarly: some methods operate purely on segmentation derivatives such as meshes or skeletons [6, 15, 17, 3, 42], others on raw imaging volumes [31], and a third class fuses both [46, 12, 20, 22, 7, 14]. 
+
+Species coverage. Most prior systems are evaluated on a narrow species range. Several focus on Drosophila [14, 7, 42, 28], others on mouse cortex [15], and a few extend to multiple species: NEURD [6] and RoboEM [31] cover mouse and human cortex, and Berman et al. [3] demonstrate the missing-section problem across fly, mouse, and human while training only on fly data. Svara et al. [39] reconstruct the larval zebrafish brain. Cross-species transfer has been studied for segmentation [30], but to our knowledge no prior proofreading system has been trained or evaluated across the full breadth of species available in modern connectomics. 
+
+Closest comparisons. Two recent efforts most closely relate to ours. Autoproof [14] scales training data for proofreading models, demonstrating that careful data curation enables strong performance, but is restricted to Drosophila and to merge-error decisions on focused fragment pairs. ConnectomeBench [4] introduces an evaluation benchmark for proofreading systems across two species, sharing our motivation that the field needs standardized evaluation. However, its size (hundreds of samples) is too small to support model training, and its merge-error evaluation compares predictions against fully proofread neuron meshes rather than local corrections, which can produce ambiguous ground truth. Our work extends both: a dataset large enough to both train and evaluate on, that spans four species, supports both error types under consistent task definitions, and is curated to ensure evaluation reflects the local correction being made. 
+
+# 3 Data 
+
+3.1 Data Access and Generation 
+
+One of the core objectives of this work was the comprehensive extraction and organization of data from major public connectomics proofreading efforts (FlyWire [10, 9], MICrONS [41], Fish1 [27], H01 [34]). The MICrONS dataset (microns-explorer.org) and the H01 dataset (h01-release.storage.googleapis.com) are released under the Creative Commons Attribution 4.0 International license (CC BY 4.0). The FlyWire dataset (flywire.ai) and the Fish1 dataset (fish1-release.storage.googleapis.com) are released under the Creative Commons Attribution-NonCommercial 4.0 International license (CC BY-NC 4.0). We acknowledge their efforts and release our dataset with a license that respects the licenses of these four datasets. 
+
+3.1.1 Raw Connectomics Source Data 
+
+Connectomics data was downloaded from host servers through CloudVolume [37]. We used CAVE-Client [8] to fetch the proofreading segmentation graph. This graph consists of two abstractions: 1. the supervoxel, a set of imaging voxels belonging to the same small local segment, and 2. the root, a set of supervoxels grouped at a specific timestamp that represents a unique, putative neuron segment. Roots are nodes in a directed proofreading edit lineage graph: A merge edit (that corrects a split error or false split) creates a new root subsuming two or more previous ones. A split edit 
+
+(that corrects a merge error or false merge) creates two or more new roots out of one previous root. For mouse and fly, we collect proofreading edits from proofread roots fetched from these species’ respective proofreading status tables ( proofreading_status_and_strategy for mouse, 
+
+proofread_neurons for fly). Human and zebrafish do not maintain such tables, so for these species we sample edits from all roots that received proofreading edits. 33.1.2 Generating Positive Examples Operation Table Starting from each species’ final proofread roots, we traverse the proofreading graph up to the first ancestor roots, and add any unique edits to a structured table of proofreading operations (see Appendix A.1 for details). For each edit, we store its operation ID (primary key in CaveClient), edit type (merge or split), 3D coordinates (average of the sink and source points the human proofreader placed to specify the operation), and the involved root ids (before and after). This single 3D coordinate is also what determines the edit’s assignment to a spatial cube during dataset splitting (see below). To get high quality proofreading actions, only operations that were not later reversed are included. Additionally, we excluded segments too small for meaningful proofreading decisions via morphology; if the proofreading actions corrected a split error (combined two segments), we kept both segments when they met species-specific size thresholds hand-tuned to exclude small dust. 
+
+3.1.3 Generating Negative Examples 
+
+We use three strategies to generate labeled samples of plausible-but-false samples for classification tasks (see Section 3.2.1 below) 
+
+Negative Split Error Corrections. We use two kinds of candidates that are plausible but incorrect: • Synapses between two proofread neurons. These are controls where the model is asked whether the two synapsing segments should be merged; the correct answer is no, since by construction they belong to different neurons. Only fly and mouse synapses were available from CAVEClient (see Appendix A.2) [5, 13, 43]. From here on, we call these synapse controls. Furthermore, these are used for an auxiliary synapse classification task. • Adjacent segments To generate alternative candidates, we sample adjacent segments within a 200nm bounding box of the 3D coordinate where the edit occurred, excluding the true merge candidate and dust. These are included because split error correction requires distinguishing the correct continuation of a false split from adjacent bad continuations. 
+
+Negative Merge Errors A plausible but bad candidate for a false merge correction is a site that is known to not contain false merges (i.e., that is error-free), yet cannot be trivially distinguished from false merge sites. To achieve this, we sample junctions of proofread roots’ skeletons (i.e., nodes of degree >2), as false merges commonly manifest as spurious junctions (for more details, see Appendix A.3). From here on, we call these junction controls. 
+
+3.1.4 Data Splitting 
+
+The proofread volume was divided into ((80 μm) 3) cubes (mouse: 1,960, fly: 264, human: 5,616, zebrafish: 784), randomly assigned to one of the train, validation, and test splits (75/12.5/12.5). Edit operations and synapse and junction controls are assigned to the split of the cube that their associated 3D coordinates fall in. In other words, splitting was done spatially rather than on a neuron identity or edit level. This is because intermediate roots often cannot be unambiguously assigned to any one final root and to rule out leaks from semantically correlated edits in close proximity (e.g. a split followed by a merge). Considering near-duplicate edit-site leakage across cube boundaries, the fraction of val/test proofreading edits within 500nm of a training edit across the cube split boundary was <0.5% across species, which we deemed negligible. 
+
+3.1.5 Data Rendering 
+
+For each sample, we render two modalities: mesh geometry and imaging. (See Appendix A.4 for details.) 
+
+Mesh geometry views are 2D orthographic renderings of mesh segments in three spatial views (top, side, and front), where each view consists of 7 channels encoding geometric information: three normals, depth, two segment mask channels, and silhouette (see Appendix Figure 6). Assignment of segments to mask channels A and B follows the return order from the segmentation graph. 
+
+Imaging views are four images, each showing a different 2D slice: cardinal slices XY, XZ, YZ, and one oblique slice picked to maximize visible segmentation area (log sum of segment areas). Each is 4rendered in 3 channels, with the first being the microscopy imaging data (electron microscopy, EM), and the second and third being the segmentation mask of the two segments (see Appendix Figure 6). The second mask is all-zeros in single-segment tasks. 
+
+3.1.6 Dataset Distribution 
+
+While we aimed to keep labels within tasks relatively balanced (roughly 1:1), our dataset is imbalanced in both species and tasks (cf. Figure 7) for several reasons: 1) number of available qualifying proofreading edits (across species and tasks), 2) availability of controls/synapses (across species), 3) rendering/download time, especially for datasets with larger roots (across species), 4) time/network throughput constraints. 
+
+3.2 Model Training 3.2.1 Task Framing 
+
+We frame connectomic proofreading as essentially two tasks: 1) identifying whether two neuron segments are the same neuron and must be merged; and 2) whether a given segment contains a false merge that must be split. Correcting a false split means merging in the correct merge partner, a binary classification task. Correcting a false merge, on the other hand, requires identifying an exact split boundary. We thus frame this as three tasks for our model: 1. Split Error Correction 2. Merge Error Classification 3. Mask Segmentation for Merge Error Correction The compiled dataset here presented allows supervised training on each of these tasks with a unified input format (7-channel geometry format and 3-channel EM format). 
+
+Model. The unified model is a single Vision Transformer (ViT-B/16 or ViT-L/16, 224 ×224 inputs) with two patch embeddings sharing one encoder: a 7-channel module for geometry views and a 3-channel module for imaging views, both initialized from ImageNet weights (RGB filters copied into the three normal channels for geometry; remaining geometry channels Kaiming-initialized). Three classification heads on the CLS token handle split error correction, merge error identification, and an auxiliary synapse decision; a CNN decoder on the patch tokens upsamples to 224 ×224 and outputs a 2-channel mask for merge error correction. At inference time, view-level probabilities are averaged within each operation to produce the per-sample (per-op) decision and confidence. 
+
+Joint multi-task loss. Each batch mixes views across species, modalities, and tasks; every head produces an output for every sample, and losses are masked to the relevant head per sample. The classification heads use softmax cross-entropy with label smoothing 0.1. The mask loss is permutation-invariant over the two output channels, since the A/B labeling of the two pieces produced by a split is arbitrary: 
+
+Lmask = min 
+
+> π∈{ id ,swap }
+
+h
+
+wCE CE π + (1 −wCE )(1 −Dice π )
+
+i
+
+, wCE =0 .5,
+
+computed on foreground pixels only and gated to rows with valid dual-mesh ground-truth. CE is pixel-level cross entropy loss; Dice is mean Dice Loss [24]. The total loss is Lep + Ljn + Lmask + 0 .25 Lsyn ,with the synapse classification loss term down-weighted as auxiliary. 
+
+Training. We train with AdamW + cosine schedule on H100 GPUs (1–3 GPUs per job, batch size 256–768), capped at 24 GPU-hours per run. The peak ViT-B run completes in ∼15 GPU-hours; ViT-L on 3 ×H100 in ∼20. Inference runs on a single A100 in bfloat16. Full optimizer, augmentation, blending, and seed details are in Appendix B.2. 
+
+# 4 Accuracy: How well does the system correct errors? 
+
+The first property relevant to any proofreading system is accuracy: how often does the system correct errors versus introduce them? In Table 1, we see that the ViT-B reaches human-level performance on 5Table 1: Peak performance and ablations on the held-out test set. Per-sample (one prediction per operation; views aggregated). bAcc is reported at threshold 0.5 alongside mIoU (mask GT is rendered on geometry views only, so the EM-only row’s mIoU is ‘—’). Brackets are 95% cluster-bootstrap confidence intervals. Model Split Error bAcc (%) Merge Error bAcc (%) mIoU [95% CI] [95% CI] [95% CI] 
+
+Baseline 
+
+Human Experts 93.0 [87.2, 97.7] 84.1 [75.8, 91.7] —
+
+Architecture 
+
+ViT-L 97.2 [97.1, 97.4] 92.8 [92.5, 93.0] 0.678 [0.676, 0.681] ViT-B 97.0 [96.9, 97.2] 93.0 [92.7, 93.2] 0.696 [0.693, 0.698] 
+
+Modality & channel ablations on ViT-B (full) 
+
+ViT-B, geom only 96.2 [96.0, 96.4] 90.6 [90.4, 90.9] 0.696 [0.693, 0.698] 
+
+−shape 96.2 [96.0, 96.4] 89.7 [89.4, 90.0] 0.677 [0.675, 0.680] 
+
+−normals 96.0 [95.9, 96.2] 88.2 [87.9, 88.5] 0.680 [0.677, 0.683] 
+
+−masks 77.7 [77.4, 78.1] 90.6 [90.4, 90.9] 0.696 [0.693, 0.698] ViT-B, EM only 94.2 [94.0, 94.4] 91.1 [90.9, 91.4] —split error correction and merge error identification. On detecting synapses, performance is strong on both mouse and fly synapses, with per-image balanced accuracy of 98.2% [98.1, 98.4] on mouse (TPR 98.5%, TNR 98.0%) and 96.1% [95.8, 96.4] on fly (TPR 94.5%, TNR 97.7%) (see Table 13). For the merge error correction task, we measure performance as mask Intersection over Union (mIoU, demonstrated in 3, right). The relationship between mIoU and split quality is shown in Appendix Figure 8. 
+
+Figure 2: (a) ROC curve for the joint Split-Error / Merge-Error classifier on the held-out test set. Per-sample rows aggregate views to one prediction per operation; Per-image rows score each view independently. Brackets are 95% cluster-bootstrap confidence intervals. (b) Balanced accuracy (left axis) and mIoU (right axis) versus number of training operations on a log x axis. bAcc is shown at two granularities: Per-op (solid; mean view probability per operation, thresholded at 0.5) and Per-image (dashed). Each curve is the unweighted mean across the four species. Bands are ±1 SD across training seeds. Separately seeded runs per scale: 5 at 100, 3 at 1,000, 3 at 10,000, 2 at 50,000, and 1 at 100,000 and all samples. Single-seed points are drawn as diamonds without bands. (c) Test-time view scaling. Top: balanced accuracy of the geometric (mean-logit) pool versus the number of rendered geometry views averaged, K (log axis); the metric is computed per single-K realization then averaged over random K-subsets, with op-clustered bootstrap 95% CI bands. Bottom: per-operation pooling benefit ∆p(true ) (64-view pool minus a single view) versus per-op view disagreement (std of the per-view logits), with the sample-density histogram behind. Having established overall performance, we next ask which aspects of the system drive it. We run a series of ablations on the ViT family, with results shown in Table 1. Because our rendering format 6separates mesh normals, depth, segmentation masks, and imaging into distinct channels, we can ablate each input modality independently at inference time. While most ablations do not dramatically effect performance (likely due to channel dropout during training), we find that removing masks from split error correction tasks substantially impacts performance. Next, we examine the effect of training data scale, both in dataset size and diversity of tasks, species, and number of views. Balanced accuracy improves consistently with training data across all three tasks (Figure 2, Middle). More notably, we find performance to increase with the number of views sampled around a proofreading site and aggregated into a prediction. Beyond seeing strong improvements in TPR/TNR when going from single-image predictions to aggregated predictions of all seven views per sample present in our dataset (3 geometry views, 4 imaging views, Figure 2, Left), we saw performance scaling further with additionally sampled views (different additional rotations and extents): Aggregating predictions across up to 64 geometry views recovered up to 3-4% percentage points of accuracy. The highest increase was observed in edits with higher disagreement between views. This view scaling was observed across the two binary tasks and species tested (mouse and fly). In proofreading deployment, this dynamic may allow for adaptive sampling to trade off more compute for better performance in complex cases with higher view disagreement, particularly for the merge error identification task, where the fraction of high-disagreement samples is higher. (Figure 2, Right) 
+
+Figure 3: Qualitative examples on held-out examples from the test set. (a) Sliding-window occlusion sensitivity for Split Error Correction. The render shows the two segments being evaluated for merge over the depth-shaded mesh (top) or grayscale EM cutout (bottom); a 16 × 16 px window is swept across the input at stride 4 (overlapping), zeroed, and the resulting drop in the classifier’s probability 
+
+|∆p| is averaged onto each covered pixel and overlaid as a yellow →red heat map (brighter red = larger drop = more important to the prediction), normalized per panel. (b) The same occlusion sensitivity for Merge Error Identification, where the input is a single, pre-split (merged) segment, shown in green. (c) Merge Error Correction: the split-mask-generation head applied to the same two exemplary merge-identification segments. Each pixel is colored by the predicted P (Neuron B ), the dashed outline marks the ground-truth Neuron B segment. Finally, to understand and validate the model’s learned heuristics, we investigated which image regions most strongly affected its answers. We found that the image regions with the greatest influence on the model’s judgments aligned broadly with our human assessment of their importance (Figure 3). For instance, for split error correction, we find that the model learns to pay attention to contact points between the two segments, while for merge error identification, it learns to pay attention to junction points. Moreover, when examining the model’s proposed merge-error corrections, we find it both produces clear masks when confident about how to fix an error and flags regions that likely contain errors as unsure when it does not know how to split the segments apart. 7Figure 4: (a) Expected calibration error (ECE; 15-bin adaptive; left axis) and normalized sharpness 
+
+Var( p)/[¯ p(1 − ¯p)] (right axis) versus the number of training operations, by input modality (Mesh, EM). Bands are ±1 SD across training seeds. Seeds per scale: 1 at all, 5 at 100, 3 at 1,000, 3 at 10,000, 2 at 50,000. Single-seed points are drawn as diamonds without bands. (b) Reliability curves for the joint classifier on the held-out test set. Each curve plots observed accuracy against predicted confidence ( max( p, 1 − p) ∈ [0 .5, 1.0] ) in 12 equal-mass bins. Three traces: Per-image (Mesh), Per-image (EM), and Per-op (mean view probability per operation). Vertical bars are 95% cluster-bootstrap confidence intervals on observed accuracy per bin. Diagonal = perfect calibration. 
+
+(c) Calibration as a function of Mahalanobis distance to the in-distribution training-feature manifold, averaged across the four LOSO models. The 3 ×2 grid shows: row 1 = density histogram of test-point Mahalanobis distances (heights normalized within (modality, split) for direct comparison); rows 2–3 = accuracy and ECE; columns = Mesh and EM. Four curves per acc/ECE sub-panel: in-distribution (blue) vs held-out species (red), each split by task drawn as the across-LOSO-model mean with a 
+
+±1 SD band. Merge-error curves exclude zebrafish/human (too few junction operations); the density histogram pools all species. 
+
+# 5 Calibration, Sharpness, & Generalization: How well does the system know when it knows? 
+
+The second property we evaluate is calibration: how well a model’s expressed confidence reflects its actual accuracy. Calibrated uncertainty is what allows a proofreading system to triage in deployment, applying confident predictions automatically and routing uncertain ones to human review. We measure calibration using the adaptive expected calibration error (adaptive ECE) [26], which selects bin widths so that each bin contains the same number of samples. Calibration is strong for both mesh and imaging samples in the jointly trained model (Figure 4, Left). However, ECE alone can be misleading: a model that always predicts the base rate would achieve perfect calibration without making meaningful distinctions between samples. To capture this, we also report normalized sharpness Var( p)/[¯ p(1 − ¯p)] , the variance of predictions normalized by the maximum achievable variance given the mean prediction [11]. We find that mesh and EM-based predictions show strong improvement in both calibration and sharpness with training scale. At full data, calibration is strong overall: across both per-image modalities, the reliability curves track the diagonal closely, and the majority of samples sit in confidence bins where observed accuracy slightly exceeds predicted confidence. Notably, when we average predictions across the seven views available per sample, accuracy substantially exceeds the averaged confidence across every per-op bin. This indicates that the multi-view aggregation is underconfident relative to its true reliability. Modifying the model to fuse views internally rather than averaging post-hoc is a natural direction for improving per-sample calibration and sharpness. Calibration as discussed so far is an in-distribution property. New connectomics datasets, however, will frequently be out-of-distribution relative to any training set, whether due to a new imaging modality, brain region, or species. We therefore evaluate how well a model can detect distributional 8shift and how its performance degrades as samples move further out of distribution. To do this, we run leave-one-species-out (LOSO) experiments: for each species, we train a model on the other three and evaluate on the held-out one. We adapt the Mahalanobis distance OOD detection framework of Lee et al. to the LOSO setting, using class-conditional Gaussians fit on penultimate-layer features and compute the Mahalanobis distance (M-distance) for the held out species [21, 19]. Across all four LOSO models, held-out species samples have a higher M-distance relative to in-distribution species. As M-distance grows, accuracy decreases while calibration error increases. Breaking down the results by task, we find that when evaluating split-error correction using meshes, the in- and out-of-distribution curves track extremely closely across the full M-distance range, suggesting mesh-based geometric reasoning is highly generalizing for this task. For EM, by contrast, held-out-species performance is worse even at matched M-distance, indicating that the underlying imaging data does not transfer as cleanly. Merge-error identification fails to generalize under both modalities, but here the comparison is also the most demanding: because junction operations are too sparse in zebrafish and human, the merge curves effectively pit a mouse-trained model against fly (and vice versa), a pairing that spans an aggressive morphological shift. 
+
+# 6 Efficiency: How quickly can the system adapt to new datasets? 
+
+Figure 5: (a) Self-supervised backbone scaling on Split Error. Per-image balanced accuracy (bAcc) as a function of the number of finetune operations on a log x axis. Each curve is the unweighted mean across the four species (mouse, fly, zebrafish, human); bands are ±1 SE across species. Backbones: random init, ImageNet ViT-L, dt-DINO foundation model, and the LOSO foundation model (species held out at training time, evaluated on the held-out species). (b) Active-learning method comparison on Merge Error at fixed budget K = 300 , LOSO-mouse held-out (the held-out species with the most zero-shot junction headroom; zero-shot bAcc ≈0.53). Bars show the change in held-out validation bAcc relative to zero-shot (annotated in the legend); absolute bAcc is shown above each bar. Mean 
+
+±1 SE across 5 seeds (deterministic methods reuse identical selections; only optimizer / dropout RNG varies). Significance vs. Random by Welch’s t-test: Top-K Fisher p = 0 .444 (n.s.); Facility location p < 0.001 (***); Batch Fisher (head) p = 0 .024 (*). The ability to extend to novel modalities and datasets is critical for deploying proofreading systems in the real world. Every new dataset will likely exhibit distributional shift relative to existing labeled data, and we have seen that strong performance requires substantial training data even within distribution. Some fine-tuning will therefore be necessary when extending to new datasets, and the question becomes how to do so efficiently: what conditions yield strong generalization with the fewest new annotated samples? Two axes can be used to improve sample efficiency. The first is the quality of the model’s representa-tions: models with strong, transferable representations adapt more readily to new distributions [45, 918]. The second is the choice of which samples to annotate. The active learning literature offers several criteria for ranking pool samples, including representativeness of the new distribution [44, 33] and expected impact on the model via Fisher information [1, 2]. Our dataset supports evaluation along both axes. To evaluate representations, we compare four pretraining strategies adapted to a held-out species: LOSO, self-supervised learning (SSL), ImageNet, and random initialization. LOSO uses the leave-one-species-out training procedure described earlier as a pretraining stage. For SSL, we evaluated a range of self-supervised objectives (see Appendix Figure 9) and report the best-performing variant in Figure 5; full results are in the Appendix. ImageNet and random initialization use the corresponding weights without modification. To isolate representation quality from downstream training capacity, all backbones are frozen and adaptation occurs only in two MLP heads attached for split error correction and merge error identification (mask generation is omitted from this analysis). We find that both pretraining strategies that leverage connectome-specific data (either unlabeled or labeled from another distribution) outperform ImageNet initialization. This indicates that pretraining on connectomics data yields representations that transfer to new species far more efficiently than pretraining on natural images. To evaluate sample selection, we compare four active learning strategies operating on per-sample features: random sampling (baseline), top-k Fisher selection (rank by Fisher scalar with no diversity term), Fisher-weighted facility location (representativeness in feature space), and batch Fisher D-optimal on classifier-head gradients (parameter-space coverage in the head). Method definitions are detailed in the Appendix. We find that, at a fixed budget of K = 300 ops on the LOSO-mouse held-out species, Facility location and Batch Fisher (head) both significantly outperform random selection on merge error identification. While absolute performance at this budget remains well below what would be needed to deploy a proofreading model on a new species, this benchmark provides the measurement infrastructure to compare active-learning strategies on connectomics proofreading at meaningful effect sizes. 
+
+# 7 Conclusion 
+
+Our benchmark has several limitations that future work could address. Rendering choices. Our 2D slice-based imaging renders are lossy compared to full 3D EM cutouts, and better slice selection or learned 3D cutout embeddings could capture more information. Architectural coverage. Our evaluations focus on vision transformers. 3D CNNs and point-cloud models are well-established in the proofreading literature and warrant comparison; the mesh and supervoxel data we collect would support a point-cloud formulation as a benchmark extension. Species imbalance. Sample counts differ substantially across species, reflecting differences in proofreading abundance and per-neuron data size. Cross-species generalization claims should be read with this imbalance in mind, particularly for LOSO experiments on smaller held-out species. Within these limits, we have shown that modern ML practices transfer to connectomic proofreading. A unified image-based formulation lets a single ViT handle split correction, merge identification, and merge-correction mask generation across four species at human-level accuracy; performance scales with data; joint training matches or exceeds species-specific models; in-distribution calibration is strong; Mahalanobis distance provides a label-free signal of distributional shift; connectomics pretraining substantially outperforms ImageNet for adapting to new species; and active learning further reduces adaptation cost. The benchmark provides the measurement infrastructure for the field to extend these results. 
+
+# Acknowledgments and Disclosure of Funding 
+
+ESB acknowledges HHMI, Lisa Yang, NIH R01AG087374, NIH 1R01EB024261, NIH 1R01AG070831. JB acknowledges funding support from the Fannie and John Hertz Foundation, and compute support from Modal Labs through the Academic Grant Program. TF acknowledges funding support from the German Academic Scholarship Foundation and the McGovern Institute. 10 References 
+
+[1] Jordan T. Ash et al. “Deep Batch Active Learning by Diverse, Uncertain Gradient Lower Bounds”. In: International Conference on Learning Representations (ICLR) . 2020. [2] Jordan T. Ash et al. “Gone Fishing: Neural Active Learning with Fisher Embeddings”. In: 
+
+Advances in Neural Information Processing Systems (NeurIPS) . 2021. [3] Jules Berman, Dmitri B. Chklovskii, and Jingpeng Wu. “Bridging the Gap: Point Clouds for Merging Neurons in Connectomics”. In: Proceedings of the 5th International Conference on Medical Imaging with Deep Learning (MIDL) . Vol. 172. Proceedings of Machine Learning Research. 2022. [4] Jeff Brown et al. ConnectomeBench: Can LLMs Proofread the Connectome? 2025. arXiv: 
+
+2511.05542 [q-bio.NC] . URL : https://arxiv.org/abs/2511.05542 .[5] Julia Buhmann et al. “Automatic Detection of Synaptic Partners in a Whole-Brain Drosophila Electron Microscopy Data Set”. In: Nature Methods 18.7 (2021), pp. 771–774. DOI : 10.1038/ s41592-021-01183-7 .[6] Brendan Celii et al. “NEURD offers automated proofreading and feature extraction for connec-tomics”. In: Nature 640.8058 (2025), pp. 487–496. DOI : 10.1038/s41586-025-08660-5 .[7] Qihua Chen et al. “Learning Multimodal Volumetric Features for Large-Scale Neuron Tracing”. In: Proceedings of the AAAI Conference on Artificial Intelligence . Vol. 38. 2. 2024, pp. 1174– 1182. DOI : 10.1609/aaai.v38i2.27879 .[8] Sven Dorkenwald et al. “CAVE: Connectome Annotation Versioning Engine”. In: Nature Methods 22.5 (May 1, 2025), pp. 1112–1120. ISSN : 1548-7105. DOI : 10.1038/s41592-024-02426-z . URL : https://doi.org/10.1038/s41592-024-02426-z .[9] Sven Dorkenwald et al. “FlyWire: online community for whole-brain connectomics”. In: 
+
+Nature Methods 19.1 (2022), pp. 119–128. DOI : 10.1038/s41592-021-01330-0 .[10] Sven Dorkenwald et al. “Neuronal wiring diagram of an adult brain”. In: Nature 634.8032 (2024), pp. 124–138. DOI : 10.1038/s41586-024-07558-y .[11] Tilmann Gneiting, Fadoua Balabdaoui, and Adrian E Raftery. “Probabilistic forecasts, cal-ibration and sharpness”. In: Journal of the Royal Statistical Society Series B: Statistical Methodology 69.2 (2007), pp. 243–268. [12] Daniel Haehn et al. “Guided Proofreading of Automatic Segmentations for Connectomics”. In: 
+
+arXiv preprint arXiv:1704.00848 (2017). [13] Larissa Heinrich et al. “Synaptic Cleft Segmentation in Non-isotropic Volume Electron Mi-croscopy of the Complete Drosophila Brain”. In: Medical Image Computing and Computer Assisted Intervention – MICCAI 2018 . Vol. 11071. Lecture Notes in Computer Science. Cham: Springer, 2018, pp. 317–325. DOI : 10.1007/978-3-030-00934-2_36 .[14] Gary B. Huang et al. “Autoproof: Automated Segmentation Proofreading for Connectomics”. In: arXiv preprint arXiv:2509.26585 (2025). DOI : 10.48550/arXiv.2509.26585 .[15] Michał Januszewski et al. “Accelerating Neuron Reconstruction with PATHFINDER”. In: 
+
+bioRxiv (2025), p. 2025.05.16.654254. DOI : 10.1101/2025.05.16.654254 .[16] Michał Januszewski et al. “High-precision automated reconstruction of neurons with flood-filling networks”. In: Nature Methods 15.8 (2018), pp. 605–610. DOI : 10.1038/s41592-018-0049-4 .[17] Justin Joyce et al. “A Novel Semi-automated Proofreading and Mesh Error Detection Pipeline for Neuron Extension”. In: bioRxiv (2023), p. 2023.10.20.563359. DOI : 10.1101/2023.10. 20.563359 .[18] Alexander Kolesnikov et al. “Big Transfer (BiT): General Visual Representation Learning”. In: 
+
+European Conference on Computer Vision (ECCV) . 2020. [19] Kimin Lee et al. A Simple Unified Framework for Detecting Out-of-Distribution Samples and Adversarial Attacks . 2018. arXiv: 1807.03888 [stat.ML] . URL : https://arxiv.org/ abs/1807.03888 .[20] Hanyu Li et al. “Neuronal Subcompartment Classification and Merge Error Correction”. In: 
+
+Medical Image Computing and Computer Assisted Intervention – MICCAI 2020 . Vol. 12265. Lecture Notes in Computer Science. Springer, 2020, pp. 88–98. DOI : 10.1007/978-3-030-59722-1_9 .11 [21] Prasanta Chandra Mahalanobis. “On the generalized distance in statistics”. In: Sankhy ¯a: The Indian Journal of Statistics, Series A (2008-) 80 (2018), S1–S7. [22] Brian Matejek et al. “Biologically-Constrained Graphs for Global Connectomics Recon-struction”. In: Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) . 2019, pp. 2089–2098. [23] Yaron Meirovitch et al. “A Multi-Pass Approach to Large-Scale Connectomics”. In: arXiv preprint arXiv:1612.02120 (2016). [24] Fausto Milletari, Nassir Navab, and Seyed-Ahmad Ahmadi. V-Net: Fully Convolutional Neural Networks for Volumetric Medical Image Segmentation . 2016. arXiv: 1606.04797 [cs.CV] .
+
+> URL
+
+: https://arxiv.org/abs/1606.04797 .[25] Khoa Tuan Nguyen et al. “RLCorrector: Reinforced Proofreading for Cell-level Microscopy Image Segmentation”. In: arXiv preprint arXiv:2106.05487 (2021). DOI : 10.48550/arXiv. 2106.05487 .[26] Jeremy Nixon et al. Measuring Calibration in Deep Learning . 2020. arXiv: 1904.01685 [cs.LG] . URL : https://arxiv.org/abs/1904.01685 .[27] Mariela D. Petkova et al. “A Connectomic Resource for Neural Cataloguing and Circuit Dissection of the Larval Zebrafish Brain”. In: bioRxiv : the preprint server for biology (2025). 
+
+> DOI
+
+: 10.1101/2025.06.10.658982 . eprint: https://www.biorxiv.org/content/ early/2025/06/15/2025.06.10.658982.full.pdf . URL : https://www.biorxiv. org/content/early/2025/06/15/2025.06.10.658982 .[28] Stephen M. Plaza. “Focused Proofreading to Reconstruct Neural Connectomes from EM Images at Scale”. In: Deep Learning and Data Labeling for Medical Applications (DLMIA / LABELS 2016) . Vol. 10008. Lecture Notes in Computer Science. Springer, 2016, pp. 249–258. 
+
+> DOI
+
+: 10.1007/978-3-319-46976-8_26 .[29] David Rolnick et al. “Morphological Error Detection in 3D Segmentations”. In: arXiv preprint arXiv:1705.10882 (2017). [30] Shashata Sawmya et al. NeuroADDA: Active Discriminative Domain Adaptation in Connec-tomic . 2025. arXiv: 2503.06196 [cs.CV] . URL : https://arxiv.org/abs/2503.06196 .[31] Martin Schmidt et al. “RoboEM: automated 3D flight tracing for synaptic-resolution connec-tomics”. In: Nature Methods 21.5 (2024), pp. 908–913. DOI : 10.1038/s41592-024-02226-5.[32] Philipp J. Schubert et al. “Learning cellular morphology with neural networks”. In: Nature Communications 10.1 (2019), p. 2736. DOI : 10.1038/s41467-019-10836-3 .[33] Ozan Sener and Silvio Savarese. “Active Learning for Convolutional Neural Networks: A Core-Set Approach”. In: International Conference on Learning Representations (ICLR) . 2018. [34] Alexander Shapson-Coe et al. “A petavoxel fragment of human cerebral cortex reconstructed at nanoscale resolution”. In: Science 384.6696 (2024), eadk4858. DOI : 10.1126/science. adk4858 .[35] Arlo Sheridan et al. “Local shape descriptors for neuron segmentation”. In: Nature Methods 
+
+20 (2023), pp. 295–303. DOI : 10.1038/s41592-022-01711-z .[36] Ronell B. Sicat, Markus Hadwiger, and Niloy J. Mitra. “Graph Abstraction for Simplified Proofreading of Slice-based Volume Segmentation”. In: Eurographics 2013 - Short Papers . The Eurographics Association, 2013, pp. 77–80. DOI : 10.2312/conf/EG2013/short/077-080 .[37] William Silversmith et al. “Igneous: Distributed Dense 3D Segmentation Meshing, Neuron Skeletonization, and Hierarchical Downsampling”. In: Frontiers in Neural Circuits Volume 16 - 2022 (2022). ISSN : 1662-5110. DOI : 10.3389/fncir.2022.977700 . URL : https: //www.frontiersin.org/journals/neural-circuits/articles/10.3389/fncir. 2022.977700 .[38] Olaf Sporns, Giulio Tononi, and Rolf Kötter. “The Human Connectome: A Structural Descrip-tion of the Human Brain”. In: PLoS Computational Biology 1.4 (2005), e42. DOI : 10.1371/ journal.pcbi.0010042 .[39] Fabian Svara et al. “Automated synapse-level reconstruction of neural circuits in the larval zebrafish brain”. In: Nature Methods 19.11 (2022), pp. 1357–1366. DOI : 10.1038/s41592-022-01621-0 .12 [40] Mojtaba R. Tavakoli et al. “Light-Microscopy-Based Connectomic Reconstruction of Mam-malian Brain Tissue”. In: Nature 642.8067 (June 2025), pp. 398–410. ISSN : 1476-4687. DOI :
+
+10.1038/s41586-025-08985-1 .[41] The MICrONS Consortium. “Functional connectomics spanning multiple areas of mouse visual cortex”. In: Nature 640.8058 (2025), pp. 435–447. DOI : 10.1038/s41586-025-08790-w .[42] Jakob Troidl et al. “Global Neuron Shape Reasoning with Point Affinity Transformers”. In: 
+
+bioRxiv (2024), p. 2024.11.24.625067. DOI : 10.1101/2024.11.24.625067 .[43] Nicholas L. Turner et al. “Synaptic Partner Assignment Using Attentional Voxel Association Networks”. In: 2020 IEEE 17th International Symposium on Biomedical Imaging (ISBI) . IEEE, 2020, pp. 1209–1213. DOI : 10.1109/ISBI45749.2020.9098489 .[44] Kai Wei, Rishabh Iyer, and Jeff Bilmes. “Submodularity in Data Subset Selection and Active Learning”. In: International Conference on Machine Learning (ICML) . 2015, pp. 1954–1963. [45] Jason Yosinski et al. “How transferable are features in deep neural networks?” In: Advances in Neural Information Processing Systems . 2014, pp. 3320–3328. [46] Jonathan Zung et al. “An Error Detection and Correction Framework for Connectomics”. In: 
+
+Advances in Neural Information Processing Systems . Vol. 30. 2017. 13 Figure 6: Channel Decomposition of Mouse Training Samples. Two examples are shown: a synapse pair with two populated segment masks and a junction control in single-mask form, where only mask A is populated. Each sample includes a 7-channel top-view geometry render and the corresponding best-plane imaging (EM) slice, decomposed into raw EM intensity, segment masks A/B, and an RGB composite. 
+
+# A Data Generation Details 
+
+A.1 Connectomics Data Sources                                   
+
+> Project Species Volume Neurons Proofread fraction Reference
+> FlyWire D. melanogaster (adult) whole brain ∼139,255 ∼100% Dorkenwald et al., Na-ture 2024 MICrONS mouse (visual cortex) ∼1 mm 3>200,000 ∼1% MICrONS Consortium,
+> Nature 2025 Fish1 larval zebrafish whole larval brain ∼100,000 <1% Svara et al., Nat. Meth-ods 2022 H01 human (temporal cortex) ∼1 mm 3fragment ∼50,000 <1% Shapson-Coe et al., Sci-ence 2024
+
+Table 2: Major EM connectome datasets used in this work. Roots are nodes in an append-only, directed proofreading graph. Each proofreading edit adds new root nodes and directed provenance edges: merge corrections connect two or more roots to a single new root, while split corrections connect one previous root to two or more new roots. At a given timestamp, the final leaf roots (’descendant roots’) of this graph (i.e. roots with no outgoing provenance edges at that time) represent the latest segmentation/proofreading state. 14 Figure 7: Data distribution by species and task. While within task, labels are roughly balanced, species are imbalanced due to different availabilities of edits and controls. 
+
+A.2 Synapse controls                 
+
+> Species Project Synapse table Filter Reference Mouse MICrONS synapses_pni_2 size >2000 [43] Fly FlyWire synapses_nt_v1 cleft_score ≥50 [5, 13]
+
+Table 3: CAVE synapse tables used as merge-candidate sources. Pairs additionally required pre-synapse root id ̸ = post-synapse root id to exclude autapses (i.e. rare synapses of neurons onto themselves), with the pre-synapse root drawn from the species’ proofread-neuron table. 
+
+A.3 Junction controls 
+
+These are used as negative labels for the false merge identification task. While edits, synapse controls and adjacent segment controls are reliable by construction (human curated), junctions are inherently less trustworthy as it is harder to identify the absence of a false merge than the correctness of two segments being separate. We thus only used roots from the proofread root tables in mouse/fly and from the most proofread set of roots of human, zebrafish (due to their less advanced proofreading state), and manually inspected a subset of them for their validity. For each sampled root we download its skeleton (simplified graph representations of their rough morphology and topology), we then use skeleton nodes with degree >2 as junction sites. 
+
+Zebrafish and human root selection As zebrafish and human were proofread significantly less comprehensively at the time of writing, junction controls pose a problem as they’re not directly inferable from edits alone (only absence of edits in a comprehensively proofread neuron establishes presence of a true junction as opposed to a merge error). Thus, only junctions from roots above a certain size ( ≥100um for zebrafish, ≥500um for human) with proofreading densities comparable to fly/mouse (>20 ops/mm for zebrafish, >10 ops/mm for human) were included, yielding just a few hundred controls samples for these two species, reflecting their early proofreading state. 15 Table 4: Per-species rendering jitter and cutout scales. 
+
+Species Center jitter Geometry extent Imaging cutout (nm) (nm) (nm) 
+
+Human 300 6,000–12,000 2,500 Mouse 300 5,000–10,000 2,500 Fly 300 2,000–4,000 1,500 Zebrafish 300 2,500–5,000 1,500 
+
+A.4 Data Rendering 
+
+Because the same proofreading site can be represented either as the pre-correction segmentation or the post-correction segmentation, we rendered both single-segment and two-segment variants where applicable, preventing the model from using trivial mesh/rendering artifacts associated with graph state rather than local morphology. To make the model more invariant to spatial scale, and to avoid leakage from edit point placement, extents and exact center points were randomly jittered once at render time. Cutout sizes and geometry rendering extent ranges were chosen manually per-species to balance local detail with global context. 
+
+# B Model Training 
+
+B.1 Tasks and Sample Sources Augmentations. During training we apply the following augmentations; validation and test use clean inputs. 
+
+Spatial (applied jointly to input and label mask): • Horizontal flip, p = 0 .5
+
+• Rotation, angle ∼ U (−25 ◦, 25 ◦)
+
+• Translation, (∆ x, ∆y) ∼ U (−0.15 , 0.15) · (W, H )
+
+Photometric (input-only, channel-aware: applied to depth + normals for geometry inputs, and to the grey intensity channel for EM inputs; silhouette and mask channels are left untouched): • Brightness jitter, factor ∼ U (0 .6, 1.4) 
+
+• Contrast jitter, factor ∼ U (0 .6, 1.4) 
+
+• Gaussian blur, p = 0 .4, σ ∼ U (0 .1, 2.0) 
+
+Occlusion / dropout (input-only): • Random erasing, p = 0 .4, box size ∼ U (0 .1, 0.3) · (H, W ), zeroed across all channels • Channel-group dropout (geometry only), p = 0 .15 independently per group: silhouette, depth, and normals (the three normal components are dropped together to preserve unit-norm semantics) 
+
+B.1.1 Task Routing Based on Sample Type B.2 Compute Architecture details. The 7-channel geometry patch embedding is a Conv2d(7 , D, k =16 , s =16) .From an ImageNet-pretrained 3-channel backbone, RGB filters are copied into the normal channels (nx, ny, nz ); silhouette, depth, mask A, mask B are Kaiming-initialized. The 3-channel EM patch embedding is a separate Conv2d(3 , D, 16 , 16) initialized directly from the ImageNet RGB filters. Each classification head is Dropout (0 .1) + Linear (D, 2) . The mask decoder reads the 14 ×14 patch tokens and upsamples to 224 ×224 via four ConvTranspose2d( s=2) stages ( D → 256 → 128 →
+
+64 → 2, BatchNorm + ReLU between stages). A learned 3-way view embedding (front/side/top) is added to the patch grid before the decoder. 16 Table 5: Learning tasks and corresponding positive and negative samples.   
+
+> Task Positive samples Negative samples
+> Binary classification of merge corrections (of false splits) (dual segment)
+> Proofreader merge corrections :two segments (with split error) that were merged into one segment
+> Synapse controls : neurons (final proofread segments) that synapse onto each other
+> Adjacent controls : segments spatially adjacent to edits Binary classification of false merges (single segment)
+> Proofreader split corrections : one segment (with merge error) that was split into two segments
+> Junction controls : skeleton junctions on proofread neurons Mask segmentation for split correction (of false merges) (single segment)
+> Proofreader split corrections : one segment (with split error) that was split into two segments (post-split segments used as labels) —
+
+Loss masking and gating. For each sample, the per-sample endpoint, junction, and synapse cross-entropies are masked by indicators that the sample’s task matches the head and (for synapse) that the row carries a synapse label, then averaged over matching samples in the batch. Lmask is gated to rows with valid dual-mesh ground-truth (split-correction edits with a separately rendered post-edit geometry); EM rows and merge-side rows contribute zero gradient to this term. CE and Dice in the permutation-invariant mask loss are computed on foreground pixels only; samples with no foreground contribute zero. For non-split rows (single-segment foreground) the loss reduces to the single-channel form. 
+
+Optimizer and schedule. AdamW ( β1=0 .9, β 2=0 .999 , weight decay 0.05 for ViT-B and 0.1 for ViT-L). Reference learning rate is 1×10 −4 at batch size 32 with square-root scaling, giving 2.83 ×10 −4
+
+at the single-GPU batch size 256 and 4.90 ×10 −4 at the DDP batch size 768. The backbone receives an additional 0.1× LR multiplier relative to the heads, mask decoder, and EM patch embedding. The schedule is 5 epochs of linear warmup (start factor 0.1) followed by cosine annealing to zero. Total epochs are 20 for the peak run and 25–40 for low-data scaling and species ablations. Drop-path is 0.1
+
+(ViT-B) / 0.25 (ViT-L), head dropout 0.1, label smoothing 0.1, gradient norm clipped at 1.0, mixed precision in bfloat16 (avoids attention overflow on ViT-L). 
+
+Class balance and species blending. A WeightedRandomSampler is constructed per epoch from per-cell (species ×task) sample weights computed under a sqrt blending strategy: each cell is weighted by √Ncell then spread uniformly within the cell, multiplied by the per-archive weight (mouse and human edits 1.0, fly 0.7, zebrafish 0.5; junction and synapse archives 1.0). Sample weights are additionally inverted by per-task class frequency. Junction (false-merge) controls are hardcoded to same_neuron=True ; synapse controls to same_neuron=False .
+
+Augmentation. Spatial augmentations are applied jointly to the input and any mask label: horizontal flip ( p=0 .5), in-plane rotation ±25 ◦ (nearest-neighbor for masks), and translation ±15% of image size. Input-only photometric augmentations are channel-aware (so unit-norm normal vectors are not corrupted): brightness [0 .6, 1.4] and contrast [0 .6, 1.4] on the depth + normals channels for geometry and on the EM grey channel for imaging; Gaussian blur ( p=0 .4, σ ∈ [0 .1, 2.0] ) on the same intensity channels; random erasing ( p=0 .4, box size 10 –30% ) over all input channels; and channel-group dropout ( p=0 .15 each for silhouette, depth, and the normals triplet) on geometry views. 
+
+Hardware. 
+
+• Training: H100 80 GB containers, 1–3 GPUs per job (the largest configuration is ViT-L on 3×H100 via DDP). 48–64 host CPU cores, 1.5 TB ephemeral disk for archive extraction. Per-job wall-clock cap: 24 h. • Inference: A100 40 GB containers, single GPU, batch size 256, bfloat16 autocast. The full test-split inference sweep over ∼30 checkpoints in Table 1 completes in under 4 GPU-hours per checkpoint. 17 Seeds. Default seed is 42 (controls model init, sampler, permutation, and torch.cuda RNG). Scaling-curve points use seeds {0, 1, 2, 3, 4}: 5 seeds at N =100 ops, 3 seeds at N =1 k and 
+
+N =10 k , 2 seeds at N =50 k , 1 seed at the full data point. Seeds for individual runs are recorded in 
+
+registry.yaml .
+
+Hyperparameter selection. ViT defaults (LR, weight decay, warmup, label smoothing, drop-path, gradient clip) follow the ResNetTrainingConfig.apply_model_defaults bridge, kept fixed across all reported runs in the main text. Loss-weight ratios ( λep :λjn :λmask :λsyn = 1:1:1:0 .25 ), the mask CE/Dice mixing weight ( wCE =0 .5), and per-archive blend weights were chosen from preliminary experiments on a smaller 3-species blend and not retuned for the final 4-species runs reported here. Active-learning hyperparameters and finetune budgets are described in Appendix [ref to AL appendix]; for each AL method we hold all other training settings fixed at the values above. 
+
+B.3 Mask Predictions to Supervoxel Splits 
+
+The mask head produces a 2-channel logit map per view ( 224 ×224 , arbitrary A/B labeling). Converting this to an applicable proofreading edit requires a partition of the local supervoxel graph, which we obtain in three stages: 3D hull reconstruction from the per-view masks, seed-point sampling from the hulls, and multicut on the supervoxel graph. 
+
+Stage 1 – Hull reconstruction. We support two reconstruction paths: • Visual hull (build_visual_hull ): The three orthographic masks (front/side/top) are independently unprojected along their respective camera axes onto a 32 –256 3 voxel grid (resolution adapts to inner_size_nm ). The 3D occupancy is the AND of the three view-axis sweeps. Each segment ( A and B) is reconstructed independently. This path uses no segmentation data. • Seg-constrained hull (build_seg_constrained_hull ): Each view’s A and B mask casts 
+
+rays (3D planes swept along the camera axis) into a real CAVE segmentation cutout fetched at seg_mip=0 and cached locally. A voxel votes into hull A if it is (i) inside the foreground supervoxel volume and (ii) hit by an A-mask ray from a sufficient number of views (default 
+
+≥ 3, with optional pixel dilation). Hull B is built analogously. Voxels in both hulls are removed. The seg-constrained variant is the production path; the visual-hull variant is a baseline that does not require segmentation access. 
+
+Auto-alignment of A/B across views. Mask-channel labels are arbitrary per view (the permutation-invariant mask loss never enforces a global A/B identity). Before voting, we therefore try all four flip combinations of side and top relative to front (the front view fixes the reference) and select the assignment that maximizes min( |HA|, |HB |), the size of the smaller hull. This favors balanced A/B partitions and is what the flipped field in the per-sample JSON records. 
+
+Stage 2 – Seed sampling. We sample k random points (default k=5 , optionally drawn from a range k_range on retry) uniformly from the occupied voxels of hull A and hull B, converting voxel centers back to nm-space coordinates. These become the source and sink seeds for the multicut. 
+
+Stage 3 – Supervoxel multicut. Source and sink seeds are passed to compute_split (the wrapper around pychunkedgraph’s run_multicut ) along with a window of 1.5×inner_size_nm . The result is a tuple ( ˆCsrc , ˆCsnk , ˆEcut ) of source/sink supervoxel components and the cut edges between them. Failed runs ( Invalid vertex index errors, multicut timeouts) are retried up to n_retries times with fresh random seed-point draws from the same hulls. 
+
+Ground-truth comparison. For every sample we also run compute_split on the human-placed seeds stored in the parquet metadata ( meta["sources"] , meta["sinks"] ), producing 
+
+(CGT src , C GT snk , E GT cut ). Both the GT and predicted multicuts run inside the same subprocess on the same fetched chunked-graph, so they share supervoxel IDs. 18 Metric: supervoxel IoU. Because the predicted/GT source and sink labels are themselves arbitrary, we score the partition label-invariantly: 
+
+sv _iou = max 
+
+ 12
+
+IoU( ˆCsrc , C GT src ) + IoU( ˆCsnk , C GT snk ), 12
+
+IoU( ˆCsrc , C GT snk ) + IoU( ˆCsnk , C GT src )
+
+,
+
+the maximum over the two label assignments of the average source/sink component IoU. We treat 
+
+sv _iou > 0.8 as the binary good-split threshold. 
+
+2D mask IoU as a leading indicator. For a sanity check that upstream mask quality pre-dicts downstream split quality, we additionally compute the per-view label-invariant 2D IoU (compute_pred_gt_mask_iou ) between the predicted and GT masks — for each view, taking the max over both A ↔A / A ↔B label assignments and reporting the per-sample mean across the three views. This is the mask_iou_mean statistic plotted in Figure 8. 
+
+Results. Figure 8 plots sv _iou against mask _iou _mean across n=94 split-OK junction samples. The two are positively correlated (Pearson r=0 .727 , Spearman ρ=0 .719 ), and the bucketed mean rises monotonically. Two practical implications follow. First, the per-view 2D mIoU reported in the main accuracy table is a meaningful proxy for proofreading utility, not just a pixel-level fit metric: high-mIoU samples almost always produce supervoxel partitions that recover most of the ground-truth cut. Second, the residual scatter at high mask IoU (some samples at mask _iou >0.9 still landing at 
+
+sv _iou <0.5) shows that pixel-level mask quality is necessary but not sufficient: a mask that gets the boundary roughly right in 2D can still seed multicut on the wrong side of a thin process if the hull sample lands in an ambiguous voxel. 
+
+Figure 8: Mask IoU predicts supervoxel-split quality. Per-sample sv _iou (3D supervoxel IoU between the mask-driven multicut and the human-seed multicut, label-invariant) versus 
+
+mask _iou _mean (per-view label-invariant 2D mask IoU, averaged across front/side/top). Light blue: 
+
+n=94 split-OK junction samples. Black: bucketed mean ±1 standard deviation. Pearson r=0 .671 ,Spearman ρ=0 .422 . The bucketed mean rises monotonically from 0.43 at mask _iou ≈ 0.25 to 0.95 
+
+at mask _iou ≈ 0.98 .19 B.4 Foundation Model: Architecture, Pretraining, and SSL Sweep Architecture details. For pre-training, we use a dual-tower architecture, where each tower is an independent ViT dedicated to one input modality (geometry, or imaging data). Each tower represents a multi-view architecture, and follows the same three-stage layout: a per-view ViT-L encoder, an attention-pooled aggregator across views, and a stack of self-supervised heads attached both to the aggregated scene-level representation, and each view’s representation (CLS tokens). 
+
+Inputs. To generate samples for self-supervised training, we sample ’anchor points’ spaced along proofread roots. For each we render 9 mesh views ( 3 elevation angles × 3 zoom extents at 224 ×224 
+
+pixels) and stack them into a 7-channel tensor (silhouette, depth, three normal components nx, n y , n z ,and two per-segment binary masks). An aligned EM cutout at the same anchor feeds the parallel tower as a 3-channel tensor (intensity + two per-segment masks). 
+
+Pretraining task. For every anchor, three scenes are generated by modifying the input geometry while holding the underlying neuron identity fixed: • CLEAN . The mesh remains intact. To match the channel layout of the corrupted classes, the visible mesh is partitioned into halves A and B by a deterministic PCA-aligned plane through the anchor; the two halves populate the per-segment mask channels. • SYNTHETIC MERGE . A real adjacent root is discovered in a small segmentation cutout around the anchor. Both root meshes are fetched, cropped to a window centered on the interface point, and rendered jointly. The mask channels separately label segment-A and segment-B pixels. Pairs are filtered by species-specific size thresholds to avoid merging sub-segment dust. • SYNTHETIC SPLIT . The local mesh is cut by a uniformly random plane through the anchor. Faces on one side are discarded, the cut surface is capped with fan-triangulated faces so the result appears closed, and only the largest connected component is retained. Branches intersecting the plane fall away as small disconnected components, producing a realistic “missing branch” appearance. The EM tower receives the same 3-class label on its corresponding EM crops, with the per-segment masks supplying the same partitioning information in image space. 
+
+Objective. Per tower, three losses are summed jointly from step 0: Term What it supervises 
+
+corruption_cls (×2 towers) Scene-level: was the geometry corrupted, and how. 
+
+DINO (×2 towers) View-consistency at the scene CLS, two random views per scene. 
+
+iBOT (×2 towers) Local visual structure at masked patch tokens, mask ratio 
+
+0.30 .The corruption-classification term provides a scene-level semantic signal; DINO and iBOT supply the canonical self-distillation pair (cross-view at the CLS, masked-patch within-view at the patch tokens). Both self-distillation losses use a frozen EMA teacher with cosine momentum annealed from 0.996 
+
+to 1.0, prototype centering, student temperature 0.1, and teacher temperature 0.04 . The prototype layer is gradient-zeroed for the first epoch, following the original DINO recipe. Loss weights are 
+
+1.0/1.0/0.5 for corruption classification, DINO, and iBOT respectively, identical across both towers; the iBOT down-weighting follows the original iBOT recipe. Both towers contribute, so the total objective consists of six loss terms. 
+
+Augmentation. A small augmentation stack is applied to mesh views during training only. The most notable component is a geometry-coherent erosion : a max-pool over the inverse silhouette shrinks the visible support, and all geometry channels (silhouette, depth, normals) are coherently masked by the eroded support. This simulates blobby or under-segmented mesh boundaries and 20 prevents overfitting to the razor-sharp silhouettes produced by the offscreen renderer. Erosion is applied uniformly across all three corruption classes with identical probability so it cannot leak label information. 
+
+Training. Optimization uses AdamW with base learning rate 1×10 −4 linearly scaled by the global effective batch size (reference batch 256), weight decay 0.05 , and a 60-epoch schedule with 5-epoch linear warmup followed by cosine annealing. We use gradient accumulation 4×, max gradient norm 
+
+1.0, bfloat16 autocast, and DDP across 8×H100 GPUs; wall-clock time for the canonical ViT-L run less than 24 hours. Both towers train jointly in a single optimization loop; the student backbone forward is executed once per tower per step, and the resulting per-view CLS is reused by both the pooler+classification head and the DINO head, avoiding a doubled activation footprint. The pretraining corpus is 70k scenes across five species (mouse, fly, human, zebrafish, LICONN), root-stratified 90/10 into train/val. 
+
+Downstream protocol. For all evaluations using foundation-model features in this paper, the mesh tower (backbone + attention pooler) is frozen and used as a feature extractor. A small probe head — LayerNorm → Linear → GELU → Dropout → Linear — is trained per task on the pooled scene embedding z. The label-efficiency curves in Section 6, including the Ntrain × seed sweeps across mouse, fly, zebrafish, and human on both endpoint-correction and junction-error tasks, all share this protocol; only the upstream backbone differs (random init, ImageNet-supervised, our dual-encoder DINO/iBOT pretraining, and a leave-one-species-out supervised reference). 
+
+Self-Supervised Ablation Sweep 
+
+Figure 9 compares seven self-supervised architectures, each pre-trained on the same 70k 5-species mesh corpus for 30 epochs, then frozen and evaluated using a small MLP probe on the mouse endpoint-correction + junction-identification task. Five of the architectures share a ViT-B/16 encoder and differ only in pretraining recipe; the remaining two vary encoder size (ViT-L mesh-only) or encoder number (dual-tower ViT-B). The three panels report ROC-AUC, balanced accuracy, and 10-bin ECE as functions of the number of labelled training samples (log scale). Each curve is the mean over 5 random splits with shaded ±1 standard-deviation bands. 
+
+Implementation of the seven recipes. Five share a common scaffolding — a ViT-B/16 encoder, an attention-based view pooler that combines the nine orthographic mesh views into a scene embedding, a 3-class corruption-classification head trained against pairwise clean-vs-corrupted labels, and a 256-dim projection head trained with multi-view InfoNCE ( τ = 0 .07 , in-batch negatives) — and differ only in what they add on top. • vanilla ViT-B : scaffolding only. • DINO/iBOT : replaces InfoNCE with self-distillation against an EMA teacher copy of the entire network (cosine momentum 0.996 → 1.0); a 3-layer DINO head projects each CLS token onto 4096 prototypes ( τs=0 .1, τ t=0 .04 ); a parallel iBOT head is applied per-patch on a 30% -masked view. • mask-recon : adds a per-patch linear decoder that reconstructs the two binary mask channels under BCE-with-logits on merge/split samples whose masks were zeroed by the existing mask-dropout regularizer. • cross-view MAE : adds a 6-layer transformer decoder (dim 384) that, given one view masked at 75% , cross-attends to a clean second view of the same scene and reconstructs the geometry channels under per-patch z-normalised L2. • patch-contrastive : adds a small per-patch projection head and a dense InfoNCE objective between geometrically corresponding patches in two same-axis views at different zoom levels; correspondences are computed exactly from the orthographic camera geometry, and patches below 5% silhouette fraction are filtered out. • ViT-L mesh-only : vanilla recipe with the encoder swapped for ViT-L/16 (1024-dim). • dual-tower ViT-B : departs from the shared scaffolding — two independently weighted ViT-B encoders, one on 7-channel mesh views and one on 3-channel EM views, each with its own pooler, classifier, and projection head, trained jointly under four equally-weighted losses 21 (mesh corruption, mesh InfoNCE, EM corruption, EM InfoNCE) with no shared parameters or cross-modal terms. All seven models are pretrained for 30 epochs with AdamW, a 5-epoch warmup followed by cosine decay, and gradient clipping at 1.0; auxiliary objectives that supplement the shared base (iBOT, mask-recon, cross-view MAE, patch-contrastive) are weighted at 0.5 relative to the two base losses. 
+
+Findings. Once labels become abundant (beyond ∼ 10 3 samples), all seven architectures converge toward a narrow performance band, with balanced accuracy in roughly 0.875 –0.92 . ViT-L mesh-only 
+
+(green) achieves the strongest performance in the high-data regime, while DINO/iBOT (red) performs best in the low-label regime; the remaining ViT-B variants consistently trail these two across all three metrics. The headline foundation model used in the main text combines these two findings — a ViT-L backbone with the DINO/iBOT objective — and adopts the dual-encoder design from dual-tower ViT-B to accommodate the EM modality, although the dual-tower variant on its own underperforms the single-tower ViT-B at this scale (consistent with the doubled parameter count outpacing the 30-epoch budget in the sweep). 
+
+Figure 9: Self-supervised pretraining sweep. Seven architectures pre-trained on the same 70k 5-species mesh corpus for 30 epochs, frozen, and evaluated with a small MLP probe on the mouse endpoint-correction + junction-identification task. Panels: ROC-AUC (higher better), balanced accuracy (higher better), 10-bin ECE (lower better) as a function of labelled training samples (log scale). Curves are means over 5 random splits; bands are ±1 SD. ViT-L mesh-only leads in the high-data regime; DINO/iBOT leads in the low-label regime; the remaining ViT-B variants trail both across all three metrics. The headline foundation model in the main text combines the ViT-L backbone, the DINO/iBOT objective, and the dual-encoder architecture. 
+
+B.5 Active-Learning Formalism 
+
+This section formalizes the four sample-selection methods compared in Figure 5b and the head-only finetune protocol used to evaluate them. All methods operate on a pool of per-op embeddings, where the views of an operation are first averaged so a unit of selection corresponds to one annotation request. 
+
+Pool construction. Let Dpool be the held-out species’ validation cubes, sliced to the species being evaluated in Figure 5b (LOSO-mouse). For each operation i we forward each of its Vi views through the frozen LOSO encoder ( model._encode ), capture the CLS token ϕi,v and the routed-task logits 
+
+ℓi,v ∈ R2 (the endpoint head for split-correction operations, the junction head for false-merge operations), and average across views: 
+
+xi = 1
+
+> Vi
+> Vi
+
+X
+
+> v=1
+
+ϕi,v , ℓi = 1
+
+> Vi
+> Vi
+
+X
+
+> v=1
+
+ℓi,v .
+
+Probabilities and the per-sample binary Fisher scalar are then 
+
+pi = softmax( ℓi) ∈ ∆1, fi = 2 pi, 0 pi, 1 ∈ [0 , 12 ].fi is the variance of a Bernoulli with parameter pi, 1 (up to a factor of 2) and equivalently the Fisher information of the binary head output with respect to its scalar logit; samples on the decision boundary 22 (pi, 1 = 0 .5) maximize fi. The Fisher-weighted variant we use in facility location additionally incorporates the squared feature norm, wi = fi · ∥ xi∥22, so that uncertain samples in high-magnitude regions of feature space dominate the coverage objective. 
+
+Selection budgets and per-task split. We evaluate budgets K ∈ {10 , 30 , 100 , 300 } in the artifacts; the main-text bar plot reports K=300 . The pool contains both endpoint and junc-tion operations, and the LOSO-mouse pool is roughly balanced across the two tasks. We split K approximately 50/50 between tasks and reallocate slack if one pool can’t fill its share (run_loso_selection.py:_split_k_by_task ); each method is then run independently on each task slice and the two selections are concatenated. 
+
+Method 1 – Random. Uniform sampling without replacement from Dpool at each seed: Srand ∼
+
+Uniform  [N ]
+
+> K
+
+. This is the only method whose selection itself depends on the seed; the other three are deterministic given the pool (see Seeds and variance below). 
+
+Method 2 – Top-K Fisher. Rank by the Fisher scalar and keep the top K:
+
+StopK = argsort (K) 
+
+> i
+
+fi.
+
+This is the simplest uncertainty-only baseline, with no diversity term; we include it as a control to isolate the effect of representativeness from raw Fisher magnitude. 
+
+Method 3 – Fisher-weighted facility location. Greedy maximization of a Fisher-weighted facility-location objective on cosine similarities of penultimate features. Let ˆxi = xi/∥xi∥2 and sij = ˆ x⊤ 
+
+> i
+
+ˆxj .The facility-location value of a selected set S is 
+
+V (S) = 
+
+> N
+
+X
+
+> i=1
+
+wi · max  
+
+> j∈S
+
+sij ,
+
+with the maximum interpreted as −∞ when S is empty. V is monotone submodular in S, so greedy yields a (1 − 1/e ) approximation to the optimum. We grow S one sample at a time, picking at each step 
+
+j⋆ = arg max 
+
+> j / ∈S
+
+X
+
+> i
+
+wi · max   sij − ci, 0 , ci = max  
+
+> j′∈S
+
+sij ′ ,
+
+i.e. the candidate with the largest marginal weighted coverage gain over what is already covered (select_facility_location in _al_selection.py ). 
+
+Finetune protocol. For each (method, K, seed) we restore the LOSO-mouse checkpoint, freeze the backbone and the synapse/mask heads, and train only the routed cls heads ( cls_endpoint ,
+
+cls_junction ) with AdamW ( lr = 10 −5, weight decay 0.05 ), label smoothing 0.1, and a fixed budget of 1000 gradient steps regardless of K — small-K runs cycle the loader and see proportionally more passes, so every (method, K) gets the same compute budget. Loss is masked cross-entropy as in §Methods (synapse and mask terms are not active under the AL routing). The finetuned checkpoint is then evaluated on the LOSO-mouse held-out validation cubes via per-op mean-prob aggregation, matching the main-text evaluation protocol; we report junction-task balanced accuracy on the held-out validation set as the headline metric in Figure 5b (LOSO-mouse has the largest zero-shot junction headroom, ≈ 0.532 , of the four LOSO conditions). 
+
+Seeds and variance. We run 5 seeds per (method, K) cell. Random is the only method whose 
+
+selection varies across seeds; the other three are deterministic given the pool, so for those methods the seed varies only the optimizer / dropout RNG of the finetune loop, not which K ops are labeled. Significance tests in the main text caption (Welch’s t-test vs. Random at K=300 ) treat each seed as one observation and use unequal variances. 
+
+# C Supplemental Results 
+
+C.1 Results by species, task, and confidence using ViT-B 
+
+23 Table 6: Per-species peak performance (vitb_full, the headline joint model): per-sample Split / Merge Error balanced accuracy and mask mIoU (per-image mean and per-op best). 95% cluster-bootstrap CIs on op_id. Species Split Error bAcc (%) [95% CI] Merge Error bAcc (%) [95% CI] mIoU [95% CI] Mouse 98.6 [98.4, 98.7] 95.7 [95.4, 96.0] 0.716 [0.713, 0.719] Fly 96.5 [96.3, 96.8] 85.5 [85.0, 86.0] 0.638 [0.633, 0.643] Zebrafish 94.0 [93.2, 94.8] 87.6 [77.8, 95.5] 0.633 [0.546, 0.722] Human 95.9 [95.3, 96.4] 95.0 [87.5, 100.0] 0.718 [0.640, 0.782] Table 7: Per-species peak (vitb_full): per-sample sensitivity (TPR) and specificity (TNR) for Split / Merge Error at threshold 0.5 (bAcc = 12 (TPR+TNR)). 95% cluster-bootstrap CIs on op_id. Species Task TPR (%) [95% CI] TNR (%) [95% CI] Mouse Split Error 98.3 [98.0, 98.6] 98.8 [98.6, 99.0] Mouse Merge Error 97.0 [96.8, 97.3] 94.4 [93.9, 94.9] Fly Split Error 95.9 [95.5, 96.3] 97.2 [96.9, 97.4] Fly Merge Error 73.9 [72.9, 74.9] 97.2 [96.9, 97.4] Zebrafish Split Error 91.1 [89.4, 92.5] 96.9 [96.4, 97.5] Zebrafish Merge Error 89.5 [73.3, 100.0] 85.7 [73.0, 96.9] Human Split Error 95.3 [94.5, 96.1] 96.4 [95.7, 97.1] Human Merge Error 90.0 [75.0, 100.0] 100.0 [100.0, 100.0] Table 8: Per-species peak (vitb_full), HIGH-CONFIDENCE only: per-sample TPR/TNR restricted to predictions with confidence max( p, 1 − p) ≥ 0.9 (the selective-prediction view, as in Fig. 3 calibration). Coverage = fraction of ops retained at that threshold. 95% cluster-bootstrap CIs on op_id Species Task Coverage (%) TPR (%) [95% CI] TNR (%) [95% CI] Mouse Split Error 49.8 99.6 [98.6, 100.0] 100.0 [100.0, 100.0] Mouse Merge Error 43.4 99.9 [99.9, 100.0] 99.9 [99.7, 100.0] Fly Split Error 39.7 99.7 [99.3, 99.9] 99.9 [99.9, 100.0] Fly Merge Error 34.7 99.0 [98.4, 99.7] 99.9 [99.8, 100.0] Zebrafish Split Error 45.5 90.5 [84.3, 96.4] 100.0 [100.0, 100.0] Zebrafish Merge Error 5.6 100.0 [100.0, 100.0] 100.0 [100.0, 100.0] Human Split Error 34.9 99.9 [99.6, 100.0] 99.9 [99.7, 100.0] Human Merge Error 23.3 100.0 [100.0, 100.0] 100.0 [100.0, 100.0] 24 C.2 Merge Error Correction Examples 
+
+25 Figure 10: Merge error correction examples. 
+
+26

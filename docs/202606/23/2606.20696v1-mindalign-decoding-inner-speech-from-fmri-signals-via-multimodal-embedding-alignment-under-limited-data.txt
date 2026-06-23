@@ -1,0 +1,342 @@
+Title: MindAlign: Decoding Inner Speech from fMRI Signals via Multimodal Embedding Alignment under Limited Data
+
+URL Source: https://arxiv.org/pdf/2606.20696v1
+
+Published Time: Tue, 23 Jun 2026 00:11:42 GMT
+
+Number of Pages: 20
+
+Markdown Content:
+Preprint. Under review. 
+
+# MindAlign: Decoding Inner Speech from fMRI Signals via Multi-modal Embedding Alignment under Limited Data 
+
+Muxuan Liu & Ichiro Kobayashi 
+
+Graduate School of Humanities and Sciences Ochanomizu University 
+
+{liu.muxuan,koba }@is.ocha.ac.jp 
+
+Satoshi Nishida 
+
+Center for Information and Neural Networks Advanced ICT Research Institute National Institute of Information and Communications Technology 
+
+s-nishida@nict.go.jp 
+
+## Abstract 
+
+Decoding inner speech from non-invasive brain signals remains a fundamental challenge due to the absence of overt linguistic output, limited training data, and large inter-subject variability. Existing brain-to-text approaches often rely on task-specific decoder fine-tuning, which restricts scalability and complicates adaptation to new participants. We propose MindAlign , a decoupled two-stage brain-to-language framework that enables open-ended text generation from fMRI signals without modifying the underlying language model. The first stage learns a subject-specific neural-semantic alignment that maps fMRI activity into a shared multimodal semantic space, extracting a latent semantic sketch of the internally generated sentence. The second stage integrates this sketch with visual context to prompt a frozen multimodal language model for free-form generation. Exper-iments on fMRI data collected during silent image description demonstrate that the proposed approach consistently outperforms fMRI-only and random baselines. We further show that the learned semantic-to-language projection can generalize across subjects, enabling effective decoding when paired with subject-specific neural alignment. These results indicate that neural signals modulate semantic content beyond image-driven priors, supporting a scalable and modular direction for brain-to-text decoding. 
+
+## 1 Introduction 
+
+Translating internal speech directly from brain activity into natural language is a long-standing goal in both neuroscience and artificial intelligence. Functional magnetic resonance imaging (fMRI) is non-invasive and offers high spatial resolution, yet its low temporal resolution makes open-ended language decoding particularly challenging. Most prior brain-to-text research relies on tightly time-aligned stimuli such as spoken stories or movie subtitles (Pereira et al., 2018; Chen et al., 2024). Others constrain outputs to predefined vocabularies (Yargholi & Hossein-Zadeh, 2016; Zou et al., 2022), limiting free-form decoding of internally generated thoughts. We propose MindAlign , a two-stage framework for decoding free inner speech in Japanese from fMRI signals collected during natural image viewing. Rather than aligning fMRI with word-level timing, we train an encoder to produce semantic sketches , which are fed into a frozen vision-language decoder through soft prefix tuning, optionally incorporating image features. 
+
+Contributions. 
+
+(1) We plan to release a new fMRI dataset that pairs image-evoked inner speech with voxel time-series from five participants. (2) We propose a two-stage decoder that works without external audio–token alignment , and conduct both subject-wise and cross-subject evaluations. 1
+
+> arXiv:2606.20696v1 [cs.CL] 15 Jun 2026
+
+Preprint. Under review. (3) With approximately 2,000 samples from five participants, the model generates fluent Japanese sentences and consistently outperforms image-only and random baselines across multiple metrics, demonstrating free-form inner-speech decoding in Japanese from fMRI. 
+
+## 2 Related Work   
+
+> Model / Paper Training Modality (A
+
+→ B: predict B from A) Subject Set-ting   
+
+> Pereira et al. (2018) fMRI (word reading with disambiguation contexts)
+
+→ word-level se-mantic vector (from GloVe embedding space) subject-wise MindEye (Scotti et al., 2023) fMRI (image viewing) → image (retrieved or reconstructed via CLIP embedding) subject-wise MindEye2 (Scotti et al., 2024) fMRI (image viewing) → image (via CLIP embedding; shared-subject training then adapt to target subject) subject-agnostic MindBridge (Wang et al., 2024) fMRI (image viewing) → image (reconstructed from CLIP embedding) subject-agnostic Tang et al. (2023) fMRI (auditory/imagined story) → text (story) subject-wise Thought2Text (Mishra et al., 2025) EEG (image viewing) + image → text (pseudo-labels from LLMs; de-coded by finetuned model) subject-wise BP-GPT (Chen et al., 2024) fMRI (auditory story) → text (story) subject-wise BrainChat (Huang et al., 2024) fMRI (image viewing) + image + text → text (caption/QA from external datasets, not subject-generated) subject-wise MindFormer (Han et al., 2024) fMRI (image viewing) → image / text (via semantic image features and LLM) subject-agnostic BrainCLIP (Ma et al., 2025) fMRI (image viewing) → image/text embedding (CLIP supervision) subject-wise BrainLLM (Ye et al., 2025) fMRI (visual/auditory language stimuli) → text (stimulus sentence con-tinuation) subject-wise MindLLM (Qiu et al., 2025) fMRI (image viewing) → text (caption/QA/reasoning; instruction-tuned LLM decoding) subject-agnostic LaVCa (Matsuyama et al., 2025) fMRI (visual cortex responses) → text (LLM-assisted captions for voxel selectivity / image semantics) subject-wise Interpretable fMRI Caption-ing (Shen et al., 2025) fMRI (image viewing) → text (caption; shared embedding contrastive learning) subject-wise Efficient Multi Subject Visual Re-construction (Zangos et al., 2025) fMRI (image viewing) → image (aligned common representation for cross-subject reconstruction) subject-agnostic Mind Captioning (Horikawa, 2025) fMRI (visual experience and recall) → text (descriptive captions gener-ated by language models) subject-agnostic   
+
+> MindAlign (Ours) fMRI (image-evoked inner speech) + image
+
+→ text (subject-generated inner speech) subject-wise 
+
+Table 1: Overview of brain decoding models. A model is subject-wise if trained/tested per participant, and subject-agnostic if shared across participants. Table 1 overviews major research routes of brain -signal decoding. Early studies mapped static 
+
+fMRI responses to word - level semantic vectors (Pereira et al., 2018), but were limited to small lexicons and per -subject tuning. Image - focused methods such as MindEye and its cross - subject variants (Scotti et al., 2023; 2024; Wang et al., 2024; Ma et al., 2025) produce impressive visual reconstructions, yet they are trained only on the Natural Scenes Dataset (NSD) (Allen et al., 2022) and flatten high-resolution 3-D voxel maps, losing cortical geometry. Sentence - level models (Tang et al., 2023; Chen et al., 2024; Ye et al., 2025) aim to decode continuous text . Tang et al. (2023) first let GPT generate candidate sentences and then apply ridge regression to map those sentence embeddings back into voxel space, comparing the result with measured fMRI; this pipeline demands frame - accurate alignment among audio, tokens, and TRs and inherits the combined errors of the language model and the regressor. BP -GPT (Chen et al., 2024) faces the same temporal - mismatch problem: each fMRI volume spans several words, and its “GPT -2 generation →
+
+ridge back -projection” design compounds alignment errors, preventing reliable word - level decoding. BrainLLM (Ye et al., 2025) pursues open -vocabulary generation, but its PCA compression (50k →
+
+1,000 voxels) and frozen linear map into a pretrained LLM embedding space ignore cortical topology and temporal dynamics, leading to syntactic and semantic inaccuracies in the decoded sentences. Recent multimodal systems pair neural signals with captions or VQA answers from public corpora (Qiu et al., 2025; Huang et al., 2024)—these approaches usually rely on image–text datasets as pseudo - labels and thus lack participant -generated language—or switch to EEG with coarse spatial detail (Mishra et al., 2025); MindFormer (Han et al., 2024) adds diffusion priors for cross - subject images. Related captioning-oriented studies further explore fMRI-to-text mappings by generating 2Preprint. Under review. descriptive language for visual content. LaVCa (Matsuyama et al., 2025) employs large language models to produce captions that explain voxel selectivity in the visual cortex, emphasizing inter-pretability rather than sentence reconstruction. Similarly, Interpretable fMRI Captioning (Shen et al., 2025) formulates stimulus image captioning as a shared-embedding contrastive learning problem. Most recently, Mind Captioning (Horikawa, 2025) demonstrates that descriptive text can be generated from fMRI signals associated with visual experience and recall, but it focuses on generic scene descriptions rather than recovering subject-generated internal language. Two key gaps remain: (i) most studies rely on externally provided captions rather than participants’ own inner speech, and (ii) existing decoding methods struggle to preserve subject-specific semantics from fMRI signals. We introduce a novel fMRI dataset of image-evoked inner speech and a two-stage 
+
+MindAlign framework that maps neural activity to input embeddings. 
+
+Figure 1: Overview of MindAlign, our proposed two-stage brain-to-language decoding framework. CLIP embeddings are used only as an intermediate semantic anchor during Stage-1 training; the final aligned representation is expressed in the LLaVA input embedding space and passed to Stage-2. 
+
+## 3 Method 
+
+We propose a two-stage brain-to-language decoding framework that reconstructs internally imagined speech from non-invasive fMRI recordings. The framework consists of (1) Cross-Modal Alignment ,which maps fMRI signals into a pretrained multimodal semantic space, and (2) Multimodal Fusion Generative Decoding , which uses the aligned representations to prompt a Large Language Model (LLM) for text generation. 
+
+3.1 Data Preprocessing 
+
+To reduce dimensionality and suppress noise, the fMRI inputs to the encoder are restricted to a subset of voxels selected based on explainable variance (EV). Voxel selection is performed at the dataset preprocessing stage using category-based EV filtering, and the resulting voxel mask is fixed and shared across all splits. Details are provided in Section 4.1. 
+
+3.2 Stage 1: Cross-Modal Alignment 
+
+The objective of Stage 1 is to extract a latent semantic representation from high-dimensional, noisy fMRI data. During training, this representation is constrained using CLIP Radford et al. (2021) visual embeddings as an intermediate semantic supervision signal, while the final output is projected into the LLaVA input embedding space for downstream decoding. 3Preprint. Under review. 
+
+Target Feature Extraction For each stimulus image I, we extract its visual embedding zvis ∈
+
+Rdclip using a pretrained CLIP-ViT-L/14 model 1. These embeddings are ℓ2-normalized and serve as an intermediate semantic supervision signal during Stage-1 training, rather than the final representation space. Additionally, we extract embeddings from the input layer of 
+
+LLaVA-1.6-vicuna-7B-hf and apply Global Average Pooling (GAP) to derive a fixed-dimensional sentence-level vector zlang , providing auxiliary linguistic supervision. 
+
+fMRI Encoder Architecture The encoder employs a Bidirectional LSTM (Bi-LSTM) Huang et al. (2015) to capture the temporal dynamics of the fMRI signal ( T = 8 TRs). The process involves: 1. Feature Projection: A linear layer projects voxel values into a feature space: ht =
+
+ReLU (LN (Win xt + bin )) .2. Temporal Encoding: A multi-layer Bi-LSTM aggregates information across the sequence: 
+
+ot = Bi-LSTM (ht).3. Global Pooling: We apply GAP over the temporal dimension to obtain a single sentence-level representation: oavg = 1 
+
+> T
+
+∑Tt=1 ot.4. Semantic Mapping: An MLP aligns oavg with the CLIP embedding space ( dclip = 768 )for semantic supervision, followed by a linear projection into the LLaVA input embedding space ( dllm = 4096 ). 
+
+Training Objectives and Augmentation We optimize the encoder using a hybrid loss function: 
+
+Ltotal = λnce LNCE + λcos Lcos + λmse LMSE + λcls Lcls (1) where LNCE is the InfoNCE contrastive loss, Lcos and LMSE provide point-wise supervision, and 
+
+Lcls is an auxiliary cross-entropy loss using COCO category labels. To enhance robustness, we incorporate Intra-category Mixup , a category-constrained variant of Mixup (Zhang et al., 2017), which has been shown to improve performance and reduce overfitting in fMRI-based deep learning models (Smucny et al., 2022). Additionally, we apply spatially constrained noise injection as a form of regularization (Shorten & Khoshgoftaar, 2019), which perturbs voxel activations within localized regions to improve robustness to input noise. 
+
+3.3 Stage-2: Multimodal Fusion Generative Decoding 
+
+As illustrated in the lower part of Appendix Figure 4 and summarized in the Stage 2 panel of Figure 1, Stage 2 conditions language generation on fMRI inputs via multimodal soft prefix tuning, leveraging the frozen LLaVA-1.6-vicuna-7B-hf model. 
+
+Multimodal Prefix Generation The objective of Stage 2 is to construct a soft prefix P ∈ RL×dllm 
+
+(where L is a hyperparameter representing the prefix length, set to 8 in our experiments) that guides the LLM. The generation process involves a dual-stream projection and fusion mechanism: 1. Neural Stream: The frozen Stage 1 encoder outputs a sentence-level semantic vector 
+
+e f mri ∈ R4096 in the LLaVA input embedding space. This vector is then linearly projected into a neural prefix component of shape [B, L × (dllm /2 )] via a linear layer W f , where 
+
+dllm /2 = 2048 .2. Visual Stream: Simultaneously, visual features v ∈ Rdv are extracted from the stimulus image via a frozen CLIP ViT-L/14 encoder. These features are projected into a visual prefix component of shape [B, L × (dllm /2 )] via a linear layer Wv.3. Feature Fusion: The neural and visual prefix components are concatenated along the feature dimension to form a combined representation of shape [B, L × dllm ]. This representation is then reshaped to [B, L, dllm ] and passed through a fusion MLP (comprising Linear, LayerNorm, and GELU layers) to produce the final soft prefix P. In this setup, the initial projection to dllm /2 (2048) ensures that both modalities contribute equally to the fused prefix space before the final non-linear integration. 
+
+> 1https://huggingface.co/openai/clip-vit-large-patch14
+
+4Preprint. Under review. While LLaVA typically uses CLIP-derived image embeddings to construct visual prefixes, we replace this mechanism with a joint mapping from fMRI and image features, allowing our model to condition generation on brain signals. This prefix is prepended to the BOS token and passed to the frozen LLaVA decoder via the input embedding interface, without modifying any decoder or backbone parameters. Only the projection and fusion modules are updated during training. We fix the prefix length to 8 based on the default experimental configuration, with additional variants discussed in Appendix F. 
+
+Generative Training The model is trained using teacher forcing with cross-entropy loss, min-imizing the negative log-likelihood of the ground-truth token sequence y1: T given the soft prefix 
+
+P:
+
+Lgen = −
+
+> N
+
+# ∑
+
+> i=1
+
+log P(yi | y<i, P) (2) To prevent the model from predicting tokens in the prefix region, the corresponding positions in the target label sequence are masked using a label value of −100 , following the standard convention in sequence modeling. 
+
+## 4 Experiments 
+
+4.1 Dataset 
+
+We evaluate our method using an fMRI-image-text dataset collected during a naturalistic inner speech task. Five participants (LD0001–LD0006; LD0003 withdrew during the experiment) viewed images from the COCO dataset Lin et al. (2014) and silently generated Japanese descriptions during fMRI scanning, without overt speech or lip movement. All descriptions were produced in Japanese, consistent with the participants’ native language. As shown in Appendix Figure 3, each trial consisted of four consecutive 8-second segments. In the first segment, the participant described the entire image. In the remaining three segments, the participant described individual objects highlighted by white bounding boxes, with the instruction to describe the largest object when multiple objects were present. Functional images were acquired with a repetition time (TR) of 1 second. The response signals of the voxels obtained for each subject are referenced in the Appendix Table 5. The experimental paradigm comprised five blocks of 16 trials per scanning day, yielding 80 trials per day and 560 image trials across seven scanning days. Each image trial included four consecutive description tasks, with the corresponding fMRI measurements segmented into 36-TR samples. A subset of images was repeated for validation. After scanning, the participant provided one written description per image, which was used as the semantic target for all four associated fMRI segments. Additional details on participant demographics, task training, and label validation are provided in Appendix A. 
+
+Semantic Supervision Targets. To construct supervision targets for Stage 1, we extract visual embeddings from each stimulus image using the pretrained CLIP-ViT-L/14 model. In addi-tion, we extract semantic sketch in the LLM embedding space from the input embedding layer of 
+
+LLaVA-1.6-vicuna-7B-hf . Since inner speech descriptions vary in length, we apply global average pooling over the token dimension to obtain fixed-dimensional sentence-level representations. These pooled linguistic embeddings, together with CLIP visual embeddings, serve as semantic targets for aligning fMRI-derived features in a unified multimodal space. 
+
+ROI Selection and Voxel Filtering. To reduce input dimensionality and improve signal reliability, we apply a category-based voxel selection procedure based on explainable variance (EV) Sahani & Linden (2002); Hsu et al. (2004); Schoppe et al. (2016), which quantifies the proportion of response variance that is consistently driven by stimulus category rather than trial-level noise. For each semantic category, voxels with the highest EV values are selected, and a global union mask is constructed across all categories. This procedure allows the model to focus on voxels exhibiting reliable, category-relevant responses while substantially reducing noise-dominated dimensions. The formal definition of EV and the detailed selection procedure are described in Appendix B. 5Preprint. Under review. 
+
+(a) Subject-wise comparison: fMRI-only vs fMRI+Image.                                                                           
+
+> Subject Metric LD0001 LD0002 LD0004 LD0005 LD0006 fMRI fMRI+Img fMRI fMRI+Img fMRI fMRI+Img fMRI fMRI+Img fMRI fMRI+Img TF-IDF Cosine (Salton & Buckley, 1988) 0.0844 0.1100 0.1172 0.1183 0.0741 0.1122 0.0858 0.1522 0.1383 0.1499
+> ChrF (Popovi´ c, 2015) 0.1193 0.1451 0.1530 0.1481 0.1150 0.1443 0.1451 0.2191 0.1879 0.1984
+> Levenshtein Similarity (Levenshtein, 1966) 0.1489 0.1988 0.2135 0.2194 0.1568 0.2063 0.2171 0.2803 0.2780 0.3151
+> BLEU (Papineni et al., 2002) 0.0866 0.1262 0.1324 0.1353 0.0849 0.1284 0.1274 0.1951 0.1712 0.1916
+> ROUGE-L (Lin, 2004) 0.2512 0.3039 0.3354 0.3465 0.2606 0.3278 0.3230 0.3949 0.3910 0.4222
+> BERT-Score (Zhang et al., 2020) 0.7215 0.7384 0.7493 0.7584 0.7159 0.7416 0.7258 0.7562 0.7683 0.7800
+
+(b) Baseline comparison: Original LLaVA (image-only) vs Random fMRI+Image. (Note: Original LLaVA scores are identical across subjects. )                                          
+
+> Metric LLaVA LD0001 (Rand) LD0002 (Rand) LD0004 (Rand) LD0005 (Rand) LD0006 (Rand)
+> TF-IDF Cosine 0.0751 0.0357 0.0648 0.0566 0.0827 0.0616 ChrF 0.0834 0.0747 0.1057 0.1072 0.1553 0.1126 Levenshtein Similarity 0.1122 0.1100 0.1832 0.1472 0.2187 0.2039 BLEU 0.0557 0.0589 0.0913 0.0834 0.1392 0.0978 ROUGE-L 0.2092 0.2008 0.3015 0.2546 0.3365 0.3062 BERT-Score 0.6945 0.6945 0.7417 0.7168 0.7327 0.7364
+
+Table 2: Subject-wise decoding performance. (a) compares fMRI-only and fMRI+Image inputs. Bold indicates the better of the paired settings in each subject; (b) compares two baselines (Original LLaVA and Random fMRI+Image). 
+
+4.2 Subject-wise Evaluation Protocol 
+
+Due to substantial inter-subject variability in neural responses, we adopt a subject-wise training and evaluation protocol as our primary experimental setting. For each participant, a dedicated Stage-1 encoder is trained to map that subject’s fMRI signals into a shared semantic space guided by CLIP. The Stage-2 prefix projector is then trained using the CLIP-aligned features produced by the corresponding subject-specific Stage-1 encoder. All training, validation, and test splits are constructed independently for each subject, and no neural data are shared across subjects during training. 
+
+4.3 Ablation Study: Contribution of fMRI and Image Modalities 
+
+To assess the contribution of different input modalities, we compare three variants of the decoding pipeline (see Appendix H for protocol details): • fMRI-only (Ours) : A soft prefix is generated solely from brain signals by projecting the Stage-1 fMRI semantic representation into a [prefix len , 4096 ] decoder prompt. • fMRI + Image (Ours) : fMRI semantics and CLIP image features are independently projected to [prefix len , 2048 ] and concatenated into a [prefix len , 4096 ] multimodal prefix, followed by a lightweight fusion MLP. • Random fMRI + Image : As a control, fMRI inputs are replaced with Gaussian noise at inference to test whether brain-derived signals add information beyond images alone. Both fMRI-only and fMRI+Image models share the same decoder (LLaVA) and adopt the same prefix-tuning interface using input embeddings, without modifying decoder weights. During training, only the prefix projection (and fusion, if applicable) layers are updated. 
+
+## 5 Results 
+
+5.1 Decoding Performance 
+
+To ensure fair comparison, all models are trained and evaluated on the same data splits. Following the ablation setup described in Section 4.3, we used the same data split for model training and evaluated decoding performance on the same test set. 6Preprint. Under review. 
+
+Overall Metrics Comparison. Table 2 reports subject-wise decoding performance across six complementary evaluation metrics. The results highlight several key findings regarding the role of neural signals in language generation. 
+
+Semantic Guidance of fMRI Signals. A critical question is whether the model truly ”reads” the brain or simply relies on visual priors. Comparing the fMRI+Image condition in Table 2(a) with the 
+
+Random fMRI+Image control in Table 2(b), we observe that real fMRI signals consistently yield superior performance across all subjects. For instance, in subject LD0006, the BERT-Score drops from 0.7800 (Real) to 0.7364 (Random). This significant degradation in the absence of structured neural input provides strong evidence that the model leverages structured neural signals beyond visual priors. 
+
+Domain-specific Prefix Tuning Effect. Random fMRI+Image often outperforms Original LLaVA (image-only) (e.g., 0.7417 vs 0.6945 for LD0002), suggesting that prefix tuning adapts the decoder to the dataset distribution. 
+
+Synergistic Multimodal Decoding. The consistent superiority of fMRI+Image over fMRI-only 
+
+indicates a synergistic relationship between modalities. While fMRI signals provide the ”semantic intent” (e.g., the presence of an animal), they are inherently noisy and spatially coarse. The image input serves as a visual anchor , providing structural constraints that ground the neural decoding process into specific visual details (e.g., ”a yellow bird perched on a branch”). 
+
+Semantic vs. Lexical Alignment. We observe that while lexical metrics like BLEU and ROUGE-L remain relatively low, BERT-Score consistently exhibits high values (0.7–0.8). This discrepancy reflects the nature of brain-driven generation: the decoded text often captures the gist of the imagined content through paraphrasing rather than exact word-for-word matching. The robust BERT-Score results confirm that our framework achieves stable semantic alignment, effectively bridging the gap between neural activity and natural language. 
+
+## 6 Discussion 
+
+While standard generation metrics provide an overall performance summary, they do not fully capture how well a decoded description uniquely identifies the target image among distractors. To better analyze generation quality, we conduct a qualitative comparison of decoded descriptions, which reveals specific failure modes such as semantic drift or hallucination. We focus on representative cases. 
+
+Figure 2: Decoded sentence examples (English translations) for two image–fMRI pairs. Colors denote roles: objects (orange), actions (green), spatial (blue), color (purple). More examples are provided in Appendix J. 7Preprint. Under review.                                              
+
+> Category Num LLaVA fMRI fMRI+Img Rand+Img person 20 0.666 0.703 0.749 0.707 car 50.694 0.699 0.740 0.702 whole image 45 0.702 0.741 0.763 0.723 chair 50.656 0.763 0.779 0.741 tv 10 0.711 0.773 0.788 0.735 knife 50.683 0.728 0.730 0.727 broccoli 50.662 0.693 0.687 0.714 bus 50.697 0.813 0.796 0.711
+
+Table 3: Category-level semantic similarity (BERT-Score). LLaVA serves as a vision-language baseline. Bold indicates the better result between fMRI-only and fMRI+Image models. Rand+Img is included as an ablation to verify the contribution of fMRI signals. 
+
+6.1 Category-Level Semantic Analysis 
+
+To understand which types of visual concepts benefit most from multimodal integration, we performed a fine-grained semantic analysis across different object categories. We identified the primary object category for each test sample based on its COCO metadata and computed the semantic similarity between the decoded and ground-truth sentences. For each category c, the semantic score Sc is defined as the average BERT-Score of the decoded sentences compared to their corresponding ground-truth descriptions. BERT-Score leverages the contextual embeddings from a pretrained multilingual BERT model to capture semantic similarity, making it particularly effective for evaluating the ”gist” of brain-decoded text in Japanese. Table 3 presents category-level semantic similarity measured by BERT-Score. Overall, the 
+
+fMRI+Image model achieves higher scores than the fMRI-only variant for most categories, indi-cating that visual input generally provides complementary information to the neural signal. The observed improvements are moderate in magnitude but consistent across multiple object categories. For a small number of categories, the fMRI-only model performs comparably or slightly better, suggesting that in such cases the neural signal alone already captures sufficient semantic information. In most categories, fMRI+Image outperforms the Rand+Img baseline, confirming that the gains cannot be explained solely by visual priors or dataset-specific biases. 
+
+6.2 Qualitative Analysis Semantic Contributions of fMRI Signals. Figure 2 shows representative examples from each model. The fMRI+Image model yields the most semantically aligned outputs, often capturing specific internal expressions imagined by the participant (e.g., “lifting its beak upward” or “yellow-feathered”). In contrast, the fMRI-only model struggles with coherence, but occasionally produces relevant phrases (e.g., “bird” or “catcher”) despite lacking visual input. Both the original LLaVA and random baseline 
+
+tend to generate generic scene-level descriptions (e.g., “a bird with its wings spread”), with the latter often yielding completely irrelevant outputs (e.g., “sofa” or “chocolate inside a bag”). These observations demonstrate the distinct contributions of brain signals. The fMRI-only model performs poorly due to the lack of visual anchors, limited training data, and high noise in fMRI signals. Interestingly, the random fMRI + image baseline performs relatively well in terms of fluency—not because the random fMRI adds useful information, but because the decoder effectively ignores it and relies entirely on image features. This suggests that the decoder ignores the random fMRI input and relies solely on image features, highlighting the robustness of vision-language priors in the absence of informative neural signals. In contrast, the fMRI+Image model benefits from the integration of real neural signals, which modulate the interpretation of visual features and inject subject-specific semantic priors. This leads to more personalized and grounded descriptions that go beyond literal image captions. More qualitative examples are shown in Appendix J. 8Preprint. Under review. 
+
+6.3 Inter-subject Variability and Data Quality 
+
+We observe notable variance in decoding performance across the five subjects. While the model architecture remains identical, the BERT-Score ranges from 0.7215 (LD0001) to 0.7800 (LD0006). This discrepancy can be attributed to several factors related to fMRI data quality and task compliance. First, the Signal-to-Noise Ratio (SNR) of BOLD signals varies significantly between individuals due to physiological differences (e.g., cortical thickness, vascular patterns) and technical factors (e.g., head motion during scanning). Subjects with more stable neural responses in key semantic hubs naturally provide a cleaner target for Stage-1 alignment. Second, the subjective nature of inner speech poses a unique challenge. Unlike passive viewing, the ”silent description” task requires high levels of sustained attention and consistent mental imagery. Variations in how vividly a subject imagines the scene or how strictly they follow the linguistic prompts can lead to differences in the ”semantic clarity” of the captured brain patterns. The superior performance of LD0006 suggests not only a high-quality neural signal but also a high degree of task compliance and internal consistency in their mental representations. 
+
+6.4 Subject-agnostic Generalization 
+
+A key motivation of our decoupled two-stage framework is to explicitly separate subject-specific neural alignment from semantic-to-language decoding, thereby enabling subject-agnostic transfer. To evaluate this property, we designed a cross-subject inference protocol where the Stage-1 encoder from a source subject is paired with a Stage-2 prefix projector trained on a different target subject .Importantly, Stage-1 remains strictly subject-specific, acting as a “neural normalizer” that maps indi-vidual brain activity into a CLIP-guided semantic space. Stage-2, in contrast, is designed to operate on subject-independent semantic representations, mapping these universal semantic embeddings into linguistic prefixes for the LLaVA decoder. This experiment tests whether the Stage-2 projector truly learns a generalized mapping from semantics to language, rather than overfitting to subject-specific neural distributions.                                
+
+> S1 \S2 LD0001 LD0002 LD0004 LD0005 LD0006 LD0001 0.7215 0.7012 0.6966 0.7089 0.7129 LD0002 0.6957 0.7493 0.7000 0.6982 0.6987 LD0004 0.7012 0.7001 0.7159 0.7051 0.7087 LD0005 0.7068 0.7049 0.7034 0.7258 0.7284 LD0006 0.7196 0.7077 0.7182 0.7371 0.7683
+
+Table 4: Cross-subject decoding performance (BERT-Score). Rows represent the source subject for the Stage-1 encoder, and columns represent the target subject for the Stage-2 projector. Diagonal elements (bold) represent within-subject performance. As shown in Table 4, the framework shows encouraging cross-subject transfer performance. The cross-subject scores (off-diagonal) remain competitive, exceeding 0.69 BERT-Score in all tested combinations and in some cases approaching or surpassing the within-subject performance of other subjects. For instance, the LD0006 encoder paired with the LD0005 projector achieves a BERT-Score of 0.7371, which is higher than the within-subject performance of LD0001 (0.7215). These results support the modularity of our approach. Stage 1 aligns brain signals to a shared semantic space, while Stage 2 appears to learn a reusable semantic-to-language mapping that can transfer across subjects. 
+
+## 7 Conclusion 
+
+We show that aligning continuous fMRI signals to the embedding space of a pretrained language model yields a compact semantic representation of internally imagined speech. This representation can be used as a target for prefix tuning, enabling language generation without temporal supervision or decoder fine-tuning. The results indicate that such embedding-level alignment supports semantically meaningful decoding under limited data conditions. 9Preprint. Under review. 
+
+## Ethics Statement 
+
+This study uses fMRI data collected by the authors from five human participants. During scanning, the participants viewed images selected from the COCO dataset Lin et al. (2014), while brain activity was recorded. Written informed consent was obtained prior to the experiment. The experimental procedures were reviewed and approved by the relevant institutional ethics and safety review boards. No personally identifiable information (PII) is included in the dataset, and all analyses were conducted in accordance with established ethical guidelines for noninvasive human brain research. 
+
+## References 
+
+Emily J Allen, Ghislain St-Yves, Yihan Wu, Jesse L Breedlove, Jacob S Prince, Logan T Dowdle, Matthias Nau, Brad Caron, Franco Pestilli, Ian Charest, J. Benjamin Hutchinson, Thomas Naselaris, and Kendrick Kay. A massive 7t fmri dataset to bridge cognitive neuroscience and artificial intelligence. Nature neuroscience , 25(1):116–126, 2022. Xiaoyu Chen, Changde Du, Che Liu, Yizhe Wang, and Huiguang He. Open-vocabulary auditory neural decoding using fmri-prompted llm. arXiv preprint arXiv:2405.07840 , 2024. Inhwa Han, Jaayeon Lee, and Jong Chul Ye. Mindformer: Semantic alignment of multi-subject fmri for brain decoding. arXiv preprint arXiv:2405.17720 , 2024. Tomoyasu Horikawa. Mind captioning: Evolving descriptive text of mental content from human brain activity. Science Advances , 11(45):eadw1464, 2025. Anne Hsu, Axel Borst, and Frederic E. Theunissen. Quantifying variability in neural responses and its application for the validation of model predictions. Network: Computation in Neural Systems ,15(2):91–109, 2004. Wanqiu Huang, Ke Ma, Tingyu Xie, and Hongwei Wang. Brainchat: Decoding semantic information from fmri using vision-language pretrained models. arXiv preprint arXiv:2406.07584 , 2024. Zhiheng Huang, Wei Xu, and Kai Yu. Bidirectional lstm-crf models for sequence tagging. arXiv preprint arXiv:1508.01991 , 2015. Alexander G. Huth and Gallant Lab. Voxelwise encoding model tutorials. https://gallantlab. org/voxelwise_tutorials/ , 2021. Accessed: 2025-09-10. Vladimir I Levenshtein. Binary codes capable of correcting deletions, insertions, and reversals. In 
+
+Soviet physics doklady , volume 10, pp. 707–710. Soviet Union, 1966. Chin-Yew Lin. ROUGE: A package for automatic evaluation of summaries. In Text Summarization Branches Out , pp. 74–81, Barcelona, Spain, July 2004. Association for Computational Linguistics. URL https://aclanthology.org/W04-1013/ .Tsung-Yi Lin, Michael Maire, Serge Belongie, Lubomir Bourdev, Ross Girshick, James Hays, Pietro Perona, Deva Ramanan, Piotr Doll ´ar, and C. Lawrence Zitnick. Microsoft coco: Common objects in context, 2014. Yongqiang Ma, Yulong Liu, Liangjun Chen, Guibo Zhu, Badong Chen, and Nanning Zheng. Brainclip: Brain representation via clip for generic natural visual stimulus decoding. IEEE Transactions on Medical Imaging , 2025. URL https://pubmed.ncbi.nlm.nih.gov/40031248/ .Takuya Matsuyama, Shinji Nishimoto, and Yu Takagi. Lavca: Llm-assisted visual cortex captioning. 
+
+arXiv preprint arXiv:2502.13606 , 2025. Abhijit Mishra, Shreya Shukla, Jose Torres, Jacek Gwizdka, and Shounak Roychowdhury. Thought2text: Text generation from eeg signal using large language models (llms). In Find-ings of the Association for Computational Linguistics: NAACL 2025 , pp. 3747–3759, 2025. URL 
+
+https://aclanthology.org/2025.findings-naacl.207/ .10 Preprint. Under review. Kishore Papineni, Salim Roukos, Todd Ward, and Wei-Jing Zhu. Bleu: a method for automatic evaluation of machine translation. In Pierre Isabelle, Eugene Charniak, and Dekang Lin (eds.), 
+
+Proceedings of the 40th Annual Meeting of the Association for Computational Linguistics , pp. 311–318, Philadelphia, Pennsylvania, USA, July 2002. Association for Computational Linguistics. doi: 10.3115/1073083.1073135. URL https://aclanthology.org/P02-1040/ .Francisco Pereira, Bin Lou, Brianna Pritchett, Samuel Ritter, Samuel J Gershman, Nancy Kanwisher, Matthew Botvinick, and Evelina Fedorenko. Toward a universal decoder of linguistic meaning from brain activation. Nature communications , 9(1):963, 2018. Maja Popovi ´c. chrF: character n-gram F-score for automatic MT evaluation. In Ond ˇrej Bojar, Rajan Chatterjee, Christian Federmann, Barry Haddow, Chris Hokamp, Matthias Huck, Varvara Logacheva, and Pavel Pecina (eds.), Proceedings of the Tenth Workshop on Statistical Machine Translation , pp. 392–395, Lisbon, Portugal, September 2015. Association for Computational Lin-guistics. doi: 10.18653/v1/W15-3049. URL https://aclanthology.org/W15-3049/ .Weikang Qiu, Zheng Huang, Haoyu Hu, Aosong Feng, Yujun Yan, and Rex Ying. MindLLM: A subject-agnostic and versatile model for fMRI-to-text decoding. In Forty-second International Conference on Machine Learning , 2025. URL https://openreview.net/forum?id= EiAQrilPYP .Alec Radford, Jong Wook Kim, Chris Hallacy, Aditya Ramesh, Gabriel Goh, Sandhini Agarwal, Girish Sastry, Amanda Askell, Pamela Mishkin, Jack Clark, Gretchen Krueger, and Ilya Sutskever. Learning transferable visual models from natural language supervision. In ICML , 2021. Florian Reichel. On bessel’s correction: Unbiased sample variance, the “bariance,” and a novel runtime-optimized estimator. arXiv preprint arXiv:2503.22333, 2025. URL https://arxiv. org/abs/2503.22333 . Working paper, JKU Linz. Maneesh Sahani and Jennifer F. Linden. How linear are auditory cortical responses? In Advances in Neural Information Processing Systems , volume 15, 2002. Gerard Salton and Christopher Buckley. Term-weighting approaches in automatic text retrieval. 
+
+Information processing & management , 24(5):513–523, 1988. O. Schoppe, N. S. Harper, B. D. B. Willmore, A. J. King, and J. W. H. Schnupp. Measuring the performance of neural models. Frontiers in Computational Neuroscience , 10:10, 2016. Paul Steven Scotti, Atmadeep Banerjee, Jimmie Goode, Stepan Shabalin, Alex Nguyen, Cohen Ethan, Aidan James Dempster, Nathalie Verlinde, Elad Yundler, David Weisberg, Kenneth Norman, and Tanishq Mathew Abraham. Reconstructing the mind’s eye: fMRI-to-image with contrastive learning and diffusion priors. In Thirty-seventh Conference on Neural Information Processing Systems , 2023. URL https://openreview.net/forum?id=rwrblCYb2A .Paul Steven Scotti, Mihir Tripathy, Cesar Torrico, Reese Kneeland, Tong Chen, Ashutosh Narang, Cha-ran Santhirasegaran, Jonathan Xu, Thomas Naselaris, Kenneth A. Norman, and Tanishq Mathew Abraham. Mindeye2: Shared-subject models enable fMRI-to-image with 1 hour of data. In ICLR 2024 Workshop on Representational Alignment , 2024. URL https://openreview.net/ forum?id=paqqd1O0Dl .Vyacheslav Shen, Kassymzhomart Kunanbayev, Donggon Jang, and Daeshik Kim. Interpretable fmri captioning via contrastive learning. In International Conference on Medical Image Computing and Computer-Assisted Intervention , pp. 295–304. Springer, 2025. Connor Shorten and Taghi M Khoshgoftaar. A survey on image data augmentation for deep learning. 
+
+Journal of big data , 6(1):1–48, 2019. Jason Smucny, Ge Shi, Tyler A Lesh, Cameron S Carter, and Ian Davidson. Data augmentation with mixup: Enhancing performance of a functional neuroimaging-based prognostic deep learning classifier in recent onset psychosis. NeuroImage: Clinical , 36:103214, 2022. Jerry Tang, Amanda LeBel, Shailee Jain, and Alexander G. Huth. Semantic reconstruction of continuous language from non-invasive brain recordings. Nature Neuroscience , 26(5):858–866, 2023. doi: 10.1038/s41593-023-01304-9. 11 Preprint. Under review. Shizun Wang, Songhua Liu, Zhenxiong Tan, and Xinchao Wang. Mindbridge: A cross-subject brain decoding framework. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pp. 11333–11342, 2024. Elahe’ Yargholi and Gholam-Ali Hossein-Zadeh. Brain decoding-classification of hand written digits from fmri data employing bayesian networks. Frontiers in Human Neuroscience , 10:351, 2016. URL https://www.frontiersin.org/articles/10.3389/fnhum.2016. 00351/full .Ziyi Ye, Qingyao Ai, Yiqun Liu, Maarten de Rijke, Min Zhang, Christina Lioma, and Tuukka Ruotsalo. Generative language reconstruction from brain recordings. Communications Biology , 8 (1):346, 2025. Christos Zangos, Danish Ebadulla, Thomas Christopher Sprague, and Ambuj Singh. Efficient multi subject visual reconstruction from fmri using aligned representations. arXiv preprint arXiv:2505.01670 , 2025. Hongyi Zhang, Moustapha Cisse, Yann N Dauphin, and David Lopez-Paz. mixup: Beyond empirical risk minimization. arXiv preprint arXiv:1710.09412 , 2017. Tianyi Zhang, Varsha Kishore, Felix Wu, Kilian Q. Weinberger, and Yoav Artzi. Bertscore: Evaluating text generation with bert, 2020. URL https://arxiv.org/abs/1904.09675 .Shuxian Zou, Shaonan Wang, Jiajun Zhang, and Chengqing Zong. Cross-modal cloze task: A new task to brain-to-word decoding. In Findings of the Association for Computational Linguistics: ACL 2022 , pp. 648–657. Association for Computational Linguistics, 2022. URL https:// aclanthology.org/2022.findings-acl.54/ .12 Preprint. Under review. 
+
+## A Data Collection and Validation 
+
+A.1 fMRI Experimental Protocol and Participants details 
+
+Figure 3: Experimental procedure for the inner speech task. We collected fMRI data from five healthy Japanese participants listed in Table 5 following the fMRI experimental protocol shown in Figure 3. The table also reports the number of cortical voxels retained after preprocessing.                   
+
+> SubjNumber Age Gender Cortical Voxels
+> LD0001 24 male 277,603 LD0002 23 female 250,470 LD0004 25 male 284,263 LD0005 25 female 240,338 LD0006 23 male 299,758
+
+Table 5: Demographic information and cortical voxel counts of participants. One participant (LD0003) was excluded due to withdrawal. We plan to publicly release the anonymized fMRI dataset together with the accompanying code once the necessary permissions are obtained. The data will be made available under a non-commercial, research-only license, and the code will be released under an open-source license (e.g., MIT). This release aims to facilitate transparency, reproducibility, and further research in the field. A total of 560 unique images from the COCO dataset Lin et al. (2014) were presented during the experiment. Most images were shown only once to minimize learning effects or memorization, while a small subset was repeated for validation. The image presentation was distributed over seven days. During fMRI scanning, each image was paired with four tasks: one describing the entire scene and three describing local objects highlighted with white bounding boxes. The participants performed silent inner speech (i.e., mentally composing a Japanese sentence) during each 8-second task period, without any overt articulation or lip movement. To standardize the inner speech process and ensure task compliance, we conducted pre-scan training sessions. Participants received detailed instructions and practiced the task using example images. We confirmed that the participants could reliably generate full-sentence mental descriptions before proceeding to the actual scan. After the scan, there was a delay of over one month before the participants were asked to write one Japanese sentence per image, recalling what were internally verbalized during the fMRI session. This design was intended to reduce any influence of short-term memory or immediate retrospective adjustment. 
+
+A.2 Attention Monitoring and Quality Control 
+
+To ensure alertness and attentional engagement during scanning, the participants’ eye movements and blinks were continuously monitored in real time. Trials showing prolonged eyelid closure, loss of gaze fixation, or other signs of inattention were manually reviewed and excluded from the dataset. 13 Preprint. Under review. These procedures ensured that only high-quality fMRI samples with reliable internal verbalization were used in the analysis. 
+
+A.3 Validation of Inner Speech Labels 
+
+To validate the semantic reliability of post-scan written inner speech descriptions, we conducted a quantitative comparison against a separate set of spoken descriptions collected outside the scanner un-der the same image presentation protocol. For each image, the participants provided two descriptions: a written sentence reflecting inner speech, and a transcribed sentence from overt speech.          
+
+> Metric True Pair Score Random Baseline Improvement
+> Semantic Similarity (S-BERT cosine) 0.7231 0.0761 +850.8% BERT-Score (F1) 0.7772 0.6600 +17.8%
+
+Table 6: Semantic similarity between inner speech and spoken description. We evaluated the semantic alignment between these two modalities using Sentence-BERT cosine similarity and BERT-Score (F1). As shown in Table 6, the true sentence pairs yielded a Sentence-BERT similarity of 0.7231 and a BERT-Score of 0.7772. In contrast, random sentence pairings yielded baseline scores of 0.0761 and 0.6600 respectively. This corresponds to an 850.8% improvement in Sentence-BERT similarity and a 17.8% gain in BERT-Score, indicating a strong alignment between the internal and spoken descriptions. These results suggest that the post-scan written inner speech descriptions preserve substantial semantic content intended during the scan. Their consistency with overt spoken language supports their use as decoding targets for fMRI-to-language models. 
+
+## B Explainable Variance-based Voxel Selection 
+
+To mitigate measurement noise and improve the reliability of fMRI inputs, we employ a category-based voxel selection procedure based on voxel-wise explainable variance (EV), also referred to as signal power Sahani & Linden (2002); Hsu et al. (2004); Schoppe et al. (2016). EV measures the proportion of response variance that is consistent across repeated presentations of the same stimulus category, thereby isolating stimulus-driven neural activity from trial-to-trial noise. Following the variance decomposition framework introduced by Sahani and Linden Sahani & Linden (2002), we compute the EV for each voxel v within a given semantic category c (e.g., COCO object categories). For a set of n repetitions belonging to category c, the EV is defined as: 
+
+EV v = Var ( ¯yv)
+
+E[Var (yv,i)] − 1 − EV raw 
+
+n − 1 , (3) where EV raw denotes the uncorrected explainable variance prior to bias correction, ¯yv denotes the mean response of voxel v across repetitions, and yv,i represents the response of voxel v in the i-th repetition. The second term applies a bias correction to account for finite-sample effects, compensating for the loss of one degree of freedom introduced by estimating the mean from the data Schoppe et al. (2016); Reichel (2025). Unlike conventional global EV filtering, we adopt a category-based selection strategy. For each semantic category, we select the top K voxels with the highest EV values, capturing neural populations specialized for diverse semantic contents. A global union mask is then constructed by taking the union of category-specific voxel sets across all categories. This union mask is applied uniformly to all samples, ensuring that the model focuses on voxels with reliable, category-relevant responses while significantly reducing input dimensionality and filtering out noise-dominated voxels. This strategy follows established practices in fMRI encoding and decoding studies Huth & Lab (2021). 
+
+## C Model Details 
+
+Figure 4 shows the overall architecture of our two-stage brain-to-language decoding framework. Stage 1 encodes fMRI time series into a compact semantic representation aligned with the input 14 Preprint. Under review. 
+
+Figure 4: Overall architecture of our two-stage brain-to-language decoding framework. embedding space of LLaVA. Stage 2 constructs a multimodal soft prefix by fusing fMRI-derived semantics and image features, which is prepended to a frozen LLaVA decoder to generate text without updating decoder parameters. 
+
+## D Token Length Statistics 
+
+Figure 5 shows the distribution of input embedding lengths for all participants. Each histogram represents one participant and indicates how many subword tokens were produced per sentence when their inner-speech descriptions were tokenized by the LLaVA tokenizer. Each token corresponds to one element in the model’s input embedding sequence, rather than to a whole linguistic word. The average sequence length ranged from about 19 to 28 tokens across participants, defining the effective input length for the fMRI-to-embedding mapping model. 
+
+## E Model Training Details 
+
+We train the Stage-1 LSTM encoder to map each fMRI sequence to a global sentence-level embedding aligned with the LLaVA input embedding space. The encoder consists of a two-layer bidirectional LSTM with 512 hidden units in each direction, followed by a projection head that outputs a 4096-dimensional representation. The outputs over the 8 fMRI steps are mean-pooled to obtain a single global embedding for each sample. Training uses a hybrid objective composed of three core alignment losses and one auxiliary classifi-cation loss. The core alignment losses are: (1) cosine similarity loss, which encourages directional alignment between predicted and target embeddings; (2) mean squared error (MSE), which enforces 15 Preprint. Under review. 
+
+Figure 5: Histogram of token length distributions for each participant after LLaVA tokenization, showing the frequency of each token count across all 2,240 samples. 
+
+# ROI Name Primary Function 
+
+1 ctx lh Pole occipital Visual processing 2 ctx rh Pole occipital Visual processing 3 ctx lh G oc-temp lat-fusifor Face/object recognition 4 ctx rh G oc-temp lat-fusifor Face/object recognition 5 ctx lh G oc-temp med-Lingual Visual processing 6 ctx rh G oc-temp med-Lingual Visual processing 7 ctx lh G occipital middle Visual integration 8 ctx rh G occipital middle Visual integration 9 ctx lh G cuneus Early visual processing 10 ctx rh G cuneus Early visual processing 11 ctx lh G front inf-Opercular Language production, syntactic processing 12 ctx lh G front inf-Triangul Language production, semantic processing 13 ctx lh G front inf-Orbital Contextual processing 14 ctx lh G temp sup-Lateral Auditory and language processing 15 ctx lh G temporal middle Semantic memory 16 ctx lh G pariet inf-Angular Semantic and conceptual processing 17 ctx lh G pariet inf-Supramar Lexical retrieval 18 ctx lh G oc-temp med-Parahip Memory-related processing 19 ctx lh G temporal inf Language comprehension 20 ctx lh Pole temporal Language and semantic generation 21 Hippocampus Memory formation 22 LeftHippocampus Memory integration 23 RightHippocampus Memory integration 
+
+Table 7: Selected 23 ROIs and their corresponding cognitive functions element-wise similarity in magnitude and structure; and (3) an InfoNCE-based contrastive loss, which distinguishes matched fMRI–text pairs from mismatched pairs within the same batch. In addition, when valid category labels are available, we apply an auxiliary category-classification cross-entropy loss on top of the predicted global embedding. The overall training objective is: 
+
+Ltotal = λnce LNCE + λcos Lcos + λmse LMSE + λcls Lcls .
+
+16 Preprint. Under review. In the Stage-1 configuration used in our experiments, the loss weights are set to 1.0 for the InfoNCE term, 0.4 for cosine loss, 0.1 for MSE, and 0.2 for the auxiliary classification loss. The classification term is applied only when valid category labels are available. Each loss term plays a complementary role. The InfoNCE objective promotes discriminative align-ment by bringing each predicted embedding closer to its matched target while separating it from other samples in the batch. Cosine loss preserves semantic directionality, while MSE improves numerical fidelity by penalizing element-wise deviations. The auxiliary classification loss provides additional category-level supervision and encourages the learned representation to retain coarse semantic structure. We optimize the model using AdamW. The batch size is 128, and the contrastive temperature is set to τ = 0.07 . The learning rate and the number of training epochs follow the actual Stage-1 configuration used in the experiments. Intermediate evaluations are conducted every 10 epochs. 
+
+## F Prefix Length 
+
+We conducted a small-scale ablation study using the fMRI data of participant LD0001 to examine the sensitivity of the Stage-2 model to the length of the soft prefix. The prefix length controls the number of learnable tokens injected into the language decoder and may affect both representation capacity and computational cost. We evaluated three prefix lengths (5, 10, and 15), while keeping all other settings fixed, including the model architecture, optimization schedule, and data splits. Across these settings, we observed similar training dynamics and comparable validation performance, indicating that the model is relatively insensitive to moderate changes in prefix length within this range. Given the comparable performance and to balance expressiveness with computational efficiency, we selected a prefix length of 8 for all main experiments reported in this paper.                                    
+
+> Parameter Stage-1 (fMRI →embedding) Stage-2 (fMRI+Image) Stage-2 (fMRI-only)
+> Epochs 100 (default) 10 (default) 10 (same setting) Learning Rate 5e-4 (default) 5e-5 (default) 5e-5 (same setting) Batch Size 128 (default) 8 (default) 8 (same setting) Weight Decay 1e-4 (default) 0.01 (default; bias/LayerNorm no de-cay) 0.01 (same setting) Grad Clip 5.0 1.0 1.0 (same setting) Data Split Uses predefined split file (train/val/test) Uses the same split as Stage-1 Uses the same split as Stage-1 Optimizer AdamW AdamW with decay/no-decay parame-ter groups Same LR Scheduler ReduceLROnPlateau (factor=0.5, pa-tience=5) ReduceLROnPlateau (factor=0.5, pa-tience=5) Same Target / Objective Regress a global embedding (mean-pooled over 8 steps) toward a precom-puted embedding target; optional aux-iliary losses (cosine/MSE/CE, etc.) Train a generative decoder with lan-guage modeling loss; prefix is fused from (fMRI-derived projected vector) + (image-derived vector) Train a generative decoder with lan-guage modeling loss; prefix uses the fMRI-derived projected vector only Input Modality fMRI only fMRI + image fMRI only Prefix Length —8 (default) 8 (same setting) Prefix Dimension —4096 (default) 4096 (same setting) Notes (training de-tails) Early stopping parameters exist (pa-tience=10, warmup=5); augmentation flags include mixup and spatially-constrained noise (enabled by default in args) Encoder / vision encoder / projector are set to eval (frozen); text embed-ding is concatenated after prefix; pre-fix tokens are masked in labels Same training logic, without the image branch
+
+Table 8: Training hyperparameters and configurations used in each stage (values reflect default arguments and the implemented training logic). 
+
+## G Selected Brain Regions of Interest (ROIs) 
+
+To focus on brain regions associated with language, memory, and visual processing, we selected 23 regions of interest (ROIs) based on prior neuroscientific literature. Table 7 summarizes their anatomical labels and primary associated cognitive functions. 17 Preprint. Under review. 
+
+Model Variant Dataset Split Loss (Epoch 1) Loss (Best Val Epoch) Loss (Final Epoch) Stage-1 (fMRI →token) Train 5.31 N/A 0.91 Validation 5.01 N/A 3.70 
+
+Stage-2 (fMRI-only) Train 2.20 1.03 (Epoch 4) 0.55 Validation 1.74 1.49 (Epoch 4) 1.72 
+
+Stage-2 (fMRI+Image) Train 3.88 0.27 (Epoch 9) 0.23 Validation 1.73 0.86 (Epoch 9) 0.93 
+
+Table 9: Training and validation loss values for Subject LD0001. Stage-1 loss measures cross-modal representation alignment and is not directly comparable to Stage-2 decoding loss. Stage-2 results are reported at the epoch achieving the lowest validation loss. 
+
+## H Training Protocol: Model Size and Computational Budget 
+
+We summarize the training protocol of all models in Table 8. Unless otherwise specified, the analyses presented in this section and all subsequent figures and tables were conducted using the fMRI data of participant LD0001. 
+
+Model Size. The Stage-1 has approximately 12 million trainable parameters and occupies about 103MB on disk. For Stage-2, the total model size varies with the prefix length. The fMRI+Image variant occupies about 15GB (including the frozen LLaVA backbone) for prefix lengths 8. The fMRI-only variant occupies about 14GB (including the frozen LLaVA backbone) for prefix lengths 8. In all configurations, the LLaVA-7B decoder is kept frozen. 
+
+Compute Infrastructure and Training Time. All models were trained on a local high-performance computing (HPC) cluster equipped with four NVIDIA RTX 6000 Ada Generation GPUs (48GB each). The complete training process—including both Stage-1 and Stage-2—took approximately one hour of wall-clock time using 4 GPUs in parallel, corresponding to a total of 4 GPU-hours. 
+
+## I Training Loss Comparison                                                                       
+
+> Object Type Count Object Type Count
+> whole image 52 mouse 2person 25 elephant 2tv 13 broccoli 2chair 12 bowl 2laptop 12 microwave 2car 11 backpack 2oven 8dining table 2keyboard 7horse 1couch 6kite 1sink 5dog 1zebra 5teddy bear 1cup 4vase 1bed 4stop sign 1book 4toilet 1pizza 4carrot 1cat 4banana 1bus 3donut 1orange 3giraffe 1truck 3potted plant 1airplane 3bottle 1refrigerator 3knife 1train 2boat 1bench 2
+
+Table 10: Sample distribution across object types in the test set (organized in two columns for compactness). Table 9 summarizes the training dynamics of Subject LD0001 across the two training stages. The loss values reported for Stage-1 and Stage-2 are not directly comparable, as the two stages optimize different objectives and operate on distinct learning targets. 18 Preprint. Under review. In Stage-1 (fMRI → token embedding alignment), the model is trained to map high-dimensional and noisy fMRI signals to pretrained embeddings. Although the training loss decreases from 5.31 to 0.91, the validation loss remains relatively high (3.70). This pattern is consistent with the difficulty of directly aligning fMRI signals with semantic representations under limited supervision and strong information compression. Since Stage-1 is intended as a representation alignment module rather than a generative model, the validation loss is not used for model selection, and early stopping is not applied. In Stage-2, the aligned representations produced by Stage-1 are used as soft prefixes for sequence decoding, leading to different convergence characteristics. In the fMRI-only setting, the lowest validation loss is observed at an early epoch (Epoch 4). Beyond this point, the training loss continues to decrease while the validation loss shows a mild increase, which may indicate limited generalization when only brain signals are available. By comparison, the fMRI+Image model reaches its minimum validation loss (0.86) at a later epoch (Epoch 9) and exhibits a smaller discrepancy between training and validation losses. This behavior is consistent with the presence of additional visual informa-tion providing supplementary semantic cues during training, which may contribute to more stable optimization and improved generalization. 19 Preprint. Under review. 
+
+## J Decoding Examples 
+
+Figure 6: Qualitative decoding examples. 20
