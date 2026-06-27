@@ -6,74 +6,77 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-06-25
-- 运行时间：2026-06-25 22:22:05 UTC
+- 最新运行日期：2026-06-27
+- 运行时间：2026-06-27 21:43:07 UTC
 - 运行状态：成功
-- 本次总论文数：18
-- 精读区：6
+- 本次总论文数：19
+- 精读区：7
 - 速读区：12
 
 ### 今日简报（AI）
-今日精读6篇速读12篇，聚焦脑信号自主理解与稳健脑电解码。最值得关注的是《BrainAgent》提出的多智能体框架（9.0分）和《Towards Robust EEG Decoding》的黎曼自注意力方法（8.0分）。建议优先精读这两篇，速读可关注脑连接组与轻度认知障碍检测方向。
-- 详情：[/202606/25/README](/202606/25/README)
+今日精读聚焦脑电信号实时应用与低通道代理系统，两篇高分论文均达9.0分。最值得关注的是NeuraDock开源工作流和边界感知上下文接地方法，分别优化了Alpha动态分析与低通道EEG代理性能。建议优先精读这两篇高分论文，并关注速读中多模态痴呆分期框架的可解释性设计。
+- 详情：[/202606/27/README](/202606/27/README)
 
 ### 精读区论文标签
-1. [BrainAgent: A Large Language Model-Driven Multi-Agent Framework for Autonomous Brain Signal Understanding](/202606/25/2606.25400v1-brainagent-a-large-language-model-driven-multi-agent-framework-for-autonomous-brain-signal-understanding)  
+1. [NeuraDock Visual Cognitive Load Agent Tutorial: A Quality-Gated Open-Source EEG Workflow for Alpha Dynamics and Real-Time Applications](/202606/27/2606.26518v1-neuradock-visual-cognitive-load-agent-tutorial-a-quality-gated-open-source-eeg-workflow-for-alpha-dynamics-and-real-time-applications)  
    标签：评分：9.0/10、query:eeg-llm-agent
-   evidence：大语言模型驱动的多智能体框架用于脑信号理解
-2. [Towards Robust EEG Decoding Based on Riemannian Self-Attention](/202606/25/2606.25456v1-towards-robust-eeg-decoding-based-on-riemannian-self-attention)  
-   标签：评分：8.0/10、query:eeg-llm-agent
-   evidence：基于EEG的脑机接口解码
-3. [What Does the Brain See? Multiview Neural Representations to Demystify the Brain-Visual Alignment](/202606/25/2606.25718v1-what-does-the-brain-see-multiview-neural-representations-to-demystify-the-brain-visual-alignment)  
-   标签：评分：8.0/10、query:eeg-llm-agent
-   evidence：EEG表征学习用于视觉解码
-4. [aNy-way ICA and its application to estimate cortico-thalamo-cerebellar functional links in schizophrenia](/202606/25/biorxiv-10-1101-2025-06-02-657541-v2-any-way-ica-and-its-application-to-estimate-cortico-thalamo-cerebellar-functional-links-in-schizophrenia)  
+   evidence：基于LLM的自动化EEG分析代理
+2. [Boundary-Aware Context Grounding for A Low-Channel EEG Agent](/202606/27/2606.26519v1-boundary-aware-context-grounding-for-a-low-channel-eeg-agent)  
+   标签：评分：9.0/10、query:eeg-llm-agent
+   evidence：基于LLM的自动化EEG分析代理
+3. [Beyond Single-Source Cognitive Taskonomy:Multi-Source Task Relations through fMRI Transfer Learning](/202606/27/2606.26279v1-beyond-single-source-cognitive-taskonomymulti-source-task-relations-through-fmri-transfer-learning)  
    标签：评分：8.0/10、query:fmri-brain-network
-   evidence：用于精神分裂症多模态fMRI数据融合和功能连接分析的AI方法
-5. [A shared functional architecture for error-based and reinforcement-based motor learning in the human brain](/202606/25/biorxiv-10-64898-2026-06-18-733155-v1-a-shared-functional-architecture-for-error-based-and-reinforcement-based-motor-learning-in-the-human-brain)  
+   evidence：基于fMRI迁移学习研究HCP任务状态间关系
+4. [Modeling Local, Global, and Cross-Modal Context in Multimodal 3D MRI](/202606/27/2606.26894v1-modeling-local-global-and-cross-modal-context-in-multimodal-3d-mri)  
    标签：评分：8.0/10、query:fmri-brain-network
-   evidence：fMRI功能连接流形用于运动学习
-6. [Postprocessing of P300 Speller Output with a Large Language Model](/202606/25/biorxiv-10-64898-2026-06-24-734268-v1-postprocessing-of-p300-speller-output-with-a-large-language-model)  
+   evidence：多模态3D MRI结合人工智能用于神经影像
+5. [Uncovering dynamic human brain phase coherence networks](/202606/27/biorxiv-10-1101-2024-11-15-623830-v5-uncovering-dynamic-human-brain-phase-coherence-networks)  
+   标签：评分：8.0/10、query:fmri-brain-network
+   evidence：动态功能连接、相位相干网络、混合模型
+6. [Source-space precision charts for lifespan EEG connectomics](/202606/27/biorxiv-10-64898-2026-06-19-732815-v1-source-space-precision-charts-for-lifespan-eeg-connectomics)  
    标签：评分：8.0/10、query:eeg-llm-agent
-   evidence：应用大语言模型后处理基于EEG的P300拼写器输出
+   evidence：EEG连接组学源空间精度
+7. [Entropy-based integration index for quantifying network integration in resting-state functional MRI](/202606/27/biorxiv-10-64898-2026-06-22-733307-v1-entropy-based-integration-index-for-quantifying-network-integration-in-resting-state-functional-mri)  
+   标签：评分：8.0/10、query:fmri-brain-network
+   evidence：静息态fMRI网络整合，基于熵的指标
 
 ### 速读区论文标签
-1. [Interpretable Concept-Guided Polynomial Tabular Kolmogorov-Arnold Network for EEG-Based Mild Cognitive Impairment Detection](/202606/25/2606.25434v1-interpretable-concept-guided-polynomial-tabular-kolmogorov-arnold-network-for-eeg-based-mild-cognitive-impairment-detection)  
+1. [Dementia-Agents: A Multi-Modal Multi-Agent System for Dementia Staging and Phenotyping](/202606/27/2606.21168v1-dementia-agents-a-multi-modal-multi-agent-system-for-dementia-staging-and-phenotyping)  
    标签：评分：7.0/10、query:eeg-llm-agent
-   evidence：基于EEG的轻度认知障碍检测与可解释深度学习
-2. [The Cerebellar Engine: Multiscale Digital Brain Co-simulations Reveal How Cerebellar Spiking Architecture Shapes Cortical Coherence](/202606/25/biorxiv-10-64898-2026-04-02-715849-v2-the-cerebellar-engine-multiscale-digital-brain-co-simulations-reveal-how-cerebellar-spiking-architecture-shapes-cortical-coherence)  
-   标签：评分：7.0/10、query:fmri-brain-network
-   evidence：脑连接组，多尺度数字脑协同模拟器
-3. [Source-space precision charts for lifespan EEG connectomics](/202606/25/biorxiv-10-64898-2026-06-19-732815-v1-source-space-precision-charts-for-lifespan-eeg-connectomics)  
+   evidence：多智能体系统痴呆分期AI医疗
+2. [A Neurosymbolic Framework for Interpretable Skeleton-Based Seizure Detection via Concept-Driven Logical Reasoning](/202606/27/2606.21252v1-a-neurosymbolic-framework-for-interpretable-skeleton-based-seizure-detection-via-concept-driven-logical-reasoning)  
    标签：评分：7.0/10、query:eeg-llm-agent
-   evidence：EEG连接组学，源空间精度估计
-4. [Characterizing load-dependent changes in whole-brain activity patterns during an extended N-back task](/202606/25/biorxiv-10-64898-2026-06-19-733380-v1-characterizing-load-dependent-changes-in-whole-brain-activity-patterns-during-an-extended-n-back-task)  
+   evidence：癫痫检测作为EEG的补充
+3. [Heterogeneous Neural Predictivity from Language Models During Naturalistic Comprehension](/202606/27/2606.26880v1-heterogeneous-neural-predictivity-from-language-models-during-naturalistic-comprehension)  
+   标签：评分：7.0/10、query:eeg-llm-agent
+   evidence：语言模型用于神经信号预测，EEG/MEG/ECoG
+4. [Graph Neural Networks Applications Across Domains: All Insights You Need](/202606/27/2606.27202v1-graph-neural-networks-applications-across-domains-all-insights-you-need)  
    标签：评分：7.0/10、query:fmri-brain-network
-   evidence：N-back任务中fMRI全脑活动模式
-5. [Unlocking In-Context Learning in Audio-Language Models from Decentralized Medical Audio](/202606/25/2606.23243v1-unlocking-in-context-learning-in-audio-language-models-from-decentralized-medical-audio)  
+   evidence：图神经网络应用综述，涵盖脑网络
+5. [Cognitive function linked to temporal occupancy of Brain-Ventricle (BraVe) modes](/202606/27/biorxiv-10-1101-2025-01-04-631289-v4-cognitive-function-linked-to-temporal-occupancy-of-brain-ventricle-brave-modes)  
+   标签：评分：7.0/10、query:fmri-brain-network
+   evidence：静息态fMRI分析脑-脑室耦合与认知功能关联
+6. [Unsupervised Representation Learning Reveals Individualized Neurophysiological Profiles](/202606/27/biorxiv-10-64898-2026-02-10-705127-v2-unsupervised-representation-learning-reveals-individualized-neurophysiological-profiles)  
+   标签：评分：7.0/10、query:eeg-llm-agent
+   evidence：无监督表征学习用于神经信号，MEG个体化特征提取
+7. [Language-Based Digital Twins for Elderly Cognitive Assistance](/202606/27/2606.27334v1-language-based-digital-twins-for-elderly-cognitive-assistance)  
    标签：评分：6.0/10、query:eeg-llm-agent
-   evidence：多模态语言模型用于临床音频诊断，与LLM用于生物医学信号相关
-6. [Generative Modeling for Physiological Signals](/202606/25/2606.23864v1-generative-modeling-for-physiological-signals)  
+   evidence：大语言模型用于认知健康语言生物标志物
+8. [Comparing sites of plasticity in models of adaptation to manifold-based perturbations in brain-computer interfaces](/202606/27/biorxiv-10-1101-2023-03-11-532146-v3-comparing-sites-of-plasticity-in-models-of-adaptation-to-manifold-based-perturbations-in-brain-computer-interfaces)  
    标签：评分：6.0/10、query:eeg-llm-agent
-   evidence：综述了包括EEG在内的神经信号生成模型
-7. [TensorLDM: A Component-Wise Latent Diffusion Model for Volumetric DTI Reconstruction from Sparse DWIs](/202606/25/2606.25545v1-tensorldm-a-component-wise-latent-diffusion-model-for-volumetric-dti-reconstruction-from-sparse-dwis)  
+   evidence：脑机接口、神经群体活动、适应
+9. [Spontaneous cortical vasodynamics form a multiscale propagation architecture in the awake brain](/202606/27/biorxiv-10-64898-2026-05-19-726296-v2-spontaneous-cortical-vasodynamics-form-a-multiscale-propagation-architecture-in-the-awake-brain)  
    标签：评分：6.0/10、query:fmri-brain-network
-   evidence：DTI重建用于临床神经影像
-8. [Enhancing Brain MRI Anomaly Detection and Reasoning with ROI Rethink and Synthetic Data](/202606/25/2606.25894v1-enhancing-brain-mri-anomaly-detection-and-reasoning-with-roi-rethink-and-synthetic-data)  
-   标签：评分：6.0/10、query:fmri-brain-network
-   evidence：脑MRI、异常检测、视觉语言模型、AI医疗
-9. [Getting Blood from a Stone: Improving Neural Inferences without Additional Neural Data](/202606/25/biorxiv-10-1101-2021-01-21-427334-v4-getting-blood-from-a-stone-improving-neural-inferences-without-additional-neural-data)  
-   标签：评分：6.0/10、query:fmri-brain-network
-   evidence：利用行为数据改进fMRI神经推断
-10. [Low-Dimensional and Optimised Representations of High-Level Information in the Expert Brain](/202606/25/biorxiv-10-1101-2025-11-12-688012-v3-low-dimensional-and-optimised-representations-of-high-level-information-in-the-expert-brain)  
-   标签：评分：6.0/10、query:fmri-brain-network
-   evidence：神经影像与多变量模式分析研究专家大脑表征
-11. [MIRATS framework: Normative multiscale characterization of brain regulatory systems across sex and age using multimodal MRI](/202606/25/biorxiv-10-64898-2026-06-15-732296-v1-mirats-framework-normative-multiscale-characterization-of-brain-regulatory-systems-across-sex-and-age-using-multimodal-mri)  
-   标签：评分：6.0/10、query:fmri-brain-network
-   evidence：多尺度MRI框架表征脑调控系统，包含深部核团
-12. [Decoding Chronic Pain States from Distributed Intracranial Recordings](/202606/25/biorxiv-10-64898-2026-06-16-732555-v1-decoding-chronic-pain-states-from-distributed-intracranial-recordings)  
+   evidence：fMRI血管动力学传播架构
+10. [BAYESIAN STATE-SPACE MODEL FOR JOINT INFERENCE OF OSCILLATORY DYNAMICS AND POINT-PROCESS COUPLING](/202606/27/biorxiv-10-64898-2026-06-15-732402-v1-bayesian-state-space-model-for-joint-inference-of-oscillatory-dynamics-and-point-process-coupling)  
    标签：评分：6.0/10、query:eeg-llm-agent
-   evidence：颅内记录，慢性疼痛解码
+   evidence：EEG信号分析，贝叶斯状态空间模型用于神经振荡
+11. [Bifurcation dynamics in a shared network beyond sensory areas characterize conscious auditory perception independently of report](/202606/27/biorxiv-10-64898-2026-06-17-732590-v1-bifurcation-dynamics-in-a-shared-network-beyond-sensory-areas-characterize-conscious-auditory-perception-independently-of-report)  
+   标签：评分：6.0/10、query:fmri-brain-network
+   evidence：fMRI脑网络与意识感知
+12. [Age Alters the Relationship between Post-Encoding Sleep Quality and Context Memory Neural Reinstatement](/202606/27/biorxiv-10-64898-2026-06-17-733023-v1-age-alters-the-relationship-between-post-encoding-sleep-quality-and-context-memory-neural-reinstatement)  
+   标签：评分：6.0/10、query:eeg-llm-agent
+   evidence：EEG编码-检索相似性与睡眠质量
 
 
 <div class="dpr-home-promo-card">
