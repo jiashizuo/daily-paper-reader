@@ -122,11 +122,29 @@
 
 ### 1) 🔑 准备大模型 API Key
 
-当前 README 默认以 **DeepSeek 官方 API** 为示例，建议先按默认配置跑通。
+当前项目的大模型调用兼容 OpenAI 协议，可以使用 **DeepSeek 官方 API**，也可以使用学校词元计划 API。
 
 - 🌐 打开 [DeepSeek 平台](https://platform.deepseek.com/)
 - 📝 完成注册 / 登录
 - 🔐 充值并创建密钥
+
+如果使用学校词元计划，在本地 `.env` 或 GitHub Secrets 里填这些变量：
+
+```text
+SUMMARY_API_KEY=你的学校词元计划 API Key
+SUMMARY_BASE_URL=https://api.llm.ustc.edu.cn/v1
+SUMMARY_MODEL=deepseek-v4-flash-ascend
+```
+
+兼容旧的 DeepSeek 变量名，也可以这样填：
+
+```text
+DEEPSEEK_API_KEY=你的学校词元计划 API Key
+DEEPSEEK_BASE_URL=https://api.llm.ustc.edu.cn/v1
+DEEPSEEK_MODEL=deepseek-v4-flash-ascend
+```
+
+不要把真实 API Key 写进代码、README 或公开仓库。
 
 ### 2) 🪪 准备 GitHub PAT
 

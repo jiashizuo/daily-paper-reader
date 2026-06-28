@@ -102,9 +102,9 @@ function testGetDeepSeekPreset() {
     getDeepSeekPreset('deepseek'),
     {
       key: 'deepseek',
-      label: 'DeepSeek 官方',
-      baseUrl: 'https://api.deepseek.com',
-      models: ['deepseek-v4-flash', 'deepseek-v4-pro'],
+      label: '学校词元计划',
+      baseUrl: 'https://api.llm.ustc.edu.cn/v1',
+      models: ['deepseek-v4-flash-ascend'],
     },
   );
   assert.equal(getDeepSeekPreset('other-a'), null);
