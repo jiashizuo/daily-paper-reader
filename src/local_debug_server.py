@@ -294,9 +294,9 @@ def build_command(workflow_key: str, workflow_file: str, inputs: dict[str, str])
             "--embedding-batch-size",
             "8",
         ]
-        if as_bool(inputs.get("run_rerank"), True) or as_bool(inputs.get("run_llm_refine"), True):
+        if as_bool(inputs.get("run_rerank"), True) or as_bool(inputs.get("run_llm_refine"), False):
             pipeline_cmd.extend(["--run-rerank", "--rerank-device", "cpu", "--rerank-batch-size", "4"])
-        if as_bool(inputs.get("run_llm_refine"), True):
+        if as_bool(inputs.get("run_llm_refine"), False):
             pipeline_cmd.extend(["--run-llm-refine", "--llm-min-star", str(inputs.get("llm_min_star") or "4"), "--llm-filter-concurrency", "2"])
         script = "\n".join([
             "set -euo pipefail",
