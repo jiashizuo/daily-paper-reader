@@ -48,6 +48,9 @@ class ConferenceWorkflowAndUiTest(unittest.TestCase):
         self.assertIn("--run-llm-refine", text)
         self.assertIn("--output-dir \"archive/${RUN_DATE}/filtered\"", text)
         self.assertIn("DPR_FILTER_PROFILE_TAG", text)
+        self.assertIn("archive/*/rank/conference-*.supabase.rerank.json", text)
+        self.assertIn("archive/*/filtered/conference-*.supabase.rrf.json", text)
+        self.assertNotIn("docs/conference docs/assets", text)
 
     def test_frontend_triggers_conference_retrieval_workflow(self):
         root = pathlib.Path(__file__).resolve().parents[1]
