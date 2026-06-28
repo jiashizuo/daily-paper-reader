@@ -54,12 +54,61 @@ CONFERENCE_DEFAULTS: Dict[str, Dict[str, str]] = {
         "bm25_rpc": "match_neurips_openreview_papers_bm25",
         "vector_rpc_exact": "match_neurips_openreview_papers_exact",
     },
+    "iclr": {
+        "label": "ICLR",
+        "papers_table": "iclr_openreview_papers",
+        "bm25_rpc": "match_iclr_openreview_papers_bm25",
+        "vector_rpc_exact": "match_iclr_openreview_papers_exact",
+    },
+    "aaai": {
+        "label": "AAAI",
+        "papers_table": "aaai_papers",
+        "bm25_rpc": "match_aaai_papers_bm25",
+        "vector_rpc_exact": "match_aaai_papers_exact",
+    },
+    "cvpr": {
+        "label": "CVPR",
+        "papers_table": "cvpr_papers",
+        "bm25_rpc": "match_cvpr_papers_bm25",
+        "vector_rpc_exact": "match_cvpr_papers_exact",
+    },
+    "eccv": {
+        "label": "ECCV",
+        "papers_table": "eccv_papers",
+        "bm25_rpc": "match_eccv_papers_bm25",
+        "vector_rpc_exact": "match_eccv_papers_exact",
+    },
+    "ijcai": {
+        "label": "IJCAI",
+        "papers_table": "ijcai_papers",
+        "bm25_rpc": "match_ijcai_papers_bm25",
+        "vector_rpc_exact": "match_ijcai_papers_exact",
+    },
+    "acl": {
+        "label": "ACL",
+        "papers_table": "acl_papers",
+        "bm25_rpc": "match_acl_papers_bm25",
+        "vector_rpc_exact": "match_acl_papers_exact",
+    },
+    "emnlp": {
+        "label": "EMNLP",
+        "papers_table": "emnlp_papers",
+        "bm25_rpc": "match_emnlp_papers_bm25",
+        "vector_rpc_exact": "match_emnlp_papers_exact",
+    },
 }
 
 CONFERENCE_ALIASES = {
     "icml": "icml",
     "nips": "neurips",
     "neurips": "neurips",
+    "iclr": "iclr",
+    "aaai": "aaai",
+    "cvpr": "cvpr",
+    "eccv": "eccv",
+    "ijcai": "ijcai",
+    "acl": "acl",
+    "emnlp": "emnlp",
 }
 
 
@@ -125,7 +174,9 @@ def parse_conferences(value: str) -> List[str]:
     for raw in parse_csv_items(value):
         key = CONFERENCE_ALIASES.get(raw.strip().lower())
         if not key:
-            raise ValueError(f"不支持的会议：{raw}，当前仅支持 ICML / NIPS(NeurIPS)。")
+            raise ValueError(
+                f"不支持的会议：{raw}，当前支持 ICML / NIPS(NeurIPS) / ICLR / AAAI / CVPR / ECCV / IJCAI / ACL / EMNLP。"
+            )
         if key not in seen:
             seen.add(key)
             out.append(key)
@@ -153,8 +204,11 @@ def parse_years(value: str) -> List[int]:
 
 
 def year_window(year: int) -> Tuple[datetime, datetime]:
+    # 会议论文的 published 日期通常比会议年份早 1 年（OpenReview 提交时间），
+    # 所以窗口向前扩展 1 年以覆盖 "CONF-{year}" 的全部论文。
+    # 后续由 source 字段中的年份标签做精确过滤。
     return (
-        datetime(int(year), 1, 1, tzinfo=timezone.utc),
+        datetime(int(year) - 1, 1, 1, tzinfo=timezone.utc),
         datetime(int(year) + 1, 1, 1, tzinfo=timezone.utc),
     )
 
@@ -370,9 +424,16 @@ def build_result_for_queries(
                     f"tag={query.get('tag') or ''} conference={label} year={year} | {msg}"
                 )
                 total_rpc_hits += len(rows)
+                # 按 source 字段中的会议年份过滤，避免时间窗口查询
+                # 把不属于目标会议年份的论文剔除
+                # source 格式如 "ICLR-2026-Public"、"AAAI-2025-Accepted"
+                year_tag = f"-{year}-"
                 for row in rows:
                     pid = str(row.get("id") or "").strip()
                     if not pid:
+                        continue
+                    row_source = str(row.get("source") or "")
+                    if year_tag not in row_source:
                         continue
                     score = score_from_row(row, mode)
                     old = candidates.get(pid)
@@ -460,7 +521,14 @@ def output_paths(output_dir: Path, conferences: List[str], years: List[int]) -> 
 def main() -> None:
     parser = argparse.ArgumentParser(description="会议论文 Supabase-first 候选召回。")
     parser.add_argument("--config", type=str, default=str(ROOT_DIR / "config.yaml"), help="配置文件路径；传 - 可从 stdin 读取。")
-    parser.add_argument("--conferences", "--conference", dest="conferences", type=str, required=True, help="会议列表：ICML,NIPS。")
+    parser.add_argument(
+        "--conferences",
+        "--conference",
+        dest="conferences",
+        type=str,
+        required=True,
+        help="会议列表：ICML,NIPS,ICLR,AAAI,CVPR,ECCV,IJCAI,ACL,EMNLP。",
+    )
     parser.add_argument("--years", type=str, required=True, help="年份列表，例如 2024,2025。")
     parser.add_argument("--top-k", type=int, default=50, help="每个查询最终保留的候选数。")
     parser.add_argument("--output-dir", type=str, default=str(DEFAULT_OUTPUT_DIR), help="输出目录。")

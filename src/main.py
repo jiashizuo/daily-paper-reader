@@ -685,7 +685,7 @@ def main() -> None:
         print_trace_retrieval("RERANK", rerank_path, trace_ids)
     run_step(
         "Step 4 - LLM refine",
-        [python, os.path.join(SRC_DIR, "4.llm_refine_papers.py"), "--min-star", "2"],
+        [python, os.path.join(SRC_DIR, "4.llm_refine_papers.py")],
     )
     if trace_ids:
         print_trace_llm("LLM", llm_path, trace_ids)

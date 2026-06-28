@@ -148,7 +148,9 @@
 
   const isDeepSeekV4Model = (model) => {
     const normalizedModel = normalizeText(model || '').toLowerCase();
-    return normalizedModel === 'deepseek-v4-flash' || normalizedModel === 'deepseek-v4-pro';
+    return normalizedModel === 'deepseek-v4-flash' ||
+      normalizedModel === 'deepseek-v4-pro' ||
+      normalizedModel === 'deepseek-v4-flash-ascend';
   };
 
   const resolveMaxOutputTokens = ({ baseUrl, model } = {}) => {

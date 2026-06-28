@@ -35,6 +35,13 @@
 
 ## 📰 News
 
+- **2026-06-24** 🛡️ 修复侧边栏跨运行覆盖问题：日报 Step 6 的 `update_sidebar` 改为在同一日期 marker 下按 `paper_id` 去重合并而非整块替换；会议侧边栏写入加文件锁、`conference-paper-retrieval` workflow 改为按"会议+年份"独立 concurrency group 并用重试式 push（rebase 冲突时重跑 `conference_sidebar.py` 合并），避免多次时间窗 / 多会议并行触发互相覆盖。
+- **2026-06-23** 🔑 支持自定义域名部署：CI 自动写入 `.repo-owner.json`，前端优先读取该文件检测仓库归属，Token 验证阶段即校验用户与站点所有者是否一致；未同步此改动的用户（非自定义域名）仍走原有检测逻辑，完全灰度兼容。
+- **2026-06-23** 🎛️ 会议检索面板改为双列布局，减少纵向滚动。
+- **2026-06-22** 🏷️ 新增侧边栏未读 badge 与拖拽消除：论文分组显示未读计数红点，拖拽红点即可批量标记已读；阅读状态支持跨设备同步到 Supabase。
+- **2026-06-21** 🏛️ 前端接入 9 大会议检索：支持 NeurIPS / ICLR / ICML / AAAI / CVPR / ECCV / IJCAI / ACL / EMNLP，按年份筛选并提供费用与时间预估。
+- **2026-06-20** 📎 所有 SQL RPC 新增 `pdf_url` 字段返回，会议论文支持 CVF / ECVA / ACL Anthology 等多来源 PDF 直链跳转。
+- **2026-06-19** 🧮 修复论文页 LaTeX 公式渲染：保护 `\\[...\\]` 和 `\\(...\\)` 块不被 Markdown 解析器破坏。
 - **2026-05-31** 💬 优化论文页 AI 对话输入体验：输入框支持随内容自动增高，超过上限后在输入区内部滚动；同时调整按钮布局与点击层级，避免底部工具条遮挡发送和最近提问按钮。
 - **2026-05-30** ⚙️ 提升 Step 6 文档生成稳定性：结构化输出 `max_tokens` 提升到 16k，并让每个并发论文处理线程使用独立 LLM Client，避免共享客户端参数互相覆盖。
 - **2026-05-30** 🧹 精简图表提取依赖链路：移除 Java / `pdffigures2` 依赖，修复 GitHub Actions 中 `setup-java` 相关失败，并统一 PaperCropper 图表提取降级日志。
@@ -122,29 +129,11 @@
 
 ### 1) 🔑 准备大模型 API Key
 
-当前项目的大模型调用兼容 OpenAI 协议，可以使用 **DeepSeek 官方 API**，也可以使用学校词元计划 API。
+当前 README 默认以 **学校词元计划 API** 为示例，建议先按默认配置跑通。
 
 - 🌐 打开 [DeepSeek 平台](https://platform.deepseek.com/)
 - 📝 完成注册 / 登录
 - 🔐 充值并创建密钥
-
-如果使用学校词元计划，在本地 `.env` 或 GitHub Secrets 里填这些变量：
-
-```text
-SUMMARY_API_KEY=你的学校词元计划 API Key
-SUMMARY_BASE_URL=https://api.llm.ustc.edu.cn/v1
-SUMMARY_MODEL=deepseek-v4-flash-ascend
-```
-
-兼容旧的 DeepSeek 变量名，也可以这样填：
-
-```text
-DEEPSEEK_API_KEY=你的学校词元计划 API Key
-DEEPSEEK_BASE_URL=https://api.llm.ustc.edu.cn/v1
-DEEPSEEK_MODEL=deepseek-v4-flash-ascend
-```
-
-不要把真实 API Key 写进代码、README 或公开仓库。
 
 ### 2) 🪪 准备 GitHub PAT
 
