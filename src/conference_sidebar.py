@@ -282,6 +282,15 @@ def score_from_ranked_item(item: Dict[str, Any]) -> float:
     return 0.0
 
 
+def display_score_from_ranked_item(item: Dict[str, Any]) -> float:
+    for key in ("star_rating", "score"):
+        try:
+            return float(item.get(key))
+        except Exception:
+            continue
+    return 0.0
+
+
 def resolve_conference_pdf_url(paper: Dict[str, Any]) -> str:
     pdf_url = norm_text(paper.get("pdf_url"))
     if pdf_url:
@@ -405,7 +414,7 @@ def collect_ranked_ids(data: Dict[str, Any], limit: int, min_score: float = CONF
         ranked = [{"paper_id": paper_id} for paper_id in paper_ids]
 
     if min_score >= 0:
-        ranked = [item for item in ranked if score_from_ranked_item(item) >= min_score]
+        ranked = [item for item in ranked if display_score_from_ranked_item(item) >= min_score]
     if limit > 0:
         ranked = ranked[:limit]
     return ranked
