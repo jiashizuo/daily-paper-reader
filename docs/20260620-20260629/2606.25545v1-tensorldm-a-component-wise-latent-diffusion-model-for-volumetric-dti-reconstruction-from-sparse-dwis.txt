@@ -1,0 +1,667 @@
+Title: TensorLDM: A Component-Wise Latent Diffusion Model for Volumetric DTI Reconstruction from Sparse DWIs
+
+URL Source: https://arxiv.org/pdf/2606.25545v1
+
+Published Time: Thu, 25 Jun 2026 00:46:35 GMT
+
+Number of Pages: 20
+
+Markdown Content:
+# TensorLDM: A Component-Wise Latent Diffusion Model for Volumetric DTI Reconstruction from Sparse DWIs 
+
+## Junhyeok Lee 1 Kyu Sung Choi 2,3,41Interdisciplinary Program in Cancer Biology, Seoul National University College of Medicine 
+
+> 2
+
+## Department of Radiology, Seoul National University Hospital 
+
+> 3
+
+## Department of Radiology, Seoul National University College of Medicine 
+
+> 4
+
+## Healthcare AI Research Institute, Seoul National University Hospital 
+
+## Abstract 
+
+Reconstructing diffusion tensors from sparse DWIs is crit-ical for accelerating Diffusion Tensor Imaging (DTI) in clinical settings, yet current deep learning approaches fre-quently yield anatomically inconsistent or physically im-plausible tensors. We introduce TensorLDM, a component-wise latent diffusion model that processes the six ten-sor components through two group-specific encoders (for diagonal and off-diagonal elements) while maintaining anatomical consistency via shared DWI conditioning. Ten-sorLDM uses an Anatomy-Conditioned Autoencoder that encourages the latent to focus on tensor properties rather than re-encoding structural information. A shared Cross-Component Attention (CCA) mechanism, applied in both autoencoder refinement and diffusion fine-tuning, models inter-component dependencies, while a Mixture-of-Experts (MoE) DWI conditioner provides component-adaptive con-ditioning. On the Human Connectome Project (HCP) dataset under a single-shell, four-volume sparse acquisi-tion, TensorLDM produces the most accurate downstream tractography and tensors with near-ground-truth physical validity (SPD-violation rate 1.54% vs . 1.40%), with the best or comparable voxel-wise reconstruction accuracy. Geodesic tensor error measured by the Log-Euclidean Met-ric (LEM) corroborates these gains. 
+
+## 1. Introduction 
+
+Diffusion Tensor Imaging (DTI) is a Magnetic Resonance Imaging (MRI) technique that quantifies anisotropic water diffusion, enabling non-invasive characterization of white matter microstructure [5, 7]. DTI supports neural pathway mapping and extraction of clinically relevant biomarkers across neurological disorders [3, 6]. However, high-quality tensor estimation typically requires more than 30 Diffusion-Weighted Images (DWIs) to adequately sample the diffu-sion signal [31], resulting in prolonged scans that increase patient discomfort and motion sensitivity [32]. Methods that learn empirical priors for reconstructing reliable ten-sors from substantially fewer DWIs could therefore improve both scan efficiency and diagnostic accuracy. Reconstructing the six independent components of the diffusion tensor from a sparse set of DWIs is a severely ill-posed inverse problem [27]. Deep generative models, which have recently advanced medical image reconstruction [10], offer a data-driven approach to this problem [28, 45, 53], yet existing approaches have notable limitations. First, many operate on a 2D slice-by-slice basis, disregarding the in-herently three-dimensional continuity of white matter tracts and introducing inter-slice inconsistencies that can prop-agate into downstream analyses such as tractography [6]. Second, methods such as SuperDTI [28] and Diff-DTI [53] synthesize DTI-derived parameter maps such as fractional anisotropy (FA), mean diffusivity (MD), or radial diffusiv-ity (RD) rather than the full tensor, discarding the direc-tional information encoded in the tensor’s eigenvectors that is essential for fiber tracking and connectivity analysis. A further limitation of existing methods is that they treat all six tensor components uniformly through a shared net-work, ignoring the statistical heterogeneity among them. The diagonal elements ( Dxx , D yy , D zz ) represent diffusiv-ity magnitudes along the coordinate axes and generally ex-hibit higher signal-to-noise ratios and smoother spatial vari-ations, whereas the off-diagonal elements ( Dxy , D xz , D yz )encode cross-directional correlations, are more noise-sensitive, and display more complex spatial patterns. This asymmetry motivates a component-wise architecture. Beyond these architectural considerations, latent-based generative models face an additional challenge. Multi-stage training has proven effective for stabilizing high-compression latent models [9, 49]. Building on these in-sights, we propose TensorLDM, a component-wise latent diffusion model [19, 37, 42] that extends multi-stage op-1    
+
+> arXiv:2606.25545v1 [cs.CV] 24 Jun 2026 Figure 1. Overview of the TensorLDM framework. (a) A standard latent diffusion model applies the diffusion process to DTI latents
+> {zd
+> Y}, conditioned on DWI features via concatenation. (b) TensorLDM employs a component-wise latent diffusion model where each tensor component is processed independently with shared anatomical conditioning ΦX, enabling adaptive component-specific modeling.
+
+timization to promote tensor-specific properties such as inter-component consistency and symmetric positive defi-nite (SPD) coherence within a volumetric generative frame-work. In addition to these modeling challenges, the evaluation of DTI reconstruction itself warrants re-examination. Ex-isting evaluation protocols remain limited in scope. Stan-dard voxel-wise metrics such as Peak Signal-to-Noise Ra-tio (PSNR) and Structural Similarity Index Measure (SSIM) measure per-element accuracy but do not capture the geo-metric structure of the tensor field: a high PSNR for individ-ual components does not guarantee that the reconstructed tensors are symmetric positive definite or that their eigen-vectors form coherent orientation fields. To provide a more thorough assessment, we complement standard metrics with the manifold-aware Log-Euclidean Metric (LEM) [4] and downstream probabilistic tractography, evaluating recon-struction quality at the tensor, geometric, and functional lev-els. Our key contributions are summarized as follows: • Component-Wise Latent Diffusion Model: We intro-duce an architecture that employs component-specific en-coding and shared anatomical conditioning, enabling spe-cialized processing of diagonal and off-diagonal tensor elements while preserving structural coherence. • Anatomy-Conditioned Autoencoder: We inject DWI features directly into the decoder, encouraging the la-tent to focus on tensor-specific characteristics rather than re-encoding anatomy, which improves reconstruction fi-delity. • Cross-Component Attention and Component-Adaptive Conditioning: We design a CCA mechanism, shared across autoencoder refinement and diffusion fine-tuning, to model inter-component dependencies, and a lightweight Mixture-of-Experts (MoE) conditioner for component-adaptive DWI feature injection. • Multi-Level Evaluation: We complement standard voxel-wise metrics with the manifold-aware LEM and downstream probabilistic tractography, assessing tensor-level geometric consistency beyond conventional image quality measures. 
+
+## 2. Related Work and Background 
+
+2.1. Diffusion Tensor Model 
+
+DTI models the diffusion process in each voxel using a 
+
+3×3 SPD tensor D [5]. This tensor relates the mea-sured diffusion-weighted signal to the applied diffusion-sensitizing gradients via the Stejskal-Tanner equation [43]: 
+
+S(g) = S0 exp( −b g⊤D g ),
+
+where S0 is the non-diffusion-weighted signal intensity, b
+
+is the diffusion weighting factor, g is a unit diffusion gra-dient direction, and D is the diffusion tensor. Further de-tails on tensor estimation and derived metrics are provided in Sec. A. Higher-order diffusion models (fiber orientation distribu-tions [46], spherical deconvolution, and sparse orientation modeling [8]) target multi-shell or high-angular-resolution regimes to resolve complex fiber configurations [25]. In contrast, this work focuses on full-tensor reconstruction un-der an extremely sparse single-shell acquisition, a regime that such higher-order models are generally not designed for. 
+
+2.2. DTI Reconstruction from Sparse Acquisitions 
+
+Reconstructing a diffusion tensor from an insufficient num-ber of DWIs is ill-posed [48]. Early approaches relied on linear or weighted linear least-squares fitting, methods that are computationally simple but highly unstable and sensi-tive to noise [5]. Model-based approaches used compressed sensing to exploit sparsity priors, with Knoll et al . [26] ap-plying Total Variation constraints to preserve spatial coher-ence. More broadly, deep learning has been used to ac-2celerate diffusion MRI by predicting microstructural pa-rameters directly from sparse q-space samples [16] and by image quality transfer for angular and spatial super-resolution [1, 44]. SuperDTI [28] demonstrates that convolutional neural networks can map sparse DWIs to diffusion parameter maps from as few as six gradient directions, and FlexDTI [51] further incorporates gradient-direction flexibility. Other learning-based methods regress the full tensor or its pa-rameters directly [28, 45]. However, SuperDTI and Diff-DTI [53] process slices independently, ignoring volumetric anatomical context. Beyond DTI-specific designs, general-purpose conditional image-synthesis models such as adver-sarial image-to-image translation [20, 54] and transformer-based multimodal medical image synthesis [11] can be adapted to map DWIs to tensor or parameter maps and serve as strong baselines, yet they are not tailored to the tensor’s component structure or its geometric (SPD) constraints. 
+
+2.3. Generative and Latent Diffusion Models for Medical Imaging 
+
+Denoising diffusion probabilistic models [19, 41] now achieve state-of-the-art results in generative modeling, with notable applications in medical imaging, including acceler-ated MRI reconstruction [10] and high-resolution 3D vol-ume synthesis [49]. To reduce the cost of pixel-space diffusion, latent dif-fusion models (LDMs) carry out the diffusion process in a compact autoencoder latent space [37]. Obtaining a latent space that is simultaneously highly compressed and faith-ful is difficult, which motivates multi-stage training that de-couples representation learning from generative adaptation, as adopted by deep compression autoencoders [9] and 3D medical latent diffusion models [49]. Our framework builds on this multi-stage principle but tailors it to a component-wise tensor latent space, adding tensor-specific objectives (inter-component consistency and symmetric positive defi-nite coherence) that natural-image LDMs do not address. Within diffusion MRI, several self-supervised methods use diffusion models to restore signal quality from noisy acquisitions [50, 52]. More directly related to our task, Diff-DTI [53] first applied a diffusion model to rapid DTI reconstruction by conditioning on sparse DWI features to synthesize scalar maps such as FA and MD. In contrast, our approach operates on coupled DWI and tensor latents to di-rectly synthesize the full six-component tensor, from which parameter maps are then derived. 
+
+## 3. Method: TensorLDM 
+
+3.1. Problem Definition 
+
+The goal is to reconstruct a full diffusion tensor field from a minimal set of DWIs. The input X = {Xc}3 
+
+> c=0
+
+con-   
+
+> Figure 2. Anatomy-Conditioned Autoencoder architecture and training. (a) Pre-training and full-volume fine-tuning of the au-toencoder. (b) Joint refinement with CCA and a fusion MLP to promote cross-component coherence.
+
+sists of four DWI volumes: one non-diffusion-weighted image ( b=0 ) and three directional DWI volumes, where each Xc ∈ RH×W ×S . The output Y = {Yd}5 
+
+> d=0
+
+com-prises the six unique elements of the symmetric diffusion tensor ( Dxx , D yy , D zz , D xy , D xz , D yz ), where each Yd ∈
+
+RH×W ×S . Rather than modeling the physical diffusion process, TensorLDM learns an empirical latent prior that captures component-specific relationships between a sparse DWI subset and each tensor component. 
+
+3.2. Overview 
+
+We propose TensorLDM, a variant of the Latent Diffusion Model (LDM) [37] with component-specific pathways and shared DWI conditioning. Figure 1 contrasts our component-wise design with a standard latent diffusion model. Training proceeds in two phases. Phase I (Stages 1–3) establishes a high-fidelity latent space with an Anatomy-Conditioned Autoencoder (Fig. 2). Phase II (Stages 4–5) learns component-wise latent priors conditioned on DWI features (Fig. 3). Ashared Cross-Component Attention (CCA) mechanism is used in both phases (Stages 3 and 5) to promote inter-component consistency, while Feature-wise Linear Modu-lation (FiLM) [35] provides DWI conditioning throughout. 
+
+3.3. Anatomy-Conditioned Autoencoder for High-Fidelity Latent Representation 
+
+A conventional autoencoder must jointly encode both anatomical structure and tensor properties into a single la-tent code, creating a bottleneck that limits reconstruction fidelity [9, 18]. Our Anatomy-Conditioned Autoencoder (Fig. 2) instead supplies anatomical context to the decoder through DWI conditioning, encouraging the latent to allo-3cate its capacity to tensor-specific characteristics rather than re-encoding anatomy. As one indication, a linear probe finds FA far less linearly decodable from the tensor latents (R2=0 .08 ) than from the conditioning ( R2=0 .61 ), consis-tent with this design intent; we do not claim formal disen-tanglement (Sec. J). Training proceeds in three stages (Fig. 2a–b): patch-based pre-training, full-volume fine-tuning, and CCA-based joint refinement. 
+
+3.3.1. Autoencoder Architecture and Shared Condition-ing (Stages 1 & 2) 
+
+The autoencoder employs two group-specific encoders (one shared among the three diagonal components and one among the three off-diagonal components), allowing dis-tinct feature representations for each group. A shared con-ditioner C extracts multi-scale feature maps {ϕ(l) 
+
+> c
+
+}l from each DWI volume Xc. In Phase I, these per-volume features are uniformly fused across scales to produce a component-independent conditioning representation ΦX. In Phase II, they instead serve as input to the MoE DWI conditioner, which produces component-adaptive features Φd
+
+> X
+
+.During decoding, each component-specific decoder Dd
+
+reconstructs ˆYd from latent zd 
+
+> Y
+
+and the conditioning fea-tures ΦX. Conditioning features are injected into each com-ponent decoder via FiLM layers that apply a learned per-resolution affine transform; in Phase II ΦX is replaced by the component-adaptive Φd
+
+> X
+
+. Swin Transformer attention blocks [29] enable adaptive feature extraction within each decoder. 
+
+3.3.2. Cross-Component Attention and Refinement (Stage 3) 
+
+The six components must form a valid SPD tensor at each voxel. In the joint refinement step (Stage 3; Fig. 2b), we upgrade the decoder attention blocks to CCA and fine-tune only these attention blocks, the decoder output layers, and a lightweight joint fusion MLP. 
+
+Cross-Component Attention (CCA). A vanilla condi-tional LDM denoises each tensor component independently and injects DWI features without modeling relationships between components. CCA instead applies multi-head self-attention over a sequence that concatenates all six compo-nent latents Z = [ z0 
+
+> Y
+
+; . . . ; z5 
+
+> Y
+
+] along the component di-mension, so that components attend to one another ( e.g ., 
+
+Dxy attending to Dxx and Dyy ), implemented with Swin Transformer blocks [29]. Beyond standard self-attention, CCA introduces two tensor-specific elements. First, learn-able per-head direction-mixing matrices MQ, MK , MV ∈
+
+R6×6 recombine the projected query, key, and value fea-tures across the six tensor components: 
+
+Q = MQWQZ, K = MK WK Z,
+
+V = MV WV Z,             
+
+> Figure 3. Component-wise latent diffusion with MoE DWI con-ditioner. (a) MoE conditioner produces component-adaptive Φd
+> X
+> injected via FiLM. (b) Expert encoders {fc}with gating gψ(ed)
+> form Φd
+> X=P
+> cwd,c ·fc( ¯ϕc). (c) Shared U-Net with CCA blocks enabled in Stage 5 only.
+
+where W{Q,K,V } project along the feature dimension and 
+
+M{Q,K,V } mix along the component dimension. Second, a learnable direction-embedding bias Edir , whose entry 
+
+[Edir ]d,d ′ scores the geometric relationship between com-ponents d and d′ (shared across spatial positions), is added to the attention logits alongside the spatial relative-position bias Epos :
+
+Sim( Q, K) = QK ⊤
+
+√dk
+
++ Epos + Edir ,
+
+where dk is the key dimension. The same CCA mechanism is reused in Phase II (Stage 5) to promote cross-component consistency during denoising. 
+
+Training Objectives. Stages 1 and 2 minimize a voxel-wise ℓ1 reconstruction loss Lrec = P5
+
+> d=0
+
+∥ ˆYd − Yd∥1 with a vector-quantization (VQ) commitment loss LVQ [33]. Stage 3 augments this with a Log-Euclidean loss to encour-age SPD consistency: 
+
+LAE = Lrec + LVQ + λLEM ∥Log( ˆD) − Log( D)∥F ,
+
+where Log( ·) denotes the matrix logarithm, ˆD and D are 4Figure 4. Qualitative comparison of DTI parameter maps. MD, RD, FA, and Color FA (FA modulated by the RGB-encoded principal eigenvector orientation) on a coronal slice. TensorLDM produces reconstructions closest to GT. Magnified insets and error maps highlight improved detail recovery. 
+
+the 3×3 tensors assembled from { ˆYd} and {Yd}, and 
+
+λLEM balances component-specific fidelity with manifold-aware geometric constraints. The term ∥Log( ˆD) −
+
+Log( D)∥F (averaged over brain voxels) is the Log-Euclidean Metric (LEM) [4], the geodesic distance between SPD tensors on the log-Euclidean manifold (Sec. E). Full architectural details are provided in Sec. C. 
+
+3.4. Component-Wise Latent Diffusion 
+
+While the Anatomy-Conditioned Autoencoder provides high-fidelity reconstruction when ground-truth latents are available, it cannot model the distribution of plausible ten-sors given only sparse DWI inputs. To bridge this gap, Phase II learns to generate tensor component latents con-ditioned on sparse DWI features (Fig. 3). Let zd 
+
+> Y
+
+denote the latent for tensor component d ∈ { 0, . . . , 5}. The for-ward diffusion process adds Gaussian noise independently to each component latent over T timesteps: 
+
+zd 
+
+> Y,t
+
+= √¯αtzd 
+
+> Y,0
+
++ √1 − ¯αtϵd,
+
+where {βs}Ts=1 is a predefined noise schedule, T is the total number of diffusion steps, ¯αt = Qts=1 (1 − βs), and ϵd ∼N (0, I) is sampled independently per component. 
+
+3.4.1. Denoising Backbone and MoE Conditioner Shared Denoising Backbone. The entire Anatomy-Conditioned Autoencoder (encoders, decoders, and condi-tioner) is frozen during Phase II; only the diffusion model and its conditioning modules are trained. A single shared U-Net ϵθ serves as the denoising backbone for all tensor com-ponents (Fig. 3a,c). To identify which component is being denoised, a learnable embedding ed = Embed( d) is con-catenated with the noisy latent to form the augmented in-put ˜zd 
+
+> Y,t
+
+= [ zd
+
+> Y,t
+
+; ed]. The backbone receives component-adaptive conditioning features Φd 
+
+> X
+
+via FiLM layers at each resolution level. These features are produced by a dedicated MoE DWI conditioner described below. 
+
+MoE DWI Conditioner. Inspired by mixture-of-experts architectures [36, 40], we introduce a lightweight MoE DWI conditioner CMoE that produces component-adaptive conditioning features Φd
+
+> X
+
+, which are injected into the shared denoising backbone via FiLM (Fig. 3a). Because the four DWI volumes carry asymmetric directional information, the MoE conditioner learns to selectively weight them for each tensor component rather than averaging uniformly. Using the multi-scale feature maps {ϕ(l) 
+
+> c
+
+}l extracted by the shared conditioner C, the MoE conditioner concatenates and downsamples them to obtain per-volume representa-tions ¯ϕc. Each ¯ϕc is then processed by a dedicated DWI ex-pert encoder fc, and a gating network produces component-specific combination weights (Fig. 3b): 
+
+wd = softmax  gψ (ed), Φd 
+
+> X
+
+= P3 
+
+> c=0
+
+wd,c · fc( ¯ϕc),
+
+where gψ is a lightweight gating network and ed is the com-ponent embedding shared with the backbone input. 
+
+3.4.2. Two-Stage Diffusion Training (Stages 4 & 5) Stage 4: Independent Component Pre-training. We first pre-train ϵθ in an independent setting where each com-ponent is processed in isolation, with cross-component at-tention deactivated. The objective is to predict the noise 5Table 1. Quantitative comparison of DTI parameter maps. Normalized Mean Squared Error (NMSE), PSNR, and SSIM (mean std ) over the 195-subject test set. Best in bold , second-best underlined. 
+
+Model MD RD FA Color FA 
+
+NMSE PSNR SSIM NMSE PSNR SSIM NMSE PSNR SSIM NMSE PSNR SSIM ADE 0.02 0.00 28.97 0.66 0.97 0.01 0.02 0.00 28.74 0.85 0.96 0.01 0.37 0.03 16.26 0.47 0.75 0.02 1.07 0.03 19.94 0.52 0.60 0.03 
+
+CycleGAN 0.13 0.01 19.85 0.54 0.80 0.02 0.16 0.01 20.06 0.80 0.80 0.02 0.50 0.04 14.93 0.48 0.62 0.03 1.08 0.10 19.93 0.75 0.60 0.03 
+
+Pix2Pix 0.04 0.00 24.98 0.56 0.93 0.01 0.05 0.01 25.08 0.82 0.93 0.01 0.29 0.02 17.25 0.49 0.76 0.02 0.79 0.06 21.28 0.69 0.71 0.02 
+
+ResViT 0.03 0.00 25.69 0.57 0.94 0.01 0.04 0.00 25.76 0.80 0.94 0.01 0.28 0.02 17.51 0.44 0.76 0.02 0.75 0.04 21.49 0.64 0.72 0.02 
+
+SuperDTI 0.04 0.01 25.53 0.67 0.94 0.01 0.05 0.01 25.38 0.88 0.94 0.01 0.22 0.02 18.54 0.47 0.81 0.02 0.75 0.04 21.50 0.55 0.69 0.02 
+
+Diff-DTI 0.01 0.00 32.66 0.63 0.97 0.00 0.01 0.00 32.76 0.80 0.97 0.00 0.08 0.01 22.71 0.38 0.93 0.00 0.33 0.02 24.60 0.56 0.89 0.01 
+
+LDM 0.13 0.01 20.02 0.63 0.81 0.02 0.15 0.01 20.19 0.84 0.82 0.02 0.37 0.02 16.28 0.45 0.67 0.03 0.78 0.03 21.36 0.64 0.68 0.03 
+
+TensorLDM 0.01 0.00 32.86 0.82 0.99 0.00 0.01 0.00 33.15 0.96 0.99 0.00 0.08 0.01 23.07 0.44 0.94 0.00 0.33 0.02 25.03 0.60 0.90 0.01 
+
+Table 2. Quantitative comparison of diffusion tensor components. PSNR, SSIM, and LEM (mean std ) across six tensor components, over the 195-subject test set. Best in bold , second-best underlined. 
+
+Model Dxx Dyy Dzz Dxy Dxz Dyz LEM 
+
+PSNR SSIM PSNR SSIM PSNR SSIM PSNR SSIM PSNR SSIM PSNR SSIM ADE 29.71 0.41 0.92 0.01 30.22 0.74 0.93 0.01 29.84 0.56 0.92 0.01 24.03 1.21 0.64 0.04 23.39 1.52 0.64 0.04 23.43 1.50 0.63 0.04 0.65 0.03 
+
+CycleGAN 25.25 0.36 0.81 0.02 25.20 0.46 0.82 0.02 25.22 0.48 0.81 0.01 21.41 1.23 0.60 0.04 21.25 1.56 0.60 0.04 22.80 1.72 0.65 0.05 1.00 0.09 
+
+Pix2Pix 29.92 0.38 0.93 0.01 30.02 0.49 0.93 0.01 30.05 0.48 0.93 0.01 24.87 1.27 0.70 0.04 24.30 1.65 0.69 0.04 26.19 1.64 0.77 0.03 0.66 0.05 
+
+ResViT 30.85 0.38 0.94 0.01 30.93 0.48 0.94 0.01 30.97 0.49 0.94 0.01 25.94 1.24 0.73 0.03 25.61 1.55 0.73 0.03 27.26 1.59 0.79 0.03 0.57 0.03 
+
+SuperDTI 30.49 0.43 0.94 0.01 30.46 0.62 0.94 0.01 30.56 0.52 0.94 0.01 20.84 1.23 0.61 0.04 20.36 1.55 0.61 0.04 19.75 1.54 0.58 0.04 0.71 0.05 
+
+Diff-DTI 35.86 0.46 0.98 0.00 36.27 0.60 0.98 0.00 36.16 0.52 0.98 0.00 21.22 1.24 0.65 0.03 20.64 1.55 0.65 0.03 19.75 1.52 0.61 0.04 0.49 0.02 
+
+LDM 26.32 0.50 0.85 0.01 26.13 0.52 0.85 0.01 26.24 0.56 0.85 0.01 26.18 1.23 0.76 0.03 25.66 1.52 0.75 0.03 25.53 1.51 0.75 0.04 0.70 0.03 
+
+TensorLDM 36.45 0.52 0.99 0.00 36.58 0.66 0.99 0.00 36.75 0.59 0.99 0.00 29.30 1.20 0.72 0.04 29.79 1.61 0.82 0.04 30.11 1.67 0.83 0.05 0.33 0.02 
+
+added to each component: 
+
+Lpretrain = Et,d, zd
+
+> Y,0
+
+,ϵd
+
+∥ϵd − ϵθ (˜ zd
+
+Y,t , t, Φd
+
+X, d )∥22
+
+ .
+
+Stage 5: Joint Component Fine-tuning. Following pre-training, we activate the CCA blocks within the U-Net at-tention layers (Fig. 3c) to enable joint synthesis of all six components. For parameter efficiency, only the attention parameters (projection weights, relative position bias, direc-tion embeddings, mixing matrices) and FiLM conditioning modules are fine-tuned. All other U-Net parameters remain frozen. For component d, the noise prediction from the full denoising network is: 
+
+ˆϵd = ϵθ
+
+
+
+{˜zd′
+
+Y,t }5
+
+d′=0 , t, Φd
+
+X, d 
+
+
+
+.
+
+The joint training objective sums over all components: 
+
+Lcond = Et, {zd
+
+> Y,0
+
+}d,{ϵd}d
+
+" 5X
+
+d=0 
+
+ϵd − ˆϵd 22
+
+#
+
+.
+
+## 4. Experiments 
+
+4.1. Experimental Setup 
+
+4.1.1. Data and Preprocessing 
+
+All experiments use diffusion MRI data from the HCP Young Adult dataset [12], preprocessed with the standard HCP pipelines [15]. We use single-shell DWI volumes at b=1000 s/mm 2, resampled to 2 mm isotropic resolu-tion. Ground-truth diffusion tensors are computed via lin-ear least-squares fitting from the full acquisition (18 b=0 
+
+volumes and 90 DWI directions). The input is a sparse 4-volume DWI stack, and the output is the complete 6-component tensor field. Three-direction trace/ADC DWI is a standard clinical vendor protocol chosen to keep scan time short [17], so our four-volume input reflects a realistic clin-ical operating point rather than an artificial worst case. The dataset of 973 subjects is split into training (681), validation (97), and test (195) sets. Further details are in Sec. B. 
+
+4.1.2. Implementation Details 
+
+All experiments are implemented in PyTorch [34] and con-ducted on a single NVIDIA A6000 GPU. Training fol-lows the five-stage pipeline. Detailed architectures, loss functions, and stage-specific hyperparameters are provided in Sec. C. 
+
+4.1.3. Competing Methods 
+
+We benchmark TensorLDM against seven baselines: Ana-lytic Diagonal Estimation (ADE), a non-learning baseline assuming a diagonal tensor; CycleGAN [54]; Pix2Pix [20]; ResViT [11]; SuperDTI [28]; Diff-DTI [53]; and a vanilla conditional LDM [37]. All learning-based methods use 3D networks trained on the same data splits and inputs, except SuperDTI and Diff-DTI, which follow their orig-inal 2D slice-based protocols. We evaluate these two methods as published rather than re-engineering them into 3D six-component regressors, so the comparison reflects 6their scalar-map design rather than our evaluation proto-col. Since SuperDTI and Diff-DTI predict parameter maps rather than the full tensor, we reconstruct approximate tensors under a cylindrically symmetric model to enable tensor-domain evaluation (LEM, tractography). Details and a fairness discussion are in Sec. D.1. Full method descrip-tions are in Sec. D. 
+
+4.2. Main Results 
+
+4.2.1. Evaluation Results across Voxel, Geometric, and Functional Levels Voxel-Wise Accuracy and Parameter Maps. We eval-uate standard DTI-derived parameter maps, namely Mean Diffusivity (MD), Radial Diffusivity (RD), Fractional Anisotropy (FA), and Color FA, to assess voxel-wise recon-struction fidelity (Tab. 1 and Fig. 4). TensorLDM achieves the best or tied-best results across all four parameter maps. Among learning-based baselines, Diff-DTI (which also uti-lizes a conditional diffusion model) achieves competitive scalar parameter accuracy. However, because Diff-DTI op-erates on a 2D slice-by-slice basis in its original formula-tion, it exhibits noticeable inter-slice discontinuities in coro-nal views (Fig. 4), whereas TensorLDM’s volumetric for-mulation maintains spatial continuity. The difference in FA NMSE between TensorLDM and Diff-DTI is not sta-tistically significant ( p=0 .097 ), indicating that both models capture general diffusion anisotropy magnitudes compara-bly. 
+
+Tensor Geometry and Physical Validity. Reconstruct-ing the full six-component tensor field is more challeng-ing than regressing scalar parameter maps because the in-dividual components must adhere to the symmetric posi-tive definite (SPD) manifold. Voxel-wise metrics on indi-vidual tensor components (Tab. 2) show that TensorLDM outperforms all baselines on nearly every tensor component (the main exception being Dxy SSIM, discussed below), with the largest gains on the noisier off-diagonal elements (Dxy , D xz , D yz ), which capture cross-directional diffusion correlations. Baselines that regress parameter maps (Su-perDTI, Diff-DTI) discard true directional heterogeneity, yielding poor off-diagonal accuracy and high LEM errors (Sec. D.1). Furthermore, conventional voxel-wise metrics can be misleading: the vanilla LDM baseline achieves a slightly higher SSIM on Dxy (0.76 vs . 0.72) than TensorLDM, but at the expense of significantly lower diagonal-component accuracy and a much higher LEM (0.70 vs . 0.33), demon-strating that high independent voxel-wise similarity does not guarantee tensor-level geometric coherence. Manifold-level accuracy is also reflected in the SPD violation rate, the percentage of voxels containing negative eigenvalues (Tab. 8). While the ground-truth linear least-squares fit from    
+
+> Figure 5. Tractography comparison. (Top) Right corticospinal tract (CST) reconstructions per method. TensorLDM tracts most closely match the ground truth. SuperDTI and Diff-DTI use approximate tensors from cylindrical symmetry reconstruction. (Bottom) Mean tract core distance (mm, log scale) across 12 bun-dles confirms TensorLDM yields the most accurate fiber tracking.
+
+90 directions exhibits a 1.40% violation rate due to noise, TensorLDM yields a physically plausible violation rate of 1.54% (which degrades to 1.61% without the soft LEM con-straint LLEM ), consistent with the soft geometric constraint contributing to positive-definiteness preservation. 
+
+Downstream Tractography and Clinical Utility. To evaluate how these geometric improvements translate to clinical utility, we perform whole-brain probabilistic trac-tography, which is highly sensitive to the principal diffusion orientation (first eigenvector of the tensor). Errors in off-diagonal components propagate directly during streamline generation, leading to anatomically incorrect fiber tracts. As illustrated in Fig. 5 (top), the reconstructed right cor-ticospinal tract (CST) from TensorLDM matches the 90-direction ground truth most closely. This is quantitatively supported by the mean Tract Core Distance (TCD) mea-sured across 12 major white matter bundles (Fig. 5, bottom), where TensorLDM achieves the lowest discrepancy relative to the ground truth, validating the downstream utility of the reconstructed tensor fields. 
+
+Computational Efficiency. TensorLDM requires approx-imately 123 s for full-volume inference on a single NVIDIA A6000, compared to 11 s for SuperDTI, 24 s for the vanilla LDM, and 593 s for the 2D slice-based Diff-DTI (Sec. H). 7Table 3. Ablation study on TensorLDM. Variants are grouped by (a) architectural design and geometric constraint, and (b) multi-stage training. Values are mean std for PSNR (tensor components and parameter maps) and LEM ( ↓). Bold marks the best score.                                                                                              
+
+> Variant Tensor components (PSNR ↑/ LEM ↓)Parameter maps (PSNR ↑)
+> Dxx Dyy Dzz Dxy Dxz Dyz LEM MD RD FA Color FA TensorLDM (Ours) 36.45 0.52 36.58 0.66 36.75 0.59 29.30 1.20 29.79 1.61 30.11 1.67 0.33 0.02 32.86 0.82 33.15 0.96 23.07 0.44 25.03 0.60
+> (a) Architecture & geometric constraint
+> w/o CCA 36.42 0.52 36.54 0.66 36.71 0.59 29.26 1.20 29.80 1.62 30.13 1.73 0.34 0.02 32.79 0.83 33.09 0.96 23.06 0.44 25.02 0.60
+> w/o MoE 36.42 0.52 36.54 0.66 36.72 0.59 29.28 1.20 29.87 1.56 30.20 1.67 0.34 0.02 32.79 0.83 33.10 0.96 23.07 0.44 25.02 0.60
+> w/o AE-LLEM 36.19 0.53 36.33 0.67 36.53 0.61 29.29 1.20 29.90 1.60 30.16 1.67 0.35 0.02 32.38 0.86 32.71 1.00 22.97 0.44 24.91 0.60
+> (b) Multi-stage training
+> w/o full-vol. fine-tuning 35.88 0.49 36.02 0.63 36.17 0.56 29.20 1.17 29.57 1.47 29.91 1.67 0.33 0.02 32.51 0.76 32.85 0.87 22.79 0.45 24.69 0.59
+> w/o joint AE 36.23 0.52 36.25 0.66 36.48 0.61 29.84 1.20 29.66 1.74 29.85 1.70 0.35 0.02 32.35 0.85 32.68 0.98 22.93 0.45 24.93 0.59
+> w/o joint LDM 36.06 0.51 36.30 0.63 36.25 0.57 27.03 1.19 29.07 1.57 29.17 1.80 0.34 0.02 33.01 0.71 33.08 0.83 22.53 0.48 24.54 0.62
+
+TensorLDM remains nearly 5× faster than Diff-DTI while providing volumetric spatial consistency. 
+
+4.3. Ablation Studies 
+
+We ablate (a) architectural modules and geometric con-straints, and (b) multi-stage training. In the variant names below, AE denotes the autoencoder and LDM the latent dif-fusion model. Each variant removes a single component while keeping all other settings identical (Tab. 3). 
+
+4.3.1. Architecture and Geometric Constraint 
+
+We evaluate three variants: w/o CCA disables CCA in Stage 5 only (Stage 3 CCA remains active), removing learn-able inter-component information exchange during denois-ing. w/o MoE replaces the MoE DWI conditioner’s learned gating with uniform averaging of the four DWI expert en-coders, removing component-adaptive conditioning. w/o AE-LLEM removes the Log-Euclidean loss from Stage 3, relaxing the soft SPD constraint. Removing the Log-Euclidean loss (w/o AE-LLEM )causes the largest degradation among architectural variants (LEM: 0.33 → 0.35), confirming that the geometric con-straint is the most influential design choice. The MoE conditioner produces no significant change in whole-brain LEM (w/o MoE p=0 .177 , Tab. 6). The contribution of CCA and MoE is primarily to orientation coherence : removing either degrades the principal-eigenvector field (Fig. 6). We detail these non-significant differences in Sec. G. 
+
+4.3.2. Impact of Multi-Stage Training 
+
+We evaluate three training variants: w/o full-vol. fine-tuning skips Stages 2–3, retaining only patch-based pre-training in Phase I. w/o joint AE skips Stage 3, removing CCA-based cross-component autoencoder refinement. w/o joint LDM skips Stage 5, removing CCA during genera-tion. Full-volume fine-tuning contributes the largest gains for diagonal PSNR, while joint AE supports inter-component consistency (its removal yields one of the largest LEM in-creases, to 0.35). The w/o joint LDM variant achieves 
+
+Figure 6. Qualitative ablation results. Architectural and geo-metric constraint variants. From left to right and top to bottom: ground truth (GT), TensorLDM (Ours), w/o CCA, w/o MoE, and w/o AE-LLEM . Removing CCA or the MoE DWI conditioner leads to noisier FA maps and less coherent principal eigenvector (v1) fields, as highlighted in the magnified insets. 
+
+the highest MD PSNR but the lowest FA PSNR, indicat-ing that CCA during denoising contributes to anisotropy and principal-eigenvector reconstruction rather than whole-brain LEM. 
+
+## 5. Conclusion 
+
+We present TensorLDM, a component-wise latent diffusion framework for reconstructing diffusion tensors from criti-cally undersampled DWIs. In the studied single-shell, four-volume (three-direction) setting, evaluation at the voxel, geometric, and functional levels shows that its advantage over strong baselines lies in the tensor geometry governing fiber tracking rather than per-voxel intensity, yielding the most accurate downstream tractography and near-ground-truth physical validity. Future work will target clinical co-horts, multi-shell protocols, faster sampling, and robustness across fitting algorithms and acquisition sites. 
+
+Limitations. Our study is confined to a single-institution, single-shell cohort of healthy young adults, relies on one tensor-fitting algorithm for reference labels, and uses a 8stochastic sampler that adds latency and uncharacterized output variability (Sec. M). 
+
+## References 
+
+[1] Daniel C. Alexander, Darko Zikic, Aurobrata Ghosh, Ryu-taro Tanno, Viktor Wottschel, Jiaying Zhang, Enrico Kaden, Tim B. Dyrby, Stamatios N. Sotiropoulos, Hui Zhang, et al. Image quality transfer and applications in diffusion MRI. 
+
+NeuroImage , 152:283–298, 2017. 3 [2] Daniel C. Alexander, Tim B. Dyrby, Markus Nilsson, and Hui Zhang. Imaging brain microstructure with diffusion MRI: practicality and applications. NMR in Biomedicine ,32(4):e3841, 2019. 20 [3] C. Andica, K. Kamagata, T. Hatano, Y. Saito, K. Ogaki, N. Hattori, and S. Aoki. MR biomarkers of degenerative brain disorders derived from diffusion imaging. Journal of Mag-netic Resonance Imaging , 52(6):1620–1636, 2020. 1 [4] Vincent Arsigny, Pierre Fillard, Xavier Pennec, and Nicholas Ayache. Log-euclidean metrics for fast and simple calculus on diffusion tensors. Magnetic Resonance in Medicine , 56 (2):411–421, 2006. 2, 5, 15 [5] P. Basser, J. Mattiello, and D. LeBihan. MR diffusion tensor spectroscopy and imaging. Biophysical Journal , 66(1):259– 267, 1994. 1, 2, 12 [6] Timothy Edward John Behrens, H. Johansen-Berg, S. Jbabdi, M. Rushworth, and M. Woolrich. Probabilistic diffusion tractography with multiple fibre orientations: What can we gain? NeuroImage , 34(1):144–155, 2007. 1 [7] D. Le Bihan, J. F. Mangin, C. Poupon, C. Clark, S. Pap-pat` a, N. Molko, and H. Chabriat. Diffusion tensor imaging: Concepts and applications. Journal of Magnetic Resonance Imaging , 13(4):534–546, 2001. 1 [8] Erick Jorge Canales-Rodr´ ıguez, J. Legarreta, M. Pizzolato, Ga¨ etan Rensonnet, G. Girard, Jonathan Rafael-Patino, M. Barakovic, D. Romascano, Yasser Alem´ an-G´ omez, J. Radu` a, et al. Sparse wars: A survey and comparative study of spher-ical deconvolution algorithms for diffusion MRI. NeuroIm-age , 184:140–160, 2019. 2 [9] Junyu Chen, Han Cai, Junsong Chen, Enze Xie, Shang Yang, Haotian Tang, Muyang Li, Yao Lu, and Song Han. Deep compression autoencoder for efficient high-resolution diffu-sion models. In International Conference on Learning Rep-resentations , 2025. 1, 3 [10] Hyungjin Chung and Jong-Chul Ye. Score-based diffusion models for accelerated MRI. Medical Image Anal. , 80: 102479, 2022. 1, 3 [11] Onat Dalmaz, Mahmut Yurt, and Tolga Cukur. Resvit: Residual vision transformers for multimodal medical image synthesis. IEEE Transactions on Medical Imaging , 41(10): 2598–2614, 2022. 3, 6, 14 [12] D. C. Essen, Stephen M. Smith, D. Barch, Timothy Ed-ward John Behrens, E. Yacoub, and K. U˘ gurbil. The wu-minn human connectome project: An overview. NeuroIm-age , 80:62–79, 2013. 6 [13] E. Garyfallidis, M. Brett, B. Amirbekian, Ariel S. Rokem, S. Walt, M. Descoteaux, and I. Nimmo-Smith. Dipy, a library for the analysis of diffusion MRI data. Front. Neuroinform. ,8:8, 2014. 15 [14] G. Girard, K. Whittingstall, R. Deriche, and M. Descoteaux. Towards quantitative connectivity analysis: reducing trac-tography biases. NeuroImage , 98:266–278, 2014. 15 [15] Matthew F. Glasser, Stamatios N. Sotiropoulos, J. Anthony Wilson, Timothy S. Coalson, Bruce Fischl, Jesper L. Anders-son, Junqian Xu, Saad Jbabdi, Matthew Webster, Jonathan R. Polimeni, et al. The minimal preprocessing pipelines for the human connectome project. NeuroImage , 80:105–124, 2013. 6, 12 [16] Vladimir Golkov, Alexey Dosovitskiy, Jonathan I. Sperl, Marion I. Menzel, Michael Czisch, Philipp Samann, Thomas Brox, and Daniel Cremers. q-space deep learning: Twelve-fold shorter and model-free diffusion MRI scans. IEEE Transactions on Medical Imaging , 35(5):1344–1351, 2016. 3[17] Inger Havsteen, Christian Ovesen, Lasse Willer, Janus Damm Nybing, Karen Ægidius, Jacob Marstrand, Per Meden, Sverre Rosenbaum, Marie Norsker Folke, Hanne Christensen, et al. Comparison of 3- and 20-gradient direc-tion diffusion-weighted imaging in a clinical subacute cohort of patients with transient ischemic attack: Application of standard vendor protocols for lesion detection and final infarct size projection. Frontiers in Neurology , 8:691, 2017. 6[18] I. Higgins, L. Matthey, Arka Pal, Christopher P. Burgess, Xavier Glorot, M. Botvinick, S. Mohamed, and Alexander Lerchner. beta-VAE: Learning basic visual concepts with a constrained variational framework. In International Confer-ence on Learning Representations , 2017. 3 [19] Jonathan Ho, Ajay Jain, and P. Abbeel. Denoising diffu-sion probabilistic models. In Advances in Neural Informa-tion Processing Systems , pages 6840–6851, 2020. 1, 3, 13 [20] Phillip Isola, Jun-Yan Zhu, Tinghui Zhou, and Alexei A. Efros. Image-to-image translation with conditional adversar-ial networks. In Computer Vision and Pattern Recognition ,pages 1125–1134, 2017. 3, 6, 14 [21] Mark Jenkinson, Christian F. Beckmann, Timothy E.J. Behrens, Mark W. Woolrich, and Stephen M. Smith. Fsl. 
+
+NeuroImage , 62(2):782–790, 2012. 12 [22] Ben Jeurissen, Jacques-Donald Tournier, Thijs Dhollander, Alan Connelly, and Jan Sijbers. Multi-tissue constrained spherical deconvolution for improved analysis of multi-shell diffusion MRI data. NeuroImage , 103:411–426, 2014. 20 [23] Derek K. Jones and Mara Cercignani. Twenty-five pitfalls in the analysis of diffusion MRI data. NMR in Biomedicine , 23 (7):803–820, 2010. 20 [24] Derek K. Jones, Thomas R. Kn¨ osche, and Robert Turner. White matter integrity, fiber count, and other fallacies: The do’s and don’ts of diffusion MRI. NeuroImage , 73:239–254, 2013. 12 [25] Davood Karimi and Simon K. Warfield. Diffusion MRI with machine learning. Imaging Neuroscience , 2:1–55, 2024. 2 [26] Florian Knoll, Jos´ e G. Raya, Rafael O. Halloran, Steven Baete, Eric Sigmund, Roland Bammer, Tobias Block, Ri-cardo Otazo, and Daniel K. Sodickson. A model-based 
+
+9reconstruction for undersampled radial spin-echo dti with variational penalties on the diffusion tensor. NMR in Biomedicine , 28(3):353–366, 2015. 2 [27] C. Lenglet, Jennifer S. W. Campbell, M. Descoteaux, G. Haro, P. Savadjiev, D. Wassermann, A. Anwander, R. De-riche, G. Pike, G. Sapiro, et al. Mathematical methods for diffusion MRI processing. NeuroImage , 45(1):S111–S122, 2009. 1 [28] Hongyu Li, Zifei Liang, C. Zhang, Ruiying Liu, Jing Li, Weihong Zhang, D. Liang, B. Shen, Xiaoliang Zhang, Y. Ge, et al. Superdti: Ultrafast dti and fiber tractography with deep learning. Magnetic Resonance in Medicine , 86 (6):3334–3347, 2021. 1, 3, 6, 14 [29] Ze Liu, Yutong Lin, Yue Cao, Han Hu, Yixuan Wei, Zheng Zhang, Stephen Lin, and B. Guo. Swin transformer: Hierar-chical vision transformer using shifted windows. In ICCV ,pages 9992–10002, 2021. 4 [30] David J. Madden, Ilana J. Bennett, Agnieszka Burzynska, Guy G. Potter, Nan-kuei Chen, and Allen W. Song. Diffusion tensor imaging of cerebral white matter integrity in cognitive aging. Biochimica et Biophysica Acta (BBA) - Molecular Basis of Disease , 1822(3):386–400, 2012. 20 [31] Pratik Mukherjee, S. Chung, J. Berman, C. P. Hess, and R. Henry. Diffusion tensor MR imaging and fiber tractography: Technical considerations. AJNR Am J Neuroradiol , 29(5): 843–852, 2008. 1 [32] L. O’Donnell and C. Westin. An introduction to diffusion tensor image analysis. Neurosurgery clinics of North Amer-ica , 22(2):185, 2011. 1 [33] A¨ aron van den Oord, O. Vinyals, and K. Kavukcuoglu. Neu-ral discrete representation learning. In Advances in Neural Information Processing Systems , 2017. 4, 12 [34] Adam Paszke, Sam Gross, Francisco Massa, Adam Lerer, James Bradbury, Gregory Chanan, Trevor Killeen, Zeming Lin, N. Gimelshein, L. Antiga, et al. Pytorch: An im-perative style, high-performance deep learning library. In 
+
+Advances in Neural Information Processing Systems , pages 8024–8035, 2019. 6 [35] Ethan Perez, Florian Strub, Harm de Vries, Vincent Du-moulin, and Aaron Courville. FiLM: Visual reasoning with a general conditioning layer. In Proceedings of the AAAI Conference on Artificial Intelligence , 2018. 3, 19 [36] Carlos Riquelme, Joan Puigcerver, Basil Mustafa, Maxim Neumann, Rodolphe Jenatton, Andr´ e Susano Pinto, Daniel Keysers, and Neil Houlsby. Scaling vision with sparse mix-ture of experts. In Advances in Neural Information Process-ing Systems , pages 8583–8595, 2021. 5 [37] Robin Rombach, A. Blattmann, Dominik Lorenz, Patrick Esser, and B. Ommer. High-resolution image synthesis with latent diffusion models. In Computer Vision and Pattern Recognition , pages 10684–10695, 2022. 1, 3, 6, 14 [38] Chitwan Saharia, William Chan, Huiwen Chang, Chris Lee, Jonathan Ho, Tim Salimans, David Fleet, and Mohammad Norouzi. Palette: Image-to-image diffusion models. In 
+
+Special Interest Group on Computer Graphics and Interac-tive Techniques Conference Proceedings , pages 1–10. ACM, 2022. 14 [39] Chitwan Saharia, Jonathan Ho, William Chan, Tim Sali-mans, David J. Fleet, and Mohammad Norouzi. Image super-resolution via iterative refinement. IEEE Transactions on Pattern Analysis and Machine Intelligence , 45(4):1–14, 2022. 14 [40] Noam Shazeer, Azalia Mirhoseini, Krzysztof Maziarz, Andy Davis, Quoc Le, Geoffrey Hinton, and Jeff Dean. Outra-geously large neural networks: The sparsely-gated mixture-of-experts layer. In International Conference on Learning Representations , 2017. 5 [41] Jascha Narain Sohl-Dickstein, Eric A. Weiss, Niru Mah-eswaranathan, and S. Ganguli. Deep unsupervised learn-ing using nonequilibrium thermodynamics. In Proceedings of the 41st International Conference on Machine Learning ,pages 2256–2265. pmlr, 2015. 3 [42] Jiaming Song, Chenlin Meng, and Stefano Ermon. Denois-ing diffusion implicit models. In International Conference on Learning Representations , 2021. 1 [43] E. O. Stejskal and J. E. Tanner. Spin diffusion measurements: Spin echoes in the presence of a time-dependent field gradi-ent. The Journal of Chemical Physics , 42(1):288–292, 1965. 2, 12 [44] Ryutaro Tanno, Daniel E. Worrall, Aurobrata Ghosh, Enrico Kaden, Stamatios N. Sotiropoulos, Antonio Criminisi, and Daniel C. Alexander. Bayesian image quality transfer with cnns: Exploring uncertainty in dmri super-resolution. In Lec-ture Notes in Computer Science , pages 611–619. Springer International Publishing, 2017. 3 [45] Qiyuan Tian, Berkin Bilgic, Qiuyun Fan, Congyu Liao, Chanon Ngamsombat, Yuxin Hu, Thomas Witzel, Kawin Setsompop, Jonathan R. Polimeni, and Susie Y. Huang. Deepdti: High-fidelity six-direction diffusion tensor imag-ing using deep learning. NeuroImage , 219:117017, 2020. 1, 3[46] Jacques-Donald Tournier, F. Calamante, and A. Connelly. Robust determination of the fibre orientation distribution in diffusion MRI: Non-negativity constrained super-resolved spherical deconvolution. NeuroImage , 35(4):1459–1472, 2007. 2, 20 [47] J-Donald Tournier, Robert Smith, David Raffelt, Rami Tab-bara, Thijs Dhollander, Maximilian Pietsch, Daan Christi-aens, Ben Jeurissen, Chun-Hung Yeh, and Alan Connelly. Mrtrix3: A fast, flexible and open software framework for medical image processing and visualisation. NeuroImage ,202:116137, 2019. 15 [48] D. Tuch. Q-ball imaging. Magnetic Resonance in Medicine ,52(6):1358–1372, 2004. 2 [49] Haoshen Wang, Zhentao Liu, Kaicong Sun, Xiaodong Wang, Dinggang Shen, and Zhiming Cui. 3d meddiffusion: A 3d medical latent diffusion model for controllable and high-quality medical image generation. IEEE Transactions on Medical Imaging , 2025. 1, 3 [50] Chenxu Wu, Qingpeng Kong, Zihang Jiang, and S. K. Zhou. Self-supervised diffusion MRI denoising via iterative and stable refinement. In International Conference on Learning Representations , 2025. 3 [51] Zejun Wu, Jiechao Wang, Zunquan Chen, Qinqin Yang, Zhen Xing, Dairong Cao, Jianfeng Bao, Taishan Kang, 
+
+10 Jianzhong Lin, Shuhui Cai, et al. Flexdti: flexible diffu-sion gradient encoding scheme-based highly efficient diffu-sion tensor imaging using deep learning. Physics in Medicine & Biology , 69(11):115012, 2024. 3 [52] Tiange Xiang, Mahmut Yurt, Ali B. Syed, K. Setsompop, and A. Chaudhari. Ddm2: Self-supervised diffusion MRI denoising with generative diffusion models. In International Conference on Learning Representations , 2023. 3 [53] Lang Zhang, Jinling He, Wang Li, Dong Liang, and Yanjie Zhu. Diff-dti: Fast diffusion tensor imaging using a feature-enhanced joint diffusion model. IEEE journal of biomedical and health informatics , 2024. 1, 3, 6, 14 [54] Jun-Yan Zhu, Taesung Park, Phillip Isola, and Alexei A. Efros. Unpaired image-to-image translation using cycle-consistent adversarial networks. In ICCV , pages 2242–2251, 2017. 3, 6, 14 
+
+11 Appendix A. Diffusion Tensor Model Details 
+
+A.1. The Stejskal-Tanner Equation Explained 
+
+The Stejskal-Tanner equation provides the foundational model for DTI [43]. The terms are defined as follows: • S0: The signal intensity measured in a non-diffusion-weighted acquisition (a b=0 image), where the diffusion-sensitizing gradients are turned off. • S(g): The signal intensity measured when a diffusion-sensitizing magnetic field gradient is applied along the direction of the unit vector g.• b-value : A scalar value that encapsulates the strength and duration of the diffusion gradients. A higher b-value results in greater signal attenuation for diffusing water molecules. 
+
+A.2. Tensor Estimation and Clinical Context 
+
+To solve for the six unknown components of the symmet-ric tensor D, the Stejskal-Tanner equation must be sampled with at least six non-collinear gradient directions ( g). In clinical and research practice, many more directions (of-ten 30 to 90 or more) are acquired to improve the accu-racy and robustness of the tensor fit, especially in noisy data [24]. This sampling requirement leads to the primary clinical challenge of DTI: long acquisition times, which in-crease patient discomfort and susceptibility to motion arti-facts. 
+
+A.3. Tensor-Derived Metrics 
+
+The diffusion tensor D is rarely interpreted directly. In-stead, it is diagonalized to yield three eigenvalues ( λ1 ≥
+
+λ2 ≥ λ3) and their corresponding eigenvectors ( v1, v2, v3). These represent the magnitude of diffusion in three orthog-onal directions and the orientation of those directions, re-spectively. From these, key microstructural metrics are cal-culated [5]: • Mean Diffusivity (MD) : The average of the eigenvalues, 
+
+M D = ( λ1 + λ2 + λ3)/3. It measures the overall mag-nitude of water diffusion in a voxel, independent of direc-tionality. • Radial Diffusivity (RD) : The average of the secondary and tertiary eigenvalues, RD = ( λ2 + λ3)/2. This metric quantifies diffusion perpendicular to the principal fiber di-rection and is often cited as a marker of myelin integrity. • Fractional Anisotropy (FA) : A normalized measure of the variance of the eigenvalues, indicating the degree to which diffusion is directional. An FA of 0 implies isotropic diffusion, while an FA close to 1 implies that diffusion is highly restricted to a single direction. • Color Fractional Anisotropy (Color FA) : To visualize the principal fiber orientation alongside anisotropy, we modulate the FA map by the principal eigenvector v1 =[v1x, v 1y , v 1z ]. The resulting RGB image assigns colors based on direction: Red for left-right ( |v1x|), Green for anterior-posterior ( |v1y |), and Blue for superior-inferior (|v1z |), scaled by the FA value. These metrics are essential for the quantitative analysis of white matter integrity. 
+
+## B. Data and Preprocessing Details 
+
+Ground-Truth Tensor Generation: The ground-truth DTI metrics for each subject were derived from the complete diffusion dataset, which included 18 b=0 volumes and 90 DWI volumes at b=1000 s/mm 2. Diffusion tensor fit-ting was performed using an ordinary linear least-squares method via the dtifit function in FSL [21], incorporat-ing the provided gradient nonlinearity correction files. This process yielded the full diffusion tensor, from which all ground-truth metrics, including fractional anisotropy (FA) and mean diffusivity (MD), were calculated [15]. 
+
+Undersampled Input Selection: The 4-volume sparse input for our model was created by selecting a specific sub-set of DWIs. For the b=1000 s/mm 2 shell, we identified the three diffusion gradient vectors most closely aligned with the standard Cartesian axes ([1, 0, 0], [0, 1, 0], and [0, 0, 1]) by minimizing the Euclidean distance. The correspond-ing DWI volumes were extracted, and a single b=0 vol-ume was prepended to form the final 4-volume input stack 
+
+X = {Xc}3
+
+> c=0
+
+.
+
+## C. Implementation Details 
+
+C.1. Training Pipeline and Phase-Wise Details 
+
+Overall Pipeline. TensorLDM is trained in a two-phase pipeline comprising five sequential stages (three in Phase I and two in Phase II). Phase I (Stages 1–3) establishes the high-fidelity component-wise latent space via the Anatomy-Conditioned Autoencoder, while Phase II (Stages 4–5) trains the component-wise latent diffusion model within that space. 
+
+Phase I: Component-Wise Anatomy-Conditioned Au-toencoder. Stage 1: Local Component Learning (Patch-based). The base autoencoder is first trained on lo-cal patches ( 32 ×32 ×32 ) to learn a high-fidelity latent rep-resentation for each of the six tensor components indepen-dently. This stage focuses on capturing fine-grained struc-tural details and local diffusion patterns. We use the Adam optimizer with a learning rate of 1.0×10 −5 and a batch size of 2. The objective combines voxel-wise reconstruction loss and a vector-quantization commitment loss [33]. 
+
+Stage 2: Global Structure Fine-tuning (Full-volume). 
+
+Following the patch-based pre-training, the autoencoder is further fine-tuned on full-volume data. This transition from 12 local to global learning (curriculum learning) ensures global spatial consistency across the latent field and stabilizes the representation for downstream tasks. The learning rate is maintained at 1.0 × 10 −5.
+
+Stage 3: Cross-Component Joint Refinement. After establishing the base latent space, we freeze the encoder and conditioner weights and fine-tune the Cross-Component At-tention blocks, the decoder output layers, and a lightweight joint fusion MLP. The fusion MLP receives all six compo-nent latents and promotes cross-component consistency via cross-component attention. Optimization uses the Adam optimizer with a learning rate of 1.0×10 −5 and an effective batch size of 16. To encourage symmetric positive definite-ness (SPD) and geometric validity, the loss function is aug-mented with a Log-Euclidean metric term ( λLEM = 0 .01 ). 
+
+Phase II: Component-Wise Latent Diffusion. Stage 4: Independent Component Pre-training. We pre-train the denoising U-Net on individual tensor components ( d ∈{0, . . . , 5}) with Cross-Component Attention deactivated. Critically, the model is conditioned on DWI features via the MoE DWI conditioner, which takes multi-scale fea-ture maps extracted by the shared conditioner C from each DWI volume ( b=0 , b 1000 ,x , b 1000 ,y , b 1000 ,z ), processes them through per-volume expert encoders, and computes component-adaptive gating weights to selectively combine the expert outputs. This stage learns the mapping from sparse DWI signals to individual tensor components with-out modeling inter-component dependencies. The diffusion process uses a linear beta schedule [19] over 1000 steps. Training uses the AdamW optimizer with a learning rate of 
+
+1.0 × 10 −5 and a batch size of 3 (effective batch size of 12 with 4 × gradient accumulation). 
+
+Stage 5: Joint Component Fine-tuning. Building on Stage 4, we activate the Cross-Component Attention (CCA) blocks to enable information exchange between all six ten-sor components during denoising. The model continues to use component-adaptive conditioning via the MoE DWI conditioner while now promoting cross-component consis-tency through joint processing. This encourages compli-ance with physical constraints (symmetric positive defi-niteness) and promotes anatomically coherent directional patterns. Training uses AdamW with a learning rate of 
+
+1.0 × 10 −5, initialized from the Stage 4 checkpoint. 
+
+C.2. Detailed Network Configurations 
+
+Joint MLP Block Architecture. The joint refinement block added at the end of the decoder operates voxel-wise across all six tensor components. Its architecture is as fol-lows: • Input dimension : 1536 (= 256 channels × 6 tensor com-ponents) • Hidden dimension : 768 (GELU activation) • Output dimension : 1536 • Total parameters : 2,361,600 This block contributes only a small fraction of the de-coder’s total parameters and is designed to promote cross-component consistency with minimal overhead. 
+
+C.3. Ablation Training and Analysis Details 
+
+Training Schedules for Ablation Variants. For com-pleteness, we report the exact number of training iterations used for each ablation model, ensuring that performance differences are attributable to architectural factors rather than computational budget: • TensorLDM (full model) : 75k steps (autoencoder pre-training; Stages 1–2) + 5k (joint refinement) + 25k (inde-pendent component pre-training) + 25k (joint component fine-tuning) • No-Anatomy : 120k autoencoder-only steps • No-Pretrain : 100k diffusion steps • Channel-Shared variant : 20k diffusion steps These figures report the training budget for each variant; all are trained to convergence so that observed differences reflect architecture rather than budget (for example, No-Pretrain matches the w/o joint LDM ablation in the main paper). 
+
+Effect of Patch Pre-training (Stage 1). At matched com-pute, we compare the full Stage 1+2 curriculum against a Stage 2-only variant on the n=195 HCP test subjects. Stage 1 deliberately trades a small amount of whole-brain mean fidelity for eigenstructure accuracy: whole-brain LEM is 0.520 vs . 0.508 (Stage 2-only better; ∆=+0 .012 ,paired Wilcoxon p=6 .6 × 10 −11 ), whereas off-diagonal LEM is 0.240 vs . 0.255 (Stage 1+2 better; ∆= −0.015 ,
+
+p=1 .3 × 10 −25 ). Because diagonal magnitudes dominate whole-brain LEM while off-diagonal errors propagate into eigenvector orientation (over which streamline tractography integrates), this trade-off favors the tensor geometry that matters for downstream fiber tracking. 
+
+## D. Competing Methods Details 
+
+Unless otherwise noted, all learning-based baselines are im-plemented as 3D networks and trained on full 3D volumes to ensure a rigorous comparison with our volumetric ap-proach. • ADE (Analytic Diagonal Estimation): A non-learning baseline that assumes a diagonal diffusion tensor. The diagonal components ( Dxx , Dyy , Dzz ) are computed from the log-linearized Stejskal-Tanner equation using the most aligned gradients. Off-diagonal elements are set to zero, and the tensor is projected onto the symmetric positive definite (SPD) manifold. 13 • SuperDTI [28]: Implemented using a 2D U-Net-style encoder–decoder CNN with residual learning. Follow-ing the original protocol, the network learns the nonlinear mapping from uniformly sampled sparse DWI signals di-rectly to FA, MD, and the primary eigenvectors (or color maps) using an ℓ2 regression loss. We use the architec-ture specified in the original paper, adapted for 2D-based processing. • Diff-DTI [53]: A conditional score-based diffusion model. The method operates on 2D slices to directly syn-thesize DTI parameter maps ( e.g ., FA, MD, Color FA) from a few conditional DWIs. The model uses a U-Net backbone enhanced by a Feature Enhancement Fusion Mechanism (FEFM), which integrates a Transformer-based auxiliary path to preserve fine structural details, and is trained with a score-matching objective. • CycleGAN [54]: The architecture consists of two 3D U-Net generators and two 3D PatchGAN discrimina-tors, trained with an adversarial loss and an ℓ1 cycle-consistency loss ( λ = 10 ). • Pix2Pix [20]: The generator is a 3D U-Net, and the dis-criminator is a 3D PatchGAN. The training objective is a sum of a vanilla GAN loss and an ℓ1 reconstruction loss (λℓ1 = 100 ). • ResViT [11]: ResViT employs a hybrid architecture com-bining a 3D ResNet-style backbone with interleaved Vi-sion Transformer blocks to capture long-range dependen-cies. It is trained with a composite ℓ1 and adversarial loss. • LDM [37]: A standard Latent Diffusion Model serves as a baseline. We employ a conventional latent autoencoder 
+
+without DWI-aided decoding or anatomical feature injec-tion , thereby reproducing the canonical LDM setup. The diffusion U-Net is conditioned solely through channel-wise concatenation of the DWI latent and the noisy ten-sor latent, following the design principles of SR3 [39] and Palette [38]. This configuration reflects the standard con-ditional LDM mechanism and stands in contrast to the component-wise framework and shared DWI condition-ing used in TensorLDM. 
+
+D.1. Reconstructing Diffusion Tensors from Param-eter Maps 
+
+SuperDTI and Diff-DTI do not directly output the full dif-fusion tensor, but instead predict diffusion parameter maps such as mean diffusivity (MD), radial diffusivity (RD), frac-tional anisotropy (FA), and Color FA (RGB-encoded FA). To enable tensor-domain metrics and tractography, we re-construct an approximate diffusion tensor D ∈ R3×3 in each voxel from these quantities under a cylindrically sym-metric model. We assume a single-shell acquisition and impose 
+
+λ2 = λ3 = RD ,
+
+so that the tensor has one principal eigenvalue λ1 = AD 
+
+(axial diffusivity) and two identical secondary eigenvalues 
+
+λ2 = λ3 = RD . Using the standard relation 
+
+MD = λ1 + λ2 + λ3
+
+3 = AD + 2 RD 3 ,
+
+we recover axial diffusivity as 
+
+AD = 3 MD − 2 RD .
+
+In practice, we clip negative values of AD to zero to avoid clearly unphysical eigenvalues. The principal eigenvector v1 ∈ R3 is estimated from the Color FA image. Let fCFA = ( fx, f y , f z ) denote the Color FA vector at a voxel; we normalize it to obtain 
+
+v1 = fCFA 
+
+∥fCFA ∥2 + ε ,
+
+with a small ε > 0 for numerical stability. To suppress unre-liable orientations in nearly isotropic voxels, we set v1 = 0
+
+whenever FA < 0.05 .Under these assumptions, the reconstructed diffusion tensor is given by the rank-1 update 
+
+D = RD I3 + (AD − RD) v1v⊤ 
+
+> 1
+
+,
+
+where I3 is the 3×3 identity matrix. Writing v1 =(vx, v y , v z ) and ∆ = AD − RD , the six independent com-ponents are 
+
+Dxx = RD + ∆ v2
+
+> x
+
+,Dyy = RD + ∆ v2 
+
+> y
+
+,Dzz = RD + ∆ v2 
+
+> z
+
+,Dxy = ∆ vxvy ,Dxz = ∆ vxvz ,Dyz = ∆ vy vz .
+
+We then store (Dxx , D yy , D zz , D xy , D xz , D yz ) as a 4D volume and use this reconstructed tensor field for all tensor-domain metrics ( e.g ., LEM) and tractography-based evalu-ations reported for SuperDTI and Diff-DTI. 
+
+On comparison fairness. Because SuperDTI and Diff-DTI regress scalar maps, off-diagonal tensor structure is simply not part of their output. The cylindrically symmetric reconstruction above is the most faithful tensor consistent with the quantities they do predict. The resulting lower off-diagonal and LEM scores therefore characterize the scalar-map design of these methods, not an artifact introduced by our evaluation. We deliberately retain their original 2D formulations (rather than re-engineering them into 3D six-component tensor regressors) so that the benchmark mea-sures the published methods and exposes precisely the ar-chitectural limitation (loss of directional/off-diagonal infor-mation) that motivates direct full-tensor reconstruction. Re-training them into a different output space would create new models rather than evaluate the existing ones. 14 E. Diffusion Tensor Metrics and Manifold Ge-ometry 
+
+To provide a geometrically rigorous assessment of the reconstructed diffusion tensors, we employ the Log-Euclidean Metric (LEM) in addition to conventional image-based metrics (PSNR, SSIM). This addresses the funda-mental limitation that the space of diffusion tensors does not conform to Euclidean geometry. 
+
+E.1. Limitation of Euclidean Metrics 
+
+A diffusion tensor D is represented by a 3×3 SPD matrix. The space of all such matrices, S3++ , forms a nonlinear Rie-mannian manifold rather than a flat Euclidean space. Ap-plying standard Euclidean metrics ( e.g ., ℓ2 norm, PSNR, SSIM) to the six unique tensor components treats them as a simple 6D vector. This approach ignores: • Physical Plausibility : It does not enforce the positive definiteness of the tensor ( i.e ., strictly positive eigenval-ues), which is a core physical constraint of the diffusion tensor. • Geodesic Distance : The resulting distance metric does not correspond to the shortest path (geodesic) between two tensors on the manifold, leading to potentially inac-curate assessments in regions of high anisotropy or com-plex fiber geometry. 
+
+E.2. Log-Euclidean Metric (LEM) 
+
+The Log-Euclidean Metric (LEM) [4] provides an effective and computationally tractable distance metric for SPD ma-trices. It utilizes the matrix logarithm ( Log ) to map the curved SPD manifold ( S3++ ) to a flat vector space (the space of symmetric matrices, S3), where standard Euclidean op-erations become valid. The Log-Euclidean distance between two tensors, D1
+
+and D2, is defined as the Frobenius norm of the difference between their matrix logarithms: 
+
+dLE (D1, D2) = ∥Log( D1) − Log( D2)∥F .
+
+Here, Log( D) is computed via eigendecomposition ( D =
+
+VΛV ⊤, where Λ contains the eigenvalues λi), such that 
+
+Log( D) = V log( Λ)V⊤. In our implementation, we en-sure numerical stability by clamping all eigenvalues to a minimum positive value before applying the logarithm. By minimizing this metric, we encourage the reconstructed ten-sor to not only match the ground truth in component values but also adhere to the appropriate underlying tensor geom-etry, supporting physically plausible downstream analyses such as tractography. 
+
+## F. Tractography Evaluation: Tract Core Dis-tance 
+
+To assess how tensor reconstruction quality affects down-stream fiber tracking (Sec. 4), we measure the geometric discrepancy between white matter bundles obtained from reconstructed tensors and those from the reference tensors using a tract core distance [13, 14]. For each subject, whole-brain probabilistic tractography is run on the reference and on each reconstructed tensor field with identical MRtrix3 seeding and tracking parame-ters [47]. Major bundles ( e.g ., corticospinal tract, cingulum, corpus callosum segments) are segmented from the whole-brain tractograms using TractSeg-derived bundle masks. For each bundle, we build a smooth 3D core trajectory that summarizes its geometry: all streamlines are resampled to a fixed number of points in world coordinates, and a low-degree polynomial is fitted to the cross-sectional centroid positions along the main bundle direction. This yields a core trajectory for the ground-truth tensors, γGT , and for each reconstruction, γrec .The tract core distance for a bundle is defined as the av-erage nearest-point distance from the reconstructed core to the reference core: 
+
+dcore (γGT , γ rec ) = 1
+
+M
+
+> M
+
+X
+
+> m=1
+
+min  
+
+> 1≤k≤K
+
+γGT (k) − γrec (m) 2,
+
+where {γGT (k)}Kk=1 and {γrec (m)}Mm=1 are the sampled points along the two core trajectories in physical space (mm). For 2 mm isotropic data, we treat sub-voxel discrep-ancies as negligible by thresholding very small distances. Lower values of dcore indicate that the reconstructed ten-sor yields a bundle whose central trajectory closely matches that of the ground truth. 
+
+## G. Additional Qualitative and Quantitative Results 
+
+This section contains additional results, including axial views of the DTI parameter maps (Fig. 7) and tensor com-ponents (Fig. 8), a coronal view of the tensor components (Fig. 9), detailed statistical significance tests (Tabs. 4 to 6), and inference runtime comparisons (Tab. 7). 
+
+Discussion of non-significant LEM differences. Two whole-brain LEM comparisons in Tab. 6 do not reach significance: w/o MoE ( p=0 .177 ) and w/o joint LDM (p=0 .075 ). We report this directly rather than omit it. Whole-brain LEM is dominated by the larger diagonal mag-nitudes ( Dxx , D yy , D zz ), so modules that chiefly refine off-diagonal and orientation structure shift the global scalar only slightly. The same table makes this concrete: removing the joint diffusion stage (w/o joint LDM) significantly de-grades all three off-diagonal components ( Dxy , D xz , D yz ,15 Figure 7. Qualitative comparison of DTI parameter maps on an axial slice. Visualization of MD, RD, FA, and Color FA for the same subject shown in the main text. TensorLDM consistently provides a faithful reconstruction with reduced noise compared to baselines. Table 4. Paired t-test results (TensorLDM vs . baselines) for DTI parameter maps. Each entry tests whether TensorLDM is significantly better (lower NMSE, higher PSNR/SSIM) than the compared method via two-sided paired t-test. Legend: *** p < 10 −3, ** p < 10 −2, * 
+
+p < 0.05 , (n.s.) p ≥ 0.05 .
+
+## Metric Measure ADE CycleGAN Pix2Pix ResViT Diff-DTI SuperDTI LDM MD NMSE *** *** *** *** *** *** *** FA NMSE *** *** *** *** 0.097 (n.s.) *** *** RD NMSE *** *** *** *** *** *** *** MD PSNR *** *** *** *** *** *** *** FA PSNR *** *** *** *** *** *** *** RD PSNR *** *** *** *** *** *** *** MD SSIM *** *** *** *** *** *** *** FA SSIM *** *** *** *** *** *** *** RD SSIM *** *** *** *** *** *** *** 
+
+p < 10 −3) and FA-PSNR while leaving whole-brain LEM unchanged, and removing CCA or MoE leaves several off-diagonal/FA comparisons non-significant even where diag-onal PSNR changes significantly. The qualitative ablation (Fig. 6) shows that removing CCA or the MoE conditioner visibly disrupts the principal-eigenvector ( v1) field. We therefore position CCA, the MoE conditioner, and the joint diffusion stage as improving principal-eigenvector align-ment and local tensor structure, while the Log-Euclidean autoencoder constraint (w/o AE-LLEM ) is the component that most affects whole-brain LEM. 
+
+## H. Inference Runtime Analysis 
+
+Table 7 summarizes the end-to-end inference time for a full 2 mm whole-brain volume on a single NVIDIA A6000. TensorLDM incurs additional computational cost relative to a vanilla LDM due to Cross-Component Attention and tensor-aware refinement, while achieving markedly higher tensor consistency. Importantly, TensorLDM remains sub-stantially faster than 2D slice-based diffusion models such 16 Figure 8. Qualitative comparison of diffusion tensor components on an axial slice. Visualization of the six individual tensor components for the same subject. TensorLDM provides a faithful reconstruction across all components, with reduced noise and artifacts, particularly in the off-diagonal elements. 
+
+as Diff-DTI, which require processing each slice indepen-dently and accumulate significant overhead. The iterative diffusion sampler dominates TensorLDM’s cost. The cross-method figures in Tab. 7 were measured on an NVIDIA A6000. On a common NVIDIA RTX 6000 Ada, end-to-end inference is 32 .7 ± 0.2 s/vol with the full 250-step DDIM sampler and 9.4 ± 0.0 s/vol with 25 DDIM steps (encode 4.3 s, sample 25 .8 → 2.6 s, decode 2.3 s; mean over n=5 volumes), i.e . a ∼3.5 × reduction on the same device while leaving the reconstruction qualitatively unchanged. 
+
+Table 7. Inference runtime on a single NVIDIA A6000 (48 GB). 
+
+TensorLDM is slower than a vanilla LDM due to Cross-Component Attention and tensor-aware refinement, yet remains substantially faster than 2D slice-based diffusion methods.      
+
+> Model Inference Time (s)
+> SuperDTI 10.93 LDM 23.58 TensorLDM (Ours) 122.96 Diff-DTI 593.22
+
+## I. SPD Violation Analysis 
+
+Table 8 reports the percentage of brain voxels where the reconstructed diffusion tensor violates the SPD constraint (i.e ., at least one eigenvalue is negative). Eigenvalues are computed via symmetric eigendecomposition of the 3×3
+
+tensor assembled from the six predicted components at each voxel within the brain mask. The ground-truth tensors themselves, obtained from 90-direction linear least-squares 17 Figure 9. Qualitative comparison of diffusion tensor components on a coronal slice. Reconstructed components, magnified detail, and error maps on a coronal slice. TensorLDM provides the most faithful reconstruction, particularly for the challenging off-diagonal components. Table 5. Paired t-test results (TensorLDM vs . baselines) for tensor components. Each entry tests whether TensorLDM is significantly better (lower LEM, higher PSNR/SSIM) via two-sided paired t-test. Legend: *** p < 10 −3, ** p < 10 −2, * p < 0.05 , (n.s.) p ≥ 0.05 .
+
+Metric Component / Measure ADE CycleGAN Pix2Pix ResViT Diff-DTI SuperDTI LDM LEM – *** *** *** *** *** *** *** PSNR Dxx *** *** *** *** *** *** *** PSNR Dyy *** *** *** *** *** *** *** PSNR Dzz *** *** *** *** *** *** *** PSNR Dxy *** *** *** *** *** *** *** PSNR Dxz *** *** *** *** *** *** *** PSNR Dyz *** *** *** *** *** *** *** SSIM Dxx *** *** *** *** *** *** *** SSIM Dyy *** *** *** *** *** *** *** SSIM Dzz *** *** *** *** *** *** *** SSIM Dxy *** *** *** *** *** *** *** SSIM Dxz *** *** *** *** *** *** *** SSIM Dyz *** *** *** *** *** *** *** 
+
+18 Table 6. Paired t-test results for ablation study. Each entry tests whether the full TensorLDM is significantly better than each ablated variant via two-sided paired t-test. Legend: *** p < 10 −3, ** p < 10 −2, * p < 0.05 , (n.s.) p ≥ 0.05 .
+
+Metric / Component w/o CCA w/o MoE w/o AE-LLEM w/o full-vol. fine-tuning w/o joint AE w/o joint LDM LEM ** 0.177 (n.s.) *** *** *** 0.075 (n.s.) MD–PSNR *** *** *** *** *** *** FA–PSNR 0.247 (n.s.) 0.682 (n.s.) *** *** *** *** RD–PSNR *** *** *** *** *** 0.124 (n.s.) 
+
+Dxx *** *** *** *** *** *** 
+
+Dyy *** *** *** *** *** *** 
+
+Dzz *** *** *** *** *** *** 
+
+Dxy *** *** *** *** *** *** 
+
+Dxz 0.927 (n.s.) 0.164 (n.s.) 0.055 (n.s.) *** 0.070 (n.s.) *** 
+
+Dyz 0.808 (n.s.) 0.195 (n.s.) 0.543 (n.s.) ** ** *** 
+
+fitting, exhibit 1.40% SPD violations, as ordinary least-squares does not enforce positive definiteness. TensorLDM achieves a violation rate comparable to the ground truth, and removing the Log-Euclidean loss (w/o AE-LLEM ) increases it, consistent with this soft geometric constraint contributing to SPD preservation (Tab. 8).              
+
+> Table 8. SPD violation rates across methods. Values report the mean percentage ( ±std) of brain voxels with at least one negative eigenvalue, computed over 195 test subjects.
+> Method SPD Violation (%)
+> GT (90-dir) 1.40 ±0.27
+> TensorLDM (Ours) 1.54 ±0.28
+> w/o AE-LLEM 1.61 ±0.29
+
+## J. Latent Representation Probing 
+
+To test whether the Anatomy-Conditioned Autoencoder en-courages a division of labor between anatomical structure (carried by the DWI conditioning) and tensor properties (carried by the latents), we freeze the trained model and fit a linear probe, evaluated subject-wise, that predicts voxel-wise fractional anisotropy (FA) from (i) the anatomical con-ditioning representation ΦX and (ii) the tensor-component latents {zd 
+
+> Y
+
+}. FA is largely recoverable from the anatomical representation ( R2 = 0 .61 ) but is not linearly carried by the tensor latents ( R2 = 0 .08 ), consistent with the two encod-ing complementary rather than redundant information. This is a single linear probe on one scalar (FA) and does not by itself establish formal disentanglement; it is computed on the frozen model and requires no retraining. 
+
+## K. Component-Wise Architecture Details 
+
+K.1. Component Indexing and Embeddings 
+
+In our framework, the component index d maps to tensor components as follows: 0 → Dxx , 1 → Dyy , 2 → Dzz ,
+
+3 → Dxy , 4 → Dxz , 5 → Dyz . The component em-bedding ed is produced by a trainable Fourier embedding module: a learnable vector of size 6 × 3C is retrieved per component index and combined with pre-computed 3D si-nusoidal positional encodings via a dot product to yield a spatially aware embedding volume, where C is the latent channel dimension. 
+
+K.2. Shared Anatomical Conditioning 
+
+The shared conditioner C processes the four input DWI vol-umes ( b=0 , b 1000 ,x , b 1000 ,y , b 1000 ,z ) through separate fea-ture extraction pathways, producing per-volume multi-scale feature maps {ϕ(l) 
+
+> c
+
+}l. These features are used differently in the two phases: • Phase I (Anatomy-Conditioned Autoencoder): The per-volume features are concatenated and uniformly fused at each scale via a learned multi-stage convo-lutional network to produce a component-independent conditioning representation ΦX, which is injected into all component-specific decoders via Feature-wise Linear Modulation (FiLM) [35]. • Phase II (Latent Diffusion): The same per-volume fea-tures are concatenated, downsampled to per-volume rep-resentations ¯ϕc, and fed into the MoE DWI conditioner. The MoE conditioner processes each ¯ϕc through a dedi-cated expert encoder fc and applies component-adaptive gating to produce Φd
+
+> X
+
+, which is injected into the denois-ing U-Net via FiLM. 
+
+Routing specialization. On the submitted model, the learned gating is only mildly component-dependent: diago-nal components place the most weight on the b1000 ,y expert (average weight 0.40 vs . 0.25 for a uniform average, rout-ing entropy 1.23 nats), whereas off-diagonal components weakly favor the b1000 ,z expert (average weight 0.34, en-tropy 1.37 nats), against a maximal entropy of 1.39 nats for four experts. The gating thus remains close to uniform but routes diagonal components more sharply than off-diagonal 19 ones, consistent with mild component-adaptive condition-ing rather than a strictly uniform average. 
+
+## L. Comparison with Coupled Approaches 
+
+Table 9 highlights the key architectural differences between a standard coupled latent field approach ( e.g ., stacking all channels) and our component-wise framework. 
+
+Table 9. Comparison of Coupled vs . Component-Wise Archi-tectures.                         
+
+> Feature Coupled Field Component-Wise (Ours) Latent Representation Joint ( [6+4] ×H×W×S)Independent ( 6×1×H×W×S)Conditioning Concatenation Shared DWI Conditioner + Fusion Cross-Component Modeling Implicit (Conv layers) Explicit (Attention) Parameter Efficiency Shared weights Shared backbone + Direction Embeddings
+
+## M. Limitations 
+
+All experiments use the HCP Young Adult dataset with uniform, high-quality acquisitions. Generalization to older populations, individuals with neurological conditions, or data from multiple sites remains untested [30]. Our ex-periments use single-shell b=1000 s/mm 2 data at 2 mm isotropic resolution with a fixed four-volume input, a con-figuration that differs from multi-shell or high-angular-resolution regimes used for more complex diffusion mod-els [2, 22, 46]. TensorLDM’s inference cost has two re-ducible factors. On the A6000 used for Tab. 7, the 250-step DDIM sampler takes 123 s/vol, about five times a vanilla LDM. The bulk is iterative sampling. On a newer RTX 6000 Ada the same 250-step sampler runs in 32.7 s/vol, and reducing to 25 steps further lowers it to 9.4 s/vol (Sec. H). Thus hardware and step count are independent levers, and a fast sampler mitigates the latency concern for clinical workflows. Because TensorLDM is a stochastic generative model, its output variability across sampling runs has not been characterized. Deterministic or low-variance alterna-tives may be preferable in safety-critical settings. Finally, the reference tensors are computed using a single fitting algorithm. Evaluating robustness across alternative fitting methods is an important direction for future work [23]. 20
