@@ -1,0 +1,578 @@
+Title: 14977_Spatially_and_Temporally.pdf
+
+URL Source: https://openreview.net/pdf?id=81iTOKJbzZ
+
+Number of Pages: 18
+
+Markdown Content:
+> 000 001 002 003 004 005 006 007 008 009 010 011 012 013 014 015 016 017 018 019 020 021 022 023 024 025 026 027 028 029 030 031 032 033 034 035 036 037 038 039 040 041 042 043 044 045 046 047 048 049 050 051 052 053
+
+Under review as a conference paper at ICLR 2026 
+
+# SPATIALLY AND TEMPORALLY GUIDED BAYESIAN 
+
+# OPTIMIZATION FOR BRAIN EFFECTIVE CONNECTIV -
+
+# ITY LEARNING FROM F MRI AND EEG D ATA 
+
+Anonymous authors 
+
+Paper under double-blind review 
+
+ABSTRACT 
+
+Brain effective connectivity (EC) characterizes the causal and directional inter-actions among brain regions and plays a central role in understanding cognition and neurological disorders. Constructing EC networks from multimodal neu-roimaging such as functional Magnetic Resonance Imaging (fMRI) and electroen-cephalography (EEG) is challenging, since most existing methods rely on feature concatenation or linear mapping, neglecting structural consistency and nonlin-ear cross-modal dynamics. In this work, we propose STBO-EC, a spatially and temporally guided framework for multimodal EC learning. First, we develop an anatomy-informed spatial alignment strategy that leverages known brain region coordinates to establish structurally consistent correspondences between EEG electrodes and fMRI regions. Second, we design a time-slice-based alignment and fusion mechanism to effectively bridge the temporal resolution gap between fast EEG activity and slow fMRI signals. Finally, to tackle the high dimensional-ity and nonlinear dependencies of fused multimodal data, we employ a low-rank parameterized Bayesian optimization method (DrBO), which enables efficient ex-ploration of the exponential EC search space while providing uncertainty-aware inference. Experiments on two real EEG–fMRI datasets demonstrate that STBO-EC consistently outperforms state-of-the-art baselines across multiple evaluation metrics. The code is available at https://anonymous.4open.science/ r/STBO-EC-6D03 .
+
+1 INTRODUCTION 
+
+Brain effective connectivity (EC) characterizes the causal and directional interactions among brain regions and is fundamental for understanding the neural basis of cognition, behavior, and neuro-logical disorders Mamoon et al. (2025). Traditional statistical approaches, such as structural equa-tion modeling (SEM) Mclntosh (1994), dynamic causal modeling (DCM) Friston et al. (2003), and Granger causality analysis (GCA) Barnett & Seth (2014); Seth et al. (2015), have been widely ap-plied for EC learning. However, these methods depend strongly on assumptions of linearity and stationarity, which makes them inadequate for capturing the nonlinear and dynamic characteristics of real brain networks Marinazzo et al. (2011); Stramaglia et al. (2014). With the advancement of machine learning, data-driven approaches have greatly broadened EC anal-ysis Chen & Zhang (2023); Dai et al. (2025). Graph neural networks (GNNs) exploit topological information to infer causal dependencies, recurrent neural networks (RNNs) capture temporal dy-namics and nonlinear lags, and generative architectures such as GANs and diffusion models have been studied for augmentation and causal structure discovery Liang et al. (2024); Ji et al. (2025); Chen et al. (2025). Although these methods have achieved encouraging results, most efforts remain restricted to unimodal data—typically Functional magnetic resonance imaging (fMRI) and thus fail to leverage the complementary strengths of multimodal integration. The complementary nature of fMRI and electroencephalography (EEG) presents unique opportuni-ties for enhanced EC learning Wei et al. (2025). fMRI provides high spatial resolution but suffers from low temporal resolution, whereas EEG offers millisecond-level temporal precision Herwig et al. (2003) but relatively poor spatial localization Zhang et al. (2024a); Sakkalis (2011). By in-1054 055 056 057 058 059 060 061 062 063 064 065 066 067 068 069 070 071 072 073 074 075 076 077 078 079 080 081 082 083 084 085 086 087 088 089 090 091 092 093 094 095 096 097 098 099 100 101 102 103 104 105 106 107 
+
+Under review as a conference paper at ICLR 2026 tegrating these two modalities, it becomes possible to exploit both fine-grained spatial detail and precise temporal dynamics, which is essential for accurately uncovering the brain’s causal organi-zation. However, most existing multimodal approaches fail to fully harness these complementary advantages. For instance, Anwar et al. employed Granger causality to learn EC from multimodal data, but their method did not achieve genuine integration of fMRI and EEG information Muthu-raman (2016). Tu et al. proposed a linear state-space model to combine temporal information across modalities, yet this approach is limited in capturing nonlinear causal dependencies Tu et al. (2019). Liu et al. introduced a cross-modal mapping strategy, but it essentially relied on feature concatenation without leveraging spatial or temporal constraints. More broadly, many multimodal methods simply apply concatenation or linear mapping Liu et al. (2024), overlooking anatomical correspondence between EEG electrodes and brain regions, as well as the temporal dynamics of neural activity. Such limitations reduce their interpretability and hinder generalization, highlighting the need for methods that explicitly enforce structural consistency and model nonlinear cross-modal interactions. To overcome these challenges, we propose STBO-EC, a spatially and temporally guided frame-work for multimodal EC learning based on Bayesian optimization. Our framework introduces three innovations: an anatomy-informed spatial alignment strategy that utilizes known brain region coor-dinates to align EEG electrodes with corresponding fMRI regions, ensuring structural consistency across modalities; a time-slice-based alignment and fusion module that bridges the temporal res-olution gap between EEG and fMRI, enabling synchronized and complementary spatiotemporal integration; and the use of a Bayesian optimization method (DrBO) with low-rank parameteriza-tion, which efficiently searches the exponential EC space and provides uncertainty-aware causal inference. Our contributions are summarized as follows: • We propose a neuroanatomy-informed spatial alignment strategy that enforces structural consistency between EEG and fMRI at the brain-region level. • We design a time-slice-based alignment and fusion module that synchronizes multimodal signals, enabling effective integration of complementary temporal and spatial information. • We adopt a Bayesian optimization-based causal structure learning method (DrBO) with low-rank parameterization, enabling efficient modeling of nonlinear EC. • We validate our framework on two real EEG–fMRI datasets, and results show that STBO-EC consistently outperforms state-of-the-art baselines across multiple evaluation metrics. 
+
+2 PRELIMINARY AND RELATED WORK 
+
+2.1 BRAIN EFFECTIVE CONNECTIVITY 
+
+Brain effective connectivity (EC) characterizes the directed causal influence exerted by one brain region on another, thereby reflecting both the directionality and strength of information flow in the brain Cai et al. (2018); Huang et al. (2018). Formally, EC can be represented as a directed graph 
+
+G = ( V, E, W ), where V denotes the set of brain regions (ROIs), E is the set of directed edges corresponding to causal interactions, and W ∈ R|V |×| V | is an asymmetric weighted adjacency matrix. Each element Wij quantifies the causal effect from region i to region j, thereby encoding both the topology and strength of directional connectivity within the network. 2.2 MULTIMODAL EFFECTIVE CONNECTIVITY 
+
+Multimodal EC extends traditional EC by integrating complementary information from multiple neuroimaging modalities (e.g., EEG and fMRI) to enhance causal inference in brain networks dau (2011). This concept emerged from early EEG-fMRI fusion studies Debener et al. (2006); Sato et al. (2010), where joint modeling of different modalities improved the stability of causal estima-tion. Recent advances have formalized multimodal EC as learning cross-modal consistent patterns of directed brain interactions from multi-source neuroimaging data Liu et al. (2024); Li et al. (2025), providing a more comprehensive framework for studying complex cognitive processes and psychi-atric disorders. 2108 109 110 111 112 113 114 115 116 117 118 119 120 121 122 123 124 125 126 127 128 129 130 131 132 133 134 135 136 137 138 139 140 141 142 143 144 145 146 147 148 149 150 151 152 153 154 155 156 157 158 159 160 161 
+
+Under review as a conference paper at ICLR 2026 ... ... ... ... ... ... ...             
+
+> ...
+> ...
+> ...
+> ...
+> ...
+> ...
+> ...
+> ...
+> ... ... ... ... ... ... ...
+> ...
+> ...
+> ...
+> ...
+> ...
+> ...
+> ...
+> ...
+> Channel EEG
+> ROI EEG
+> EEG Time Series Data Ne ✖Te fMRI Time Series Data Ne ✖Te
+> a) Spatially-Informed EEG and fMRI Feature Extraction
+> Latin Hypercube Sampling
+> Pruning
+> Output: EC
+> Ne ✖Te
+> c) BO based EC Learning
+> EEG encoder
+> fMRI encoder
+> ...
+> ...
+> ...
+> b) Block-wise Temporal Alignment and Fusion
+> ... ...
+> Candidate Space
+> Spatial Alignment
+> Surrogate mode
+> BIC
+> ...
+> Score 1Score 2Score n
+> t=0 t=t+1
+> t= max_evals
+> ...
+> ...
+> ...
+> ...
+> ...
+> ...
+> ...
+> ...  Temporal Segmentation
+> Temporal Segmentation
+> ...
+> Nodes
+> ...  Concat
+> Updata(Iteration<Max) Iteration=Max
+> fMRI Single Timepoint
+> EEG Single Timepoint EEG Time-Series fMRI Time-Series Fused Time-Series
+
+Figure 1: Workflow of the proposed STBO-EC framework, which consists of three main modules: (a) spatially-informed EEG and fMRI feature extraction, (b) block-wise temporal alignment and fusion, and (c) BO-based EC learning. 2.3 DAG RECOVERY VIA BAYESIAN OPTIMIZATION 
+
+DrBO (DAG recovery via Bayesian Optimization) is a causal structure learning method that ap-plies Bayesian Optimization (BO) to recover directed acyclic graphs (DAGs) from purely obser-vational data Duong et al.. It reformulates the original combinatorial optimization problem into a low-dimensional continuous one by representing a DAG with a node potential vector and a low-rank edge embedding matrix. This reduces the search space from O(d2) to O(d(1 + k)) , where d is the number of nodes and k is the embedding dimension. To model the acquisition function in BO, DrBO employs dropout neural networks as surrogate models, enabling uncertainty-aware score esti-mation via Thompson sampling. Instead of predicting the global DAG score directly, DrBO models node-wise local score components and then aggregates them according to a decomposable scoring function. This approach allows the generation of valid DAGs without explicit acyclicity constraints and guides the search toward high-scoring structures within the BO framework. 
+
+3 METHOD 
+
+We propose STBO-EC, a spatially and temporally guided Bayesian optimization for multi-modal EC learning (as showed in Fig. 1). Our approach first aligns EEG and fMRI data at the brain re-gion level using neuroanatomical priors and spatial mapping, ensuring structural consistency across modalities. We then introduce a time-slice-based alignment and fusion module to comprehensively integrate complementary temporal and spatial information from both EEG and fMRI. Finally, we employ DrBO, a Bayesian optimization-based causal structure learning method with low-rank EC parameterization and a dropout neural network surrogate, to efficiently and interpretably model non-linear causal relationships between brain regions. 3.1 NEUROANATOMY -G UIDED SPATIAL ALIGNMENT 
+
+The fundamental challenge in EEG-fMRI integration lies in bridging the spatial gap between scalp electrodes and brain regions. While EEG captures electrical activity at Ne scalp locations, fMRI measures hemodynamic responses within Nf anatomically-defined brain regions. We address this challenge through a biophysically-motivated projection that respects the underlying neuroanatomy. Let the EEG data be represented as 
+
+XEEG ∈ RNe×Te , (1) where Ne is the number of electrodes and Te is the number of samples. Similarly, the fMRI data is 
+
+XfMRI ∈ RNf ×Tf , (2) where Nf is the number of ROIs and Tf is the number of fMRI time frames. Our goal is to project EEG signals into the ROI space of fMRI. 3162 163 164 165 166 167 168 169 170 171 172 173 174 175 176 177 178 179 180 181 182 183 184 185 186 187 188 189 190 191 192 193 194 195 196 197 198 199 200 201 202 203 204 205 206 207 208 209 210 211 212 213 214 215 
+
+Under review as a conference paper at ICLR 2026 Each electrode c and ROI i has anatomical coordinates pc, qi ∈ R3. Their Euclidean distance is defined as 
+
+dic = ∥qi − pc∥2. (3) We then define a Gaussian kernel weighting: 
+
+wic = exp( −d2
+
+> ic
+
+/2σ2)
+
+PNe 
+
+> c′=1
+
+exp( −d2 
+
+> ic ′
+
+/2σ2) , (4) where σ > 0 is the diffusion parameter. Normalization ensures PNe 
+
+> c=1
+
+wic = 1 .The EEG signal at ROI i and time t is projected as 
+
+YEEG (i, t ) = 
+
+> Ne
+
+X
+
+> c=1
+
+wic XEEG (c, t ). (5) After spatial alignment, we obtain the ROI-level EEG representation: YEEG ∈ RNf ×Te which is spatially aligned with XfMRI .3.2 BLOCK -WISE TEMPORAL ALIGNMENT AND FUSION 
+
+EEG and fMRI differ significantly in temporal resolution, with Te ≫ Tf . We address this mismatch using block-wise alignment. We divide YEEG into Tf non-overlapping blocks, each of length 
+
+L = Te
+
+Tf
+
+. (6) The j-th EEG block is 
+
+B(j)EEG = YEEG (: , (j − 1) L + 1 : jL )⊤ ∈ RL×Nf . (7) The j-th fMRI vector x(j)fMRI ∈ RNf is expanded to match block length as 
+
+B(j)fMRI = 1L · (x(j)fMRI )⊤ ∈ RL×Nf , (8) where 1L is a column vector of ones. We then construct the fusion target as 
+
+B(j)target = αB (j)EEG + (1 − α)B(j)fMRI , α ∈ [0 , 1] . (9) In our experiments, we fix α = 0 .5 to enforce equal contribution of both modalities. A nonlinear mapping fθ is trained to approximate 
+
+ˆB(j)fused = fθ (B(j)EEG , B (j)fMRI ), (10) where θ are trainable parameters. The objective is optimized iteratively using gradient descent: 
+
+Ltotal (θ) = 1
+
+Tf LN fTf
+
+X
+
+> j=1
+> L
+
+X
+
+> t=1
+> Nf
+
+X
+
+> i=1
+
+ˆb(j)fused (t, i ) − B(j)target (t, i )
+
+2
+
+, (11) 
+
+θ(k+1) = θ(k) − η∇θ Ltotal (θ(k)), (12) where η is the learning rate and k is the iteration index. Finally, sliding-window inference is applied. Let L = TR × Hz denote the EEG samples per fMRI TR, and Wt the set of windows covering time t. The fused output is 
+
+yfused (t, i ) = 1
+
+|W t|
+
+X
+
+> w∈W t
+
+ˆb(w)fused (t − wstart + 1 , i ). (13) The final multimodal sequence is 
+
+Yfused ∈ RNf ×Te , (14) which inherits both the high temporal resolution of EEG and the stable baselines of fMRI. 4216 217 218 219 220 221 222 223 224 225 226 227 228 229 230 231 232 233 234 235 236 237 238 239 240 241 242 243 244 245 246 247 248 249 250 251 252 253 254 255 256 257 258 259 260 261 262 263 264 265 266 267 268 269 
+
+Under review as a conference paper at ICLR 2026 3.3 BO-BASED EC LEARNING 
+
+Given the fused multimodal representation Yfused , the objective is to infer the directed EC network among Nf brain regions. We adopt a Bayesian information criterion (BIC)-based score to evaluate candidate structures: 
+
+S(D, G ) = ln p(D|ˆθ, G ) − |E|
+
+2 ln n, (15) where D = Yfused , ˆθ are maximum likelihood parameters, |E| is the number of edges, and n is the sample size. This criterion balances model fit and complexity. To reduce search space, the adjacency matrix is parameterized in a continuous low-rank form: 
+
+˜Aij = σ(⟨ri, r j ⟩), (16) where ri ∈ Rk is the latent embedding of region i, and σ(·) is the sigmoid function. A topological ordering vector p enforces acyclicity, leading to 
+
+A = τ (p, R ). (17) We cast EC learning as 
+
+z∗ = arg max  
+
+> z
+
+S(D, τ (z)) , (18) where z = ( p, R ) are continuous DAG parameters. Since S(·) is expensive to compute, we employ Bayesian Optimization with a dropout neural network surrogate gϕ(z), which estimates both score 
+
+μϕ(z) and uncertainty σϕ(z). The acquisition function is 
+
+a(z) = μϕ(z) + βσ ϕ(z), (19) where β controls exploration. By iteratively maximizing a(z) and updating z, we obtain the optimal adjacency matrix ˆA. The inferred EC network is ˆG = ( V, ˆE, ˆW ), (20) where ˆE denotes the directed edges and ˆW their estimated weights. 3.4 ALGORITHM DESCRIPTION 
+
+The proposed STBO-EC framework integrates EEG and fMRI data through three sequential mod-ules: (1) Neuroanatomy-Guided Spatial Alignment , which projects EEG signals into the fMRI ROI space using Gaussian-kernel weighting based on anatomical distances; (2) Block-wise Tem-poral Alignment and Fusion , which synchronizes the temporal scales of EEG and fMRI via a time-slice fusion mechanism, generating multimodal representations that combine EEG’s high tem-poral resolution with fMRI’s spatial stability; and (3) BO-based EC learning , which performs low-rank parameterized causal discovery using dropout neural network surrogates for scalable and uncertainty-aware inference. The overall pseudocode of STBO-EC is summarized in Algorithm 1. 
+
+4 EXPERIMENTS 
+
+To evaluate the effectiveness of STBO-EC, we apply our proposed method to two publicly available real-world datasets with simultaneously recorded fMRI and EEG data. These experiments are de-signed to demonstrate the practical applicability and performance advantages of STBO-EC in real multimodal neuroimaging scenarios.Since ground truth effective connectivity (EC) is not available for real datasets, we further assess the quality of EC learning by using the inferred connectivity features to classify brain activity according to known experimental labels. A higher classification accuracy indicates more accurate EC learning.For fair comparison, all methods were evaluated using the same classification pipeline: a 5-fold cross-validated random forest classifier for the Visual Cat-egorization Dataset (6 regions), and a 10-fold cross-validated KNN classifier for the XP2 Dataset (90 regions). These classifiers were chosen to match the dimensionality and sample size of each dataset, ensuring robust and reliable evaluation. 5270 271 272 273 274 275 276 277 278 279 280 281 282 283 284 285 286 287 288 289 290 291 292 293 294 295 296 297 298 299 300 301 302 303 304 305 306 307 308 309 310 311 312 313 314 315 316 317 318 319 320 321 322 323 
+
+Under review as a conference paper at ICLR 2026 4.1 BASELINE METHODS 
+
+To comprehensively evaluate the effectiveness of our proposed STBO-EC framework, we compare it with a range of classical and state-of-the-art EC learning methods. The baselines include Patel Patel et al. (2006), pwLiNGAM Hyvarinen (2010), lsGC DSouza et al. (2017), DiffAN Sanchez et al., MetaRLEC Zhang et al. (2024b), MCAN Liu et al. (2024), FSTA-EC Xiong et al. (2025), and our proposed STBO-EC. Among these, MCAN is also a multimodal method that integrates both EEG and fMRI data for EC learning. For all comparison methods, we follow the parameter settings recommended in the original literature and further fine-tune the hyperparameters on a subset of subjects to ensure optimal performance. The evaluation is conducted on the Visual Categorization Dataset, and we report a comprehensive set of graph and classification metrics, including Accu-racy, Precision, Recall, F1 score, Specificity, Error Rate, and ROC AUC POWERS (2011); Fawcett (2006). The detailed description of the baseline methods and evaluation metrics can be found in Appendix A.1 and Appendix A.2. The detailed results are summarized in Table 1 and Table 2. 4.2 DATA DESCRIPTION 
+
+We evaluate our method on two public multimodal neuroimaging datasets: the visual categorization dataset and the XP2 motor imagery neurofeedback dataset. Details of the datasets are provided in Appendix A.3, and the data preprocessing procedure is described in Appendix A.4. 
+
+Visual categorization dataset 1. This dataset includes simultaneous fMRI-EEG recordings from 31 subjects performing an event-related three-class visual categorization task (face, car, house) Tu et al. (2019). Each subject completed four runs, with 180 trials per run (60 per category), resulting in a total of 93 multimodal samples. The fMRI data consist of time series extracted from 6 task-related ROIs (FFA, PPA, SPL, ACC, PMC, and bilateral FEF), with a TR of 2 seconds, while EEG was recorded from 34 MR-compatible channels and subsequently downsampled to 10 Hz. This dataset provides a benchmark for evaluating EC models under well-controlled experimental conditions with simultaneous high spatial and temporal resolution signals. 
+
+XP2 dataset 2. The XP2 dataset Lioi et al. (2019) contains simultaneous fMRI-EEG data from 40 decoupled Neurofeedback (dNF) and 28 motor imagery (MI) participants. During the task, subjects alternated between 20-second blocks of rest and task across five runs. EEG was recorded from 64 channels at 5 kHz (downsampled to 200 Hz after preprocessing in EEGLAB), with FCz as the ref-erence and AFz as the ground. Simultaneous fMRI was acquired on a 3T Siemens Verio scanner (EPI sequence, TR = 1s, TE = 23 ms, resolution = 3 × 3 × 3 mm 3), covering the superior half of the brain. Regional time series were extracted from AAL-defined ROIs following standard prepro-cessing with DPABI. This dataset offers a challenging testbed for multimodal EC analysis due to its motor imagery paradigm, neurofeedback design, and high-density EEG-fMRI recordings. 4.3 MODEL CONFIGURATION 
+
+The main hyperparameters of the STBO-EC model are as follows. We set the batch size B to 64 and the EC rank k to 8. The number of training steps ( ngrads ) is set to 10, and the number of preliminary candidates ( C) is 100,000. The maximum number of iterations is set to 2,000. The hyperparameter details are provided in Appendix A.6. 4.4 ABLATION STUDY 
+
+To further evaluate the impact of multimodal integration in STBO-EC, we conducted ablation ex-periments using only the fMRI modality as input, while keeping all other settings unchanged. As shown in Tables 1 and 2, on both datasets, the multimodal version of STBO-EC consistently outper-forms its fMRI-only counterpart, denoted as DrBO, across all key metrics. The performance gain is particularly pronounced on the XP2 dataset, which contains more brain regions and richer mul-timodal signals. These results demonstrate the effectiveness of integrating EEG and fMRI data for more accurate effective connectivity learning and brain state classification. 
+
+> 1https://github.com/taotu/VBLDS_Connectivity_EEG_fMRI
+> 2https://openneuro.org/datasets/ds002338/versions/2.0.2
+
+6324 325 326 327 328 329 330 331 332 333 334 335 336 337 338 339 340 341 342 343 344 345 346 347 348 349 350 351 352 353 354 355 356 357 358 359 360 361 362 363 364 365 366 367 368 369 370 371 372 373 374 375 376 377 
+
+Under review as a conference paper at ICLR 2026 
+
+Methods (Years) Accuracy ↑ Precision ↑ Recall ↑ F1 ↑ Error Rate ↓ Specificity ↑ ROC AUC ↑
+
+Patel (2006) 0.27 ± 0.13 0.25 ± 0.13 0.27 ± 0.14 0.26 ± 0.13 0.73 ± 0.13 0.27 ± 0.14 0.50 ± 0.11 lsGC (2010) 0.39 ± 0.11 0.41 ± 0.13 0.39 ± 0.11 0.38 ± 0.11 0.61 ± 0.11 0.39 ± 0.11 0.56 ± 0.06 pwLiNGAM (2017) 0.31 ± 0.09 0.31 ± 0.10 0.31 ± 0.09 0.30 ± 0.08 0.69 ± 0.09 0.31 ± 0.09 0.54 ± 0.08 DiffAN (2023) 0.33 ± 0.10 0.35 ± 0.11 0.33 ± 0.10 0.33 ± 0.10 0.67 ± 0.10 0.33 ± 0.10 0.56 ± 0.08 MetaRLEC (2024) 0.35 ± 0.16 0.37 ± 0.20 0.35 ± 0.16 0.34 ± 0.15 0.65 ± 0.16 0.35 ± 0.16 0.47 ± 0.10 MCAN (2024) 0.27 ± 0.06 0.24 ± 0.08 0.27 ± 0.07 0.25 ± 0.07 0.73 ± 0.06 0.27 ± 0.07 0.49 ± 0.09 FSTA-EC (2025) 0.26 ± 0.11 0.23 ± 0.11 0.26 ± 0.11 0.24 ± 0.11 0.74 ± 0.11 0.26 ± 0.11 0.41 ± 0.08 DrBO (2025) 0.38 ± 0.10 0.40 ± 0.10 0.38 ± 0.10 0.37 ± 0.10 0.62 ± 0.10 0.38 ± 0.10 0.49 ± 0.14 
+
+STBO-EC (Ours) 0.42 ± 0.11 0.49 ± 0.14 0.42 ± 0.11 0.42 ± 0.11 0.58 ± 0.11 0.42 ± 0.11 0.57 ± 0.10 Table 1: Performance comparison of different methods across various metrics on the Visual Cate-gorization Dataset. The best results are in bold , and the second-best are underlined. For Error Rate, the lowest and second lowest are highlighted. 
+
+5 EXPERIMENTAL RESULTS 
+
+5.1 RESULTS ON VISUAL CATEGORIZATION DATASET 
+
+The results on the Visual Categorization Dataset (Table 1) clearly demonstrate the superior perfor-mance of STBO-EC across all key evaluation metrics. Specifically, STBO-EC achieves the highest accuracy (0.42), precision (0.49), recall (0.42), and F1 score (0.42) among all compared methods. Notably, the second-best method, lsGC, attains an accuracy of 0.39 and an F1 score of 0.38, which are both lower than those of STBO-EC. While some methods, such as pwLiNGAM and DiffAN, show moderate performance in certain metrics, they fall short in terms of overall balanced perfor-mance. For example, pwLiNGAM achieves a relatively high precision (0.31) but lower recall (0.31) and F1 (0.30), indicating a tendency to miss true connections. Similarly, DiffAN yields balanced but generally lower scores across all metrics.The p-values for these comparisons are also provided in Appendix A.5. It is also worth noting that the overall classification accuracies for all methods are not very high on this dataset. This is primarily due to the intrinsic similarity between the Car and House conditions, which makes it inherently challenging to distinguish between these two categories based on effective connectivity patterns. As a result, even advanced multimodal methods like MCAN do not show a clear advantage over single-modal approaches in this scenario. FFA PPA                                                                                                          
+
+> SPL
+> ACC
+> FEF PMC
+> FFA PPA
+> SPL
+> ACC
+> FEF PMC
+> FFA PPA
+> SPL
+> ACC
+> FEF PMC
+> FFA PPA SPL ACC FEF PMC
+> FFA PPA SPL ACC FEF PMC
+> 0.000 0.613 0.323 0.258 0.419 0.194
+> 0.323 0.000 0.290 0.323 0.387 0.194
+> 0.516 0.581 0.000 0.419 0.516 0.355
+> 0.548 0.516 0.516 0.000 0.645 0.387
+> 0.516 0.452 0.323 0.355 0.000 0.323
+> 0.710 0.710 0.581 0.387 0.677 0.000
+> FFA PPA SPL ACC FEF PMC
+> FFA PPA SPL ACC FEF PMC
+> 0.000 0.419 0.419 0.387 0.548 0.387
+> 0.581 0.000 0.258 0.419 0.484 0.323
+> 0.484 0.645 0.000 0.613 0.645 0.355
+> 0.484 0.387 0.290 0.000 0.581 0.387
+> 0.419 0.387 0.226 0.323 0.000 0.323
+> 0.516 0.484 0.581 0.452 0.645 0.000
+> FFA PPA SPL ACC FEF PMC
+> FFA PPA SPL ACC FEF PMC
+> 0.000 0.452 0.258 0.355 0.387 0.290
+> 0.516 0.000 0.226 0.387 0.484 0.194
+> 0.613 0.645 0.000 0.452 0.516 0.355
+> 0.581 0.581 0.484 0.000 0.452 0.290
+> 0.452 0.484 0.258 0.484 0.000 0.226
+> 0.581 0.677 0.613 0.645 0.742 0.000
+> 0.0
+> 0.1
+> 0.2
+> 0.3
+> 0.4
+> 0.5
+> 0.6
+> 0.7
+> Connection strength
+> 0.0
+> 0.1
+> 0.2
+> 0.3
+> 0.4
+> 0.5
+> 0.6
+> 0.7
+
+Face Car House 
+
+Figure 2: Estimated EC networks for six brain regions on the Visual Categorization Dataset. The node positions in the figure are for illustration only and do not precisely reflect real anatomical locations. 7378 379 380 381 382 383 384 385 386 387 388 389 390 391 392 393 394 395 396 397 398 399 400 401 402 403 404 405 406 407 408 409 410 411 412 413 414 415 416 417 418 419 420 421 422 423 424 425 426 427 428 429 430 431 
+
+Under review as a conference paper at ICLR 2026 The physiological analysis of the EC (as showed in Figure 2) further supports these findings. The connectivity patterns and strengths differ across tasks. For example, in the Face task, the FFA ex-hibits strong connections with motor and attention-related regions (such as PMC and FEF), suggest-ing that face processing involves motor preparation and attentional modulation. In contrast, in the Car and House tasks, the PPA shows more prominent connections with other regions, reflecting the importance of scene and spatial information in these tasks. Overall, these results reveal the brain’s flexible regulation of information flow and functional coordination during different visual cognitive processes. 5.2 RESULTS ON XP2 D ATASET 
+
+On the XP2 motor imagery neurofeedback dataset (Table 2), STBO-EC again demonstrates clear superiority across multiple evaluation metrics. It achieves the highest accuracy (0.62), precision (0.53), and ROC AUC (0.64), and ranks second in recall (0.62) and F1 score (0.55) (as showed in Figure 6). Compared to the strongest alternative methods, such as FSTA-EC and pwLiNGAM, STBO-EC delivers significantly higher accuracy and precision, as confirmed by paired significance tests. The p-values for these comparisons are also provided in Appendix A.5. Furthermore, STBO-EC consistently outperforms the single-modal baselines (Patel, lsGC, and DiffAN) on at least three core metrics, highlighting the advantage of joint spatio-temporal modeling of EEG and fMRI data. These results demonstrate that STBO-EC achieves a better balance between sensitivity and speci-ficity, leading to more robust and reliable classification performance. The consistent statistical sig-nificance across multiple metrics further underscores the effectiveness of the proposed multimodal approach. Note that MCAN, as a multimodal method, was not included on the XP2 dataset due to its high computational cost on large-scale brain networks.                                                                                                                                                                        
+
+> Methods (Years) Accuracy ↑Precision ↑Recall ↑F1 ↑Error Rate ↓Specificity ↑ROC AUC ↑
+> Patel (2006) 0.43 ±0.17 0.39 ±0.15 0.70 ±0.23 0.49 ±0.16 0.57 ±0.17 0.25 ±0.24 0.47 ±0.20 lsGC (2010) 0.61 ±0.06 0.10 ±0.32 0.03 ±0.11 0.05 ±0.16 0.39 ±0.06 1.00 ±0.00 0.53 ±0.22 pwLiNGAM (2017) 0.61 ±0.18 0.47 ±0.41 0.32 ±0.30 0.35 ±0.31 0.39 ±0.18 0.80 ±0.23 0.57 ±0.24 DiffAN (2023) 0.54 ±0.15 0.30 ±0.36 0.22 ±0.25 0.25 ±0.28 0.46 ±0.15 0.75 ±0.17 0.54 ±0.18 MetaRLEC (2024) 0.52 ±0.18 0.37 ±0.40 0.30 ±0.33 0.29 ±0.28 0.48 ±0.18 0.65 ±0.27 0.50 ±0.21 MCAN (2024) –––––––FSTA-EC (2025) 0.54 ±0.25 0.40 ±0.47 0.25 ±0.29 0.30 ±0.34 0.46 ±0.25 0.73 ±0.30 0.50 ±0.32 DrBO (2025) 0.53 ±0.14 0.35 ±0.22 0.43 ±0.26 0.38 ±0.23 0.47 ±0.14 0.58 ±0.24 0.49 ±0.11
+> STBO-EC (Ours) 0.62 ±0.15 0.53 ±0.26 0.62 ±0.29 0.55 ±0.23 0.38 ±0.15 0.63 ±0.18 0.64 ±0.13
+
+Table 2: Performance comparison of different methods across various metrics on the XP2 Dataset. The best results are in bold , and the second-best are underlined (for Error Rate, the lowest and second lowest are highlighted). 
+
+(a) dNF state (b) MI state 
+
+Figure 3: Top 10 most active brain regions in the dNF and MI states. The highlighted nodes corre-spond to the most active regions identified in each condition. In the dNF state, the motor regions (such as Rolandic Oper R, Supp Motor Area R, and Postcen-tral R), as well as certain frontal and parietal areas (including Frontal Mid R, Angular R, and Supra-Marginal R), and parts of the occipital and temporal lobes (such as Calcarine R, Fusiform R, and Heschl R), exhibit relatively high out-degree and in-degree values. This indicates that, even in the resting or baseline state, the brain maintains active information flow and coordination within net-works related to motor, sensory, visual, and auditory functions. Additionally, regions within the lim-8432 433 434 435 436 437 438 439 440 441 442 443 444 445 446 447 448 449 450 451 452 453 454 455 456 457 458 459 460 461 462 463 464 465 466 467 468 469 470 471 472 473 474 475 476 477 478 479 480 481 482 483 484 485 
+
+Under review as a conference paper at ICLR 2026 bic system and basal ganglia (such as Insula R, ParaHippocampal R, Putamen R, and Thalamus R) also show strong connectivity, suggesting that emotion, memory, and motor regulation are func-tionally engaged. Frontal lobe regions (e.g., Frontal Sup R, Frontal Mid Orb R) show substantial connectivity, indicating executive and attentional processes even without explicit motor tasks. Pari-etal (Angular R, SupraMarginal R) and occipital (Calcarine R, Fusiform R) regions are also highly connected, supporting sensory integration and visual processing. Additionally, temporal (Heschl R, Temporal Sup R), limbic, and basal ganglia areas (Insula R, Putamen R, Thalamus R) are engaged, reflecting involvement in perception, emotion, and motor control during baseline. L R    
+
+> LR
+> 0
+> 4.7
+> 9.4
+> 14
+> 19
+> (a) dNF state LR
+> LR
+> 0
+> 4.9
+> 9.8
+> 15
+> 20 (b) MI state
+
+Figure 4: Out-degree distribution of brain regions in (a) dNF state and (b) MI state. Node size and color represent the out-degree values in the EC network. In the MI state, the out-degree and in-degree values of the motor, frontal, parietal, and occip-ital regions are further increased, especially in areas such as Rolandic Oper R, Frontal Sup R, Frontal Mid Orb R, and Fusiform R. This reflects the significant activation of neural networks asso-ciated with motor preparation, execution, spatial perception, and visual processing during the motor imagery task. At the same time, certain regions within the limbic system and basal ganglia (such as ParaHippocampal R, Putamen R, and Pallidum L) also demonstrate enhanced connectivity, indi-cating a greater involvement of emotion, memory, and motor regulation during motor imagery.The occipital lobe (e.g., Calcarine R, Fusiform R) shows increased connectivity, likely linked to visual imagery and integration with motor representations. Temporal regions (Heschl R, Temporal Sup R) remain active, supporting auditory and semantic processing. Enhanced connectivity in limbic and basal ganglia areas (ParaHippocampal R, Putamen R, Pallidum L) suggests greater involvement of memory, emotion, and motor control during motor imagery. Overall, statistical analysis of the EC matrices reveals that the MI state is characterized by stronger coordination and information flow across multiple functional brain networks. The integration of mo-tor, cognitive, sensory, and emotional systems becomes more pronounced, highlighting the extensive recruitment and synchronization of brain regions during motor imagery. These findings provide im-portant physiological evidence for understanding the neural mechanisms underlying motor-related cognition and regulation. More detailed descriptions are provided in Appendix A.7. 
+
+6 CONCLUSION AND LIMITATIONS 
+
+In summary, we presented STBO-EC, a framework for multimodal EC that integrates neuroanatom-ical spatial alignment, temporal synchronization, and Bayesian optimization for causal discovery. By leveraging the complementary strengths of EEG and fMRI, our method achieves consistent im-provements over state-of-the-art baselines across multiple datasets. These results highlight that re-specting the distinct characteristics of each modality, rather than applying naive fusion, is crucial for uncovering the brain’s causal organization. Moreover, the anatomically grounded and uncertainty-aware design of STBO-EC provides new opportunities for understanding neural mechanisms in both healthy cognition and neurological disorders. Despite these advances, our method still faces some limitations. In detail, the accuracy of anatomical mapping and temporal alignment may be affected by individual variability, and the scalability to larger or higher-resolution datasets requires further exploration. In the future work, we plan to enhance the robustness and generalizability of STBO-EC, and to validate its effectiveness in broader cognitive and clinical applications. 9486 487 488 489 490 491 492 493 494 495 496 497 498 499 500 501 502 503 504 505 506 507 508 509 510 511 512 513 514 515 516 517 518 519 520 521 522 523 524 525 526 527 528 529 530 531 532 533 534 535 536 537 538 539 
+
+Under review as a conference paper at ICLR 2026 
+
+REFERENCES 
+
+Dynamic causal modelling: a critical review of the biophysical and statistical foundations. Neuroim-age , 58(2):312–322, 2011. Lionel Barnett and Anil K Seth. The mvgc multivariate granger causality toolbox: a new approach to granger-causal inference. Journal of neuroscience methods , 223:50–68, 2014. Ruichu Cai, Jie Qiao, Zhenjie Zhang, and Zhifeng Hao. Self: structural equational likelihood frame-work for causal discovery. In Proceedings of the AAAI conference on artificial intelligence , vol-ume 32, 2018. Dongdong Chen and Lichi Zhang. Fe-stgnn: Spatio-temporal graph neural network with functional and effective connectivity fusion for mci diagnosis. In International Conference on Medical Image Computing and Computer-Assisted Intervention , pp. 67–76. Springer, 2023. Dongdong Chen, Mengjun Liu, Sheng Wang, Zheren Li, Lu Bai, Qian Wang, Dinggang Shen, and Lichi Zhang. Guiding fusion of dynamic functional and effective connectivity in spatio-temporal graph neural network for brain disorder classification. Knowledge-Based Systems , 309:112856, 2025. Peishan Dai, Zhuang He, Yilin Ou, Jialin Luo, Shenghui Liao, and Xiaoping Yi. Estimating brain effective connectivity from time series using recurrent neural networks. Physical and Engineering Sciences in Medicine , pp. 1–11, 2025. Stefan Debener, Markus Ullsperger, Markus Siegel, and Andreas K Engel. Single-trial eeg–fmri reveals the dynamics of cognitive function. Trends in cognitive sciences , 10(12):558–563, 2006. Adora M DSouza, Anas Z Abidin, Lutz Leistritz, and Axel Wism¨ uller. Exploring connectivity with large-scale granger causality on resting-state functional mri. Journal of neuroscience methods ,287:68–79, 2017. Bao Duong, Sunil Gupta, and Thin Nguyen. Causal discovery via bayesian optimization. In The Thirteenth International Conference on Learning Representations .Tom Fawcett. An introduction to roc analysis. Pattern recognition letters , 27(8):861–874, 2006. K.J. Friston, L. Harrison, and W. Penny. Dynamic causal modelling. Neuroimage , 19(4):1273–1302, 2003. Uwe Herwig, Peyman Satrapi, and Carlos Sch¨ onfeldt-Lecuona. Using the international 10-20 eeg system for positioning of transcranial magnetic stimulation. Brain topography , 16(2):95–99, 2003. Biwei Huang, Kun Zhang, Yizhu Lin, Bernhard Sch¨ olkopf, and Clark Glymour. Generalized score functions for causal discovery. In Proceedings of the 24th ACM SIGKDD international conference on knowledge discovery & data mining , pp. 1551–1560, 2018. Aapo Hyvarinen. Pairwise measures of causal direction in linear non-gaussian acyclic models. In 
+
+Proceedings of 2nd Asian Conference on Machine Learning , pp. 1–16. JMLR Workshop and Conference Proceedings, 2010. Junzhong Ji, Jingdong Fan, and Jinduo Liu. Msad-lec: Estimating large-scale brain effective con-nectivity network based on multi-subgraph attention diffusion. Knowledge-Based Systems , 309: 112858, 2025. Shengrong Li, Qi Zhu, Liang Sun, Kai Ma, Yixin Ji, Shile Qi, and Daoqiang Zhang. Multi-modal brain network fusion for intelligent diagnostic devices. IEEE Transactions on Consumer Elec-tronics , 2025. Guojun Liang, Prayag Tiwari, Sławomir Nowaczyk, Stefan Byttner, and Fernando Alonso-Fernandez. Dynamic causal explanation based diffusion-variational graph neural network for spatiotemporal forecasting. IEEE Transactions on Neural Networks and Learning Systems , 2024. 10 540 541 542 543 544 545 546 547 548 549 550 551 552 553 554 555 556 557 558 559 560 561 562 563 564 565 566 567 568 569 570 571 572 573 574 575 576 577 578 579 580 581 582 583 584 585 586 587 588 589 590 591 592 593 
+
+Under review as a conference paper at ICLR 2026 G Lioi, C Cury, L Perronnet, M Mano, E Bannier, A Lecuyer, and C Barillot. A multi-modal human neuroimaging dataset for data integration: simultaneous eeg and mri acquisition during a motor imagery neurofeedback task: Xp2. OpenNeuro https://doi. org/10.18112/openneuro. ds002336. v2. 0.0 , 2019. Jinduo Liu, Lu Han, and Junzhong Ji. Mcan: Multimodal causal adversarial networks for dynamic effective connectivity learning from fmri and eeg data. IEEE Transactions on Medical Imaging ,43(8):2913–2923, 2024. Saqib Mamoon, Zhengwang Xia, Amani Alfakih, and Jianfeng Lu. Dynamic brain effective con-nectivity network for identifying neurological disorders. Applied Intelligence , 55(12):850, 2025. Daniele Marinazzo, Wei Liao, Huafu Chen, and Sebastiano Stramaglia. Nonlinear connectivity by granger causality. Neuroimage , 58(2):330–338, 2011. AR Mclntosh. Structural equation modeling and its application to network analysis in functional brain imaging. Human brain mapping , 2(1-2):2–22, 1994. Muthuraman Muthuraman. Effective connectivity of cortical sensorimotor networks during finger movement tasks: a simultaneous fnirs, fmri, eeg study. Brain topography , 29:645–660, 2016. Rajan S Patel, F DuBois Bowman, and James K Rilling. A bayesian approach to determining connectivity of the human brain. Human brain mapping , 27(3):267–276, 2006. DMW POWERS. Evaluation: From precision, recall and f-measure to roc, informedness, marked-ness & correlation. 2011. V. Sakkalis. Review of advanced techniques for the estimation of brain connectivity measured with eeg/meg. Computers in biology and medicine , 41(12):1110–1117, 2011. Pedro Sanchez, Xiao Liu, Alison Q O’Neil, and Sotirios A Tsaftaris. Diffusion models for causal discovery via topological ordering. In The Eleventh International Conference on Learning Rep-resentations .Jo˜ ao R Sato, Carlo Rondinoni, Marcio Sturzbecher, Draulio B de Araujo, and Edson Amaro Jr. From eeg to bold: brain mapping and estimating transfer functions in simultaneous eeg-fmri acquisitions. Neuroimage , 50(4):1416–1426, 2010. Anil K Seth, Adam B Barrett, and Lionel Barnett. Granger causality analysis in neuroscience and neuroimaging. Journal of Neuroscience , 35(8):3293–3297, 2015. Sebastiano Stramaglia, Jesus M Cortes, and Daniele Marinazzo. Synergy and redundancy in the granger causal analysis of dynamical networks. New Journal of Physics , 16(10):105003, 2014. Tao Tu, John Paisley, Stefan Haufe, and Paul Sajda. A state-space model for inferring effective con-nectivity of latent neural dynamics from simultaneous eeg/fmri. Advances in Neural Information Processing Systems , 32, 2019. Xinxu Wei, Kanhao Zhao, Yong Jiao, Nancy B Carlisle, Hua Xie, Gregory A Fonzo, and Yu Zhang. Multi-modal cross-domain self-supervised pre-training for fmri and eeg fusion. Neural Networks ,184:107066, 2025. Wen Xiong, Jinduo Liu, Junzhong Ji, and Fenglong Ma. Brain effective connectivity estimation via fourier spatiotemporal attention. In Proceedings of the 31st ACM SIGKDD Conference on Knowledge Discovery and Data Mining V. 1 , pp. 1657–1668, 2025. Xiaoshan Zhang, Enze Shi, Sigang Yu, and Shu Zhang. Dtca: Dual-branch transformer with cross-attention for eeg and eye movement data fusion. In International Conference on Medical Image Computing and Computer-Assisted Intervention , pp. 141–151. Springer, 2024a. Zuozhen Zhang, Junzhong Ji, and Jinduo Liu. Metarlec: Meta-reinforcement learning for discovery of brain effective connectivity. In Proceedings of the AAAI Conference on Artificial Intelligence ,volume 38, pp. 10261–10269, 2024b. 11 594 595 596 597 598 599 600 601 602 603 604 605 606 607 608 609 610 611 612 613 614 615 616 617 618 619 620 621 622 623 624 625 626 627 628 629 630 631 632 633 634 635 636 637 638 639 640 641 642 643 644 645 646 647 
+
+Under review as a conference paper at ICLR 2026 
+
+A APPENDIX 
+
+A.1 BASELINE METHODS AND OPERATING ENVIRONMENT 
+
+To thoroughly assess the effectiveness of the proposed STBO-EC framework, we compare it against a suite of classical and state-of-the-art EC learning methods. The baselines include Patel, pwLiNGAM, lsGC, DiffAN, MetaRLEC, MCAN, FSTA-EC, and our proposed STBO-EC. Notably, MCAN is a multimodal approach that integrates both EEG and fMRI data for EC learning. For all baseline methods, we adopt the parameter settings recommended in the original publications and fur-ther fine-tune hyperparameters on a subset of subjects to ensure fair and optimal performance.The full list of baseline methods and their parameter settings is summarized in Table 3, which provides the parameter settings for all compared methods. All experiments are conducted in a robust computational environment, comprising both advanced hardware and a comprehensive software stack.The hardware setup consists of a high-performance NVIDIA RTX 5090 GPU with 32 GB of memory, an NVIDIA GeForce RTX 3090 GPU, and an AMD Ryzen 9 5950X 16-core CPU. These components collectively provide a powerful and efficient computing platform. The system operates on Ubuntu 20.04.6 LTS, ensuring a stable and robust foundation for all experimental procedures. Additionally, the machine is equipped with 128 GB of high-speed DDR4 RAM, which guarantees excellent responsiveness and computational throughput. The software environment is built around Python 3.10, with key scientific and deep learning li-braries including NumPy 1.26.4, pandas 2.2.3, scikit-learn 1.6.1, matplotlib 3.10.3, seaborn 0.13.2, PyTorch 2.7.1+cu128, JAX 0.6.2, and jaxlib 0.6.2. All deep learning computations are accelerated using CUDA version 12.8, ensuring optimal utilization of GPU resources. This comprehensive combination of hardware and software provides a reliable and reproducible environment for our research. 
+
+Method Parameter settings 
+
+Patel threshold = 0.3 lsGC cmp = 5, ARorder = 2, normalize = 1 pwLiNGAM method = 1 DiffAN lr = 0.001, βstart = 0.0001, βend = 0.02, nh = 1024 MetaCAE nh=64, α=0.05, β=20.0, k=3, d=4, lr 1=0.02, lr 2=0.02, lr 3=0.001, lr main =0.002 MCAN α=0.4, β=0.2, γ=0.4 FSTA-EC Adam (β1=0.90, β2=0.98), embed=16, dropout=0.2, attention heads=2 Table 3: Parameter settings for all compared methods. A.2 EVALUATION METRICS 
+
+Since the datasets used in this study do not provide ground-truth EC networks, we evaluate the qual-ity of the learned EC by using it as input features for downstream classification tasks. Specifically, we assess the classification performance using the following standard metrics: Accuracy, Precision, Recall, F1 score, Specificity, and ROC AUC. Let T P (true positives), T N (true negatives), F P (false positives), and F N (false negatives) denote the elements of the confusion matrix. The evaluation metrics are defined as follows: Accuracy = T P + T N T P + T N + F P + F N , (21) Precision = T P T P + F P , (22) Recall = T P T P + F N , (23) 12 648 649 650 651 652 653 654 655 656 657 658 659 660 661 662 663 664 665 666 667 668 669 670 671 672 673 674 675 676 677 678 679 680 681 682 683 684 685 686 687 688 689 690 691 692 693 694 695 696 697 698 699 700 701 
+
+Under review as a conference paper at ICLR 2026 Specificity = T N T N + F P , (24) F1 score = 2 · Precision · Recall Precision + Recall , (25) ROC AUC =
+
+Z 10
+
+TPR (t) dFPR (t), (26) where TPR (t) and FPR (t) denote the true positive rate and false positive rate at threshold t, respec-tively. 
+
+Accuracy measures the proportion of correctly classified samples among all samples. Precision 
+
+is the proportion of true positive predictions among all positive predictions, reflecting the model’s ability to avoid false positives. Recall is the proportion of true positive samples that are correctly identified, indicating the model’s ability to detect actual positives. Specificity is the proportion of true negative samples that are correctly identified, reflecting the model’s ability to avoid false positives. F1 score is the harmonic mean of Precision and Recall, providing a balanced measure of both. Error Rate measures the proportion of incorrectly classified samples among all samples, reflecting the model’s overall misclassification rate. ROC AUC (Area Under the Receiver Operating Characteristic Curve) summarizes the trade-off between true positive and false positive rates across different thresholds, providing an overall measure of discriminative ability. All metrics are reported such that higher values indicate better classification performance ( ↑), except for Error Rate, where lower values indicate better performance ( ↓). These metrics comprehensively evaluate the effectiveness of the learned EC features in supporting downstream classification tasks. A.3 DATASET SUMMARY AND AVAILABILITY 
+
+Visual Categorization Dataset. The visual categorization dataset used in this study was collected while subjects performed an event-related three-choice visual categorization task, with simultaneous EEG and fMRI acquisition. Each subject completed four runs of the task, and each run consisted of 180 trials (60 for each category: face, car, and house), with each image presented for 2 seconds per trial. In total, there are 31 groups of simultaneous fMRI-EEG data for each category, resulting in 93 samples. The fMRI data cover 6 regions of interest (ROIs): the fusiform face area (FFA), parahippocampal place area (PPA), superior parietal lobule (SPL), anterior cingulate cortex (ACC), premotor cortex (PMC), and bilateral frontal eye field (FEF). These ROIs were identified based on group-level EEG-informed fMRI analysis and transformed into each subject’s native anatomical space. EEG was recorded from 34 channels, and the fMRI repetition time (TR) was set to 2 seconds. Both EEG and fMRI data were preprocessed. The fMRI data have dimensions 6 × 56000 , and the EEG data have dimensions 34 × 56000 . To reduce computational complexity, the EEG sampling rate was downsampled to 10 Hz. For analysis, the three categorization tasks are concatenated every 10 trials. 
+
+XP2 Dataset. The XP2 dataset is a multimodal neuroimaging dataset that provides simultaneous EEG and fMRI recordings during motor imagery neurofeedback tasks. Sixteen healthy subjects participated in the experiment, each performing five runs with a block design alternating between 20 seconds of rest and 20 seconds of task. Subjects were randomly assigned to two groups: one group performed bimodal EEG-fMRI neurofeedback with a bi-dimensional feedback display, while the other group performed the same task with a mono-dimensional feedback display. The dNF task includes 40 subjects, and the MI task includes 28 subjects. EEG data were recorded using a 64-channel MR-compatible system at a sampling rate of 5 kHz, with FCz as the reference and AFz as the ground. The EEG data were preprocessed using EEGLAB, including artifact removal, filtering, and channel interpolation as needed, and then downsampled to 200 Hz. The preprocessed EEG signals are provided in standard BIDS format, and neurofeedback scores are also available for each subject and session. fMRI data were acquired simultaneously using a 3T Siemens Verio scanner with an EPI sequence (TR = 1 s, TE = 23 ms, resolution = 3×3×3 mm 3), covering the superior half of the brain. The fMRI 13 702 703 704 705 706 707 708 709 710 711 712 713 714 715 716 717 718 719 720 721 722 723 724 725 726 727 728 729 730 731 732 733 734 735 736 737 738 739 740 741 742 743 744 745 746 747 748 749 750 751 752 753 754 755 
+
+Under review as a conference paper at ICLR 2026 
+
+Algorithm 1: STBO-EC Framework 
+
+Input: EEG data XEEG ∈ RNe×Te , fMRI data XfMRI ∈ RNf ×Tf .
+
+Output: Brain effective connectivity G = ( V, E, W ).
+
+Step 1: Spatial Alignment for each ROI i and electrode c do 
+
+Compute anatomical distance dic = ∥qi − pc∥2;Compute Gaussian weights wic = exp( −d2   
+
+> ic /2σ2)
+> P
+> c′exp( −d2
+> ic ′/2σ2)
+
+;Project EEG to ROI space: YEEG (i, t ) = P 
+
+> c
+
+wic XEEG (c, t );
+
+Step 2: Temporal Alignment and Fusion 
+
+Partition YEEG into Tf blocks of length L = Te/T f ;
+
+for j = 1 to Tf do 
+
+Construct EEG block B(j)EEG ;Expand fMRI frame x(j)fMRI to block B(j)fMRI ;Construct fusion target B(j)target = αB (j)EEG + (1 − α)B(j)fMRI ;Train nonlinear mapping fθ to minimize MSE to B(j)target ;Obtain fused sequence Yfused ∈ RNf ×Te ;
+
+Step 3: Bayesian Optimization for EC Learning 
+
+Initialize low-rank parameterization z = ( p, R);Initialize surrogate networks {DropoutNN i} for each node; 
+
+for m = 1 to M do 
+
+Sample candidate graphs from trust region around z;Predict node scores ˆsi using surrogates; Select promising graphs via Thompson sampling; Evaluate true score S(D, A ) and update replay buffer; Update surrogate networks with replay buffer; Adapt trust region size; Prune spurious edges via conditional independence tests; 
+
+return Final EC G;data were preprocessed using DPABI, including slice-timing correction, realignment, coregistration, spatial smoothing, normalization to MNI space, and extraction of regional time series based on the AAL atlas. A.4 DATA PREPROCESSING PROCEDURES 
+
+Visual Categorization Dataset. This dataset provides preprocessed EEG and fMRI data. No ad-ditional preprocessing was performed in this study. For EEG analysis, we selected the standard 32-channel electrode configuration. 
+
+XP2 Dataset. For the XP2 dataset, both EEG and fMRI data underwent a comprehensive pre-processing pipeline to ensure data quality, temporal alignment, and compatibility for multimodal analysis. For EEG, the raw signals were first loaded and gradient artifacts were corrected using template subtraction based on fMRI volume triggers. The data were then downsampled to 200 Hz and low-pass filtered at 50 Hz to remove high-frequency noise. Cardiac artifacts were removed using the ECG channel and template subtraction. To ensure temporal alignment with the fMRI data, the first 10 time points (corresponding to TR × Hz samples) were discarded from each EEG recording. The resulting EEG time series were then segmented according to task events, and only the segments corresponding to the fMRI acquisition period were retained for further analysis. For fMRI, preprocessing was performed using DPABI with the following steps: removal of the first 10 time points, slice-timing correction (16 slices, slice order [2 4 6 8 10 12 14 16 1 3 5 7 9 14 756 757 758 759 760 761 762 763 764 765 766 767 768 769 770 771 772 773 774 775 776 777 778 779 780 781 782 783 784 785 786 787 788 789 790 791 792 793 794 795 796 797 798 799 800 801 802 803 804 805 806 807 808 809 
+
+Under review as a conference paper at ICLR 2026 11 13 15], reference slice 8), realignment, coregistration, spatial normalization to MNI space, and spatial smoothing with a Gaussian kernel (FWHM = 4 mm). The final voxel size was resampled to 3 × 3 × 3 mm 3 to ensure consistency across subjects. Segmentation was performed using the DARTEL algorithm, and nuisance covariates (including Friston 24 head motion parameters and signals from white matter, CSF, and global signal) were regressed out. The fMRI time series were then extracted for each region of interest (ROI) based on the Automated Anatomical Labeling (AAL) atlas, which defines 90 cortical and subcortical brain regions. To ensure data consistency, brain regions not fully covered in the acquisition were excluded from further analysis. This preprocessing pipeline ensures that both EEG and fMRI data are artifact-free, temporally aligned, and region-matched at the level of 90 AAL-defined ROIs.                                                                                           
+
+> Method Evaluation Metric (p-value)
+> Accuracy Precision Recall F1 Error Rate Specificity ROC AUC Patel (2006) 0.0002 ∗0.0146 ∗0.0021 ∗0.0015 ∗0.4041 0.0021 ∗0.0571
+> lsGC (2010) 0.3802 0.9002 0.3802 0.0095 ∗0.5648 0.3802 0.5786
+> pwLiNGAM (2017) 0.0005 ∗0.0251 ∗0.0005 ∗0.0037 ∗0.0888 0.0005 ∗0.3660
+> DiffAN (2023) 0.0023 ∗0.0216 ∗0.0023 ∗0.0023 ∗0.7374 0.0023 ∗0.4528
+> MetaRLEC (2024) 0.0075 ∗0.5910 0.0075 ∗0.0015 ∗0.9913 0.0075 ∗0.3305
+> MCAN (2024) –––––––FSTA-EC (2025) 0.0000 ∗0.0000 ∗0.0000 ∗0.0003 ∗0.5328 0.0000 ∗0.0001 ∗
+> STBO-EC (fMRI) 0.3275 0.9932 0.3275 0.1117 0.5187 0.3275 0.0195 ∗
+
+Table 4: P-values of statistical tests for different methods on the Visual Categorization Dataset. 
+
+> ∗
+
+p < 0.05 .                                                                                  
+
+> Method Evaluation Metric (p-value)
+> Accuracy Precision Recall F1 Error Rate Specificity ROC AUC Patel (2006) 0.0182 ∗0.0242 ∗0.0796 0.5811 0.1967 0.0000 ∗0.4102
+> lsGC (2010) 0.3856 0.0000 ∗0.0000 ∗0.0000 ∗0.5676 0.0000 ∗0.6822
+> pwLiNGAM (2017) 0.1260 0.0006 ∗0.0008 ∗0.0149 ∗0.8825 0.7006 0.8134
+> DiffAN (2023) 0.3957 0.0305 ∗0.0001 ∗0.0736 0.4615 0.0774 0.3949
+> MetaRLEC (2024) 0.1496 0.0203 ∗0.0000 ∗0.0435 ∗0.8685 0.5294 0.5471
+> MCAN (2024) –––––––FSTA-EC (2025) 0.3934 0.6427 0.0016 ∗0.0097 ∗0.9910 0.1731 0.4035
+> STBO-EC (fMRI) 0.9225 0.1227 0.1785 0.0005 ∗0.5521 0.3163 0.0340 ∗
+
+Table 5: P-values of statistical tests for different methods on the XP2 Dataset. ∗p < 0.05 .A.5 SIGNIFICANCE TEST ANALYSIS 
+
+To rigorously assess the performance differences between STBO-EC and other baseline methods, we conducted paired t-tests on the classification metrics obtained from cross-validation. For each evaluation metric (Accuracy, Precision, Recall, and F1), a paired t-test was performed between the results of STBO-EC and each competing method across the cross-validation folds. A checkmark in Tables 4 and 5 indicates that the improvement of STBO-EC over the corresponding method is statistically significant ( p < 0.05 ). These results demonstrate that the observed performance gains of STBO-EC are statistically robust and not attributable to random variation. A.6 MODEL CONFIGURATION 
+
+The main hyperparameters of the STBO-EC model are as follows. We set the batch size B to 64 and the EC rank k to 8. The number of training steps ( ngrads ) is set to 10, and the number of preliminary candidates ( C) is 100,000. The model is optimized using the Adam optimizer with a learning rate of 0.1. The replay buffer size ( nreplay ) is set to 1,024. Each neural network layer contains 64 hidden units, and a dropout rate of 0.1 is applied during training. To further evaluate the robustness of STBO-EC with respect to hyperparameter choices, we con-ducted a comprehensive parameter sensitivity analysis. Figure 5 illustrates the effects of key hyper-parameters (including ngrads , ncands , dag rank , and dropout rate) on both the F1 score and execu-15 810 811 812 813 814 815 816 817 818 819 820 821 822 823 824 825 826 827 828 829 830 831 832 833 834 835 836 837 838 839 840 841 842 843 844 845 846 847 848 849 850 851 852 853 854 855 856 857 858 859 860 861 862 863 
+
+Under review as a conference paper at ICLR 2026 n_grads         
+
+> 5n_grads
+> 10 n_grads
+> 20 n_cands
+> 50000 n_cands
+> 100000
+> dag_rank
+> 4dag_rank
+> 8dropout
+> 0.05 dropout
+> 0.1 dropout
+> 0.2
+> Parameter Value
+> 0.49000
+> 0.49025
+> 0.49050
+> 0.49075
+> 0.49100
+> 0.49125
+> 0.49150
+> 0.49175
+> 0.49200
+> F1 Score
+> F1 Score and Execution Time vs. Hyperparameters
+> Time: n_grads
+> Time: n_cands
+> Time: dag_rank
+> Time: dropout
+> F1: n_grads
+> F1: n_cands
+> F1: dag_rank
+> F1: dropout
+> 60
+> 80
+> 100
+> 120
+> 140
+> 160
+> 180
+> 200
+> Execution Time (s)
+
+Figure 5: Parameter sensitivity analysis of STBO-EC. Bar plots show the mean F1 score for each hyperparameter value, and line plots indicate the corresponding average execution time. D 
+
+> i
+> f
+> f
+> A
+> N
+> C
+> E
+> −
+> A
+> T
+> S
+> F
+> C
+> G
+> s
+> l
+> CELRate
+> M
+> P
+> a
+> t
+> e
+> l
+> p
+> w
+> L
+> i
+> N
+> G
+> A
+> M
+> S
+> T
+> B
+> O
+> −
+> E
+> CMetrics
+> Accuracy
+> Precision
+> Recall
+> F1
+
+Figure 6: Visualization of Accuracy, Precision, Recall, and F1 for different methods on XP2 Dataset. tion time. The bar plots show the mean F1 score for each parameter value, while the overlaid line plots indicate the corresponding average execution time. The results demonstrate that the F1 score remains stable across a wide range of parameter settings, highlighting the robustness of STBO-EC to hyperparameter variations. At the same time, execution time increases with certain parameter values, providing practical guidance for parameter selection in real applications. A.7 PHYSIOLOGICAL INFORMATION ANALYSIS ON XP2 D ATASET 
+
+In the dNF state, motor regions such as Rolandic Oper R, Supp Motor Area R, and Postcentral R, as well as frontal (Frontal Sup R, Frontal Mid Orb R), parietal (Angular R, SupraMarginal R), oc-cipital (Calcarine R, Fusiform R), and temporal (Heschl R, Temporal Sup R) areas, exhibit rela-tively high out-degree and in-degree values. This indicates that, even during rest, the brain maintains active information flow and coordination within networks related to motor, sensory, visual, and au-ditory functions. Additionally, regions within the limbic system and basal ganglia (such as Insula R, ParaHippocampal R, Putamen R, and Thalamus R) also show strong connectivity, suggesting on-going engagement of emotion, memory, and motor regulation. In the MI state, there is a marked increase in both out-degree and in-degree values across motor, frontal, parietal, and occipital regions, especially in areas such as Rolandic Oper R, Frontal Sup R, 16 864 865 866 867 868 869 870 871 872 873 874 875 876 877 878 879 880 881 882 883 884 885 886 887 888 889 890 891 892 893 894 895 896 897 898 899 900 901 902 903 904 905 906 907 908 909 910 911 912 913 914 915 916 917 
+
+Under review as a conference paper at ICLR 2026 Frontal Mid Orb R, and Fusiform R. This reflects the significant activation of neural networks as-sociated with motor preparation, execution, spatial perception, and visual processing during motor imagery. Temporal regions (Heschl R, Temporal Sup R) remain active, supporting auditory and se-mantic processing. Enhanced connectivity in limbic and basal ganglia areas (ParaHippocampal R, Putamen R, Pallidum L) further suggests greater involvement of memory, emotion, and motor con-trol during motor imagery. Figure 3 visualizes the top 10 most active brain regions identified in the dNF and MI states. In the dNF state, the most active regions include: Precentral L, Frontal Sup R, Frontal Mid Orb R, Frontal Sup Medial L, Frontal Sup Medial R, Rectus R, Insula L, Cingu-lum Ant R, ParaHippocampal R, Amygdala R, Cuneus L, Cuneus R,Fusiform R, Postcentral R, and Parietal Sup R. In the MI state, the most active regions are: Frontal Sup R, Frontal Mid L, Frontal Mid Orb R, Frontal Inf Tri R, Frontal Inf Orb R, Rolandic Oper R, Supp Motor Area R, Olfactory L, Frontal Med Orb R, Calcarine R, Postcentral R, and Angular R. These regions are highlighted on the brain template, illustrating the spatial distribution of the most functionally active areas under each condition. Overall, statistical analysis of the effective connectivity matrices reveals that the MI state is char-acterized by stronger coordination and information flow across multiple functional brain networks. The integration of motor, cognitive, sensory, and emotional systems becomes more pronounced, highlighting the extensive recruitment and synchronization of brain regions during motor imagery. These findings provide important physiological evidence for understanding the neural mechanisms underlying motor-related cognition and regulation. More detailed results are illustrated in Fig. 4. 
+
+B ETHICS STATEMENT 
+
+This work adheres to the ICLR Code of Ethics. In this study, no human subjects or animal exper-imentation was involved. All datasets used, including the Visual Categorization Dataset and XP2 Dataset, were sourced in compliance with relevant usage guidelines, ensuring no violation of pri-vacy. We have taken care to avoid any biases or discriminatory outcomes in our research process. No personally identifiable information was used, and no experiments were conducted that could raise privacy or security concerns. We are committed to maintaining transparency and integrity throughout the research process. 
+
+C REPRODUCIBILITY STATEMENT 
+
+We have made every effort to ensure that the results presented in this paper are reproducible. All code and datasets have been made publicly available in an anonymous repository to facilitate repli-cation and verification. The experimental setup, including training steps, model configurations, and hardware details, is described in detail in the paper. We have also provided a full description of STBO-EC to assist others in reproducing our experiments. Additionally, public datasets used in the paper, such as the Visual Categorization Dataset and XP2 Dataset, are publicly available, ensuring consistent and reproducible evaluation results. We believe these measures will enable other researchers to reproduce our work and further advance the field. 
+
+D LLM U SAGE 
+
+Large Language Models (LLMs) were utilized to assist with manuscript writing and refinement. Specifically, an LLM was employed to help improve language quality, enhance readability, and ensure clarity across different sections of the paper. The model provided support for tasks including sentence restructuring, grammatical corrections, and improving the overall coherence of the text. It should be emphasized that the LLM played no role in the conceptualization, research method-ology, or experimental design of this work. All scientific concepts, research ideas, and analytical work were independently developed and executed by the authors. The LLM’s contributions were strictly limited to enhancing the linguistic presentation of the paper, without any involvement in the scientific content or data analysis. 17 918 919 920 921 922 923 924 925 926 927 928 929 930 931 932 933 934 935 936 937 938 939 940 941 942 943 944 945 946 947 948 949 950 951 952 953 954 955 956 957 958 959 960 961 962 963 964 965 966 967 968 969 970 971 
+
+Under review as a conference paper at ICLR 2026 The authors assume complete responsibility for all content in the manuscript, including any text refined or generated with LLM assistance. We have carefully ensured that all LLM-assisted text complies with ethical standards and does not involve any form of plagiarism or scientific misconduct. 18
