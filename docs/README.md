@@ -6,56 +6,59 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-06-20 ~ 2026-06-29
-- 运行时间：2026-06-29 04:00:46 UTC
+- 最新运行日期：2026-06-29
+- 运行时间：2026-06-29 21:36:26 UTC
 - 运行状态：成功
-- 本次总论文数：12
-- 精读区：6
-- 速读区：6
+- 本次总论文数：13
+- 精读区：3
+- 速读区：10
 
 ### 今日简报（AI）
-精读两篇高分论文与速读三篇，涵盖神经信息流推断、fMRI迁移学习及线虫连接组学建模。最值得关注SPIDER方法（从异步实验记录中推断信息流）和Beyond Single-Source认知任务关系迁移学习。普通读者可探索脑网络分析工具与AI结合神经科学的最新进展。
-- 详情：[/20260620-20260629/README](/20260620-20260629/README)
+今日共读13篇，精读聚焦脑电图轻度认知障碍检测与“内外部自我”心理健康脑网络研究。最值得关注：可解释概念引导的多项式表格KAN网络在MCI检测中的创新应用，以及自我概念与脑网络的心理健康关联。下一步可重点探索可解释AI在医疗诊断中的落地路径，并思考自我认知训练对脑健康的干预潜力。
+- 详情：[/202606/29/README](/202606/29/README)
 
 ### 精读区论文标签
-1. [SPIDER -- Stitched Power-spectra for Inferring Directed information flow from incomplete and asynchronous Experimental Recordings](/20260620-20260629/2606.22695v1-spider----stitched-power-spectra-for-inferring-directed-information-flow-from-incomplete-and-asynchronous-experimental-recordings)  
+1. [Interpretable Concept-Guided Polynomial Tabular Kolmogorov-Arnold Network for EEG-Based Mild Cognitive Impairment Detection](/202606/29/2606.25434v1-interpretable-concept-guided-polynomial-tabular-kolmogorov-arnold-network-for-eeg-based-mild-cognitive-impairment-detection)  
    标签：评分：9.0/10、query:fbn
-   evidence：从不完全记录推断脑区间有向信息流（有效连接）
-2. [Beyond Single-Source Cognitive Taskonomy:Multi-Source Task Relations through fMRI Transfer Learning](/20260620-20260629/2606.26279v1-beyond-single-source-cognitive-taskonomymulti-source-task-relations-through-fmri-transfer-learning)  
+   evidence：基于EEG的轻度认知障碍检测，使用可解释深度学习KAN，直接属于神经影像AI医疗
+2. [Linking the "inner" and "outer" self to mental health and brain networks](/202606/29/2606.27956v1-linking-the-inner-and-outer-self-to-mental-health-and-brain-networks)  
    标签：评分：9.0/10、query:fbn
-   evidence：基于HCP任务状态的fMRI迁移学习，直接使用脑网络数据
-3. [Multi-cancer detection using a computationally efficient CNN with transfer learning](/20260620-20260629/2606.22400v1-multi-cancer-detection-using-a-computationally-efficient-cnn-with-transfer-learning)  
+   evidence：直接使用HCP数据研究脑功能连接和网络，将心理学与脑网络联系
+3. [A Benchmark of (MRI-) Foundation Models to Predict IDH Mutational Status in Glioma](/202606/29/2606.23172v1-a-benchmark-of-mri--foundation-models-to-predict-idh-mutational-status-in-glioma)  
    标签：评分：8.0/10、query:fbn
-   evidence：脑MRI癌症检测AI
-4. [Convex--Concave Quadratic Spectral Filtering for Graph Neural Networks](/20260620-20260629/2606.24956v1-convex--concave-quadratic-spectral-filtering-for-graph-neural-networks)  
-   标签：评分：8.0/10、query:fbn
-   evidence：适用于脑连接组分析的图神经网络谱滤波方法
-5. [TensorLDM: A Component-Wise Latent Diffusion Model for Volumetric DTI Reconstruction from Sparse DWIs](/20260620-20260629/2606.25545v1-tensorldm-a-component-wise-latent-diffusion-model-for-volumetric-dti-reconstruction-from-sparse-dwis)  
-   标签：评分：8.0/10、query:fbn
-   evidence：深度学习用于DTI重建，神经影像AI医疗
-6. [Modeling Local, Global, and Cross-Modal Context in Multimodal 3D MRI](/20260620-20260629/2606.26894v1-modeling-local-global-and-cross-modal-context-in-multimodal-3d-mri)  
-   标签：评分：8.0/10、query:fbn
-   evidence：使用视觉Transformer的多模态3D脑MRI建模
+   evidence：基准测试MRI基础模型预测胶质瘤IDH突变，属于神经影像AI医疗
 
 ### 速读区论文标签
-1. [DevoTG: Temporal Graph Neural Networks for Modeling C. elegans Developmental Connectomics](/20260620-20260629/2606.21940v1-devotg-temporal-graph-neural-networks-for-modeling-c-elegans-developmental-connectomics)  
+1. [Cross-Modality Structural Guidance in 3D Latent Diffusion for Robust FLAIR Super-Resolution](/202606/29/2606.25255v1-cross-modality-structural-guidance-in-3d-latent-diffusion-for-robust-flair-super-resolution)  
    标签：评分：7.0/10、query:fbn
-   evidence：时间图神经网络用于发育连接组学建模
-2. [Brain-Adapter: A Dual-Stream Vision-Language MIL Framework for Comprehensive 3D CT Diagnosis of Acute Intracranial Pathologies](/20260620-20260629/2606.23494v1-brain-adapter-a-dual-stream-vision-language-mil-framework-for-comprehensive-3d-ct-diagnosis-of-acute-intracranial-pathologies)  
+   evidence：深度学习用于FLAIR超分辨率，利用T1w结构先验增强脑图像
+2. [Compression-Driven Anomaly Detection in Brain MRI Using an Interpretable Quantum Autoencoder](/202606/29/2606.27411v1-compression-driven-anomaly-detection-in-brain-mri-using-an-interpretable-quantum-autoencoder)  
    标签：评分：7.0/10、query:fbn
-   evidence：脑CT诊断结合视觉语言模型
-3. [Tractography-Driven Synthetic Data Generation for Fiber Bundle Segmentation in Tracer Histology](/20260620-20260629/2606.26898v1-tractography-driven-synthetic-data-generation-for-fiber-bundle-segmentation-in-tracer-histology)  
+   evidence：脑MRI异常检测使用量子自编码器，属于神经影像AI医疗
+3. [Heterogeneous synaptic motifs bridge microscale structure and macroscale nonlinear dynamics](/202606/29/2606.27946v1-heterogeneous-synaptic-motifs-bridge-microscale-structure-and-macroscale-nonlinear-dynamics)  
    标签：评分：7.0/10、query:fbn
-   evidence：扩散MRI纤维束成像用于白质纤维束分割
-4. [A Spectral Theory of Normalized Corrected GNN Propagation](/20260620-20260629/2606.23572v1-a-spectral-theory-of-normalized-corrected-gnn-propagation)  
+   evidence：建模微观突触基序解释宏观脑动态，与脑网络分析相关
+4. [From Handcrafted Features to Functional Edge Learning: Evolution of EEG Seizure Detection Frameworks](/202606/29/2606.22258v1-from-handcrafted-features-to-functional-edge-learning-evolution-of-eeg-seizure-detection-frameworks)  
    标签：评分：6.0/10、query:fbn
-   evidence：GNN传播的谱理论，为应用于脑功能连接的图神经网络提供理论基础
-5. [EEG Interpretation Across Chant Listening: A Single-Subject Pilot Investigation Using Spectral and Functional Connectivity Analysis](/20260620-20260629/2606.24406v1-eeg-interpretation-across-chant-listening-a-single-subject-pilot-investigation-using-spectral-and-functional-connectivity-analysis)  
+   evidence：使用深度学习和KAN进行EEG癫痫检测，属于神经影像AI医疗
+5. [Low-rank Updates in Slowly Time-varying Graphs for Spatial-Temporal Signal Interpolation](/202606/29/2606.24011v1-low-rank-updates-in-slowly-time-varying-graphs-for-spatial-temporal-signal-interpolation)  
    标签：评分：6.0/10、query:fbn
-   evidence：听觉条件下EEG功能连接分析，与脑网络研究相关
-6. [Anatomically-conditioned Latent Diffusion Model for Data-Efficient Few-Shot Cross-Domain 3D Glioma MRI Synthesis](/20260620-20260629/2606.25390v1-anatomically-conditioned-latent-diffusion-model-for-data-efficient-few-shot-cross-domain-3d-glioma-mri-synthesis)  
+   evidence：图信号处理方法可应用于动态功能连接建模
+6. [RetiSEM: Generalising Causal Models for Fragmented Biomedical Data](/202606/29/2606.24488v1-retisem-generalising-causal-models-for-fragmented-biomedical-data)  
    标签：评分：6.0/10、query:fbn
-   evidence：用于胶质瘤的MRI合成与扩散模型
+   evidence：使用领域约束结构方程模型从碎片化生物医学数据中恢复因果图，包括影像变量，与功能连接建模相关
+7. [Neural operator-based digital twins for modeling amyloid-$β$ and tau propagation and treatment optimization in Alzheimer's disease](/202606/29/2606.25185v1-neural-operator-based-digital-twins-for-modeling-amyloid--and-tau-propagation-and-treatment-optimization-in-alzheimers-disease)  
+   标签：评分：6.0/10、query:fbn
+   evidence：AI驱动神经影像生物标志物建模
+8. [BrainAgent: A Large Language Model-Driven Multi-Agent Framework for Autonomous Brain Signal Understanding](/202606/29/2606.25400v1-brainagent-a-large-language-model-driven-multi-agent-framework-for-autonomous-brain-signal-understanding)  
+   标签：评分：6.0/10、query:fbn
+   evidence：LLM驱动的多智能体框架用于脑信号理解，适用于神经影像AI
+9. [Enhancing Brain MRI Anomaly Detection and Reasoning with ROI Rethink and Synthetic Data](/202606/29/2606.25894v1-enhancing-brain-mri-anomaly-detection-and-reasoning-with-roi-rethink-and-synthetic-data)  
+   标签：评分：6.0/10、query:fbn
+   evidence：AI医疗神经影像（脑MRI）结合推理和空间定位
+10. [Heterogeneous Neural Predictivity from Language Models During Naturalistic Comprehension](/202606/29/2606.26880v1-heterogeneous-neural-predictivity-from-language-models-during-naturalistic-comprehension)  
+   标签：评分：6.0/10、query:fbn
+   evidence：使用语言模型预测理解过程中的神经反应，涉及MEG/ECoG神经影像
 
 
 <div class="dpr-home-promo-card">
