@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import fcntl
 import hashlib
 import html
 import importlib.util
@@ -13,6 +12,11 @@ import re
 import sys
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Tuple
+
+try:
+    import fcntl  # type: ignore
+except ImportError:
+    fcntl = None
 
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
@@ -937,7 +941,8 @@ def update_sidebar_with_conference(
 
     lock_path = sidebar_path.parent / ".sidebar.lock"
     with open(lock_path, "w") as lock_fd:
-        fcntl.flock(lock_fd, fcntl.LOCK_EX)
+        if fcntl is not None:
+            fcntl.flock(lock_fd, fcntl.LOCK_EX)
         try:
             lines = sidebar_path.read_text(encoding="utf-8").splitlines(keepends=True) if sidebar_path.exists() else []
             existing_paper_lines = extract_conference_paper_lines(lines, marker)
@@ -948,7 +953,8 @@ def update_sidebar_with_conference(
             sort_conference_blocks(lines)
             sidebar_path.write_text("".join(lines), encoding="utf-8")
         finally:
-            fcntl.flock(lock_fd, fcntl.LOCK_UN)
+            if fcntl is not None:
+                fcntl.flock(lock_fd, fcntl.LOCK_UN)
 
 
 def choose_result_file(paths: Iterable[Path]) -> Path:
