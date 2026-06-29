@@ -7,17 +7,18 @@
     root.DPRLLMConfigUtils = api;
   }
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
-  const DEFAULT_DEEPSEEK_BASE_URL = 'https://api.llm.ustc.edu.cn/v1';
+  const DEFAULT_DEEPSEEK_BASE_URL = 'https://api.deepseek.com';
   const DEFAULT_DEEPSEEK_CHAT_MODELS = [
-    'deepseek-v4-flash-ascend',
+    'deepseek-v4-flash',
+    'deepseek-v4-pro',
   ];
   const DEEPSEEK_V4_MAX_OUTPUT_TOKENS = 393216;
   const DEEPSEEK_PRESETS = Object.freeze({
     deepseek: Object.freeze({
       key: 'deepseek',
-      label: '学校词元计划',
-      baseUrl: 'https://api.llm.ustc.edu.cn/v1',
-      models: Object.freeze(['deepseek-v4-flash-ascend']),
+      label: 'DeepSeek',
+      baseUrl: 'https://api.deepseek.com',
+      models: Object.freeze(['deepseek-v4-flash', 'deepseek-v4-pro']),
     }),
   });
 
@@ -149,8 +150,7 @@
   const isDeepSeekV4Model = (model) => {
     const normalizedModel = normalizeText(model || '').toLowerCase();
     return normalizedModel === 'deepseek-v4-flash' ||
-      normalizedModel === 'deepseek-v4-pro' ||
-      normalizedModel === 'deepseek-v4-flash-ascend';
+      normalizedModel === 'deepseek-v4-pro';
   };
 
   const resolveMaxOutputTokens = ({ baseUrl, model } = {}) => {

@@ -301,14 +301,15 @@
   };
   const getDefaultDeepSeekBaseUrl = () => {
     const utils = getLLMUtils();
-    return normalizeBaseUrlForStorage(utils.DEFAULT_DEEPSEEK_BASE_URL || 'https://api.llm.ustc.edu.cn/v1');
+    return normalizeBaseUrlForStorage(utils.DEFAULT_DEEPSEEK_BASE_URL || 'https://api.deepseek.com');
   };
   const getDefaultDeepSeekChatModels = () => {
     const utils = getLLMUtils();
       const defaults = Array.isArray(utils.DEFAULT_DEEPSEEK_CHAT_MODELS)
         ? utils.DEFAULT_DEEPSEEK_CHAT_MODELS
         : [
-            'deepseek-v4-flash-ascend',
+            'deepseek-v4-flash',
+            'deepseek-v4-pro',
           ];
     return sanitizeModelList(defaults, 99);
   };
@@ -1113,7 +1114,7 @@
       }, 100);
     };
 
-    // 初始化向导：第 2 步（学校词元计划 API）
+    // 初始化向导：第 2 步（DeepSeek API）
     const renderInitStep2 = (password) => {
       setStep2Modal(true);
       const currentSecret =
@@ -1132,11 +1133,13 @@
       );
       const initialApiKey = normalizeText(currentSummaryLLM.apiKey || '');
       const initialDeepSeekModel =
-        normalizeText(currentSummaryLLM.model || '') || 'deepseek-v4-flash-ascend';
+        normalizeText(currentSummaryLLM.model || '') || 'deepseek-v4-flash';
       const deepseekSummaryModels = getDefaultDeepSeekChatModels().map((model) => ({
         value: model,
-        label: model === 'deepseek-v4-flash-ascend'
-          ? 'deepseek-v4-flash-ascend · 学校词元计划'
+        label: model === 'deepseek-v4-flash'
+          ? 'DeepSeek V4 Flash · 默认推荐'
+          : model === 'deepseek-v4-pro'
+          ? 'DeepSeek V4 Pro · 高性能模型'
           : model,
       }));
 
@@ -1167,16 +1170,16 @@
             </div>
 
             <div id="secret-setup-deepseek-section" class="secret-setup-step2-block">
-              <div class="secret-setup-step2-title">学校词元计划 API（必填）</div>
+              <div class="secret-setup-step2-title">DeepSeek API（必填）</div>
               <p class="secret-setup-step2-note">
-                学校词元计划用于 query enrich、LLM refine、总结与聊天；Reranker 可在右侧单独选择。
+                DeepSeek 用于 query enrich、LLM refine、总结与聊天；Reranker 可在右侧单独选择。
               </p>
               <div class="secret-setup-input-row multi-actions">
                 <input
                   id="secret-setup-deepseek"
                   type="password"
                   autocomplete="off"
-                  placeholder="学校词元计划 API Key，例如：sk-xxxx"
+                  placeholder="DeepSeek API Key，例如：sk-xxxx"
                   style="width:100%; box-sizing:border-box; padding:6px 8px; font-size:13px;"
                 />
                 <button id="secret-setup-deepseek-test" type="button" class="secret-gate-btn secondary">
@@ -1187,14 +1190,14 @@
                 </button>
               </div>
               <div id="secret-setup-deepseek-status" style="min-height:18px; font-size:12px; color:#999; margin-bottom:8px;">
-                将通过一次 <code>hello world</code> 请求检查学校词元计划配置可用性。
+                将通过一次 <code>hello world</code> 请求检查 DeepSeek 配置可用性。
               </div>
 
               <div style="font-weight:500; margin-bottom:4px; display:flex; align-items:center; gap:4px;">
                 用于工作流总结 / 过滤的大模型
                 <span class="secret-model-tip">!
                   <span class="secret-model-tip-popup">
-                    当前默认使用学校词元计划 OpenAI 协议入口。<br/>
+                    当前默认使用 DeepSeek 官方 API。<br/>
                     Reranker API Key 与大模型 API Key 分开配置。
                   </span>
                 </span>
@@ -1344,9 +1347,9 @@
       providerInputs.forEach((input) => {
         input.checked = input.value === 'deepseek';
       });
-      deepseekModelSelect.value = initialDeepSeekModel || 'deepseek-v4-flash-ascend';
+      deepseekModelSelect.value = initialDeepSeekModel || 'deepseek-v4-flash';
       if (!deepseekModelSelect.value) {
-        deepseekModelSelect.value = 'deepseek-v4-flash-ascend';
+        deepseekModelSelect.value = 'deepseek-v4-flash';
       }
       rerankerProfileSelect.innerHTML = RERANKER_PROFILES
         .map(
@@ -1427,7 +1430,7 @@
       const resetDeepSeekStatus = () => {
         deepseekOk = false;
         deepseekStatusEl.innerHTML =
-          '将通过一次 <code>hello world</code> 请求检查学校词元计划配置可用性。';
+          '将通过一次 <code>hello world</code> 请求检查 DeepSeek 配置可用性。';
         deepseekStatusEl.style.color = '#999';
       };
       const resetCustomStatus = () => {
@@ -1481,7 +1484,7 @@
         const apiKey = normalizeText(deepseekInput.value);
         const model = selectedDeepSeekModel();
         if (!apiKey) {
-          throw new Error('请先输入学校词元计划 API Key。');
+          throw new Error('请先输入 DeepSeek API Key。');
         }
         if (!model) {
           throw new Error('请选择用于工作流总结的大模型。');
@@ -1504,7 +1507,7 @@
         const apiKey = normalizeText(deepseekInput.value);
         const model = selectedDeepSeekModel();
         if (!apiKey || !model) {
-          throw new Error('请先填写学校词元计划 API Key 并选择模型。');
+          throw new Error('请先填写 DeepSeek API Key 并选择模型。');
         }
         return [
           {
@@ -1528,7 +1531,7 @@
         githubStatusEl.style.color = '#666';
       }
       if (initialApiKey) {
-        deepseekStatusEl.textContent = '已载入当前学校词元计划配置；如更换 API Key 或模型，建议点击测试按钮。';
+        deepseekStatusEl.textContent = '已载入当前 DeepSeek 配置；如更换 API Key 或模型，建议点击测试按钮。';
         deepseekStatusEl.style.color = '#666';
       }
 
@@ -1611,7 +1614,7 @@
         input.addEventListener('change', () => {
           syncProviderSections();
           setErrorText(
-            '学校词元计划密钥将加密写入 GitHub Secrets（用于 GitHub Actions），并同步生成本地 secret.private 备份。',
+            'DeepSeek 密钥将加密写入 GitHub Secrets（用于 GitHub Actions），并同步生成本地 secret.private 备份。',
             '#999',
           );
         });
@@ -1685,13 +1688,13 @@
       deepseekVerifyBtn.addEventListener('click', async () => {
         const key = normalizeText(deepseekInput.value);
         if (!key) {
-          deepseekStatusEl.textContent = '请先输入学校词元计划 API Key。';
+          deepseekStatusEl.textContent = '请先输入 DeepSeek API Key。';
           deepseekStatusEl.style.color = '#c00';
           deepseekOk = false;
           return;
         }
         deepseekVerifyBtn.disabled = true;
-        deepseekStatusEl.textContent = '正在测试学校词元计划配置...';
+        deepseekStatusEl.textContent = '正在测试 DeepSeek 配置...';
         deepseekStatusEl.style.color = '#666';
         try {
           const models = await pingChatModels(buildPingEntries(), deepseekStatusEl);
@@ -1742,7 +1745,7 @@
         }
 
         if (providerDraft.providerType === 'deepseek' && !deepseekOk) {
-          setErrorText('请先点击“测试当前配置”，确认学校词元计划配置可用。', '#c00');
+          setErrorText('请先点击“测试当前配置”，确认 DeepSeek 配置可用。', '#c00');
           return;
         }
 
