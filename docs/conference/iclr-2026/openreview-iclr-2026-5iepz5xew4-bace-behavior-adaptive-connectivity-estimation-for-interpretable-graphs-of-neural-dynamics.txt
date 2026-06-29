@@ -1,0 +1,486 @@
+Title: 8089_BACE_Behavior_Adaptive_Co.pdf
+
+URL Source: https://openreview.net/pdf?id=5iepz5XeW4
+
+Number of Pages: 16
+
+Markdown Content:
+> 000 001 002 003 004 005 006 007 008 009 010 011 012 013 014 015 016 017 018 019 020 021 022 023 024 025 026 027 028 029 030 031 032 033 034 035 036 037 038 039 040 041 042 043 044 045 046 047 048 049 050 051 052 053
+
+Under review as a conference paper at ICLR 2026 
+
+# BACE: B EHAVIOR -A DAPTIVE CONNECTIVITY 
+
+# ESTIMATION FOR INTERPRETABLE GRAPHS OF 
+
+# NEURAL DYNAMICS 
+
+Anonymous authors 
+
+Paper under double-blind review 
+
+## ABSTRACT 
+
+Understanding how distributed brain regions coordinate to produce behavior re-quires models that are both predictive and interpretable. We introduce Behavior-Adaptive Connectivity Estimation (BACE), an end-to-end framework that learns context-specific, directed inter-regional connectivity directly from multi-region intracranial local field potentials (LFP). BACE aggregates many micro-contacts within each anatomical region via per-region temporal encoders, applies a learn-able adjacency specific to each behavioral contex, and is trained on a forecasting objective. On synthetic multivariate time series with known graphs, BACE ac-curately recovers ground-truth directed interactions while achieving forecasting performance comparable to state-of-the-art baselines. Applied to human subcorti-cal LFP recorded simultaneously from eight regions during a cued reaching task, BACE yields an explicit 8×8 connectivity matrix for each within-trial behavioral contex. The resulting behavioral contex-specific graphs reveal behavior-aligned reconfiguration of inter-regional influence and provide compact, interpretable ad-jacency matrices for comparing network organization across behavioral conte. By linking predictive success to explicit connectivity estimates, BACE offers a prac-tical tool for generating data-driven hypotheses about the dynamic coordination of subcortical regions during behavior. 
+
+## 1 INTRODUCTION 
+
+Understanding how patterns of interaction between neural populations reorganize with behavior is central to systems neuroscience and to applications that decode or modulate brain activity. These interactions are often framed under the umbrella of brain connectivity, distinguished as struc-tural (anatomical pathways), functional (statistical dependencies), and effective (directed influ-ence)—complementary lenses on how distributed circuits communicate and adapt to task demands (Friston, 2011; Fornito et al., 2016). Reviews emphasize both the promise and the challenges of connectivity-centric approaches, particularly the need to capture short-timescale dynamics while maintaining interpretability (Mohammadi & Karwowski, 2025; Srivastava et al., 2022). Graph-based formulations make this agenda concrete: representing brain regions as nodes and their relationships as edges enables quantitative analysis of modularity, hubs, and task-dependent recon-figuration (Bassett & Sporns, 2017; Cole et al., 2013). Such network perspectives motivate methods that go beyond static, correlation-only descriptions toward dynamic, directed estimates that better align with mechanistic questions. We focus on intracranial local field potentials (LFPs), a high-temporal-resolution measure of pop-ulation activity recorded simultaneously from multiple deep-brain regions (Buzs´ aki et al., 2012; Einevoll et al., 2013; Anonymized, Anonymized). Multi-region LFP imposes unique modeling re-quirements: (i) many micro-contacts per region must be consolidated into coherent region-level trajectories; (ii) neural activity reconfigures across well-defined behavioral contexts; and (iii) the spatial layout of contacts is high-dimensional and non-Euclidean (Bronstein et al., 2021). Existing pipelines often average across behavior with a single correlation-based graph (Fornito et al., 2016) or impose hard-coded anatomical connectivity (Hutchison et al., 2013; Preti et al., 2017), limiting their ability to capture context-specific, directed interactions. 1054 055 056 057 058 059 060 061 062 063 064 065 066 067 068 069 070 071 072 073 074 075 076 077 078 079 080 081 082 083 084 085 086 087 088 089 090 091 092 093 094 095 096 097 098 099 100 101 102 103 104 105 106 107 
+
+Under review as a conference paper at ICLR 2026 Recent machine learning advances in graph learning from neural time series highlight the oppor-tunity but do not yet fill this gap. Models such as GraphS4mer couple sequence modeling with learned graphs but are primarily evaluated on decoding tasks without exposing directed region-level connectivity (Tang et al., 2023). In fMRI, architectures like STAGIN improve classification via spatio-temporal attention but operate on undirected functional connectivity (Kim et al., 2021a). Forecasting-based models such as AMAG learn adaptive graphs from cortical LFP, yet they focus on channel-level grids and are not designed for multi-region, behavior-conditioned settings (Li et al., 2023). A framework that yields compact, directed, context-specific connectivity estimates for inva-sive multi-region recordings remains lacking. We introduce BACE (Behavior-Adaptive Connectivity Estimation), an encoder–projector–decoder framework that learns directed, behavioral context-specific effective connectivity from multi-region LFP. BACE (i) aggregates many contacts within each anatomical region via per-region temporal encoders; (ii) learns a distinct adjacency for each behavioral context, with a parameterization that separates edge pattern (“who influences whom”) from broadcast strength (per-row gains); and (iii) couples the learned graphs to signal dynamics through a forecasting objective with continuity and smoothness priors. On synthetic multivariate time series with known ground-truth graphs, BACE accurately recovers directed interactions. Applied to human subcortical LFPs recorded from eight regions during a cued reaching task, BACE produces explicit 8×8 connectivity matrices for each behavioral segment. Beyond predictive accuracy, we assess reproducibility, quantify uncertainty, and test across-contexts differences, turning learned adjacencies into auditable scientific objects rather than opaque model internals. We summarize the main contributions of our work below: • A region-level graph model for neural forecasting. BACE couples per-region temporal encoders with a learnable adjacency to capture directed inter-regional influence. • Recovery of interaction structure. On synthetic datasets with known ground truth, BACE reliably reconstructs directed connectivity using only a forecasting signal. • Behavior-conditioned graphs. BACE yields compact, signed inter-regional adjacencies aligned to behavioral contexts, enabling direct comparison of task-specific network organi-zation. • Interpretability. An adjacency parameterization decouples edge pattern from transmission strength, producing small, explicit matrices suitable for neuroscientific analysis. 
+
+## 2 RELATED WORKS 
+
+Our work is situated at the intersection of four key areas: (i) forecasting-based modeling of neural dynamics, (ii) dynamic brain-graph learning, (iii) graph-structure learning from time series, and (iv) interpretability in graph-based neuroscience. While these fields have advanced rapidly, methods that learn compact, directed, and behavior-specific inter-regional graphs remain underexplored. 
+
+Modeling neural dynamics with forecasting. Modeling neural dynamics has evolved from lin-ear state–space and Gaussian process factor models (Dahlhaus, 2000; Yu et al., 2008; Gao et al., 2016) to modern deep learning approaches. To capture complex nonlinearities, the field has widely adopted recurrent networks (Hochreiter & Schmidhuber, 1997; Pandarinath et al., 2018), variational autoencoders (Zhou & Wei, 2020), neural ODEs (Kim et al., 2021b), and Transformers adapted to neural time series (Ye & Pandarinath, 2021; Le & Shlizerman, 2022). A common thread across these modern approaches is the use of predictive objectives, which have proven effective for learning la-tent representations aligned with behavior (Sani et al., 2021). Despite their success in uncovering latent dynamics, these methods are generally not designed to yield the explicit, interpretable, and behavior-conditioned connectivity graphs that are the primary focus of this work 
+
+Dynamic brain-graph learning. Graph neural networks have emerged as a powerful framework for modeling time-resolved brain activity. In fMRI, spatiotemporal attention and Transformer-based architectures such as STAGIN (Kim et al., 2021a) learn dynamic embeddings of functional connec-tivity for tasks like cognitive-state or demographic classification. Structured state-space hybrids, including GraphS4mer (Tang et al., 2023) and more recent Mamba-based variants (Behrouz & 2108 109 110 111 112 113 114 115 116 117 118 119 120 121 122 123 124 125 126 127 128 129 130 131 132 133 134 135 136 137 138 139 140 141 142 143 144 145 146 147 148 149 150 151 152 153 154 155 156 157 158 159 160 161 
+
+Under review as a conference paper at ICLR 2026 Hashemi, 2024), further extend this direction by coupling long-range temporal encoders with adap-tive graph learners. Collectively, these works demonstrate the utility of spatiotemporal GNNs across neuroimaging modalities. However, they are generally evaluated on EEG or fMRI classification benchmarks and yield latent embeddings or undirected functional connectivity, rather than compact, directed adjacency matrices explicitly conditioned on behavioral context. 
+
+Graph-structure learning from time series. A distinct but related line of work, Graph-Structure Learning (GSL), aims to infer latent edges jointly with temporal dynamics (Jin et al., 2020). This is particularly relevant for neuroscience, where the true underlying graph is unknown. AMAG exem-plifies this direction by introducing additive and multiplicative message passing and, importantly, learning a trainable channel-level adjacency jointly with forecasting on cortical LFP and synthetic benchmarks (Li et al., 2023). The broader GSL literature includes variational models for discovering latent graphs (Huang & Yu, 2022) and bilinear graph learners for edge inference (Zhu et al., 2020). These studies validate the principle that predictive objectives can successfully uncover interaction structures from time-series data. However, they typically operate at the fine-grained channel level and do not explicitly model how such structure reconfigures with behavior. BACE addresses this gap by learning directed, region-level graphs explicitly conditioned on behavioral context, enabling direct and interpretable comparisons of network organization across moments within a trial. 
+
+Interpretability in graph-based neuroscience. Interpretability efforts in brain GNNs span ROI saliency and causal subgraph discovery. For example, BrainGNN highlights salient regions through ROI-aware pooling and regularizers, but it does not produce an explicit connectivity matrix (Li et al., 2021). CI-GNN learns sparse, causally-relevant subgraph masks from static, undirected fMRI connectivity graphs, linking them to diagnostic predictions (Zheng et al., 2024). Post-hoc explainers such as GNNExplainer (Ying et al., 2019) and domain-specific extensions like BrainNNExplainer target edge-level saliency, but again operate in settings focused on classification. Benchmarking and survey efforts such as NeuroGraph (Said et al., 2023) and recent reviews of brain GNNs (Bessadok et al., 2022) confirm that most interpretability work remains tied to fMRI decoding tasks and post-hoc analysis. In contrast, BACE directly learns inter-regional graphs from invasive LFP dynamics and conditions them on behavioral context, producing compact, directed adjacency matrices at the region level designed as primary scientific objects for comparing network structure across behavioral contexts. Per Region     
+
+> GRU
+> Graph
+> Projector
+> (Message
+> Passing Layer)
+> Per Region
+> GRU
+> Per Region
+> GRU
+> Per Region
+> GRU
+> . . .
+> Autoregressive
+> Forecasting
+> Head
+> Extracts within -region
+> temporal dynamics
+> from 10 -channel LFPs
+> Region 1
+> Recordings
+> Region 2
+> Recordings
+> Sliding input windows (T in = 100, T out = 20)
+> sampled across 400 -sample trials
+> Time
+> Positional
+> Encoder
+> Adds time embeddings to
+> each region sequence
+> Forecasted Y: 20
+> future samples
+> Learns directed adjacency A (k) per
+> behavioral context
+> (e.g., Wait / React / Reach / Return)
+> Mixes region embeddings
+> according to learned A (k)
+> Forecasts future LFP
+> points using residual
+> graph feedback
+> Region 3
+> Recordings
+> Region N
+> Recordings
+> . . .
+> +?
+> Context -Specific
+> Graph Learner
+> Selects what
+> Adjacency matrix
+> to use based on
+> context label
+> If current context = Wait
+> Wait -Context
+> Graph Adjacency
+> React -Context
+> Graph Adjacency
+> Reach -Context
+> Graph Adjacency
+> Wait -Context
+> Graph Adjacency
+
+Figure 1: BACE architecture. Per-region temporal encoders (independent GRUs) extract local dynamics from raw neural windows. A behavioral-specific graph learner produces one directed ad-jacency Aϕ for each behavioral segment, which the graph projector applies to mix regional features. The forecaster head then predicts the unobserved future window using a residual objective. This end-to-end design links forecasting directly to explicit, behavioral-specific connectivity estimates. 3162 163 164 165 166 167 168 169 170 171 172 173 174 175 176 177 178 179 180 181 182 183 184 185 186 187 188 189 190 191 192 193 194 195 196 197 198 199 200 201 202 203 204 205 206 207 208 209 210 211 212 213 214 215 
+
+Under review as a conference paper at ICLR 2026 
+
+## 3 METHODS 
+
+We aim to learn dynamic effective connectivity between neural regions from multivariate time series. Formally, let Xt−Tin +1: t ∈ RN ×C×Tin denote neural activity from N regions, each with C channels, over a past window of length Tin . Our objective is to learn a function 
+
+fθ :  Xt−Tin +1: t, k  7 →   ˆYt+1: t+Tout , A(k).
+
+that predicts the next Tout time steps while simultaneously identifying a directed connectivity matrix 
+
+A(k) ∈ RN ×N associated with behavioral context k.The problem is thus framed as joint forecasting and connectivity estimation. The key principle is that if a connectivity pattern is explanatory, it is expected to improve prediction of future neural dynamics. This allows us to cast connectivity estimation as a supervised learning problem grounded in predictive modeling. Our model comprises four components: 
+
+Regional Encoder. In our dataset, each region contains multiple channels of neural recordings that capture locally correlated activity. To encode these within-region dynamics, we employ a set of 
+
+regional Gated Recurrent Unit (GRU) encoders (Cho et al., 2014), one per region: 
+
+Hr = GRU r (Xr ), r = 1 , . . . , N, 
+
+where Xr ∈ RC×Tin is the multichannel input for region r.This design models local dynamics independently, preserving regional separation before cross-regional interactions are introduced. This is essential, as inter-regional influences are explicitly represented in the learned connectivity matrix later in the model. Encodings are further stabilized with layer normalization. After encoding, a lightweight positional embedding is concatenated to each timestep to provide explicit information about relative time within the input window. 
+
+Context-Specific Graph Learner. Our Context-Specific Graph Learner produces a directed graph per behavioral context. For each behavioral context k, we represent the system as a directed graph 
+
+G(k) = ( V, E (k), A (k)), where V = {1, . . . , N } denotes the set of regions, E(k) the set of directed edges, and A(k) ∈ RN ×N the weighted adjacency matrix. An entry A(k) 
+
+> ij
+
+encodes the directed influence from region j to region i.For each behavioral context k, we learn a separate adjacency A(k). Rows are normalized to have unit ℓ1 norm, i.e. P 
+
+> j
+
+|A(k) 
+
+> ij
+
+| = 1 ∀i, ensuring stable and interpretable graphs where each row can be read as a distribution of incoming influences to region i. During training, the context label of each trial acts as a selector, routing the input to the corresponding adjacency A(k).
+
+Graph Projector. Having defined a context-specific adjacency A(k), the next step is to propagate information between regions. Each region’s output from the encoder is a sequence of temporal embeddings Hi ∈ RT ×d. To incorporate inter-regional influences, we update these embeddings with two components: (i) a self-update that preserves the region’s own trajectory, and (ii) a neighbor-mixing term that aggregates activity from other regions according to A(k).Formally, for region i and time t,
+
+Zi,t = Wself Hi,t + X
+
+> j
+
+A(k) 
+
+> ij
+
+Wneigh Hj,t ,
+
+where Wself and Wneigh are learnable linear maps. The first term retains the region’s own dynamics, while the second injects information from neighbors in proportion to the directed influences encoded in A(k). To ensure stability, the neighbor transformation is spectrally normalized. This projection can be viewed as a single message-passing layer: each region maintains its encoded dynamics while receiving context-dependent inputs from other regions. The resulting sequence 
+
+Z ∈ RN ×T ×d forms the input to the forecasting head. 4216 217 218 219 220 221 222 223 224 225 226 227 228 229 230 231 232 233 234 235 236 237 238 239 240 241 242 243 244 245 246 247 248 249 250 251 252 253 254 255 256 257 258 259 260 261 262 263 264 265 266 267 268 269 
+
+Under review as a conference paper at ICLR 2026 
+
+Autoregressive forecasting head. The final stage generates future trajectories autoregressively. Given graph-projected embeddings Z ∈ RN ×Tin ×d, the decoder produces a sequence of length Tout .The decoder attends to the full encoder sequence of past inputs, with attention weights that adapt across forecast steps to provide context for prediction. At each forecast step t, the most recent prediction ˆyt−1 (initialized with the last observed sample) is refined through adjacency mixing: 
+
+˜yt−1 = ˆ yt−1 + α A (k) ˆyt−1.
+
+This step reintroduces the learned connectivity into the forecasting loop, ensuring that predictions remain explicitly shaped by inter-regional influences rather than relying only on the earlier graph-projected encoder states. The refined feedback ˜yt−1 is then combined with the context vector ct
+
+from attention to update the decoder state and produce an increment ∆ˆ yt.Absolute forecasts are recovered recursively as 
+
+ˆyt = ˆ yt−1 + ∆ˆ yt,
+
+a residual formulation that stabilizes training and mitigates drift in multi-step prediction. A linear readout maps regional hidden states back to the original channel space, yielding predictions ˆY ∈
+
+RN ×C×Tout aligned with the ground-truth future window. 
+
+Training and Optimization The model is trained end-to-end to minimize forecasting error over the next Tout samples, with lightweight regularizers that encourage sparsity in the learned graphs and stabilize short-horizon predictions. Optimization is performed with Adam and early stopping based on validation loss. Full loss definitions, initialization, and optimization details are provided in the Appendix. 
+
+## 4 EXPERIMENTS AND RESULTS 
+
+4.1 SYNTHETIC DATA : R ECOVERY OF GROUND -T RUTH CONNECTIVITY 
+
+We first evaluated BACE on synthetic multivariate time series with known ground–truth connectivity to test whether it can recover the known interaction structure. These datasets were designed only to mimic the organization of our neural recordings (8 regions, hundreds of trials segmented into short windows); details of the real dataset follow in the next section. 
+
+Dataset design. We generated two suites of datasets, each containing four regimes D1–D4. In the structured suite , each regime is governed by a sparse adjacency matrix with identical row degree but differing placement of nonzeros, yielding multiple shifted but visually structured con-nectivity patterns. In the stochastic non–Gaussian suite , datasets were generated using linear non–Gaussian dynamical systems, following prior work on learning structure from dynamics (Li et al., 2023; Biswas & Shlizerman, 2022b;a; Song et al., 2009). The governing dynamics take the form Xt = Xt−1 + G(Xt−1, A) + μt, where G(Xt−1, A) = ( −λI + γA) Xt−1 encodes a linear leak term λ > 0 and adjacency–mediated coupling γA. The noise process μt is autoregressive with uniform innovations, making it colored and non–Gaussian. 
+
+Synthetic validation. For synthetic validation we applied the same BACE architecture described in Methods, with no supervision of spatial connectivity. Recovery was assessed with two met-rics: (i) F1@ krow , which tests whether the top-k entries in each row match the ground-truth nonzeros (with k=2 set to row degree), and (ii) Pearson correlation between learned and ground-truth weights. On the structured suite, BACE attained perfect edge recovery (F1@ krow =1 .0 for all D1–D4) with correlations 0.84/0.93/0.89/0.89 (mean 0.89). On the stochastic non-Gaussian suite, recovery remained strong with F1@ krow = 0.94/1.00/1.00/1.00 (mean 0.98) and correlations 0.88/0.94/0.88/0.90 (mean 0.90). Figure 2 illustrates representative cases: strong edges align with ground truth, and weaker off-diagonal influences are captured with appropriate magnitude. These results show that BACE reliably reconstructs directed adjacency structure while being trained solely for forecasting, supporting its use for effective connectivity estimation. 5270 271 272 273 274 275 276 277 278 279 280 281 282 283 284 285 286 287 288 289 290 291 292 293 294 295 296 297 298 299 300 301 302 303 304 305 306 307 308 309 310 311 312 313 314 315 316 317 318 319 320 321 322 323 
+
+Under review as a conference paper at ICLR 2026 (A) Structured Synthetic Datasets  (B) Stochastic Non-Gaussian Datasets 
+
+> Ground truth A Learned A Top k binarized A
+
+Figure 2: Adjacency recovery on synthetic datasets. (A) Stochastic non-Gaussian suite; ( B) struc-tured suite. Columns correspond to the four datasets D1–D4. Rows: ( top ) ground-truth adjacency 
+
+A; ( middle ) BACE’s learned adjacency ˆA (row-normalized at inference); ( bottom ) top-k binariza-tion of ˆA with k equal to the ground-truth row degree (here k=2 ). Numbers above each panel indicate F1@ krow . Quantitatively, BACE achieves mean correlation 0.89 and mean F1@ krow =1 .00 
+
+on the structured suite, and 0.90 / 0.98 on the stochastic suite. 4.2 EVALUATION ON HUMAN LFP DATA 
+
+Dataset and Preprocessing. We analyzed intracranial local field potentials (LFP) from a pediatric participant with dyskinetic cerebral palsy undergoing deep brain stimulation (DBS) as part of clinical treatment. Neural data were recorded during a cued reaching task. The dataset contained 326 valid trials, each segmented into four behavioral segments: Wait (pre-go cue baseline), React (post-go cue, pre-movement), Reach (forward reach toward target), and Return (movement back to the home button). Each segment was represented by a 400 ms window (400 samples at 1 kHz), yielding consistent trial segments across conditions. Recordings were obtained from 80 micro-contact channels across eight subcortical regions: internal globus pallidus anterior (GPi-anterior), internal globus pallidus posterior (GPi-posterior), ventral intermediate nucleus of the thalamus (VIM), and subthalamic nucleus (STN) in both hemispheres (10 channels from each region). Preprocessing included a 50 Hz low-pass filter, common average referencing, and downsampling to 1 kHz. For forecasting, each 400-sample segment was further split into sliding windows of 100-sample input ( Tin ) and 20-sample prediction ( Tout ) with stride 20. To prevent leakage, train/validation/test splits were made at the trial level, and all normalization statistics were computed on the training set. Task schematic and behavioral segments are illustrated in Fig. 3; full details of task design and segmentation criteria are provided in the Appendix. 
+
+Benchmark Methods. To contextualize BACE’s performance, we compare against representative models spanning recurrent, Transformer, and graph-based approaches. As a recurrent baseline we include a standard LSTM (Hochreiter & Schmidhuber, 1997), a canonical gated architecture widely used for sequential modeling. From the Transformer family, we evaluate the Neural Data Trans-former (NDT) (Ye & Pandarinath, 2021), designed for neural sequence modeling with masked re-construction objectives. Among graph-based methods, we consider three widely used variants: (i) 
+
+DCRNN (Li et al., 2017), a diffusion convolutional recurrent network that integrates graph diffusion into GRU updates over a fixed adjacency; (ii) GWNet (Wu et al., 2019), a spatio-temporal graph convolutional model that combines dilated causal convolutions with adaptive graph learning for spatial mixing; and (iii) AMAG (Li et al., 2023), a GNN framework that adaptively learns dynamic channel-level graphs for neural forecasting. 
+
+Experimental Setup. All models, including BACE and the five baselines, were trained and eval-uated on the same intracranial LFP dataset described above. Each trial was segmented into four behavioral segments of 400 samples, further divided into sliding windows of Tin =100 input steps 6324 325 326 327 328 329 330 331 332 333 334 335 336 337 338 339 340 341 342 343 344 345 346 347 348 349 350 351 352 353 354 355 356 357 358 359 360 361 362 363 364 365 366 367 368 369 370 371 372 373 374 375 376 377 
+
+Under review as a conference paper at ICLR 2026 Wait context Reach context React context Return context 
+
+> (A) Task schematic and Segment definition timeline.
+> (B) Effective connectivity matrices across behavioral contexts
+
+Figure 3: ( A) Task schematic and behavioral segmentation timeline. Each trial comprised four stages with a 400 ms analysis window: Wait ( −400 ms to Go cue onset), React (0–400 ms after Go cue onset), Reach (0–400 ms after forward reach onset), and Return (0–400 ms after return onset). ( B)behavioral-specific 8×8 effective connectivity matrices estimated by BACE across eight subcortical regions (GPi1, GPi2, VIM, STN; left and right hemispheres). Matrix entry Aϕ[i, j ] denotes directed influence from source region j (column) to target region i (row). and Tout =20 forecast steps. Models were optimized with the Adam optimizer under their standard hyperparameters (details in Appendix). Training was performed with early stopping on validation loss, and the best checkpoint was used for reporting. Performance was assessed on the held-out test set using three metrics: mean squared error (MSE), coefficient of determination ( R2), and Pearson correlation (Corr). MSE measures absolute deviation, R2 quantifies explained variance, and Corr evaluates trend alignment between predicted and ground-truth signals. 
+
+Model Performance. We evaluate the ability of BACE and other models to forecast future neural activity, with multi-step results summarized in Table 1. Each model was trained and tested on iden-tical splits, and reported values reflect the mean with standard deviation over three runs. Among non-graph methods, LSTM and NDT achieved reasonable accuracy but lagged behind graph-based models, explaining less than 75% of the variance on average, consistent with their limited ability to capture structured inter-regional dependencies. Graph-based methods performed substantially bet-ter. DCRNN reached R2 of 0.79 confirming the benefit of incorporating graph priors, but reflecting the limitation that its adjacency is pre-computed and fixed during training. GWNet improved further with adaptive graph learning, and AMAG provided a modest additional gain, validating the utility of dynamic spatial structure. BACE consistently achieved the best performance across all metrics, with an R2 of 0.884 and correlation of 0.94, reflecting both lower forecast error and tighter align-ment with the true trajectories. By combining strong predictive accuracy with behavioral-specific graph estimation, BACE offers not only numerical improvement but also interpretable connectivity estimates among brain regions. 
+
+Computation complexity. We compare the number of trainable parameters #P(M) and peak GPU memory M (GB ) in Table 2. Parameter counts are determined by the model architecture and thus provide a stable point of comparison, whereas memory usage and runtime are more sensitive to im-plementation and hardware. BACE has the smallest footprint overall (0.13M parameters, 0.20 GB memory) while training in ∼9.8s per epoch. LSTM and NDT require substantially more parameters 7378 379 380 381 382 383 384 385 386 387 388 389 390 391 392 393 394 395 396 397 398 399 400 401 402 403 404 405 406 407 408 409 410 411 412 413 414 415 416 417 418 419 420 421 422 423 424 425 426 427 428 429 430 431 
+
+Under review as a conference paper at ICLR 2026 Table 1: Multistep forecasting results on the LFP dataset with benchmark methods and BACE. ↑
+
+indicates higher is better, ↓ indicates lower is better.                                                             
+
+> Model R2↑Corr ↑MSE ↓
+> LSTM 0.7271 ±2e−30.8353 ±4e−30.2690 ±3e−4
+> NDT 0.7336 ±3e−30.8610 ±3e−30.2370 ±3e−4
+> DCRNN 0.7895 ±2e−30.8892 ±4e−30.1822 ±6e−4
+> GWNet 0.8632 ±3e−30.9296 ±4e−30.1184 ±7e−4
+> AMAG 0.8676 ±4e−30.9315 ±4e−40.1146 ±4e−4
+> BACE 0.8836 ±3e−30.9400 ±3e−40.0990 ±2e−4
+
+Table 2: Computation complexity for multi-step forecasting. BACE values are in bold; values better than BACE are also highlighted.                   
+
+> LSTM NDT GWNet DCRNN AMAG BACE #P (M) 0.45 0.63 0.48 0.30 0.26 0.13
+> M(GB) 0.15 0.84 5.54 5.22 3.30 0.20
+
+(0.45M and 0.63M, respectively). GWNet, DCRNN, and AMAG all introduce graph operators that increase both parameter counts and memory consumption, with GWNet the heaviest in terms of parameters. In particular, DCRNN and AMAG have parameter sizes close to BACE but still incur memory cost due to the overhead of diffusion and adaptive graph operators. These results indi-cate that BACE’s gains arise from its architectural design rather than increased capacity, combining efficiency with interpretability. Compute specifications are provided in Appendix B.3. 4.3 ANALYSIS OF LEARNED CONNECTIVITY 
+
+Reproducibility. We first asked whether BACE’s learned connectivity graphs are stable across resampled subsets of trials. Split–half analysis showed high reproducibility, with correlations of absolute adjacency magnitudes |A(k)| exceeding r> 0.8 for all behavioral segments, corresponding to Spearman–Brown corrected (Spearman, 1910; Brown, 1910) full–data repeatability above 0.9.These results indicate that BACE yields reliable, segment–specific connectivity estimates suitable for scientific interpretation (see Appendix C for full details). 
+
+Edge reliability and reconfiguration. We next tested whether directed connectivity patterns re-organize with behavioral context. For each adjacency A(k), we performed nonparametric bootstrap resampling to estimate confidence intervals and assessed across-context differences with FDR con-trol (Bradley & Tibshirani, 1993). Several edges exhibited significant changes between contexts, as illustrated in Fig. 4A. These findings suggest that subcortical networks are not strictly static but can flexibly adjust their directed interactions in relation to task demands (Cole et al., 2013). Full bootstrap procedures and edgewise statistics are reported in Appendix C. 
+
+Spatial organization. We next examined whether the learned graphs reflect known spatial regu-larities of brain connectivity. First, consistent with the principle that networks favor short-range, intra-hemispheric coupling (Bullmore & Sporns, 2012; Sporns & Betzel, 2016), BACE estimated stronger ipsilateral than contralateral connections across all contexts. On average, the mean mag-nitude of ipsilateral effective connectivity was 9–16% greater than that of contralateral connections (Fig. 4C), with statistical testing reported in Appendix C. Second, we assessed hemispheric asym-metry expected from contralateral motor organization: because subject performed the task with the left hand, greater outgoing influence from the right hemisphere was anticipated during movement (Shibasaki & Hallett, 2006; Vingerhoets, 2014). In result, hemisphere-of-origin analysis showed right side-dominant connectivity in React, Reach, and Return, whereas Wait remained balanced (Fig. 4B). Together, these spatial patterns highlight that BACE not only achieves strong predictive accuracy but also produces interpretable connectivity estimates that align with some established organizational principles of brain networks. 8432 433 434 435 436 437 438 439 440 441 442 443 444 445 446 447 448 449 450 451 452 453 454 455 456 457 458 459 460 461 462 463 464 465 466 467 468 469 470 471 472 473 474 475 476 477 478 479 480 481 482 483 484 485 
+
+Under review as a conference paper at ICLR 2026 (A) Edges significantly different across phases 
+
+> (C) Average connectivity strength: ipsilateral vs. contralateral
+> (B) Average source strength from left vs. right hemisphere
+
+Figure 4: Group-level analyses of behaviorally-specific connectivity. (A) Edges showing sig-nificant differences across behavioral conditions, based on bootstrap CIs and Benjamini–Hochberg false discovery rate (FDR) correction. ( B) Average outgoing connectivity strength from left vs. right hemisphere sources. ( C) Average ipsilateral vs. contralateral connectivity strength. 
+
+## 5 DISCUSSION 
+
+This work introduced BACE, a framework for estimating behavior-adapted connectivity from multi-region neural recordings. BACE couples forecasting with graph estimation, learning compact, di-rected inter-regional graphs whose parameters encode predictive interactions. By operating at the region level, the model consolidates many micro-contacts into interpretable embeddings and then estimates connectivity among regions. The resulting adjacency matrices are behavior-specific, and interpretable, supporting network analyses that can be inspected by domain experts. In synthetic experiments, BACE recovered ground-truth connectivity through forecasting, indicat-ing that dynamics-driven objectives can surface interaction structure in multivariate time series. Applied to human subcortical LFPs during a cued reaching task, the model produced one connec-tivity matrix per behavioral segment. Comparisons revealed segment-dependent reconfiguration of inter-regional influence, suggesting that deep-brain networks adapt their directed connectivity in a behavior-selective manner. The organization also reflected established principles: stronger ipsilat-eral than contralateral connections, consistent with wiring-cost and modularity constraints (Bull-more & Sporns, 2012; Sporns & Betzel, 2016), and right-hemisphere dominance during left-hand movement, in line with contralateral motor organization (Shibasaki & Hallett, 2006; Vingerhoets, 2014). Methodologically, several design choices contribute to interpretability. Independent regional encoders prevent cross-region leakage prior to graph mixing, adjacency parameterization separates relative edge patterns from broadcast strength, and lightweight temporal regularizers stabilize short-horizon predictions. While this study provides a proof of concept, it remains limited to a single participant and should be viewed as a case study rather than a population-level analysis. The formulation also assumes labeled behavioral segments, which constrains applicability to datasets without clear trial struc-ture, and the estimated graphs capture effective, predictive influence rather than causal interactions. Nonetheless, these choices allow us to focus on a well-controlled setting and demonstrate feasibility. Future directions, generalization across participants and tasks, integration of anatomical priors (e.g., diffusion tractography) or multimodal signals (EMG, video), and extensions toward continuously time-varying or weakly supervised contexts would broaden applicability. Incorporating causal dis-covery objectives could further enhance interpretability, and the framework is not specific to LFP: the same region-level design could be adapted to EEG, ECoG, or other neural modalities. Clini-cally, if replicated across patients and disorders, behavior-adapted connectivity estimates may offer a foundation for hypothesis generation and, in the longer term, inform exploratory simulation studies of deep-brain stimulation strategies, though any translational use will require substantial validation. 9486 487 488 489 490 491 492 493 494 495 496 497 498 499 500 501 502 503 504 505 506 507 508 509 510 511 512 513 514 515 516 517 518 519 520 521 522 523 524 525 526 527 528 529 530 531 532 533 534 535 536 537 538 539 
+
+Under review as a conference paper at ICLR 2026 
+
+## ETHICS STATEMENT 
+
+Human neural data were collected under IRB-approved protocols at participating medical centers. Informed consent was obtained from participants or legal guardians for minors. All data were de-identified before analysis, stored on secure access-controlled servers, and used solely for research in compliance with HIPAA and institutional privacy policies. The study did not involve clinical decision-making, non-standard interventions, or recruitment beyond patients already evaluated for DBS, and no re-identification was attempted. Raw recordings cannot be publicly shared due to ethical and regulatory restrictions, but de-identified datasets may be provided upon reasonable re-quest under IRB-approved data use agreements. The authors confirm adherence to the ICLR Code of Ethics and declare no conflicts of interest or external sponsorship that could have influenced the research. 
+
+## REPRODUCIBILITY STATEMENT 
+
+Code for model implementation, training, and evaluation is available at https://github.com/ iclr26anon/BACE.git .
+
+## REFERENCES 
+
+Anonymized. Anonymized. Anonymized , Anonymized. Danielle S. Bassett and Olaf Sporns. Network neuroscience. Nature Neuroscience , 20(3):353–364, 2017. doi: 10.1038/nn.4502. Ali Behrouz and Farnoosh Hashemi. Brain-mamba: Encoding brain activity via selective state space models. In Conference on Health, Inference, and Learning , pp. 233–250. PMLR, 2024. Alaa Bessadok, Mohamed Ali Mahjoub, and Islem Rekik. Graph neural networks in network neu-roscience. IEEE Transactions on Pattern Analysis and Machine Intelligence , 45(5):5833–5848, 2022. Rahul Biswas and Eli Shlizerman. Statistical perspective on functional and causal neural connec-tomics: A comparative study. Frontiers in Systems Neuroscience , 16:817962, 2022a. Rahul Biswas and Eli Shlizerman. Statistical perspective on functional and causal neural connec-tomics: The time-aware pc algorithm. PLOS Computational Biology , 18(11):e1010653, 2022b. Efron Bradley and Robert J Tibshirani. An introduction to the bootstrap. Monographs on statistics and applied probability , 57:158, 1993. Michael M Bronstein, Joan Bruna, Taco Cohen, and Petar Veliˇ ckovi´ c. Geometric deep learning: Grids, groups, graphs, geodesics, and gauges. arXiv preprint arXiv:2104.13478 , 2021. William Brown. Some experimental results in the correlation of mental abilities 1. British Journal of Psychology, 1904-1920 , 3(3):296–322, 1910. Ed Bullmore and Olaf Sporns. The economy of brain network organization. Nature reviews neuro-science , 13(5):336–349, 2012. Gy¨ orgy Buzs´ aki, Costas A Anastassiou, and Christof Koch. The origin of extracellular fields and currents—eeg, ecog, lfp and spikes. Nature reviews neuroscience , 13(6):407–420, 2012. Kyunghyun Cho, Bart Van Merri¨ enboer, Caglar Gulcehre, Dzmitry Bahdanau, Fethi Bougares, Hol-ger Schwenk, and Yoshua Bengio. Learning phrase representations using rnn encoder-decoder for statistical machine translation. arXiv preprint arXiv:1406.1078 , 2014. Michael W. Cole, Jeremy R. Reynolds, Jonathan D. Power, Grega Repovs, Alan Anticevic, and Todd S. Braver. Multi-task connectivity reveals flexible hubs for adaptive task control. Nature Neuroscience , 16(9):1348–1355, 2013. doi: 10.1038/nn.3470. 10 540 541 542 543 544 545 546 547 548 549 550 551 552 553 554 555 556 557 558 559 560 561 562 563 564 565 566 567 568 569 570 571 572 573 574 575 576 577 578 579 580 581 582 583 584 585 586 587 588 589 590 591 592 593 
+
+Under review as a conference paper at ICLR 2026 Rainer Dahlhaus. Graphical interaction models for multivariate time series1. Metrika , 51(2):157– 172, 2000. Gaute T Einevoll, Christoph Kayser, Nikos K Logothetis, and Stefano Panzeri. Modelling and analysis of local field potentials for studying the function of cortical circuits. Nature Reviews Neuroscience , 14(11):770–785, 2013. Alex Fornito, Andrew Zalesky, and Edward T. Bullmore. Fundamentals of Brain Network Analysis .Academic Press, San Diego, CA, 2016. ISBN 978-0-12-407908-3. Karl J. Friston. Functional and effective connectivity: A review. Brain Connectivity , 1(1):13–36, 2011. doi: 10.1089/brain.2011.0008. Yuanjun Gao, Evan W Archer, Liam Paninski, and John P Cunningham. Linear dynamical neural population models through nonlinear embeddings. Advances in neural information processing systems , 29, 2016. Sepp Hochreiter and J¨ urgen Schmidhuber. Long short-term memory. Neural computation , 9(8): 1735–1780, 1997. Yicong Huang and Zhuliang Yu. Representation learning for dynamic functional connectivities via variational dynamic graph latent variable models. Entropy , 24(2):152, 2022. R Matthew Hutchison, Thilo Womelsdorf, Elena A Allen, Peter A Bandettini, Vince D Calhoun, Maurizio Corbetta, Stefania Della Penna, Jeff H Duyn, Gary H Glover, Javier Gonzalez-Castillo, et al. Dynamic functional connectivity: promise, issues, and interpretations. Neuroimage , 80: 360–378, 2013. Wei Jin, Yao Ma, Xiaorui Liu, Xianfeng Tang, Suhang Wang, and Jiliang Tang. Graph structure learning for robust graph neural networks. In Proceedings of the 26th ACM SIGKDD international conference on knowledge discovery & data mining , pp. 66–74, 2020. Byung-Hoon Kim, Jong Chul Ye, and Jae-Jin Kim. Learning dynamic graph representation of brain connectome with spatio-temporal attention. Advances in Neural Information Processing Systems ,34:4314–4327, 2021a. Timothy D Kim, Thomas Z Luo, Jonathan W Pillow, and Carlos D Brody. Inferring latent dy-namics underlying neural population activity via neural differential equations. In International Conference on Machine Learning , pp. 5551–5561. PMLR, 2021b. Trung Le and Eli Shlizerman. Stndt: Modeling neural population activity with spatiotemporal trans-formers. Advances in Neural Information Processing Systems , 35:17926–17939, 2022. Jingyuan Li, Leo Scholl, Trung Le, Pavithra Rajeswaran, Amy Orsborn, and Eli Shlizerman. Amag: Additive, multiplicative and adaptive graph neural network for forecasting neuron activity. In 
+
+Advances in Neural Information Processing Systems , volume 36, pp. 8988–9014, 2023. Xiaoxiao Li, Yuan Zhou, Nicha Dvornek, Muhan Zhang, Siyuan Gao, Juntang Zhuang, Dustin Scheinost, Lawrence H Staib, Pamela Ventola, and James S Duncan. Braingnn: Interpretable brain graph neural network for fmri analysis. Medical Image Analysis , 74:102233, 2021. doi: 10.1016/j.media.2021.102233. Yaguang Li, Rose Yu, Cyrus Shahabi, and Yan Liu. Diffusion convolutional recurrent neural net-work: Data-driven traffic forecasting. arXiv preprint arXiv:1707.01926 , 2017. Hamed Mohammadi and Waldemar Karwowski. Brain connectivity research: Advances, applica-tions, and emerging challenges. Neuroscience & Biobehavioral Reviews , 2025. In press. Chethan Pandarinath, Daniel J O’Shea, Jasmine Collins, Rafal Jozefowicz, Sergey D Stavisky, Jonathan C Kao, Eric M Trautmann, Matthew T Kaufman, Stephen I Ryu, Leigh R Hochberg, et al. Inferring single-trial neural population dynamics using sequential auto-encoders. Nature methods , 15(10):805–815, 2018. 11 594 595 596 597 598 599 600 601 602 603 604 605 606 607 608 609 610 611 612 613 614 615 616 617 618 619 620 621 622 623 624 625 626 627 628 629 630 631 632 633 634 635 636 637 638 639 640 641 642 643 644 645 646 647 
+
+Under review as a conference paper at ICLR 2026 Maria Giulia Preti, Thomas AW Bolton, and Dimitri Van De Ville. The dynamic functional connec-tome: State-of-the-art and perspectives. Neuroimage , 160:41–54, 2017. Anwar Said, Roza Bayrak, Tyler Derr, Mudassir Shabbir, Daniel Moyer, Catie Chang, and Xeno-fon Koutsoukos. Neurograph: Benchmarks for graph machine learning in brain connectomics. 
+
+Advances in Neural Information Processing Systems , 36:6509–6531, 2023. Omid G Sani, Hamidreza Abbaspourazad, Yan T Wong, Bijan Pesaran, and Maryam M Shanechi. Modeling behaviorally relevant neural dynamics enabled by preferential subspace identification. 
+
+Nature neuroscience , 24(1):140–149, 2021. Hiroshi Shibasaki and Mark Hallett. What is the bereitschaftspotential? Clinical neurophysiology ,117(11):2341–2356, 2006. Le Song, Mladen Kolar, and Eric P. Xing. Time-varying dynamic Bayesian networks. In Advances in Neural Information Processing Systems , volume 22, 2009. Charles Spearman. Correlation calculated from faulty data. British journal of psychology , 3(3):271, 1910. Olaf Sporns and Richard F Betzel. Modular brain networks. Annual review of psychology , 67(1): 613–640, 2016. Pragya Srivastava, Panagiotis Fotiadis, Linden Parkes, and Dani S. Bassett. Dynamic reconfig-uration of functional brain networks: From description to prediction and control. Progress in Neurobiology , 208:102183, 2022. doi: 10.1016/j.pneurobio.2021.102183. Siyi Tang, Jared A Dunnmon, Qu Liangqiong, Khaled K Saab, Tina Baykaner, Christopher Lee-Messer, and Daniel L Rubin. Modeling multivariate biosignals with graph neural networks and structured state space models. In Conference on health, inference, and learning , pp. 50–71. PMLR, 2023. Guy Vingerhoets. Contribution of the posterior parietal cortex in reaching, grasping, and using objects and tools. Frontiers in psychology , 5:151, 2014. Zonghan Wu, Shirui Pan, Guodong Long, Jing Jiang, and Chengqi Zhang. Graph wavenet for deep spatial-temporal graph modeling. arXiv preprint arXiv:1906.00121 , 2019. Joel Ye and Chethan Pandarinath. Representation learning for neural population activity with neural data transformers. arXiv preprint arXiv:2108.01210 , 2021. Zhitao Ying, Dylan Bourgeois, Jiaxuan You, Marinka Zitnik, and Jure Leskovec. Gnnexplainer: Generating explanations for graph neural networks. Advances in neural information processing systems , 32, 2019. Byron M Yu, John P Cunningham, Gopal Santhanam, Stephen Ryu, Krishna V Shenoy, and Ma-neesh Sahani. Gaussian-process factor analysis for low-dimensional single-trial analysis of neural population activity. Advances in neural information processing systems , 21, 2008. Kai Zheng, Song Yu, and Bo Chen. Ci-gnn: A granger causality-inspired graph neural network for interpretable brain network-based psychiatric diagnosis. Neural Networks , 172:106147, 2024. ISSN 0893-6080. doi: 10.1016/j.neunet.2024.106147. Ding Zhou and Xue-Xin Wei. Learning identifiable and interpretable latent models of high-dimensional neural activity using pi-vae. Advances in neural information processing systems ,33:7234–7247, 2020. Hongmin Zhu, Fuli Feng, Xiangnan He, Xiang Wang, Yan Li, Kai Zheng, and Yongdong Zhang. Bilinear graph neural network with neighbor interactions. arXiv preprint arXiv:2002.03575 , 2020. 12 648 649 650 651 652 653 654 655 656 657 658 659 660 661 662 663 664 665 666 667 668 669 670 671 672 673 674 675 676 677 678 679 680 681 682 683 684 685 686 687 688 689 690 691 692 693 694 695 696 697 698 699 700 701 
+
+Under review as a conference paper at ICLR 2026 
+
+## A METHOD DETAILS 
+
+In the main text we denoted the context-specific adjacency by A(k), a directed N × N matrix. Concretely, we parameterize it as 
+
+A(k) = Diag( g(k)) ¯S(k),
+
+where ¯S(k) is a signed pattern matrix with zero diagonal and rows normalized to unit ℓ1 norm (P 
+
+> j
+
+| ¯S(k) 
+
+> ij
+
+| = 1 ), and g(k) ∈ RN 
+
+> ≥0
+
+is a vector of non-negative row gains. Row normalization of ¯S(k)
+
+ensures stability and makes each row interpretable as a distribution of relative influences onto region 
+
+i, while the row gains g(k) restore the ability of different regions to vary in their overall incoming strength. Sparsity is encouraged through an ℓ1 penalty on the off-diagonal entries of ¯S(k).A.1 FORECASTING HEAD : I MPLEMENTATION DETAILS 
+
+Attention context. At each forecast step t, the decoder forms a query from its hidden state ht−1
+
+and computes attention weights over the encoder sequence Z of length Tin :
+
+ct =
+
+> Tin
+
+X 
+
+> τ=1
+
+αt,τ Zτ , αt,τ = exp( q⊤ 
+
+> t
+
+kτ )
+
+P  
+
+> τ′
+
+exp( q⊤ 
+
+> t
+
+kτ ′ ) .
+
+Adjacency feedback. The previous prediction is refined by adjacency mixing: 
+
+˜yt−1,i = ˆ yt−1,i + α X
+
+> j
+
+A(k) 
+
+> ij
+
+ˆyt−1,j ,
+
+where α is a small damping coefficient. This step enforces that autoregressive forecasts remain connectivity-aware. 
+
+GRU update. The decoder state is updated as 
+
+ht = GRUCell  [ct, ˜yt−1], ht−1
+
+,
+
+where [·, ·] denotes concatenation. 
+
+Residual decoding. The output increment is computed as 
+
+∆ˆ yt = Woht,
+
+and absolute forecasts are recovered recursively: 
+
+ˆyt = ˆ yt−1 + ∆ˆ yt, ˆy0 = xlast .
+
+Final readout. Regional predictions are mapped back to the channel level by a linear projection, yielding 
+
+ˆY ∈ RN ×C×Tout .
+
+A.2 TRAINING OBJECTIVE AND OPTIMIZATION 
+
+Forecasting objective. Given past window X ∈ RN ×C×Tin and future target Y ∈ RN ×C×Tout ,the decoder outputs increments ∆ ˆY which are accumulated to produce forecasts 
+
+ˆYt = Xlast +
+
+> t
+
+X 
+
+> τ=1
+
+∆ ˆYτ ,
+
+where Xlast is the final observed input sample. This residual formulation mitigates drift in multi-step prediction. 13 702 703 704 705 706 707 708 709 710 711 712 713 714 715 716 717 718 719 720 721 722 723 724 725 726 727 728 729 730 731 732 733 734 735 736 737 738 739 740 741 742 743 744 745 746 747 748 749 750 751 752 753 754 755 
+
+Under review as a conference paper at ICLR 2026 
+
+Loss function. The full training loss is 
+
+L = 1
+
+Tout 
+
+> Tout
+
+X
+
+> t=1
+
+wt ˆYt − Yt
+
+> 22
+
+| {z }
+
+> forecasting MSE
+
++λS ∥¯S(k)∥1,off 
+
++ λcont ∥ ˆY1 − Xlast ∥22 + λvel ∥∆ ˆY1 − ∆Y1∥22 + λcurv ∥∆2 ˆY − ∆2Y∥22.
+
+(1) • The first term is the mean squared error across the horizon, with log-spaced weights wt
+
+emphasizing later steps. • ∥¯S(k)∥1,off applies an ℓ1 penalty on the off-diagonal entries of the normalized pattern ma-trix, promoting sparse graphs while leaving row gains g(k) unconstrained. • Continuity, velocity, and curvature penalties regularize short-term rollouts by aligning the first prediction with the last input, matching the initial slope, and constraining higher-order differences. 
+
+Optimization. We use Adam (learning rate 10 −3, weight decay 10 −4), gradient clipping at 1.0,and early stopping with patience 10 . Graph parameters are initialized from train-only regionwise correlations (diagonal zeroed), and row gains initialized near one to preserve scale. 
+
+## B ADDITIONAL DETAILS ON EXPERIMENTS 
+
+B.1 APPENDIX : D ATASET AND PREPROCESSING 
+
+Participant and Experimental Protocol. Data were recorded from an 11-year-old male with dyskinetic cerebral palsy approximately five days after temporary deep brain stimulation (DBS) lead implantation surgery. The diagnosis of dystonia was confirmed by a pediatric movement disorder specialist using standard criteria (Anonymized, Anonymized). The study was approved by the local Institutional Review Boards, with informed consent obtained from the patient’s legal guardians. During the experiment, the subject performed a cued reaching task. At the beginning of each trial, the subject held a “home” button. After a random interval (500–1500 ms), a green “go” cue was presented, prompting the subject to release the home button and reach forward to press a target button. After pressing the target, the subject was instructed to release it and return the hand to the home button to prepare for the next trial. Of 350 attempted trials, 326 valid trials were retained for analysis after exclusion based on task compliance (Fig. 3). 
+
+Recording Electrodes and Acquisition. Recordings were obtained from up to eight temporary stereoelectroencephalography (sEEG) depth leads (AdTech MM16C), implanted into candidate DBS targets using standard stereotactic procedures (Anonymized, Anonymized). Each lead included six low-impedance macro-contacts (not used in this study) and ten high-impedance micro-contacts (50 μm, 70–90 k Ω). Signals were digitized at 24,414 Hz with a PZ5M 256-channel digitizer and RZ2 processor, and stored on an RS4 system (Tucker-Davis Technologies) (Anonymized, Anonymized). Only local field potentials (LFP) from the micro-contacts were analyzed. 
+
+Preprocessing. All signals were low-pass filtered at 50 Hz, re-referenced to the common av-erage, and downsampled to 1 kHz to yield LFP time series suitable for analysis (Anonymized, Anonymized). 
+
+Trial Segmentation. Each trial was segmented into four behavioral segments of equal length (400 ms): • Wait: 400 ms preceding the go cue onset. • React: 0–400 ms following cue onset, prior to movement initiation. • Reach: from reach onset to 400 ms after. • Return: from return onset to 400 ms after. This segmentation ensured consistent windows across trials aligned to behavioral events. 14 756 757 758 759 760 761 762 763 764 765 766 767 768 769 770 771 772 773 774 775 776 777 778 779 780 781 782 783 784 785 786 787 788 789 790 791 792 793 794 795 796 797 798 799 800 801 802 803 804 805 806 807 808 809 
+
+Under review as a conference paper at ICLR 2026 
+
+Sliding Windowing and Data Splitting. Within each behavioral segment, data were divided into overlapping windows of length Tin = 100 samples for input and Tout = 20 samples for forecasting, with stride 20. The dataset was split into training, validation, and test sets at the trial level (not at the window level) to prevent data leakage. Normalization parameters (mean and standard deviation) were computed on the training set and applied consistently across validation and test sets. B.2 ADDITIONAL MODEL DETAILS 
+
+Details of Comparison Models. LSTM. We build a two-layer LSTM forecaster with hidden dimension 128 . The model takes past windows of length 100 across all 80 channels and predicts the next 20 steps jointly for every channel. Training is performed with mean squared error loss using the Adam optimizer, with learning rate 
+
+10 −3, weight decay 10 −4, and gradient clipping at 1.0. Models are trained for up to 100 epochs with early stopping (patience of 10 , minimum delta 10 −4), and the best checkpoint is selected based on validation loss. Evaluation reports mean squared error on the test set. 
+
+NDT. We implement a Neural Data Transformer (NDT) baseline under a masked-forecasting setup. While NDT is typically used to reconstruct randomly masked neural activity, we adapt it for forecasting by designating the final 20 steps of each window as the masked segment. The model is a three-layer Transformer with attention dimension 128 , applied over windows of length 100+20 
+
+across all channels. During training, the past 100 bins are provided while the last 20 bins are zero-masked, and the model is optimized to reconstruct only this masked future segment. Training uses the Adam optimizer with learning rate 10 −4, weight decay 10 −5, and early stopping based on vali-dation loss. 
+
+Graph WaveNet. We implement Graph WaveNet (GWNet) to benchmark forecasting perfor-mance on the Button Task LFP dataset. The architecture consists of three layers, each composed of two spatio-temporal blocks (six blocks in total). Each block integrates (i) a gated dilated temporal convolution, (ii) a graph convolutional module for spatial mixing, and (iii) residual and skip connec-tions. All temporal convolutions use kernel size 2, with 64 channels in the residual and dilated paths and 128 channels in the skip path. The skip outputs are aggregated and passed through a two-stage output head consisting of a 1 × 1 convolution with 64 channels followed by a read-out convolution mapping to the 20 -step forecasting horizon. Training is performed using the Adam optimizer with an initial learning rate of 5 × 10 −4, decayed by 0.95 every 50 epochs, and no weight decay. Static graph supports are constructed from training data via correlation-based k-nearest neighbors, and an adaptive adjacency matrix is learned jointly during training. 
+
+DCRNN. We implement the Diffusion Convolutional Recurrent Neural Network (DCRNN) using a sequence-to-sequence architecture with diffusion convolutional GRU (DCGRU) cells. Both en-coder and decoder consist of two stacked DCGRU layers with hidden dimension 64 . Each DCGRU layer performs diffusion convolution with K=2 steps. The model is trained with the Adam opti-mizer (learning rate 5 × 10 −4, decayed by 0.95 every 50 epochs), no weight decay, and scheduled sampling (inverse-sigmoid with τ =3000 ). 
+
+AMAG. For multi-step forecasting, we implement AMAG with a single-layer Transformer en-coder and decoder, each with hidden size 64 and two attention heads. Both encoder and decoder operate on 80 -channel inputs with positional encodings. The sample-dependent adaptor MLP takes concatenated hidden features from node pairs and applies four sequential fully connected layers of sizes 64 × t, 64 × 2, 64 × 4, and 64 , followed by a scalar output with sigmoid activation. Training uses the Adam optimizer with an initial learning rate of 5×10 −4, decaying by 0.95 every 50 epochs, with early stopping based on validation loss. B.3 COMPUTE RESOURCES 
+
+All models were trained on a single workstation equipped with an AMD Ryzen Threadripper PRO 7955WX CPU (16 cores), 128 GiB RAM, and one NVIDIA RTX 4500 Ada GPU (24 GiB VRAM). Training was performed using PyTorch 2.2 with CUDA 12.2. 15 810 811 812 813 814 815 816 817 818 819 820 821 822 823 824 825 826 827 828 829 830 831 832 833 834 835 836 837 838 839 840 841 842 843 844 845 846 847 848 849 850 851 852 853 854 855 856 857 858 859 860 861 862 863 
+
+Under review as a conference paper at ICLR 2026 Table 2 in the main text summarizes the parameter counts and peak memory usage for each model. Average epoch training times are reported alongside in the results section. 
+
+## C STATISTICAL INFERENCE OF CONNECTIVITY 
+
+While forecasting accuracy serves as the primary training signal, we further evaluate the stability and significance of the learned graphs. 
+
+Split–half reproducibility. For each behavioral context k, we performed K=50 random half–splits of trials. Graph parameters (S(k), g(k)) were re–estimated on each half, and Pearson correlations of |A(k)| were computed. Spearman–Brown correction extrapolated full–data repeata-bility. Mean split–half correlations (95% confidence intervals) were: Wait r=0 .90 [0.83, 0.94], React r=0 .88 [0.82, 0.93], Reach r=0 .91 [0.86, 0.94], Return r=0 .83 [0.75, 0.89]. The corre-sponding Spearman–Brown coefficients were 0.95, 0.94, 0.95, and 0.91, respectively. These values indicate that context-specific graphs are highly reproducible across independent subsets. 
+
+Bootstrap resampling. For precision of individual edges, we performed B=1000 nonparamet-ric bootstrap resamples per context, refitting only graph parameters while holding encoder/decoder weights fixed. For each edge (i, j ), we computed percentile 95% confidence intervals of |A(k) 
+
+> ij
+
+|. An edge was considered reliable if its CI excluded zero and its sign was consistent in at least 80% of resamples. 
+
+Edgewise precision. Absolute CI widths were narrow and consistent across contexts (medians 
+
+≈ 0.05 –0.07 ; few edges > 0.10 ). To provide a scale–free summary, we report the relative half–width 
+
+rHW = hi − lo 2 |median | ,
+
+evaluated on edges whose median magnitude exceeded a threshold τ (66th percentile). Median rHW values were ≈ 0.12 –0.20 , meaning nontrivial edges had 95% intervals of about ±12–20% of their estimate. 
+
+Across–context differences. To detect reconfiguration, we computed bootstrap distributions of edgewise differences 
+
+∆ij = |A(k1) 
+
+> ij
+
+| − | A(k2) 
+
+> ij
+
+|,
+
+applied two–sided sign tests, and corrected using Benjamini–Hochberg FDR ( α=0 .05 ). Fig. 4A displays only those edges whose CIs excluded zero and survived correction. Complete edgewise statistics (median ∆, CI, p, q) are reported in the supplement. 
+
+Ipsilateral vs. contralateral. We quantified lateral organization by comparing average magni-tudes of ipsilateral and contralateral connections. A one–sided paired bootstrap test ( B=1000 ) on the log–ratio confirmed stronger ipsilateral connectivity in three of four contexts (Wait p< 0.05 ,React p< 0.001 , Reach p< 0.01 ). 
+
+Hemisphere dominance. For lateralized motor organization, we averaged outgoing effective con-nectivity |A(k)eff | from each hemisphere. Right–hemisphere dominance emerged during movement contexts (React, Reach, Return) but not Wait. A complementary bootstrap test on the log–ratio is reported in the supplement. 
+
+The Use of Large Language Models (LLMs). LLMs were used as a general-purpose tool for editing, code debugging, and literature organization. Their role was limited to improving clarity of writing, drafting boilerplate sections, and suggesting implementation fixes. All research questions, methods, analyses, and conclusions were developed by the authors, and the LLM is not considered a scientific contributor. 16
