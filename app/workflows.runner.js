@@ -34,7 +34,7 @@ window.DPRWorkflowRunner = (function () {
         rrf_top_n: '200',
         run_rerank: 'true',
         reranker_profile: 'public-zwwen-rerank',
-        run_llm_refine: 'false',
+        run_llm_refine: 'true',
       },
     },
   ];
