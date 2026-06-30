@@ -6,59 +6,55 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-06-29
-- 运行时间：2026-06-29 21:36:26 UTC
+- 最新运行日期：2026-06-30
+- 运行时间：2026-06-30 20:53:01 UTC
 - 运行状态：成功
-- 本次总论文数：13
+- 本次总论文数：11
 - 精读区：3
-- 速读区：10
+- 速读区：8
 
 ### 今日简报（AI）
-今日共读13篇，精读聚焦脑电图轻度认知障碍检测与“内外部自我”心理健康脑网络研究。最值得关注：可解释概念引导的多项式表格KAN网络在MCI检测中的创新应用，以及自我概念与脑网络的心理健康关联。下一步可重点探索可解释AI在医疗诊断中的落地路径，并思考自我认知训练对脑健康的干预潜力。
-- 详情：[/202606/29/README](/202606/29/README)
+今日精选11篇脑网络与脑影像分析论文，精读两篇聚焦无源跨站诊断和自监督学习。  
+最值得关注的方向：BrainRiem的黎曼原型学习实现无源跨站脑网络诊断，以及Progressive Self-Supervised Learning通过个体化社区分配增强脑网络分析。  
+建议普通读者优先精读这两篇9分论文，理解黎曼几何与自监督机制在处理脑网络数据异构性及个体差异中的核心作用。
+- 详情：[/202606/30/README](/202606/30/README)
 
 ### 精读区论文标签
-1. [Interpretable Concept-Guided Polynomial Tabular Kolmogorov-Arnold Network for EEG-Based Mild Cognitive Impairment Detection](/202606/29/2606.25434v1-interpretable-concept-guided-polynomial-tabular-kolmogorov-arnold-network-for-eeg-based-mild-cognitive-impairment-detection)  
+1. [BrainRiem: Riemannian Prototype Learning for Source-Free Cross-Site Brain Network Diagnosis](/202606/30/2606.29200v1-brainriem-riemannian-prototype-learning-for-source-free-cross-site-brain-network-diagnosis)  
    标签：评分：9.0/10、query:fbn
-   evidence：基于EEG的轻度认知障碍检测，使用可解释深度学习KAN，直接属于神经影像AI医疗
-2. [Linking the "inner" and "outer" self to mental health and brain networks](/202606/29/2606.27956v1-linking-the-inner-and-outer-self-to-mental-health-and-brain-networks)  
+   evidence：无源域适应用于fMRI脑网络诊断
+2. [Progressive Self-Supervised Learning with Individualized Community Assignment for Brain Network Analysis](/202606/30/2606.29695v1-progressive-self-supervised-learning-with-individualized-community-assignment-for-brain-network-analysis)  
    标签：评分：9.0/10、query:fbn
-   evidence：直接使用HCP数据研究脑功能连接和网络，将心理学与脑网络联系
-3. [A Benchmark of (MRI-) Foundation Models to Predict IDH Mutational Status in Glioma](/202606/29/2606.23172v1-a-benchmark-of-mri--foundation-models-to-predict-idh-mutational-status-in-glioma)  
+   evidence：自监督学习用于脑网络分析和社区分配，与图神经网络和深度学习用于fMRI功能连接相关
+3. [Connectivity Estimation using Stochastic Graph Heat Modelling](/202606/30/2606.29098v1-connectivity-estimation-using-stochastic-graph-heat-modelling)  
    标签：评分：8.0/10、query:fbn
-   evidence：基准测试MRI基础模型预测胶质瘤IDH突变，属于神经影像AI医疗
+   evidence：基于随机图热模型的脑连接估计
 
 ### 速读区论文标签
-1. [Cross-Modality Structural Guidance in 3D Latent Diffusion for Robust FLAIR Super-Resolution](/202606/29/2606.25255v1-cross-modality-structural-guidance-in-3d-latent-diffusion-for-robust-flair-super-resolution)  
+1. [A Neuroimaging Simulation Framework for Developing and Evaluating Causal AI](/202606/30/2606.28684v1-a-neuroimaging-simulation-framework-for-developing-and-evaluating-causal-ai)  
    标签：评分：7.0/10、query:fbn
-   evidence：深度学习用于FLAIR超分辨率，利用T1w结构先验增强脑图像
-2. [Compression-Driven Anomaly Detection in Brain MRI Using an Interpretable Quantum Autoencoder](/202606/29/2606.27411v1-compression-driven-anomaly-detection-in-brain-mri-using-an-interpretable-quantum-autoencoder)  
+   evidence：用于因果AI的神经影像模拟
+2. [ReMAP-PET: Beyond Visual Understanding -- Learning Region-Guided Metabolic Alignment Semantics from Brain PET](/202606/30/2606.29577v1-remap-pet-beyond-visual-understanding----learning-region-guided-metabolic-alignment-semantics-from-brain-pet)  
    标签：评分：7.0/10、query:fbn
-   evidence：脑MRI异常检测使用量子自编码器，属于神经影像AI医疗
-3. [Heterogeneous synaptic motifs bridge microscale structure and macroscale nonlinear dynamics](/202606/29/2606.27946v1-heterogeneous-synaptic-motifs-bridge-microscale-structure-and-macroscale-nonlinear-dynamics)  
+   evidence：PET神经影像AI用于神经退行性疾病评估
+3. [Cohort-amortized personalization: navigating the privacy-utility frontier for virtual brain twins](/202606/30/2606.30329v1-cohort-amortized-personalization-navigating-the-privacy-utility-frontier-for-virtual-brain-twins)  
    标签：评分：7.0/10、query:fbn
-   evidence：建模微观突触基序解释宏观脑动态，与脑网络分析相关
-4. [From Handcrafted Features to Functional Edge Learning: Evolution of EEG Seizure Detection Frameworks](/202606/29/2606.22258v1-from-handcrafted-features-to-functional-edge-learning-evolution-of-eeg-seizure-detection-frameworks)  
+   evidence：利用神经影像数据和脑连接组实现个性化脑模型
+4. [Prob-BBDM: a Probabilistic Brownian Bridge Diffusion Model for MRI sequence image-to-image translation](/202606/30/2606.24313v1-prob-bbdm-a-probabilistic-brownian-bridge-diffusion-model-for-mri-sequence-image-to-image-translation)  
    标签：评分：6.0/10、query:fbn
-   evidence：使用深度学习和KAN进行EEG癫痫检测，属于神经影像AI医疗
-5. [Low-rank Updates in Slowly Time-varying Graphs for Spatial-Temporal Signal Interpolation](/202606/29/2606.24011v1-low-rank-updates-in-slowly-time-varying-graphs-for-spatial-temporal-signal-interpolation)  
+   evidence：概率扩散模型用于MRI序列翻译，神经影像AI
+5. [Graph Neural Networks Applications Across Domains: All Insights You Need](/202606/30/2606.27202v1-graph-neural-networks-applications-across-domains-all-insights-you-need)  
    标签：评分：6.0/10、query:fbn
-   evidence：图信号处理方法可应用于动态功能连接建模
-6. [RetiSEM: Generalising Causal Models for Fragmented Biomedical Data](/202606/29/2606.24488v1-retisem-generalising-causal-models-for-fragmented-biomedical-data)  
+   evidence：图神经网络应用综述，涵盖医学领域
+6. [Automated brain tumor detection in MRI images using CNN and ResNet architectures](/202606/30/2606.27405v1-automated-brain-tumor-detection-in-mri-images-using-cnn-and-resnet-architectures)  
    标签：评分：6.0/10、query:fbn
-   evidence：使用领域约束结构方程模型从碎片化生物医学数据中恢复因果图，包括影像变量，与功能连接建模相关
-7. [Neural operator-based digital twins for modeling amyloid-$β$ and tau propagation and treatment optimization in Alzheimer's disease](/202606/29/2606.25185v1-neural-operator-based-digital-twins-for-modeling-amyloid--and-tau-propagation-and-treatment-optimization-in-alzheimers-disease)  
+   evidence：使用CNN和ResNet进行脑肿瘤自动检测
+7. [Physics-Grounded Disentangled Flow Modeling for Brain Disease Progression Trajectory](/202606/30/2606.28630v1-physics-grounded-disentangled-flow-modeling-for-brain-disease-progression-trajectory)  
    标签：评分：6.0/10、query:fbn
-   evidence：AI驱动神经影像生物标志物建模
-8. [BrainAgent: A Large Language Model-Driven Multi-Agent Framework for Autonomous Brain Signal Understanding](/202606/29/2606.25400v1-brainagent-a-large-language-model-driven-multi-agent-framework-for-autonomous-brain-signal-understanding)  
+   evidence：基于AI的脑疾病进展预测
+8. [BrainJanus: A Unified Model for Understanding and Generation across Brain, Vision, and Language](/202606/30/2606.30319v1-brainjanus-a-unified-model-for-understanding-and-generation-across-brain-vision-and-language)  
    标签：评分：6.0/10、query:fbn
-   evidence：LLM驱动的多智能体框架用于脑信号理解，适用于神经影像AI
-9. [Enhancing Brain MRI Anomaly Detection and Reasoning with ROI Rethink and Synthetic Data](/202606/29/2606.25894v1-enhancing-brain-mri-anomaly-detection-and-reasoning-with-roi-rethink-and-synthetic-data)  
-   标签：评分：6.0/10、query:fbn
-   evidence：AI医疗神经影像（脑MRI）结合推理和空间定位
-10. [Heterogeneous Neural Predictivity from Language Models During Naturalistic Comprehension](/202606/29/2606.26880v1-heterogeneous-neural-predictivity-from-language-models-during-naturalistic-comprehension)  
-   标签：评分：6.0/10、query:fbn
-   evidence：使用语言模型预测理解过程中的神经反应，涉及MEG/ECoG神经影像
+   evidence：统一的脑模型进行编码与解码，涉及脑功能与AI医疗
 
 
 <div class="dpr-home-promo-card">
