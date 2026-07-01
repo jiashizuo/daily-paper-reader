@@ -1,0 +1,391 @@
+Title: Distortion-Corrected Diffusion MRI Using Rotated-View EPI and Joint Field-Map/Image Estimation with Gaussian Primitives
+
+URL Source: https://arxiv.org/pdf/2606.31521v1
+
+Published Time: Wed, 01 Jul 2026 01:13:03 GMT
+
+Number of Pages: 10
+
+Markdown Content:
+> 1
+
+# Distortion-Corrected Diffusion MRI Using Rotated-View EPI and Joint Field-Map/Image Estimation with Gaussian Primitives 
+
+Wenqi Huang, Zhitao Li, Nan Wang, Yimeng Lin, Mengze Gao, Yurui Qian, Sevgi Gokce Kafali, Xiaozhi Cao, Kawin Setsompop, Daniel Rueckert and Congyu Liao 
+
+Abstract —Echo Planar Imaging (EPI) is the standard ac-quisition technique for diffusion and functional neuroimaging, enabling rapid imaging but suffering from geometric distortions caused by B0 field inhomogeneities. Existing correction methods first reconstruct distorted images using parallel imaging, then estimate the B0 field and correct the distortion in the image domain. In this sequential process, reconstruction artifacts at high acceleration factors and low SNR at high diffusion b-values degrade B0 estimation and limit the overall correction quality. We propose a physics-informed framework that jointly estimates the B0 field and distortion-free image directly from k-space data, without depending on an intermediate parallel-imaging reconstruction for the correction. The image and the B0 field are each represented as a superposition of Gaussian primitives embedded within an MRI physics forward model. The explicit, continuous parameterization captures both smooth regions and tissue boundaries and supports rotated-view EPI acquisitions without interpolation. The diffusion-weighted image is modeled as real and non-negative, with the image phase absorbed into a per-shot phase factor. Rotated views distribute distortions across multiple phase-encoding orientations, improving point spread function isotropy and providing stronger constraints for B0
+
+estimation. On in vivo brain diffusion EPI, the proposed method attains the closest brain-boundary agreement with a distortion-free structural reference, with the largest improvement over se-quential methods at high b-value and high acceleration. Extensive visual comparisons further show improved detail fidelity and noise suppression. 
+
+Index Terms —Diffusion MRI, Echo Planar Imaging, B0 Inho-mogeneity, Gaussian Primitives, Gaussian Splatting, Distortion Correction, Joint Reconstruction 
+
+I. I NTRODUCTION This work was supported in part by the European Research Council (884622), the National Institutes of Health (R01MH116173, R01HD114719, K99EB035178) and TUM Graduate School Internationalization Support Grant. Corresponding author: Wenqi Huang (wenqi.huang@tum.de). Daniel Rueckert and Congyu Liao are co-last authors. Wenqi Huang and Sevgi Gokce Kafali are with the Chair for AI in Healthcare and Medicine, Technical University of Munich (TUM) and TUM University Hospital, and the School of Computation, Information and Tech-nology, TUM, Munich, Germany. Congyu Liao and Yurui Qian are with the Neuroimaging Technology Re-search Center, Department of Radiology and Biomedical Imaging, University of California, San Francisco, CA, USA. Zhitao Li is with the Innovation Academy for Precision Measurement Science and Technology, Chinese Academy of Sciences, Wuhan, China. Nan Wang, Yimeng Lin, Mengze Gao, Xiaozhi Cao, and Kawin Setsompop are with the Department of Radiology, Stanford University, Stanford, CA, USA. Daniel Rueckert is with the Chair for AI in Healthcare and Medicine, TUM and TUM University Hospital, Munich, Germany, the Munich Center for Machine Learning (MCML), and the Department of Computing, Imperial College London, U.K. 
+
+# ECHO Planar Imaging (EPI) is a fast MRI acquisition technique widely used for functional and diffusion imag-ing [1] due to its ability to capture an entire image or k-space plane within a single or a few excitations. However, the long echo train and correspondingly low effective bandwidth along the phase-encoding direction make EPI highly sensitive to B0
+
+field inhomogeneities, which introduce geometric distortions along that direction. These distortions manifest as stretching, compression, intensity pileup, and spatial misalignment, and are most severe near air-tissue interfaces such as the frontal sinuses and temporal lobes [2], [3]. Correcting these artifacts is critical for preserving spatial accuracy in quantitative analysis, tractography, and clinical diagnosis. A range of methods have been developed to correct B0-induced EPI distortions, and most of them operate in the image domain after the EPI images have been reconstructed. Pre-acquired field maps [4] estimate the B0 distribution from a separate scan, but this needs extra acquisition time and can be invalidated by inter-scan motion or by physiological 
+
+B0 fluctuations from breathing and cardiac pulsation. To avoid the extra scan, reversed phase-encoding (blip-up/blip-down) methods acquire two EPI images with opposite phase-encoding polarities, so that B0-induced distortions appear in opposite directions. TOPUP [2], [3] takes the coil-combined blip-up/blip-down image pair and estimates the off-resonance field in the image domain, modeling its effect as a phase-encode voxel displacement with intensity pile-up, and has become the standard correction tool for diffusion MRI in the Human Connectome Project and similar large-scale studies [5]. Extensions include EPIC [6], which uses a fast nonlinear registration, DR-BUDDI [7], which incorporates structural MRI and diffusion-weighted images to guide the registration, and interlaced q-space schemes that obtain the reversed-polarity pair from adjacent diffusion directions [8]. Multi-shot acquisitions reduce the echo train length and thus the distortion per shot, with dedicated reconstructions such as MUSSELS [9] resolving the inter-shot phase, but they still require a separate B0 correction step. All of these methods share a common pipeline: first reconstruct the distorted EPI images using parallel imaging (e.g., CG-SENSE [10]) or structured low-rank reconstruction, then estimate the field and correct the distortion in the image domain [2], [11]. In this sequential pipeline, B0 estimation is directly lim-ited by the quality of the reconstructed distorted images. At higher acceleration factors, parallel-imaging aliasing and 
+
+> arXiv:2606.31521v1 [eess.IV] 30 Jun 2026 2
+
+noise amplification grow, propagate into the B0 estimate, and cap how far each EPI shot can be accelerated. Model-based reconstruction folds B0 off-resonance into an iterative forward model [12], directly producing a corrected image, but assumes a known or separately measured field map. BUDA (Blip-Up/Down Acquisition) [13], [14] combines the blip-up and blip-down multi-coil k-space data in a single Hankel-structured low-rank reconstruction, but likewise takes its B0 from a separate TOPUP estimate that is held fixed. Across these methods, the field map is measured or estimated separately and never jointly optimized with the image, so field-estimation and reconstruction errors compound. Deep learning has also been applied to EPI distortion correc-tion. Unsupervised methods such as Duong et al. [15] and FD-Net [16] learn the distortion from reversed phase-encode pairs without ground truth and achieve fast inference. Learning-based correction, however, is tied to its training distribution. It needs protocol-matched data, degrades under domain shift in resolution, FOV, acceleration, or phase-encoding orienta-tion, and as a learned image prior can hallucinate structure unsupported by the measured data [17]. Such methods also operate in the image domain on an initial parallel-imaging reconstruction, and thus inherit its acceleration ceiling. These limitations motivate a scan-specific, physics-informed approach in which we jointly estimate the B0 field and the distortion-free image directly from k-space through a single forward model that embeds the full EPI physics, requiring no training data and avoiding the sequential pipeline’s error accumulation and its dependence on an intermediate parallel-imaging reconstruction. The estimator already corrects dis-tortion accurately from a single blip-up/blip-down orienta-tion; collecting several rotated phase-encoding orientations further improves point spread function (PSF) isotropy and k-space coverage, conceptually related to PROPELLER’s rotated blades [18] but used directly in a joint k-space estimator rather than combined in the image domain. We introduced this estimator in a conference version of this work [19] with a hash-grid implicit neural representation (INR) [20], but only on synthetic data and without a per-shot phase model; here we extend it to in vivo acquisition, which raises two challenges: the spatial representation and the shot-to-shot phase. Realizing this requires a representation suited to the rotated, off-grid sampling of rotated-view EPI. Discrete voxel grids require interpolation there, which degrades accuracy, while INRs [21]–[24], including the hash-grid INR of our conference version, store the signal in opaque network weights. We in-stead use explicit Gaussian primitives [25]–[28], a continuous, interpolation-free representation whose interpretable, directly controllable parameters capture both smooth fields and sharp boundaries, for the image, the smooth B0 field, and the per-shot phase factor introduced next. 
+
+In vivo data add a shot-to-shot phase absent from the syn-thetic conference setting. Physiological noise, mainly cardiac pulsation and respiration, induces a different, spatially varying phase on each excitation, largest at high b. We model the diffusion-weighted image as real and non-negative, and absorb this phase into a per-shot phase factor, which avoids the signal bias of magnitude reconstruction at low SNR. Our key contributions are as follows: 1) A novel rotated-view multi-shot EPI acquisition strategy that rotates the phase-encoding direction across shots, thereby converting distortion into complementary view-dependent information for improved estimation of field inhomogeneity. This design also permits a higher partial-Fourier factor and shorter TE, reducing T ∗ 
+
+> 2
+
+blurring and improving the effective point spread function. 2) A physics-informed framework that jointly estimates the 
+
+B0 field and the distortion-free image directly from k-space, removing the sequential pipeline’s dependence on an intermediate parallel-imaging reconstruction. The im-age, the B0 field, and the per-shot phase factor all share a single explicit, continuous Gaussian-primitive backbone that handles rotated-view grids without interpolation and exposes interpretable, directly controllable parameters. 3) An in vivo signal model for this framework: a real, non-negative image with an explicit per-shot phase factor that handles the shot-to-shot physiological phase with-out magnitude bias, together with a B0 smoothness prior that, with multiple rotations, resolves the single-orientation B0/per-shot-phase ambiguity at high b.4) Validation on in vivo brain diffusion EPI across rota-tions, acceleration factors, and b-values: the proposed method attains the closest brain-boundary agreement, with the largest gains over sequential methods in the lowest-SNR ( R=5 , b=2500 s/mm 2) regime, while addi-tional rotations sharpen detail and reduce noise. II. M ETHOD 
+
+A. Problem Formulation 
+
+EPI samples k-space along a zig-zag trajectory driven by al-ternating readout gradients. With a homogeneous B0 field, the acquired data yield a distortion-free image by inverse Fourier transform; off-resonance from B0 inhomogeneity introduces a time-dependent phase that distorts the reconstruction along the phase-encoding direction. The standard countermeasure is a blip-up/blip-down acquisition, two single-shot EPI readouts of opposite phase-encoding polarity, whose B0-induced dis-tortions point in opposite directions and together constrain the field. Each readout is a separate RF excitation, and inter-shot motion, from physiological noise and bulk head motion, imprints a spatially varying phase that differs from shot to shot. We index each shot by an orientation n and a shot/polarity s
+
+(blip polarity ρs ∈ { +, −} ). The shot-to-shot motion imparts a per-shot phase φn,s (x, y ), so the magnetization seen by shot 
+
+(n, s ) is m(x, y ) Φ n,s (x, y ) with Φn,s = eiφ n,s , where m(x, y )
+
+is the shared distortion-free image. The acquired multi-coil k-space data is 
+
+dn,s (kx, k y,p ) = 
+
+Z
+
+> Ω
+
+S(x, y ) m(x, y ) Φ n,s (x, y )
+
+· e−i(kxx+ky,p y) e−i 2π B 0(x,y ) tp,s dx dy, 
+
+(1) where Ω is the image domain, S(x, y ) is the coil sensi-tivity, a known quantity that can be obtained from a low-resolution gradient-echo (GRE) pre-scan, and B0(x, y ) is 3                       
+
+> Fig. 1. Overview of the proposed method. (a) Rotated-view diffusion EPI: multiple phase-encoding orientations give complementary distortion constraints.
+> (*) Conventional pipeline (TOPUP/BUDA): sequential reconstruction, B0estimation, then correction, so reconstruction artifacts propagate into the field estimate. (b) Proposed joint reconstruction: image ˆm, field ˆB0, and per-shot phase ˆΦn,s are continuous Gaussian-primitive representations, sampled on rotated grids and passed through the EPI forward model †, and jointly fit by data consistency with the acquired sparse k-space. (c) Inference: the trained models are queried on a Cartesian grid for the corrected image and B0map. (†)Physics-informed EPI forward operator relating m,Φn,s ,B0to the measurements.
+
+the off-resonance frequency in Hz, B0 = γ ∆B(x, y )/(2 π)
+
+with γ the gyromagnetic ratio in rad s −1 T−1. Phase-encoding line p of shot s is sampled at echo time tp,s , which ad-vances by the echo spacing with sign set by the blip po-larity ρs, so e−i 2πB 0(x,y ) tp,s is the accrued off-resonance phase. We write this forward model compactly as dn,s =
+
+An,s (B0) ( m Φn,s ), where the per-shot operator factorizes as 
+
+An,s (B0) = Mn,s En,s (B0) S: S expands the image into coil channels, Mn,s selects the acquired PE lines, and En,s (B0)
+
+is the off-resonance Fourier encoding that maps a coil image 
+
+g to 
+
+[En,s (B0) g]( kx, k y,p ) = 
+
+Z
+
+> Ω
+
+g(x, y ) e−i(kxx+ky,p y)
+
+· e−i 2πB 0(x,y ) tp,s dx dy. 
+
+(2) The B0-induced phase produces geometric distortion along the phase-encoding direction; the per-shot phase, if uncorrected, causes signal cancellation and artifacts when the shots are combined. The blip-up/blip-down pair uses a single phase-encoding orientation. Rotated-view EPI generalizes the acquisition to 
+
+Nrot orientations θ1, . . . , θ Nrot , acquiring at each either a blip-up/blip-down pair or a single blip-up readout; writing 
+
+P = {+, −} for a pair and P = {+} for blip-up only, a reconstruction uses Nrot |P| single-shot excitations, with the standard pair recovered as Nrot = 1, P = {+, −} .Distributing the B0-induced distortions across orientations strengthens the constraints on B0; the multi-orientation k-space coverage also improves PSF isotropy and suppresses noise (Fig. 2). The joint B0, image, and shot-phase estimation problem across all shots is: 
+
+ˆB0, ˆm, ˆΦ = arg min 
+
+> B0,m, Φ
+
+X
+
+> n,s
+
+dn,s − A n,s (B0) ( m Φn,s ) 22
+
++ R(B0),
+
+(3) where R(B0) regularizes the field via its bending energy (8) and Φ ≜ {Φn,s }n,s collects the per-shot phases. The key difference from conventional sequential methods is that B0, m,and Φ are optimized jointly through the physics forward model (Fig. 1), rather than estimating B0 from pre-reconstructed distorted images. With a single phase-encoding orientation the inverse prob-lem is ill-conditioned because the B0-induced distortion acts along one axis only, where a smooth B0 perturbation can be partly absorbed into the image or the per-shot phase with little change to the predicted k-space, most acutely at high b (low SNR, large per-shot phase). Additional orientations condition 4
+
+the problem, since each aligns the distortion with a different axis, so a perturbation absorbed under one orientation leaves a visible residual under another. 
+
+B. Gaussian Primitive Representations 
+
+Solving the joint optimization in (3) requires choosing a representation for the image m(r) and B0 field B0(r), with 
+
+r = ( x, y ). Because rotated-view acquisitions sample coordi-nates on rotated grids, a continuous representation is preferred so that the image and B0 field can be evaluated directly at the rotated coordinates rather than reconstructed on a fixed grid and resampled, which would introduce interpolation error. We represent all three model fields with explicit Gaussian primitives: the image and the B0 field (below) and the per-shot phase (Section II-C). A 2D Gaussian primitive centered at μ ∈ R2 is 
+
+G(r) = exp 
+
+
+
+− 12 (r − μ)⊤Σ−1(r − μ)
+
+
+
+, (4) where the covariance matrix Σ = R(α) diag( σ21 , σ 22 ) R(α)⊤
+
+is parameterized by a rotation angle α and anisotropic scales 
+
+(σ1, σ 2). Each primitive thus has five shape parameters, namely position μ (2), log-scales log σk (2), and orientation 
+
+α (1), together with a weight whose type depends on the field it represents (below). The diffusion-encoded image is complex, m(r) eiφ n,s (r),with a phase φn,s dominated by a spatially smooth, shot-to-shot background from physiological noise that carries no diffusion contrast [29]. Conventional pipelines discard it by taking the magnitude, but at the low SNR of high-b, high-resolution acquisitions the magnitude of a low-signal voxel in zero-mean complex Gaussian noise follows a Rician dis-tribution (Rayleigh in the no-signal limit) and develops a positive floor that biases the signal upward. We instead never form a magnitude; the measured k-space is kept complex and the smooth per-shot background phase is absorbed into Φn,s 
+
+(Section II-C), so the data term is a complex least-squares fit whose residual stays zero-mean Gaussian and floor-free. We nonetheless model m as real and non-negative as a prior on the noise-free signal [29], enforced through the parameterization. With non-negative weights wj ≥ 0 and a strictly positive Gaussian kernel, m = P 
+
+> j
+
+wj Gj in (5) satisfies m ≥ 0 at every query resolution. This also reduces one branch of the 
+
+B0 / image-phase / per-shot-phase identifiability degeneracy of Section II-A, since a global image sign flip can no longer be reabsorbed into the per-shot phases. The B0 field uses signed real weights, and Φn,s is represented by the two real fields described below. We represent the image as a superposition of Nimg Gaus-sian primitives and the B0 field as a superposition of NB0 
+
+primitives, the j-th ( Gj ) carrying its own center, scales, and orientation: 
+
+m(r) = 
+
+> Nimg
+
+X
+
+> j=1
+
+wj Gj (r), B0(r) = 
+
+> NB0
+
+X
+
+> j=1
+
+w(B0)  
+
+> j
+
+Gj (r), (5) with image weights wj ≥ 0. Since both representations are continuous over R2, rotated-view acquisitions are handled by evaluating the primitives on rotated coordinate grids r′ =
+
+R(θn) r.
+
+C. Per-Shot Phase Parameterization 
+
+The per-shot phase is most pronounced at high diffusion 
+
+b-values, where cardiac pulsation about the ventricles [30] imparts a localized, spatially nonlinear phase that can exceed 
+
+±π, and eddy currents from the strong diffusion gradients add further shot-dependent phase. A common approach estimates a smooth scalar phase field φn,s (r) (from a navigator or low-resolution phase image, or fit to a low-order smooth basis) and applies the phase factor Φn,s = eiφ n,s . When the phase exceeds ±π, however, phase wrapping introduces 
+
+2π discontinuities that a smooth scalar field cannot represent; these wrap boundaries are numerically unstable and degrade the reconstruction. We instead parameterize the phase factor directly as a unit-modulus complex field 
+
+Φn,s (r) = un,s (r) + i v n,s (r)
+
+pun,s (r)2 + vn,s (r)2 , (6) where un,s and vn,s are the real and imaginary parts of a single per-shot basis of Nφ complex-weighted Gaussian primitives; the two fields thus share the same primitive positions, scales, and orientations, differing only in their real and imaginary weights. In implementation, the denominator is clamped by a small ϵ for numerical stability. Because Φn,s is a continuous unit-modulus field rather than a wrapped scalar, it is free of phase wrapping, since smooth motion phase exceeding ±π is represented by a winding of (u, v ) with no discontinuity. The Gaussian basis provides compact local support that captures the spatially localized phase from cardiac pulsation and eddy currents more efficiently than smooth global polynomials. 
+
+D. Optimization and Inference 
+
+Substituting the primitive models (5) into (3), the unknowns become the Gaussian-primitive parameters of all three fields (the position, anisotropic scales, orientation, and weight of every image, B0, and per-shot phase primitive), which we fit jointly by minimizing 
+
+L = X
+
+> n,s
+
+dn,s − A n,s (B0) ( m Φn,s ) 22
+
++ λB0 Rbend (B0).
+
+(7) Optimizing these parameters updates the image, B0, and per-shot phase together. The data-consistency term is the squared-
+
+ℓ2 k-space residual, the maximum-likelihood objective for ap-proximately white, zero-mean complex-Gaussian acquisition noise. 
+
+Initialization and scale floor. The B0 field and per-shot phase are far smoother than the image and use correspondingly fewer primitives. Image primitive positions μj are sampled uni-formly over the head support (the smoothed GRE magnitude thresholded into a binary mask), with small random initial weights. The B0 and per-shot phase primitives are seeded the same way, but their small count makes a Poisson-disk minimum-distance constraint [31] affordable, which prevents 5
+
+sub-resolution primitive collisions and keeps these smooth fields evenly covered. A fixed minimum scale floor σmin on the image primitives caps the per-primitive frequency content and prevents overfitting to noise. 
+
+Bending-energy regularization on B0. Single-orientation acquisitions retain the ambiguity of Section II-A. Without an external prior, the optimizer can split residual phase between 
+
+B0 and the per-shot phase factor, and B0 can drift to a fragmented field (the real image carries no phase of its own, Section II-B). We constrain B0 by its bending energy [32]: 
+
+Rbend (B0) = 
+
+Z
+
+> Ω
+
+(∂2
+
+> x
+
+B0)2 + 2( ∂2 
+
+> xy
+
+B0)2 + ( ∂2 
+
+> y
+
+B0)2 dr. (8) We keep λB0 fixed during optimization. Too small a value fails to suppress the ambiguity and B0 can drift, while too large a value over-smooths the final estimate. The fixed weight suppresses pathological field spikes while preserving the true low-frequency field. 
+
+Learnable gradient isocenter. The rotated coordinate grid for rotation n at phase-encoding angle θn is r′ 
+
+> n
+
+= R(θn) ( r −
+
+c) + c, a rotation about an isocenter c = ( cx, c y ). The rotated gradients pivot about the gradient isocenter, which scanner hardware imperfections shift from the image matrix center by a few pixels, an amount not known a priori. A single orientation is invariant to this offset, but combining multiple rotated grids is not. A few-pixel isocenter error misaligns the grids and blurs the joint reconstruction. For multi-orientation acquisitions we therefore treat c as a learnable parameter, jointly optimized with the primitives, B0, and Φ.
+
+Partial-DFT EPI forward. The encoding En,s (B0) of (2) is evaluated only at the acquired PE lines. Because its B0 phase 
+
+e−i 2πB 0 tp,s varies from PE line to PE line (through tp,s ), the PE-direction transform admits no fast FFT; we compute it as a partial DFT, reducing the PE-direction cost from a full 
+
+Ny × Ny DFT to a P × Ny product with P ≪ Ny at high acceleration. 
+
+Inference. After convergence, the corrected image and B0
+
+map are obtained by querying the trained primitives on a Carte-sian grid; being continuous, the primitives can also be sampled on grids finer than the acquisition matrix (Section IV-D). III. E XPERIMENTAL SETUP 
+
+A. Data and Implementation a) Data: We acquired in vivo brain diffusion EPI from five subjects on a 3 T GE SIGNA UHP scanner (GE Health-care, Waukesha, WI, USA) with a 32-channel head coil (Nova Medical). All scanning was performed under a protocol ap-proved by the Stanford University Institutional Review Board, with written informed consent obtained from every participant. For each subject, all five rotated views ( 0◦, 72 ◦, 144 ◦, 216 ◦,and 288 ◦) were acquired together in one prospectively under-sampled series at b=0 , 1000 , and 2500 s/mm 2 (six diffusion-encoding directions at each non-zero b-value), with the phase-encoding direction rotating across successive TRs. Sequence parameters were TE = 63 ms, TR = 2 .92 s, echo spacing 
+
+1.296 ms, 220 × 220 matrix, FOV 220 × 220 mm 2 (1.0 ×
+
+1.0 mm 2 in-plane), slice thickness 5 mm ( 16 slices), and 5/8                       
+
+> Fig. 2. Acquisition point spread function (PSF) for Nrot = 1 –5rotated EPI views, with 5/8partial Fourier and a T2/T ∗
+> 2decay envelope along the phase-encoding direction ( T2= 70 ms, T∗
+> 2= 36 ms, TRO = 70 ms; representative envelope parameters, not the literal echo-train length). Top: accumulated k-space coverage. Middle: 2D PSF in dB. Bottom: PSF cross-section along the
+> Nrot =1 phase-encoding axis, with main-lobe FWHM (px) per Nrot and three sidelobe metrics (peak sidelobe, integrated sidelobe energy, near-mainlobe angular CoV) versus Nrot .
+
+partial Fourier. We acquired a per-rotation low-resolution GRE auto-calibration (ACS) pre-scan, estimated the coil sensitivities from it with ESPIRiT [33], and reused the same calibration 
+
+k-space to initialize the image-primitive positions and weights. A single 3D MPRAGE [34] was acquired as a distortion-free anatomical reference. Each orientation provides a blip-up and a blip-down single-shot readout (two shots). Each experiment then uses Nrot of the five acquired orientations, so paired-polarity reconstruction takes 2Nrot shots and blip-up-only takes Nrot . The single-orientation TOPUP and BUDA baselines use the 0◦ blip-up/blip-down pair, the conventional un-rotated acquisition. Acceleration factors R=4 and R=5 
+
+were evaluated. 
+
+b) Model: The image is represented by Nimg = 50 ,000 
+
+Gaussian primitives and the B0 field by NB0 = 1 ,000 . The per-shot phase factor uses a single complex-weighted Gaussian basis of Nφ = 300 primitives per shot. 
+
+c) Optimization: We use the Adam optimizer [35] with per-parameter-group learning rates (primitive scales and orien-tations 1×10 −2, positions 3×10 −3, image weights 1×10 −2, B0
+
+weights 3×10 −3, per-shot phase 1×10 −3) for 4,000 iterations; after each step the image weights are projected to be non-negative. A fixed minimum primitive scale floor σmin = 0 .5 px is used throughout. The B0 bending-energy coefficient is set at λB0 ≈ 1 × 10 −2 and, as in TOPUP, scaled by the cur-rent data-consistency residual at each iteration. The gradient isocenter is initialized by a Lucas-Kanade [36] alignment of the single-orientation reconstructions and, for multi-orientation acquisitions, refined jointly during optimization. 
+
+d) Hardware: All experiments run in PyTorch on an NVIDIA RTX A6000 GPU. Custom CUDA kernels accelerate the pipeline bottlenecks: a tile-based primitive evaluator and a matched forward/backward kernel pair for the partial-DFT EPI forward. End-to-end, a typical R=4 , b=0 , six-shot ( Nrot =3 )reconstruction of a 32-coil 220 × 220 slice converges in 6              
+
+> Fig. 3. Single-orientation (blip-up/blip-down) correction on in vivo brain diffusion EPI at R=4 , a 2×2grid: top row two b=0 slices, bottom row b=1000
+> and b=2500 s/mm 2. Per case, the top sub-row is the corrected magnitude and the bottom the estimated B0; columns are the MPRAGE reference ( ±blip CG-SENSE shots below), TOPUP, BUDA, hash-grid INR, and the proposed Gaussian method. On magnitude panels, red marks the MPRAGE brain boundary and cyan the reconstruction’s own; their gap is the residual distortion. All cases share the B0color scale.
+
+approximately 36 s. 
+
+B. Baselines 
+
+We compare against three baselines that cover the main approaches to EPI distortion correction. TOPUP [2], [3] is the standard sequential method in FSL. Distorted EPI images are first reconstructed via CG-SENSE [10], and TOPUP then estimates the off-resonance field from the blip-up/blip-down image pair (with the per-voxel displacement derived from it) and corrects in the image domain; it operates on a common Cartesian grid and cannot process the rotated acquisition grids of rotated-view EPI. BUDA [13], [14] combines blip-up and blip-down k-space data in a single Hankel-structured low-rank reconstruction, with the B0 field estimated separately via TOPUP and then held fixed during the reconstruction. 
+
+Hash-grid INR [19] is a prior INR-based joint reconstruction that uses hash-grid encoded MLPs [20] as the image and 
+
+B0 representations. The original work was demonstrated on simulated data and did not model per-shot phase variation; we adapted it to in vivo data by adding the same per-shot phase factor used in our method. The comparison isolates the effect of switching from an implicit (hash-grid MLP) to an explicit (Gaussian primitive) spatial representation within an otherwise matched joint-optimization framework. 
+
+C. Evaluation 
+
+The joint reconstruction is assessed on two fronts: the geo-metric accuracy of the distortion correction and the detail and noise of the reconstructed image. We quantify the geometry against an independent, distortion-free structural reference, as is standard in the EPI distortion-correction literature [2], [16]; pixel-wise intensity measures (PSNR, SSIM) do not apply, since they would require a same-contrast distortion-free image that EPI cannot provide. The detail and noise, which lack any such reference, are instead compared qualitatively across methods. The structural reference is a single 3D MPRAGE, rigidly registered onto the corrected-EPI image grid with Syn-thMorph [37]. The corrected EPI and the MPRAGE ( T1) differ in contrast, so their intensities do not correspond; the brain outline, however, is a geometric feature common to both, and EPI distortion displaces it along the phase-encode direction, so the agreement between the two outlines measures the residual distortion. Following the brain-mask-overlap convention used to validate EPI distortion correction [2], we skull-strip each method’s corrected volume and the registered MPRAGE with the same tool (SynthStrip [38], so the extraction bias is common-mode) and compare their brain boundaries in-plane, per slice: Dice of the filled masks, average symmetric sur-face distance (ASSD), and 95 th-percentile Hausdorff distance (HD95). We also report wall-clock reconstruction time per slice (bottom row of Table I). IV. R ESULTS 
+
+A. Single-Rotation Comparison 
+
+We first evaluate the proposed method under the standard blip-up/blip-down protocol with a single phase-encoding ori-entation. This is the regime in which TOPUP and BUDA were designed, and it provides a common-ground comparison against established methods. Fig. 3 shows representative slices at R=4 across b. At low 
+
+b the parallel-imaging input is clean and all methods correct the distortion comparably on the brain-boundary metric (Dice 
+
+≈ 0.98 ; Table I), but they differ in fine detail and diverge as 
+
+b rises. TOPUP is the smoothest, because it estimates the B0
+
+field from the blip-up/blip-down CG-SENSE reconstructions and applies it as a fixed input, so input imperfections bias the field and propagate into the image, which is then warped by image-domain B-spline interpolation, a low-pass step that 7             
+
+> Fig. 4. Reconstructions at in-plane acceleration R∈ { 4,5}for b=1000 and b=2500 s/mm 2. Columns are grouped as sequential baselines (TOPUP, BUDA), joint single-view (hash-grid INR, Gaussian Nrot =1 ), and joint rotated-view (Gaussian Nrot ≥2). The sequential baselines degrade with Rwhile the proposed joint method remains stable.
+
+smooths fine detail. BUDA recovers detail comparable to the proposed Gaussian method, since both reconstruct directly in 
+
+k-space, but it inherits the same smooth B0 from TOPUP, which limits its distortion correction and leaves its boundary increasingly behind the proposed method as b rises. The hash-grid INR shows visible artifacts in most cases. The same INR, effective on synthetic data in the conference version (which had no per-shot phase), overfits once adapted in vivo ,where the image, B0, and added per-shot phase are all high-capacity MLPs and the B0 and phase leak into each other. The proposed Gaussian reconstruction matches BUDA’s detail while keeping the most spatially coherent B0 and the closest boundary alignment. 
+
+B. Acceleration Factor 
+
+Fig. 4 compares R=4 and R=5 at b ∈ { 1000 , 2500 } s/mm 2.The sequential baselines degrade with R, because the g-factor noise amplification (and any residual aliasing) of the CG-SENSE input grows with acceleration, propagates into the separately estimated B0, and is reinjected during the image-domain correction. At R=5 TOPUP and BUDA lose cortical contrast and leave distortion residuals, most severely at b=2500 where SNR is lowest. By contrast, the proposed joint reconstruction stays stable across R and b on the brain-boundary metric, at or near the SynthStrip extraction ceiling for every Nrot (Dice ≈ 0.98 ,Table I); the single-orientation ( Nrot =1 ) reconstruction alone already matches or exceeds the baselines at every R/b cell, holding at Dice ≥ 0.978 throughout. Added rotations change Dice little but tighten the boundary surface distances at high 
+
+b (at R=5 , b=2500 , Nrot =1 → 3 improves ASSD 1.41 →
+
+1.30 mm and HD95 3.37 → 2.94 mm), with Nrot =3 and 5
+
+nearly identical (Table I); their larger benefit is in intra-brain detail and PSF isotropy (Fig. 2), which this boundary metric does not probe. The advantage over the sequential pipeline is smallest at b=0 , R=4 and grows with acceleration and b-value, peaking at R=5 , b=2500 , where the proposed method attains the best agreement on every metric (Dice 0.979 –0.981 
+
+versus 0.951 for BUDA and 0.914 for TOPUP; ASSD 1.3–1.4
+
+versus 3.3 and 5.6 mm). The baselines fall off unevenly, with BUDA already on the inferior slices at b=0 , R=5 (Dice 0.88 ,std 0.17 ) and the hash-grid INR most sharply at b=2500 (Dice 
+
+0.85 at R=4 ). 
+
+C. Multi-Rotation: Image Quality and Single-Polarity Viabil-ity 
+
+Fig. 5 reconstructs one slice with Nrot = 1 to 5 orientations (columns), comparing blip-up-only ( P = {+}, Nrot shots; top) with blip-up/blip-down pairs ( P = {+, −} , 2Nrot shots; bottom). At Nrot = 1 the blip-up-only reconstruction is under-determined and fails near strong susceptibility (frontal sinus), as a single polarity does not constrain B0 on its own, whereas the pair is clean. Adding orientations recovers the blip-up-only reconstruction, lowers noise, and sharpens fine detail in both modes; by Nrot = 3 the blip-up-only image is visually indistinguishable from the pair, so angular diversity can sub-8
+
+Fig. 5. Reconstructed images for Nrot ∈ { 1, 2, 3, 4, 5} phase-encoding orientations ( b=0 , in vivo ). Top row: blip-up only ( P = {+}, one polarity per orientation). Bottom row: blip-up/blip-down pairs ( P = {+, −} , paired polarities per orientation). At Nrot = 1 , blip-up only is severely degraded near regions of strong susceptibility, while the blip-up/blip-down pair is stable. By Nrot =3 , blip-up-only reconstruction visually matches the paired acquisition, indicating that angular diversity can partially substitute for opposite-polarity pairing in this case. TABLE I BRAIN -BOUNDARY AGREEMENT WITH THE REGISTERED MPRAGE 
+
+REFERENCE : PER -SLICE DICE /ASSD/HD95 FROM SYNTH STRIP MASKS ,
+
+MEAN ±STD OVER SLICES ; BEST PER COLUMN IN BOLD . b IN S /MM 2 ; INR = HASH -GRID INR; Nrot = NUMBER OF JOINTLY RECONSTRUCTED EPI 
+
+ROTATION ORIENTATIONS (PROPOSED METHOD ). T IMES ARE PER -SLICE WALL -CLOCK (RTX A6000, SOLO -GPU, FIGURES OFF ), 
+
+R/b-INDEPENDENT , FOR THE FULL k-SPACE -TO -IMAGE PIPELINE :TOPUP/BUDA INCLUDE CG-SENSE RECONSTRUCTION (BUDA ∗ ALSO ITS INTERNAL TOPUP FIELD ESTIMATION ), AS DOES THE PROPOSED DIRECT METHOD .Method R=4 R=5                                                                                                                         
+
+> b=0 b=1000 b=2500 b=0 b=1000 b=2500
+> Dice  ↑
+> TOPUP 0.980 ±0.007 0.979 ±0.007 0.974 ±0.013 0.978 ±0.009 0.981 ±0.006 0.914 ±0.091 BUDA 0.980 ±0.007 0.981 ±0.006 0.967 ±0.015 0.878 ±0.171 0.952 ±0.037 0.951 ±0.034 INR 0.978 ±0.004 0.967 ±0.022 0.849 ±0.183 0.959 ±0.027 0.971 ±0.021 0.865 ±0.168 Ours ( Nrot =1 )0.978 ±0.008 0.982 ±0.005 0.980 ±0.009 0.980 ±0.007 0.982 ±0.007 0.979 ±0.010 Ours ( Nrot =3 )0.980 ±0.008 0.981 ±0.006 0.980 ±0.007 0.979 ±0.009 0.982 ±0.006 0.980 ±0.011 Ours ( Nrot =5 )0.980 ±0.009 0.982 ±0.005 0.979 ±0.008 0.978 ±0.010 0.982 ±0.007 0.981 ±0.010 ASSD (mm)  ↓ TOPUP 1.33 ±0.35 1.44 ±0.40 1.82 ±0.85 1.44 ±0.47 1.34 ±0.34 5.55 ±5.12 BUDA 1.34 ±0.36 1.30 ±0.35 2.24 ±0.96 5.01 ±4.90 3.27 ±2.17 3.28 ±2.03 INR 1.52 ±0.21 2.34 ±1.57 8.46 ±8.96 2.92 ±1.79 2.08 ±1.53 7.85 ±8.27 Ours ( Nrot =1 )1.44 ±0.41 1.25 ±0.29 1.35 ±0.49 1.33 ±0.33 1.24 ±0.35 1.41 ±0.48 Ours ( Nrot =3 )1.32 ±0.38 1.27 ±0.29 1.34 ±0.37 1.43 ±0.46 1.22 ±0.30 1.30 ±0.52 Ours ( Nrot =5 )1.36 ±0.44 1.20 ±0.25 1.40 ±0.42 1.45 ±0.48 1.20 ±0.36 1.29 ±0.49 HD95 (mm)  ↓ TOPUP 3.38 ±1.27 3.81 ±1.65 5.67 ±4.37 3.56 ±1.35 3.41 ±1.41 19.10 ±18.39 BUDA 3.37 ±1.30 3.34 ±1.39 7.90 ±5.01 18.56 ±18.67 11.85 ±8.99 10.45 ±7.61 INR 4.19 ±1.13 7.37 ±6.21 19.24 ±16.53 11.14 ±10.34 6.45 ±6.55 19.67 ±18.14 Ours ( Nrot =1 )3.49 ±1.26 3.22 ±1.12 3.61 ±1.80 3.38 ±1.12 3.06 ±1.02 3.37 ±1.34 Ours ( Nrot =3 )3.26 ±1.17 3.21 ±1.04 3.39 ±1.11 3.43 ±1.21 2.95 ±0.86 2.94 ±1.17 Ours ( Nrot =5 )3.38 ±1.27 2.97 ±0.98 3.56 ±1.50 3.42 ±1.23 2.91 ±0.92 3.06 ±1.20 Time per slice (s) ↓TOPUP 137 BUDA 140 ∗INR 68 Ours Nrot =1 /3/5:24 /36/59
+
+stitute for opposite-polarity pairing once enough orientations are provided. The acquisition PSF explains this geometrically (Fig. 2). At Nrot = 1, partial-Fourier ringing and T ∗
+
+2 broadening both concentrate along the phase-encoding axis, producing a strongly anisotropic PSF with a heavy sidelobe ridge in one direction. Additional rotations redistribute these effects across orientations, narrowing the main-lobe FWHM along the Nrot =1 PE axis from 2.74 px to 1.80 px at Nrot =5 
+
+(largely converged by Nrot =3 ) and lowering the peak sidelobe and integrated sidelobe energy monotonically. This Nrot =3 
+
+stabilization matches the in vivo crossover where the blip-up-only and paired reconstructions converge. 
+
+D. Continuous-Resolution Inference 
+
+Because the trained primitives are continuous functions of the spatial coordinate, the corrected image can be queried on grids independent of the acquisition matrix. Fig. 6 shows the proposed reconstruction at the native acquisition resolution (1×), at 1.5×, and at 3× continuous-resolution sampling, alongside TOPUP, BUDA, and the hash-grid INR baseline at native resolution. At native resolution all methods recover some detail, and the proposed reconstruction is already the sharpest, though its edges remain slightly soft and fine struc-tures slightly blurred by the pixel grid. Querying at 1.5×
+
+resolves these fine structures crisply, exposing detail that the native grid obscures, which reflects the benefit of combining a continuous representation with the isotropic k-space coverage of rotated acquisition. At 3×, however, the detail no longer im-proves, because the rotated multi-view acquisition fills k-space more isotropically but does not extend its frequency support, so finer query grids only display the same fitted continuous signal more smoothly rather than recover information beyond the acquired data. V. D ISCUSSION 
+
+A. Findings and Interpretation 
+
+The proposed method’s advantage over the sequential pipeline is largest where the parallel-imaging input is most stressed (high R, high b; Fig. 4) and vanishes at R=4 , b=0 
+
+where that input is already clean. The joint model fits all shots to one shared image, and because the blip-up, blip-down, and rotated readouts sample complementary k-space, that image is constrained by their pooled coverage rather than by any single accelerated shot. The sequential pipeline instead reconstructs each shot independently at full acceleration, so its input degrades rapidly with R while the joint estimate degrades only as data-consistency error. Multi-rotation is a complementary lever. The Nrot =3 prac-tical operating point appears consistently across two indepen-dent analyses, PSF isotropy (Fig. 2) and in vivo image quality 9  
+
+> Fig. 6. Continuous-resolution inference. The trained primitives are queried on grids finer than the acquisition matrix to produce smooth continuous-resolution reconstructions, without explicit pixel-grid interpolation. Querying beyond the acquisition matrix adds no spatial-frequency content beyond that encoded in the acquired k-space.
+
+(Figs. 4, 5), suggesting three rotations balance geometric diversity against scan time. 
+
+B. Explicit Primitives versus Implicit Neural Representations 
+
+INRs [20], [39] are parameter-efficient when the target signal is approximately stationary, but for scan-specific joint reconstruction three properties of explicit primitives matter more. First, each primitive has compact spatial support, so a gradient update propagates only to primitives whose footprint overlaps the gradient pixel; this keeps the optimization local and avoids the hash-collision-mediated entanglement that can leave the hash-grid INR baseline in poorly resolved solutions in which the B0 and per-shot phase leak into each other (Fig. 3). Second, overfitting is controlled by a single inter-pretable knob, the minimum scale floor (Section II-D), which directly caps per-primitive frequency content; the analogous safeguard for an INR (weight decay, network width, hash table size) is less direct and harder to tune at deployment. Third, primitive parameters (position, anisotropic scale, orientation) are inspectable per primitive, whereas the same information is distributed implicitly across the weights of an INR. The continuous coordinate parameterization is shared with INRs and supports both rotated-view EPI (no image-domain interpolation in the forward model) and continuous-resolution inference without architecture changes (Fig. 6). The same primitive backbone underlies the per-shot phase factor (Sec-tion II-C), whose unit-modulus normalization represents smooth phase exceeding ±π without the wrapping ambiguity of scalar parameterizations. 
+
+C. Practical Implications and Applicability 
+
+Decoupling distortion correction from the quality of an intermediate parallel-imaging reconstruction has two practical consequences. Higher in-plane acceleration stays usable where the sequential pipeline fails, with the shorter echo trains and reduced distortion it brings. Angular diversity can also replace opposite-polarity pairing, so a single-polarity blip-up-only acquisition halves the diffusion-encoding shots. The recipe is also not specific to diffusion EPI; the same physics forward model over an explicit, continuous primitive field, fit directly to k-space, applies to other B0-distorted EPI such as functional and high-resolution structural imaging. 
+
+D. Limitations and Future Work 
+
+Completing the physics model is the most immediate exten-sion. The reconstruction is currently 2D and slice-independent, which a 3D primitive representation with through-slice cou-pling and inter-slice motion correction would address. Aharder, open question is how far acceleration and b-value can be pushed, since we tested only up to R=5 and 
+
+b=2500 s/mm 2, beyond which the B0 and per-shot-phase ambiguity intensifies and better-designed priors are likely needed. For deployment, the iterative joint optimization keeps reconstruction off real-time at ∼24–59 s per slice (single to five rotations), so accelerating it matters. VI. C ONCLUSION 
+
+We presented a physics-informed framework that jointly estimates the B0 field and the distortion-corrected image directly from rotated multi-view EPI k-space, removing the sequential pipeline’s dependence on an intermediate parallel-imaging reconstruction. The image, the B0 field, and the per-shot phase share one explicit, continuous Gaussian-primitive representation, with the image constrained to be real and non-negative and the phase carried by a unit-modulus factor; a bending-energy prior and the angular diversity of rotated views together resolve the single-orientation high-b ambiguity. On 
+
+in vivo brain diffusion EPI the method attains the closest brain-boundary agreement with a distortion-free reference, with its largest gains in the lowest-SNR regime of high acceleration and high b where sequential pipelines are most fragile. By decoupling distortion correction from the quality of an intermediate reconstruction, it makes accurate correction 10 
+
+reachable at acceleration and b-values that stress conventional pipelines, and the same explicit, continuous formulation ex-tends naturally to other B0-distorted EPI acquisitions. DATA AND CODE AVAILABILITY 
+
+Example code with one example data slice will be released upon acceptance. REFERENCES [1] K. Setsompop et al. , “Improving diffusion MRI using simultaneous multi-slice echo planar imaging,” NeuroImage , vol. 63, no. 1, pp. 569– 580, 2012. [2] J. L. Andersson, S. Skare, and J. Ashburner, “How to correct susceptibil-ity distortions in spin-echo echo-planar images: application to diffusion tensor imaging,” NeuroImage , vol. 20, no. 2, pp. 870–888, 2003. [3] S. M. Smith et al. , “Advances in functional and structural MR image analysis and implementation as FSL,” NeuroImage , vol. 23, pp. S208– S219, 2004. [4] P. Jezzard and R. S. Balaban, “Correction for geometric distortion in echo planar images from B0 field variations,” Magnetic Resonance in Medicine , vol. 34, no. 1, pp. 65–73, 1995. [5] S. N. Sotiropoulos et al. , “Advances in diffusion MRI acquisition and processing in the Human Connectome Project,” NeuroImage , vol. 80, pp. 125–143, 2013. [6] D. Holland, J. M. Kuperman, and A. M. Dale, “Efficient correction of inhomogeneous static magnetic field-induced distortion in Echo Planar Imaging,” NeuroImage , vol. 50, no. 1, pp. 175–183, 2010. [7] M. O. Irfanoglu, P. Modi, A. Nayak, E. B. Hutchinson, J. Sarlls, and C. Pierpaoli, “DR-BUDDI (Diffeomorphic Registration for Blip-Up blip-Down Diffusion Imaging) method for correcting echo planar imaging distortions,” NeuroImage , vol. 106, pp. 284–299, 2015. [8] C. Bhushan, A. A. Joshi, R. M. Leahy, and J. P. Haldar, “Improved B0-distortion correction in diffusion MRI using interlaced q-space sam-pling and constrained reconstruction,” Magnetic Resonance in Medicine ,vol. 72, no. 5, pp. 1218–1232, 2014. [9] M. Mani, M. Jacob, D. Kelley, and V. Magnotta, “Multi-shot sensitivity-encoded diffusion data recovery using structured low-rank matrix com-pletion (MUSSELS),” Magnetic Resonance in Medicine , vol. 78, no. 2, pp. 494–507, 2017. [10] K. P. Pruessmann, M. Weiger, P. B¨ ornert, and P. Boesiger, “Advances in sensitivity encoding with arbitrary k-space trajectories,” Magnetic Resonance in Medicine , vol. 46, no. 4, pp. 638–651, 2001. [11] J. L. Andersson and S. N. Sotiropoulos, “An integrated approach to correction for off-resonance effects and subject movement in diffusion MR imaging,” NeuroImage , vol. 125, pp. 1063–1078, 2016. [12] B. P. Sutton, D. C. Noll, and J. A. Fessler, “Fast, iterative image reconstruction for MRI in the presence of field inhomogeneities,” IEEE Transactions on Medical Imaging , vol. 22, no. 2, pp. 178–188, 2003. [13] C. Liao, X. Cao, J. Cho, Z. Zhang, K. Setsompop, and B. Bilgic, “Highly efficient MRI through multi-shot echo planar imaging,” in Proc. SPIE Wavelets and Sparsity XVIII , vol. 11138, 2019, pp. 353–365. [14] C. Liao et al. , “Distortion-free, high-isotropic-resolution diffusion MRI with gSlider BUDA-EPI and multicoil dynamic B0 shimming,” Magnetic Resonance in Medicine , vol. 86, no. 2, pp. 791–803, 2021. [15] S. T. M. Duong, S. L. Phung, A. Bouzerdoum, and M. M. Schira, “An unsupervised deep learning technique for susceptibility artifact correction in reversed phase-encoding EPI images,” Magnetic Resonance Imaging , vol. 71, pp. 1–10, 2020. [16] Z. Alkilani, T. C ¸ ukur, and E. U. Saritas, “FD-Net: An unsupervised deep forward-distortion model for susceptibility artifact correction in EPI,” Magnetic Resonance in Medicine , vol. 91, no. 1, pp. 280–296, 2024. [17] S. Bhadra, V. A. Kelkar, F. J. Brooks, and M. A. Anastasio, “On hallucinations in tomographic image reconstruction,” IEEE Transactions on Medical Imaging , vol. 40, no. 11, pp. 3249–3260, 2021. [18] J. G. Pipe, “Motion correction with PROPELLER MRI: application to head motion and free-breathing cardiac imaging,” Magnetic Resonance in Medicine , vol. 42, no. 5, pp. 963–969, 1999. [19] W. Huang et al. , “Physics-informed implicit neural representations for joint B0 estimation and echo planar imaging,” in Proc. Medical Image Computing and Computer-Assisted Intervention (MICCAI) , 2025. [20] T. M¨ uller, A. Evans, C. Schied, and A. Keller, “Instant neural graphics primitives with a multiresolution hash encoding,” ACM transactions on graphics (TOG) , vol. 41, no. 4, pp. 1–15, 2022. [21] B. Mildenhall, P. P. Srinivasan, M. Tancik, J. T. Barron, R. Ramamoorthi, and R. Ng, “NeRF: Representing scenes as neural radiance fields for view synthesis,” Communications of the ACM , vol. 65, no. 1, pp. 99– 106, 2022. [22] L. Shen, J. Pauly, and L. Xing, “NeRP: implicit neural representation learning with prior embedding for sparsely sampled image reconstruc-tion,” IEEE Transactions on Neural Networks and Learning Systems ,vol. 35, no. 1, pp. 770–782, 2024. [23] W. Huang, H. B. Li, J. Pan, G. Cruz, D. Rueckert, and K. Hammernik, “Neural implicit k-space for binning-free non-Cartesian cardiac MR imaging,” in Proc. Information Processing in Medical Imaging (IPMI) ,2023, pp. 548–560. [24] V. Spieker et al. , “ICoNIK: Generating respiratory-resolved abdominal MR reconstructions using neural implicit representations in k-space,” in 
+
+Proc. Deep Generative Models Workshop (DGM4MICCAI) , 2023, pp. 183–192. [25] B. Kerbl, G. Kopanas, T. Leimk¨ uhler, and G. Drettakis, “3D Gaussian Splatting for real-time radiance field rendering,” ACM Transactions on Graphics , vol. 42, no. 4, pp. 1–14, 2023. [26] T. Peng, R. Zha, Z. Li, X. Liu, and Q. Zou, “Three-dimensional MRI reconstruction with 3D Gaussian representations: Tackling the under-sampling problem,” IEEE Transactions on Medical Imaging , vol. 45, pp. 1905–1917, 2025. [27] M. Terpstra and C. van den Berg, “Fast undersampled dynamic MRI reconstruction using explicit representation learning with Gaussian splatting,” in Proc. ISMRM Workshop on Data Sampling and Image Reconstruction , Sedona, AZ, USA, 2026. [28] I. Singh, A. Dupuis, S. Kukran, C. Badve, and M. Griswold, “Back to basis: Spatially continuous MRI with adaptive Gaussians,” in Proc. ISMRM Workshop on Data Sampling and Image Reconstruction , Sedona, AZ, USA, 2026. [29] C. Eichner et al. , “Real diffusion-weighted MRI enabling true signal averaging and increased diffusion contrast,” NeuroImage , vol. 122, pp. 373–384, 2015. [30] K. L. Miller and J. M. Pauly, “Nonlinear phase correction for navigated diffusion imaging,” Magnetic Resonance in Medicine , vol. 50, no. 2, pp. 343–353, 2003. [31] R. Bridson, “Fast poisson disk sampling in arbitrary dimensions,” in 
+
+Proc. ACM SIGGRAPH Sketches , 2007, pp. 22–es. [32] D. Rueckert, L. I. Sonoda, C. Hayes, D. L. Hill, M. O. Leach, and D. J. Hawkes, “Nonrigid registration using free-form deformations: application to breast MR images,” IEEE Transactions on Medical Imaging , vol. 18, no. 8, pp. 712–721, 1999. [33] M. Uecker et al. , “ESPIRiT—an eigenvalue approach to autocalibrating parallel MRI: where SENSE meets GRAPPA,” Magnetic Resonance in Medicine , vol. 71, no. 3, pp. 990–1001, 2014. [34] J. P. Mugler III and J. R. Brookeman, “Three-dimensional magnetization-prepared rapid gradient-echo imaging (3D MP RAGE),” 
+
+Magnetic Resonance in Medicine , vol. 15, no. 1, pp. 152–157, 1990. [35] D. P. Kingma and J. Ba, “Adam: A method for stochastic optimization,” in Proc. International Conference on Learning Representations (ICLR) ,2015. [36] B. D. Lucas and T. Kanade, “An iterative image registration technique with an application to stereo vision,” in Proc. 7th International Joint Conference on Artificial Intelligence (IJCAI) , 1981, pp. 674–679. [37] M. Hoffmann, B. Billot, D. N. Greve, J. E. Iglesias, B. Fischl, and A. V. Dalca, “Synthmorph: learning contrast-invariant registration without acquired images,” IEEE Transactions on Medical Imaging , vol. 41, no. 3, pp. 543–558, 2022. [38] A. Hoopes, J. S. Mora, A. V. Dalca, B. Fischl, and M. Hoffmann, “Synthstrip: skull-stripping for any brain image,” NeuroImage , vol. 260, p. 119474, 2022. [39] V. Sitzmann, J. Martel, A. Bergman, D. Lindell, and G. Wetzstein, “Implicit neural representations with periodic activation functions,” 
+
+Advances in Neural Information Processing Systems , vol. 33, pp. 7462– 7473, 2020.
