@@ -6,35 +6,27 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-07-01
-- 运行时间：2026-07-01 21:39:24 UTC
+- 最新运行日期：2026-07-02
+- 运行时间：2026-07-02 21:30:04 UTC
 - 运行状态：成功
-- 本次总论文数：5
-- 精读区：2
-- 速读区：3
+- 本次总论文数：2
+- 精读区：0
+- 速读区：2
 
 ### 今日简报（AI）
-今日综述：脑肿瘤分割鲁棒性与胶质瘤纵向评估可解释性成亮点。最值得关注：Set-Inclusive不确定性建模提升肿瘤分割泛化能力，TRACE概念瓶颈模型实现3D胶质瘤治疗反应的可解释评估。建议优先精读这两篇，理解鲁棒与可解释性如何推动临床落地。
-- 详情：[/202607/01/README](/202607/01/README)
+今天浏览了两篇6.0分论文，分别关注时间图神经网络的可解释性和脑微观结构基础模型。值得关注的方向：一篇用特征诱导信息流解释时间图神经网络，另一篇通过信息分解构建脑微观结构基础模型。下一步可重点关注图神经网络的解释方法及信息分解在脑科学的应用。
+- 详情：[/202607/02/README](/202607/02/README)
 
 ### 精读区论文标签
-1. [Set-Inclusive Uncertainty Modeling for Robust Brain Tumor Segmentation](/202607/01/2606.30374v1-set-inclusive-uncertainty-modeling-for-robust-brain-tumor-segmentation)  
-   标签：评分：9.0/10、query:fbn
-   evidence：用于多模态MRI脑肿瘤分割的AI方法
-2. [TRACE: A Concept Bottleneck Model for Longitudinal 3D Glioblastoma Response Assessment](/202607/01/2606.30313v1-trace-a-concept-bottleneck-model-for-longitudinal-3d-glioblastoma-response-assessment)  
-   标签：评分：8.0/10、query:fbn
-   evidence：深度学习用于纵向胶质母细胞瘤MRI反应评估
+- 本次无精读推荐。
 
 ### 速读区论文标签
-1. [A Deep Multiscale Neural Network for Accurate Neurological Disorder Detection from MRI Scans and Real-Time Web Deployment](/202607/01/2606.29106v1-a-deep-multiscale-neural-network-for-accurate-neurological-disorder-detection-from-mri-scans-and-real-time-web-deployment)  
-   标签：评分：7.0/10、query:fbn
-   evidence：深度多尺度CNN用于神经疾病MRI分类
-2. [Distortion-Corrected Diffusion MRI Using Rotated-View EPI and Joint Field-Map/Image Estimation with Gaussian Primitives](/202607/01/2606.31521v1-distortion-corrected-diffusion-mri-using-rotated-view-epi-and-joint-field-mapimage-estimation-with-gaussian-primitives)  
-   标签：评分：7.0/10、query:fbn
-   evidence：使用AI的扩散MRI畸变校正
-3. [BrainJanus: A Unified Model for Understanding and Generation across Brain, Vision, and Language](/202607/01/2606.30319v1-brainjanus-a-unified-model-for-understanding-and-generation-across-brain-vision-and-language)  
+1. [Explaining Temporal Graph Neural Networks via Feature-induced Information Flow](/202607/02/2606.27201v1-explaining-temporal-graph-neural-networks-via-feature-induced-information-flow)  
    标签：评分：6.0/10、query:fbn
-   evidence：统一脑模型用于多模态整合
+   evidence：时间图神经网络解释方法，可应用于fMRI功能连接分析
+2. [BrainFIBRE: A Foundation Model via Information Decomposition for Brain Microstructure](/202607/02/2607.00573v1-brainfibre-a-foundation-model-via-information-decomposition-for-brain-microstructure)  
+   标签：评分：6.0/10、query:fbn
+   evidence：基于扩散MRI的脑微结构基础模型，与神经影像AI医疗相关
 
 
 <div class="dpr-home-promo-card">

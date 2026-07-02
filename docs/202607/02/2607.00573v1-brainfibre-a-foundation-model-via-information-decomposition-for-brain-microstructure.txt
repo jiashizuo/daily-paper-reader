@@ -1,0 +1,700 @@
+Title: BrainFIBRE: A Foundation Model via Information Decomposition for Brain Microstructure
+
+URL Source: https://arxiv.org/pdf/2607.00573v1
+
+Published Time: Thu, 02 Jul 2026 00:40:59 GMT
+
+Number of Pages: 30
+
+Markdown Content:
+# BrainFIBRE: A Foundation Model via Information Decomposition for Brain Microstructure 
+
+Zijian Dong*, Yi Lin*, Ji Fang*, Jianxiong Zhou, Kwun Kei Ng, and Juan Helen Zhou †
+
+National University of Singapore, Singapore 
+
+> ∗
+
+Equal contribution †Corresponding author 
+
+{zijian_dong, helen.zhou}@nus.edu.sg , lin_yi@u.nus.edu 
+
+Abstract. Diffusion MRI is widely used to probe brain microstruc-ture, with particular sensitivity to early cerebrovascular and neurode-generative changes. Neurite Orientation Dispersion and Density Imaging (NODDI) decomposes the diffusion signal into three biophysically inter-pretable maps — neurite density index (NDI), orientation dispersion in-dex (ODI), and free water fraction (FWF) — capturing neurite packing, fiber coherence, and extracellular fluid, respectively. These 3D maps pro-vide a rich substrate for learning transferable microstructural represen-tations for the human brain, yet effectively integrating them remains an open challenge: standard representation learning struggles to disentangle the unique information carried by each of the three brain microstructure maps ( i.e., NDI, ODI, and FWF) from their shared and synergistic inter-actions. Here, we present BrainFIBRE (Brain F oundation Model via 
+
+Information Decomposition for BR ain Microstructur E), the first founda-tion model for brain microstructure, pretrained on three NODDI-derived microstructure maps from the UK Biobank dataset (55,592 participants). To achieve this, we propose Self-supervised Partial Information Decom-position (SPID), which extends PID-guided multimodal learning to the self-supervised regime for the first time. A novel Counterfactual Candi-date Construction (CCC) paradigm perturbs inter-modality alignment through modality dropping and swapping, providing the contrastive sig-nal for a Mixture-of-Experts (MoE) architecture to disentangle unique, synergistic, and redundant information without any downstream label. Evaluated on both Caucasian and Asian cohorts, our model achieves state-of-the-art performance across diverse downstream tasks predicting age, sex, cerebrovascular disease (CeVD) and neurodegenerative markers, and cognitive performance, while yielding neurobiologically interpretable representations that reveal task- and cohort-specific interaction patterns among microstructural compartments. BrainFIBRE establishes a versa-tile foundation for neuroimaging analysis at the microstructural level. Code is available at https://github.com/hzlab/BrainFIBRE 
+
+Keywords: Brain foundation model · Diffusion MRI · NODDI · Partial Information Decomposition · Mixture-of-Experts  
+
+> arXiv:2607.00573v1 [cs.CV] 1 Jul 2026 2Z. Dong et al.
+
+## 1 Introduction  
+
+> Fig. 1: Overview of NODDI-derived microstructural maps (the input to Brain-FIBRE). NODDI is a biophysical model that partitions tissue microstructure into three compartments (intra-neurite, extra-neurite, and free water) to derive three cor-responding parametric maps: Neurite Density Index (NDI), Orientation Dispersion Index (ODI), and Free Water Fraction (FWF). Compared to conventional diffusion maps, these biologically interpretable maps offer greater sensitivity to microstructural changes, providing critical insights into brain aging, cerebrovascular pathology, neu-rodegenerative processes, and interindividual variation in cognitive performance.
+
+The human brain is built upon a highly complex microstructural architecture. Unraveling this structure is essential to understanding the biological mechanisms behind cognition, healthy aging, and neurological disease. Diffusion Magnetic Resonance Imaging (dMRI) has emerged as a cornerstone technology for this purpose, offering a unique, non-invasive window into tissue microstructure by measuring the restricted random motion of water molecules within biological tissues [21]. Despite its widespread clinical and research utility, conventional measures derived from diffusion fundamentally lack biological specificity. They summarize water diffusion across all encoding directions within a voxel, rather than isolating distinct microstructural compartments. For example, mean dif-fusivity (MD) quantifies the average rate of molecular diffusion, and fractional anisotropy (FA) reflects the degree of diffusion anisotropy, yet both are sensi-tive to multiple underlying tissue features without specifying their individual contributions. Consequently, they conflate distinct biophysical phenomena [19]. Neurite Orientation Dispersion and Density Imaging (NODDI) provides a more biologically specific characterization of tissue microstructure by modeling the voxel-wise diffusion signal into intra-neurite, extra-neurite, and free water compartments (Fig.1). This framework derives three parametric maps: neurite density index (NDI), orientation dispersion index (ODI), and free water fraction (FWF), which respectively characterize neurite packing, fiber coherence, and ex-BrainFIBRE 3
+
+tracellular fluid. This microstructural modelling approach disentangles processes that are typically conflated in conventional diffusion metrics, such as neurite loss, demyelination, edema, and neuroinflammation, thereby yielding more directly interpretable tissue parameters [39]. Despite the biological specificity in NODDI, harnessing its rich, multipara-metric maps for predictive modeling remains a profound computational chal-lenge: how to effectively fuse these complex, three-dimensional spatial maps without re-entangling their distinct biophysical meanings. Addressing this chal-lenge is crucial, as NODDI-derived maps capture clinically consequential sig-nals that are inaccessible to macroscopic contrasts: they reveal systematic yet regionally heterogeneous microstructural trajectories across aging in all three compartments [12, 25, 28, 38], provide mechanistically grounded sensitivity to cerebrovascular injury ( e.g. , white matter hyperintensities (WMH)) and cogni-tive decline [10, 15], and detect early Alzheimer’s-related microstructural alter-ations [25, 38]. Recent brain foundation models have revolutionized neuroimaging analysis by leveraging self-supervised learning on large-scale, unlabeled datasets to ex-tract transferable representations [4, 7, 8, 29]. However, they mainly focus on ei-ther macroscopic structural MRI ( e.g. , T1- and T2-weighted scans) or functional MRI, leaving a model dedicated to tissue microstructure conspicuously absent. Furthermore, effectively integrating the NODDI maps into a unified learning framework is itself non-trivial. Each map encodes a distinct biophysical process, yet previous multi-modal fusion strategies in brain imaging [8,20,29] collapse dif-ferent modalities into a monolithic latent space, risking the re-entanglement of the very processes that the NODDI compartmental model was explicitly designed to decouple. A principled framework is therefore needed to systematically char-acterize the interactions among neurite density, orientation dispersion, and free water fraction. Such a framework must disentangle whether these maps provide complementary, redundant, or synergistic information for different neurological tasks, while preserving the biophysical specificity afforded by NODDI. Partial Information Decomposition (PID) offers a theoretical foundation for understanding multimodal interactions [2, 34]. It decomposes the total informa-tion that multiple sources carry about a target into unique, redundant, and syn-ergistic components. Uniqueness isolates what each modality contributes alone, redundancy captures information shared across modalities, and synergy reveals information that emerges only from their joint observation. Recently, a Mixture-of-Experts (MoE) architecture operationalizing PID has been proposed, assign-ing dedicated experts to each interaction type and extending the framework beyond the two-modality setting [35]. It achieves interpretable predictions on Alzheimer’s Disease classification with four input modalities including imaging, genetic, clinical, and biospecimen data. However, it approximates PID interac-tion types through binary label agreement among unimodal classifiers. This cou-pling strictly ties the decomposition to classifier quality and, crucially, precludes the large-scale, self-supervised pretraining essential for foundation models. 4 Z. Dong et al.           
+
+> Fig. 2: Overview of BrainFIBRE . ( A) By the design of Self-supervised Partial In-formation Decomposition (SPID), BrainFIBRE extends classical PID to isolate unique, synergistic, and redundant information for self-supervised pretraining. Three NODDI maps are processed by unimodal encoders into embeddings hm, which are routed to five interaction experts: three for uniqueness and two for synergy and redundancy. A Re-Weighter adaptively aggregates expert embeddings qkvia learned weights wkinto fused representation qf used . Pretraining is optimized by an interaction loss LInter guided by interaction rules, and a global contrastive loss LCont . ( B) Counterfactual Candidate Construction (CCC) generates perturbed triplets (base b0, modality dropout ( drop m), and modality swap ( swap m)) to provide self-supervised signals for SPID.
+
+In this work, we introduce BrainFIBRE (Brain F oundation Model via 
+
+Information Decomposition for BR ain Microstructur E), the first foundation model dedicated to brain tissue microstructure (Fig.2). It was pretrained on NODDI-derived microstructure maps from 55,592 participants in the UK Biobank, the largest publicly available diffusion MRI dataset to date. BrainFIBRE treats the three NODDI maps — NDI, ODI, and FWF — as distinct modalities and learns unified multimodal representations that capture their joint predictive power while preserving the biophysical specificity of each individual compart-ment. To achieve this, we propose Self-supervised Partial Information Decompo-sition (SPID) , a novel pretraining objective that extends PID-guided multimodal learning to the self-supervised setting. SPID drives an MoE architecture compris-ing three Uniqueness experts, one Redundancy expert, and one Synergy expert, each trained to isolate its targeted information component without requiring downstream labels. Central to SPID is a Counterfactual Candidate Construction (CCC) paradigm that systematically generates counterfactual views through modality dropping and swapping, providing the contrastive signal needed to dis-entangle information in a purely self-supervised manner. We evaluate BrainFIBRE on a comprehensive suite of downstream tasks spanning prediction of age, sex, cerebrovascular disease & neurodegenerative markers, and cognition across both Caucasian and Asian cohorts. It achieves state-of-the-art performance across tasks while yielding neurobiological interpre-tations that align with known microstructural signatures of aging and disease. Our contributions can be summarized as follows: BrainFIBRE 5
+
+– We present BrainFIBRE, the first brain foundation model for tissue mi-crostructure, pretrained on NODDI-derived maps from UK Biobank. 
+
+– We propose Self-supervised Partial Information Decomposition (SPID) with a Counterfactual Candidate Construction (CCC) paradigm, enabling PID-guided self-supervised pretraining of MoE without any downstream label. 
+
+– We demonstrate state-of-the-art performance across diverse downstream tasks on both Caucasian and Asian cohorts, with neurobiological interpretations. 
+
+## 2 Related Work 
+
+2.1 Brain Foundation Model 
+
+Recent advances in brain foundation models have demonstrated the power of self-supervised learning to extract transferable representations from large-scale neuroimaging. These efforts have spanned diverse modalities. In the domain of electroencephalography (EEG), among the most representative works, LaBraM [18] pretrains a large brain model via masked EEG modeling, while NeuroLM [17] further integrates EEG signals into a large language model to enable uni-fied multi-task inference through instruction tuning. In functional MRI (fMRI), BrainLM [4] and Brain-JEPA [7] pioneer representation learning for brain dy-namics through masked prediction and joint-embedding architectures, respec-tively. In structural MRI (sMRI), BrainMVP [29] proposes self-supervised pre-training on 3D brain volumes, learning cross-parametric correspondences among multi-modal MRI. More recently, multimodal brain foundation models that jointly fuse structural and functional neuroimaging have also been proposed [8, 20]. Despite this progress, existing brain foundation models operate exclusively on macroscopic contrasts, and none address the tissue microstructures. A related line of diffusion MRI work studies learning-based microstructural parameter estimation, such as codebook-driven estimation of tissue characterization in-dices from diffusion measurements [33]. BrainFIBRE is complementary: rather than deriving microstructural maps from raw DWI, it learns transferable rep-resentations from already-derived NODDI maps and models the interactions among ODI, NDI, and FWF. Thus, interaction-aware representation learning over NODDI-derived tissue microstructure remains largely unexplored. 
+
+2.2 Multimodal Interaction MoEs 
+
+Existing multimodal MoEs typically rely on heuristic routing [13, 30], offering limited insight into how different modalities interact with each other [23, 31]. Modeling multimodal interactions provides a principled and natural inductive bias for guiding expert specialization in MoEs. In MMoE [37], dedicated experts are assigned to capture predetermined types of multimodal interactions. Build-ing on this idea, I 2MoE introduces interaction-type categorization into the MoE training process and generalized the framework to support an arbitrary number of modalities [35]. However, its approximation of PID interaction types relies on 6 Z. Dong et al. 
+
+label agreement among unimodal classifiers, coupling the decomposition to clas-sifier quality and, crucially, ruling out the large-scale self-supervised pretraining on which foundation models depend. General multimodal self-supervised frame-works such as M3-JEPA [22] use MoE-style latent alignment across heteroge-neous modalities, but do not assign experts to explicit PID interaction atoms. In contrast, BrainFIBRE uses counterfactual modality dropping and swapping to specialize experts toward unique, redundant, and synergistic information in a label-free manner. 
+
+## 3 BrainFIBRE 
+
+We propose BrainFIBRE, a brain microstructure foundation model driven by the proposed Self-supervised Partial Information Decomposition (SPID) (Fig. 2.). For each participant, the input is a 3D microstructural triplet,  X = {Xm}m,where m ∈ {O, N, F} and each Xm ∈ RH×W ×D corresponds to a specific NODDI-derived map (O:ODI, N:NDI, F:FWF). To disentangle the profound re-lationships among modalities, we design a Mixture-of-Experts (MoE) architec-ture to explicitly model distinct types of modality interactions (Sec. 3.1) while extending PID to the self-supervised setting (Sec. 3.2). The pretraining objective is anchored by a Counterfactual Candidate Construction (CCC) strategy, which generates perturbations to provide optimization signals. 
+
+3.1 Architecture Disentangled Encoding of Modality Interaction As shown in Fig. 2A, BrainFIBRE consists of modality encoders and interaction experts. First, three 3D Vision Transformers (ViT) [9] encoders, denoted as EO , EN , and EF , are applied on each modality map in the input triplet  X to extract unimodal em-beddings hm ∈ R1×denc .Guided by PID, we categorize interactions into three types: uniqueness , syn-ergy , and redundancy , and define five distinct experts to extract specific inter-action embeddings  qk: three uniqueness experts ( UuO , U uN , U uF ) for modality-exclusive features, one synergy expert ( Usyn ) for emergent multimodal features, and one redundancy expert ( Ured ) for shared information. The entire disentan-gled encoding process is formulated as: 
+
+hm = Em(Xm) ∈ R1×denc , qk = Uk(InterRule ([ hO , h N , h F ]) ∈ R1×dexp  (1) where k ∈ K = {uO , uN , uF , syn , red }, denc  and  dexp  are the dimension of uni-modal and expert embeddings, and InterRule (·) denotes expert-specific pertur-bations based on interaction rules (detailed in Sec. 3.2). Specifically, uniqueness experts capture the information unique to each modal-ity via linear projection heads. On the other hand, the synergy and redundancy experts model more complex interactions via query-based information encoding (Fig.2.A). For either of these two, a learnable query token qk 
+
+> 0
+
+∈ R1×denc is ini-tialized as the Query ( Q). The three unimodal embeddings are concatenated and BrainFIBRE 7
+
+linearly projected to form the Key ( K ∈ R3×denc ) and Value ( V ∈ R3×denc ). The expert embedding qk is computed via scaled dot-product attention: 
+
+αk = Softmax 
+
+ qk 
+
+> 0
+
+K⊤
+
+√denc 
+
+
+
+∈ R1×3, qk = Linear (αkV ) ∈ R1×dexp  (2) where αk is the attention weights and  Linear (·) is a linear projection head. This design allows the synergy and redundancy experts to dynamically aggregate information across all modalities driven by their respective learned queries. 
+
+Adaptive Fusion of Expert Embeddings To integrate the expert embed-dings, we introduce a Re-weighter module to dynamically assign importance to each expert. Implemented as a Multi-Layer Perceptron (MLP), the Re-weighter takes the concatenated unimodal embeddings to generate a probability distri-bution over the five interaction experts. This yields a set of expert weights  wk,which are used to produce the final fused representation  qf used :
+
+w = Softmax (MLP ([ hO , h N , h F ])) ∈ R1×5, qf used = X
+
+> k∈K
+
+wk · qk (3) 
+
+3.2 Self-supervised Partial Information Decomposition (SPID) Counterfactual Candidate Construction (CCC) While PID-informed MoE frameworks enable interpretable multimodal learning [35], they are typically trained in a supervised manner, limiting their generalizability for large-scale pre-training. To address this, we propose Self-supervised Partial Information Decomposition (SPID). The core challenge of extending PID to a self-supervised setting lies in isolating unique, redundant, and synergistic interactions without external supervision. Standard spatial augmentations that preserve the aligned modality triplet fail to provide the necessary teaching signal to disentangle these interactions, as the model is never forced to distinguish between modality-specific and the natural co-occurrence among modalities. To address this, we introduce Counterfactual Candidate Construction (CCC) (Fig. 2B) to systematically disrupt biophysical alignment and generate the con-trastive signals, enabling the model to isolate and learn each specific PID interac-tion in an entirely self-supervised manner. For a minibatch of N participants, let 
+
+Xi denote the input for the i-th participant. We generate two augmented views, 
+
+XA(i) and XB (i), each comprising a triplet of NODDI maps. These views are processed by unimodal encoders to yield their respective embeddings: 
+
+Hv (i) = {hvm(i)}m = {Em(Xvm(i)) }m, m ∈ { O, N, F } and v ∈ { A, B } (4) We use HA to obtain the anchor embedding via the five interaction experts. On the other hand, HB is used to construct a set of counterfactural perturbations: 1. Base Candidate ( b0): The complete and unperturbed embedding derived from XB (i):
+
+b0(i) = Uk([ hBO (i), h BN (i), h BF (i)])  (5) 8 Z. Dong et al. 
+
+2. Modality Dropout ( drop m): Simulates the absence of a specific modality. 
+
+drop m(i) replaces the m-th component of  Hv with Gaussian noise. For in-stance: 
+
+drop O (i) = Uk([ noise , h BN (i), h BF (i)])  (6) 3. Modality Swap ( swap m): Constructs a counterfactual sample to destroy bio-physical correspondances. swap m(i) replaces the m-th component of  Hv with the same unimodal embedding from another randomly selected participant 
+
+j in the same batch. For instance: 
+
+swap O (i) = Uk([ hBO (j), h BN (i), h BF (i)])  (7) Together, these perturbations form a candidate pool Ci = {b0(i)} ∪ { drop m(i)}m
+
+∪{ swap m(i)}m for each participant. Crucially, identical spatial transfor-mations are applied across the entire batch for each view, guarantee-ing that swapped embeddings maintain strict anatomical alignment to prevent trivial solutions. Since human brains share highly conserved macro-scopic anatomy, swapping a modality with one from another participant yields a counterfactual that appears anatomically valid but is fundamentally mi-crostructurally mismatched . By forcing the model to distinguish these subtle disruptions, SPID moves beyond recognizing global brain shapes to genuinely learning voxel-level biophysical correspondences among neurite density, orienta-tion dispersion, and free water. 
+
+Expert-Conditional Interaction Rules Based on the candidate pool Ci gen-erated via CCC, we define specific interaction rules to construct positive samples or negative samples sets for each expert k. For instance, the uniqueness expert 
+
+UO should be invariant to changes in other modalities ( N, F ) but sensitive to its own ( O); thus, drop N ,drop F , swap N , and swap F are considered as positives, whereas drop O and swap O are negatives. The redundancy expert Ured should remain robust to missing partial information, making all dropout candidates positive and all swap candidates negative. For the synergy expert Usyn , which relies on constructive multimodal interactions, any perturbation destroys the emergent information, leaving only the base candidate b0 as positive. Complete definitions for all experts are detailed in Table 1. Based on these rules, we formulate the interaction objective  Linter  using a multi-positive symmetric InfoNCE loss [27]. Let Cbatch denotes the perturbation candidates from all the participants in the current batch. For each expert  Uk and participant  i, the positive candidate pool  Pk(i) ⊂ C batch , while the remainder as negatives. The objective is to maximize the similarity between the anchor 
+
+qAk (i) = Uk([ hAO (i), h AN (i), h AF (i)]))  and its positive candidates in  Pk(i), while pushing away negative candidates and all other participants in the batch: 
+
+LInter = X
+
+> k∈K
+> N
+
+X
+
+> i=1
+
+− log 
+
+P  
+
+> z+∈P k(i)
+
+exp(sim( qAk (i), z +)/τ )
+
+P 
+
+> z∈C batch
+
+exp(sim( qAk (i), z )/τ ) (8) BrainFIBRE 9
+
+where τ is the temperature parameter. Although formulated with View A as the anchor for brevity,  LInter  is symmetrized by averaging the losses computed in both directions (A →B and B →A). By leveraging PID principles to special-ize each expert via the interaction rules, this objective enables the end-to-end training of BrainFIBRE in a purely self-supervised, label-free manner. 
+
+Pretraining Objectives To learn robust participant-specific representations, we apply the symmetric InfoNCE loss [6], denoted as  LCont , to the fused em-beddings  qA 
+
+> fused
+
+and  qB 
+
+> fused
+
+produced by the two augmented views. This objective maximizes the similarity between the anchor  qA 
+
+> fused
+
+and its positive counterpart 
+
+qB
+
+> fused
+
+, while pushing away embeddings from other participants in the batch. Like 
+
+LInter , LCont  is symmetrized by averaging across both directions. Training MoE frameworks in a self-supervised manner is prone to representa-tion collapse, where the model trivially assign all samples to a single expert. To mitigate this, we introduce two auxiliary regularization terms. The Balance Loss 
+
+Lbalance  minimizes the Kullback-Leibler (KL) divergence between the batch-averaged expert assignment probabilities and a uniform distribution, prevent-ing global expert collapse. The Entropy Loss  Lentropy  minimizes the negative entropy of individual weight distributions, encouraging soft probabilistic assign-ments such that each participant integrates information from multiple experts rather than relying on a deterministic, one-hot routing. The final training objective is a weighted sum of the interaction loss, global contrastive loss, and the expert regularizations: 
+
+Ltotal = LInter + LCont + βLbalance + γLentropy  (9) where β and γ are hyperparameters for expert regularization. 
+
+Theoretical grounding The CCC-based interaction rules provide a theo-retical basis for using SPID as a self-supervised surrogate of PID. Specifically, 
+
+Theorem 1 in the supplementary material establishes the correctness of the expert-conditional rules: for each expert, the positive candidates are exactly those perturbations that preserve its designated latent interaction factor, while the negative candidates destroy or replace that factor almost surely. Building on this rule-level correctness, Theorem 2 shows that the population version of the interaction contrastive task admits a PID-factorized optimum, where each expert representation can solve its contrastive task using only its corresponding factor: the three modality-unique factors, the redundant factor, or the syner-gistic factor. Consequently, Corollary 1 implies that, if this factorized solution is reached, the five expert representations instantiate a coarse five-atom PID decomposition of the latent participant-specific state. This result should be in-terpreted as a population-level grounding of our design rather than a claim of exact recovery of the full three-source PID lattice or finite-sample identifiability. Detailed assumptions and proofs are provided in Supplementary A. 10 Z. Dong et al. 
+
+Table 1: Expert-Conditional Interaction Rules.                                      
+
+> Expert Anchor Positive Negative
+> UuO qAO{b0, drop N, drop F, swap N, swap F}{drop O, swap O}
+> UuN qAN{b0, drop O, drop F, swap O, swap F}{drop N, swap N}
+> UuF qAF{b0, drop O, drop N, swap O, swap N} { drop F, swap F}
+> Usyn qA
+> syn {b0}{drop m, swap m}m
+> Ured qA
+> red {b0, drop O, drop N, drop F}{swap m}m
+
+## 4 Experiments 
+
+4.1 Datasets Pretraining Dataset The UK Biobank (UKB) is a population-based prospec-tive study of over 500,000 participants (across the United Kingdom) with exten-sive phenotypic, clinical, and imaging data [32]. A subset (middle-aged to older adults) underwent brain MRI as part of an ongoing imaging initiative, providing substantial variability in aging and cardiometabolic risk factors [26]. Diffusion MRI was acquired via a harmonized multi-shell protocol on identical 3T Siemens Skyra scanners, from which NODDI metrics (ODI, NDI, and FWF) were system-atically estimated. BrainFIBRE was pretrained on these NODDI-derived maps from 55,592 UKB participants. 
+
+Downstream Datasets To rigorously evaluate the representational power and clinical generalizability of BrainFIBRE, we benchmarked the model across di-verse downstream datasets and tasks. We first evaluated the model on a held-out UKB test set (4,307 participants) across demographic (age, sex), neurodegenera-tive (hippocampal atrophy at 5-year follow-up), and cognitive (processing speed) predictions. Next, we assessed the model on the independent Human Connec-tome Project in Aging (HCP-Aging) dataset [3](630 participants) to evaluate demographic and executive function (Flanker, CardSort) prediction. Crucially, to demonstrate the utility of BrainFIBRE beyond predominantly Caucasian pop-ulations and into targeted clinical applications, we evaluated it on SINGER [36]. This Asian dataset (818 participants) comprises community-dwelling older adults at risk for vascular cognitive impairment, ranging from normal cognition to mild cognitive impairment. We utilized this dataset to predict brain age, cog-nition, and white matter hyperintensity (WMH) volume, a key cerebrovascular biomarker. Results were averaged over three independent runs, each using a dis-tinct random seed for data split (train/val/test ratio of 6:2:2). Details of imaging preprocessing are provided in the supplementary materials. 
+
+4.2 Implementation Details 
+
+In BrainFIBRE, we employed 3D ViT-S [9] as the backbone for all unimodal encoders, with an input volume size of (96, 112, 96) and a patch size of (16, 16, BrainFIBRE 11 
+
+Table 2: Performance comparisons on UKB held-out dataset. Best results are bolded; underlined values denote statistical significance against all others ( p < 0.05 ).               
+
+> Model Pretrain Age Sex Hipp.Atrophy Proc.Speed
+> MAE ↓Corr ↑F1 ↑Acc ↑MAE ↓Corr ↑MAE ↓Corr ↑
+> ViT-O
+
+✗ 4.50 ±0.07 0.67 ±0.00 78.08 ±1.30 78.11 ±1.31 110.29 ±3.06 0.16 ±0.01 0.75 ±0.01 0.20 ±0.06  
+
+> ViT-N
+
+✗ 4.49 ±0.09 0.67 ±0.01 82.01 ±1.29 82.13 ±1.31 110.01 ±2.57 0.17 ±0.03 0.75 ±0.01 0.20 ±0.04  
+
+> ViT-F
+
+✗ 4.24 ±0.01 0.71 ±0.01 82.18 ±0.59 82.21 ±0.60 109.85 ±3.43 0.19 ±0.01 0.71 ±0.01 0.32 ±0.02  
+
+> I2MOE [35]
+
+✗ 6.21 ±0.15 0.42 ±0.05 71.94 ±1.32 72.58 ±1.39 111.90 ±2.23 0.17 ±0.02 0.73 ±0.01 0.33 ±0.02  
+
+> BrainMVP [29]
+
+✓ 4.46 ±0.27 0.68 ±0.04 78.93 ±2.57 78.65 ±2.33 109.76 ±2.96 0.19 ±0.04 0.70 ±0.01 0.36 ±0.01  
+
+> TFS
+
+✗ 4.33 ±0.02 0.69 ±0.01 79.55 ±2.02 79.62 ±1.99 111.05 ±2.08 0.18 ±0.01 0.71 ±0.01 0.32 ±0.02  
+
+> BrainFIBRE
+
+✓ 3.95 ±0.02 0.76 ±0.00 89.30 ±0.82 89.33 ±0.84 109.21 ±2.03 0.21 ±0.01 0.70 ±0.01 0.33 ±0.02 
+
+> TFS: trained-from-scratch. Hipp.Atropy: future hippocampal atrophy. Proc.Speed: processing speed.
+
+16).  denc  and  dexp  is 384 and 128, respectively. The pretraining was conducted on 8 NVIDIA H200 (140GB) GPUs. The model was pretrained for 200 epochs with a global batch size of 280, which required 40 hours. We utilized the AdamW optimizer [24] ( β1 = 0 .9, β 2 = 0 .999 ) with a base learning rate of 2e−4, a weight decay of 1e−4, and a cosine annealing learning rate scheduler. Regarding the pretraining objectives, the temperature parameters τ for LInter 
+
+and LCont were empirically set to 0.2 and 0.12, respectively. The expert regu-larization weights were set to β = 0 .05 and γ = 0 .01 . To prevent early expert collapse, we adopted a warmup strategy during the first 5 epochs, where uniform routing weights were explicitly assigned to all five interaction experts. For regression tasks, we adopted Mean Absolute Error (MAE) and Pearson Correlation (Corr) as the evaluation metrics. For classification tasks, we adopted the F1 score and Accuracy (Acc) metrics. More details regarding training con-figurations are provided in the supplementary materials. 
+
+4.3 Downstream Evaluation Performance Comparison with Baselines on Internal Dataset BrainFI-BRE demonstrates strong representation capability and generalizability across a diverse set of downstream tasks, encompassing demographic prediction, the prediction of neurodegenerative marker (hippocampus atrophy), and cognitive performance (processing speed). Table 2 summarizes the quantitative results on the held-out test set from UKB. To assess our approach, we benchmarked Brain-FIBRE against a comprehensive set of baselines: (1) three unimodal 3D ViTs (ViT-O, ViT-N, and ViT-F) trained exclusively on a single NODDI map; (2) I2MOE, a fully supervised multimodal model; (3) BrainMVP, a state-of-the-art multimodal self-supervised foundation model; and (4) a standard train-from-scratch paradigm using the BrainFIBRE architecture. Significance was evaluated via paired t-test, annotated only when BrainFIBRE significantly outperformed all baselines (p < 0.05) . Overall, BrainFIBRE outperforms the unimodal, super-vised & self-supervised multimodal baselines. The substantial gains underscore 12 Z. Dong et al. 
+
+Table 3: Performance comparisons on HCP-A dataset. Best results are bolded; underlined values denote statistical significance against all others ( p < 0.05 ). 
+
+Model Pretrain Age Sex Flanker CardSort 
+
+MAE ↓ Corr ↑ F1 ↑ Acc ↑ MAE ↓ Corr ↑ MAE ↓ Corr ↑
+
+ViT-O ✗ 11.92 ±0.51 0.49 ±0.09 61.33 ±6.70 47.09 ±15 .40 6.14 ±0.34 0.23 ±0.07 6.10 ±0.41 0.18 ±0.05 
+
+ViT-N ✗ 11.09 ±0.69 0.64 ±0.03 57.33 ±2.10 36.43 ±0.86 6.13 ±0.34 0.18 ±0.07 6.08 ±0.36 0.20 ±0.07 
+
+ViT-F ✗ 6.84 ±0.57 0.82 ±0.03 57.87 ±4.20 52.72 ±4.13 5.92 ±0.27 0.33 ±0.03 5.99 ±0.40 0.30 ±0.04 
+
+I2MOE [35] ✗ 10.37 ±0.42 0.82 ±0.01 67.47 ±4.90 66.15 ±3.80 5.86 ±0.26 0.30 ±0.06 5.95 ±0.4 0.26 ±0.06 
+
+BrainMVP [29] ✓ 8.26 ±3.30 0.81 ±0.04 71.20 ±9.49 79.90 ±4.69 5.92 ±0.33 0.35 ±0.01 6.12 ±0.67 0.37 ±0.04 
+
+TFS ✗ 6.57 ±0.35 0.84 ±0.02 74.40 ±3.39 73.86 ±3.02 5.99 ±0.23 0.31 ±0.04 6.08 ±0.47 0.34 ±0.02 
+
+BrainFIBRE ✓ 5.54 ±0.50 0.87 ±0.02 83.73 ±2.29 83.36 ±2.09 5.75 ±0.39 0.40 ±0.05 5.92 ±0.29 0.38 ±0.02 
+
+> TFS: trained-from-scratch.
+
+Table 4: Performance comparisons on SINGER. Best results are bolded; un-derlined values denote statistical significance against all others ( p < 0.05 ). 
+
+Model Pretrain Age Mean Thickness WMH Proc.Speed 
+
+MAE ↓ Corr ↑ MAE ↓ Corr ↑ MAE ↓ Corr ↑ MAE ↓ Corr ↑
+
+ViT-O ✗ 3.84 ±0.06 0.37 ±0.03 0.08 ±0.00 0.26 ±0.05 2.47 ±0.33 0.21 ±0.02 0.67 ±0.08 0.09 ±0.03 
+
+ViT-N ✗ 3.60 ±0.04 0.47 ±0.01 0.08 ±0.00 0.36 ±0.05 2.42 ±0.28 0.37 ±0.12 0.67 ±0.07 0.10 ±0.03 
+
+ViT-F ✗ 3.37 ±0.11 0.55 ±0.03 0.07 ±0.00 0.47 ±0.03 2.37 ±0.31 0.34 ±0.04 0.67 ±0.08 0.21 ±0.01 
+
+I2MOE [35] ✗ 4.10 ±0.13 0.36 ±0.07 0.07 ±0.00 0.48 ±0.04 2.66 ±0.38 0.34 ±0.00 0.66 ±0.06 0.19 ±0.03 
+
+BrainMVP [29] ✓ 3.44 ±0.40 0.50 ±0.03 0.07 ±0.02 0.52 ±0.03 2.54 ±0.56 0.44 ±0.13 0.70 ±0.09 0.15 ±0.03 
+
+TFS ✗ 3.56 ±0.11 0.49 ±0.03 0.07 ±0.01 0.41 ±0.10 4.49 ±0.40 0.25 ±0.16 0.86 ±0.33 0.19 ±0.01 
+
+BrainFIBRE ✓ 3.21 ±0.12 0.60 ±0.04 0.07 ±0.00 0.55 ±0.02 2.08 ±0.30 0.59 ±0.02 0.66 ±0.07 0.25 ±0.03 
+
+> TFS: trained-from-scratch. WMH: white matter hyperintensity volume. Proc.Speed: processing speed.
+
+BrainFIBRE’s capacity to effectively extract and integrate subtle microstruc-tural features from diffusion imaging data. 
+
+Superior Performance and Generalizability on External Dataset across Cohorts We further evaluated BrainFIBRE on the HCP-Aging dataset on de-mography prediction (age, sex) and executive function tasks (Flanker and Card-Sort scores). As shown in Table 3, BrainFIBRE consistently achieves superior predictive performance compared to baseline methods, highlighting its capac-ity to capture both fundamental demographic features and complex cognitive outcomes. This suggests BrainFIBRE’s strong generalizability to unseen cohorts and the sensitivity of its learned representations to clinically relevant traits. To further evaluate cross-ethnic generalizability and disease-relevant predic-tive utility, we assessed BrainFIBRE’s performance on SINGER across age, mean cortical thickness, white matter hyperintensity (WMH) volume, and processing speed (Proc.Speed) prediction. As shown in Table 4, BrainFIBRE outperforms all baseline models on all four tasks. This robust advantage in an ethnically distinct cohort underscores the model’s resilience to population heterogeneity. Importantly, it suggests that BrainFIBRE learns representations that capture BrainFIBRE 13 UKB ：Age UKB ：Hipp.Atrophy Asian: Age Asian: WMH 
+
+> Fig. 3: Distribution of expert weights across the test set . The y-axis of each plot illustrates the weight distribution of each of the five experts for a specific task. These include three uniqueness experts (uN, uF, uO), one synergy expert (syn), and one redundancy expert (red).
+
+fundamental, broadly transferable microstructural features, rather than leverag-ing cohort- or dataset-specific biases. 
+
+Task-Specific Modality Interaction Patterns To investigate whether and how the interaction patterns between the three brain microstructural measures vary across different datasets and tasks, we visualized the test-set distributions of the five expert weights assigned by the Re-Weighter across four tasks in Fig.3. In the UKB dataset, the synergy expert consistently exhibits the highest average weight, indicating a strong reliance on emergent information fused jointly from all three NODDI maps. Among the uniqueness experts, age prediction relies more heavily on FWF than NDI or ODI, suggesting free water fraction is a more prominent age-related microstructural marker. On the other hand, ODI dom-inates hippocampal atrophy prediction, suggesting that alterations in neurite dispersion are highly indicative of regional neurodegeneration. The Asian dataset exhibits a more uniform expert weight distribution with greater participant variance. While age prediction remains synergy-dominated, it exhibits stronger ODI uniqueness contribution than in UKB, suggesting mi-crostructural alterations in dispersion (potentially reflecting changes in fibre ar-chitecture and dendritic organization) provide additional aging-relevant signal in this cohort enriched for cardiometabolic risk. In contrast, the interaction pat-tern shifts markedly for WMH volume prediction: FWF uniqueness becomes the primary contributor, followed by redundancy and synergy, with minimal re-liance on ODI. This pattern suggests that WMH burden is driven predominantly by extracellular water expansion, consistent with established neuropathological findings [15]. 
+
+4.4 Ablation Study 
+
+To investigate the effectiveness of different interaction experts in BrainFIBRE, we conducted an ablation study comparing three settings: (1) BrainFIBRE : us-ing the fully fused representation from all experts; (2) Single-Expert : evaluating each expert independently, and (3) Dual-Modality : omitting one NODDI map to rely on two modality encoders and four corresponding experts (two uniqueness, 14 Z. Dong et al. (b) Dual -Modality (a) Single -Expert 
+
+Fig. 4: Ablation study on age (UKB) and WMH volume (Asian) prediction tasks . We compared the full BrainFIBRE model (using the final fused embedding) against two settings: (a) Single-Expert (using individual expert embeddings), and (b) Dual-Modality (using fused embeddings derived from only two input NODDI maps). (a) UKB Age (b) Asian Age 
+
+> ODI
+> 1.0 0.5 0.0
+> 1.0 0.5 0.0
+> NDI
+> 1.0 0.5 0.0
+> 1.0 0.5 0.0
+> FWF
+> 1.0 0.5 0.0
+> 1.0 0.5 0.0
+> Synergy
+> 1.0 0.5 0.0
+> 1.0 0.5 0.0
+> Redundancy
+> 1.0 0.5 0.0
+> 1.0 0.5 0.0
+
+Fig. 5: Spatial attention patterns captured by different interaction experts .For both (a) UKB age and (b) Asian age prediction, salient regions are highlighted on both the cortical surface (peripheral views) and white matter tracts (central view). 
+
+one synergy, and one redundancy). As shown in Fig.4, the fused representation consistently outperforms any single expert. This indicates that our model bene-fits from integrating information from all modality interactions rather than rely-ing on a single type of interaction alone. On the other hand, the dual-modality settings also underperform compared to BrainFIBRE, where dropping any of the modality would degrade the model performance. Collectively, these results demonstrate that explicitly modeling and aggre-gating unique, redundant, and synergistic components leads to more robust and generalizable representations across heterogeneous clinical tasks. Additional ab-lations on individual loss terms are provided in the supplementary materials. 
+
+4.5 Interpretation Salient Brain Regions Identified by Different Experts As shown in Fig.5, different experts captured distinct spatial patterns across NODDI com-partments. For age prediction in UKB, in grey matter (GM), uniqueness experts revealed modality-specific patterns: NDI was localized to the medial temporal cortex, ODI to more posterior regions, and FWF spanned the broadest cortical extent, while synergy concentrated in medial temporal and insular areas. In white BrainFIBRE 15 
+
+matter (WM), age prediction was driven by limbic and association tracts, with FWF showing widespread sensitivity and NDI&ODI more selective involvement. Synergy and redundancy experts consistently highlighted the cingulum as a hub of multifactorial microstructural aging. These spatial patterns align with prior lifespan diffusion studies reporting medial temporal NDI decline [25], widespread free water increases [5], and preferential vulnerability of limbic association tracts such as cingulum during healthy aging [28]. For the Asian dataset, in GM, uniqueness experts showed a relative shift to-ward frontal-parietal, midline, and posterior cortical involvement compared with UKB, corresponding to executive control, sensorimotor, and default mode net-works, while WM signatures remained largely consistent. This pattern is consis-tent with vascular-sensitive network vulnerability [14, 16], potentially reflecting enrichment of cardiometabolic risk factors in the cohort. We provide additional interpretative analyses for other tasks in the supplementary materials. 
+
+## 5 Conclusion 
+
+We introduce BrainFIBRE, the first foundation model for brain tissue microstruc-ture, pretrained on NODDI-derived maps from UK Biobank. By treating neurite density, orientation dispersion, and free water fraction as distinct modalities, we propose Self-supervised Partial Information Decomposition (SPID) with Coun-terfactual Candidate Construction (CCC) to train an MoE architecture that explicitly isolates unique, redundant, and synergistic information — without supervision. Evaluations across demographically and ethnically diverse cohorts demonstrates state-of-the-art performance on predicting brain age, cerebrovascu-lar and neurodegenerative markers, and cognitive performance, while the learned representations yield neurobiologically interpretable patterns consistent with es-tablished neuropathological findings. These results highlight the value of princi-pled multimodal interaction modeling at the microstructural level and position BrainFIBRE as a versatile foundation for clinical neuroimaging applications. 
+
+## Acknowledgments 
+
+This study was supported by the Singapore National Medical Research Coun-cil (NMRC/OFLCG19May-0035, NMRC/CIRG/1485/2018, NMRC/CSA-SI/ 0007/2016, NMRC/MOH-00707-01, NMRC/CG/435 M009/2017-NUH/NUHS, CIRG21nov-0007, HLCA23Feb-0004, OFIRG24Jul-0049, Human Potential Joint Grant HPJGC25-0002), A*STAR Singapore (AME Programmatic Fund A20G8b0102, Human Potential Joint Grant H25P3M00001, HHP Industry-Alignment Fund H24J4a0143), Ministry of Education (MOE-T2EP20223-0013), and Yong Loo Lin School of Medicine Research Core Funding, National Univer-sity of Singapore, Singapore. We thank Christopher Chen, Nagaendran Kandiah, Kwong Hsia Yap, and their teams for participant recruitment and cognitive as-sessment in SINGER. We also thank Fiona Goh and other lab members for imaging data collection and quality control. 16 Z. Dong et al. 
+
+## References 
+
+1. Alfaro-Almagro, F., Jenkinson, M., Bangerter, N.K., Andersson, J.L., Griffanti, L., Douaud, G., Sotiropoulos, S.N., Jbabdi, S., Hernandez-Fernandez, M., Vallee, E., et al.: Image processing and quality control for the first 10,000 brain imaging datasets from uk biobank. Neuroimage 166 , 400–424 (2018) 2. Bertschinger, N., Rauh, J., Olbrich, E., Jost, J., Ay, N.: Quantifying unique infor-mation. Entropy 16 (4), 2161–2183 (2014) 3. Bookheimer, S.Y., Salat, D.H., Terpstra, M., Ances, B.M., Barch, D.M., Buckner, R.L., Burgess, G.C., Curtiss, S.W., Diaz-Santos, M., Elam, J.S., et al.: The lifespan human connectome project in aging: an overview. Neuroimage 185 , 335–348 (2019) 4. Caro, J.O., de Oliveira Fonseca, A.H., Rizvi, S.A., Rosati, M., Averill, C., Cross, J.L., Mittal, P., Zappala, E., Dhodapkar, R.M., Abdallah, C., et al.: Brainlm: A foundation model for brain activity recordings. In: The Twelfth International Conference on Learning Representations 5. Chad, J.A., Pasternak, O., Salat, D.H., Chen, J.J.: Re-examining age-related dif-ferences in white matter microstructure with free-water corrected diffusion tensor imaging. Neurobiology of aging 71 , 161–170 (2018) 6. Chen, T., Kornblith, S., Norouzi, M., Hinton, G.: A simple framework for con-trastive learning of visual representations. In: International conference on machine learning. pp. 1597–1607. PmLR (2020) 7. Dong, Z., Li, R., Wu, Y., Nguyen, T.T., Chong, J., Ji, F., Tong, N., Chen, C., Zhou, J.H.: Brain-jepa: Brain dynamics foundation model with gradient positioning and spatiotemporal masking. Advances in Neural Information Processing Systems 37 ,86048–86073 (2024) 8. Dong, Z., Ruilin, L., Chong, J.S.X., Dehestani, N., Teng, Y., Lin, Y., Li, Z., Zhang, Y., Xie, Y., Ooi, L.Q.R., et al.: Brain harmony: A multimodal foundation model unifying morphology and function into 1d tokens. In: The Thirty-ninth Annual Conference on Neural Information Processing Systems 9. Dosovitskiy, A., Beyer, L., Kolesnikov, A., Weissenborn, D., Zhai, X., Unterthiner, T., Dehghani, M., Minderer, M., Heigold, G., Gelly, S., et al.: An image is worth 16x16 words: Transformers for image recognition at scale. arXiv preprint arXiv:2010.11929 (2020) 10. Duering, M., Finsterwalder, S., Baykara, E., Tuladhar, A.M., Gesierich, B., Konieczny, M.J., Malik, R., Franzmeier, N., Ewers, M., Jouvent, E., et al.: Free water determines diffusion alterations and clinical status in cerebral small vessel disease. Alzheimer’s & Dementia 14 (6), 764–774 (2018) 11. Glasser, M.F., Sotiropoulos, S.N., Wilson, J.A., Coalson, T.S., Fischl, B., Ander-sson, J.L., Xu, J., Jbabdi, S., Webster, M., Polimeni, J.R., et al.: The minimal preprocessing pipelines for the human connectome project. Neuroimage 80 , 105– 124 (2013) 12. Greenman, D., Bennett, I.J.: Aging of gray matter microstructure: A brain-wide characterization of age group differences using noddi. Neurobiology of Aging 149 ,34–43 (2025) 13. He, J., Qiu, J., Zeng, A., Yang, Z., Zhai, J., Tang, J.: Fastmoe: A fast mixture-of-expert training system. arXiv preprint arXiv:2103.13262 (2021) 14. Ji, F., Chai, Y.L., Liu, S., Kan, C.N., Ong, M., Richards, A.M., Tan, B.Y., Venke-tasubramanian, N., Pasternak, O., Chen, C., et al.: Associations of blood cardio-vascular biomarkers with brain free water and its relationship to cognitive decline: a diffusion-mri study. Neurology 101 (2), e151–e163 (2023) BrainFIBRE 17 15. Ji, F., Pasternak, O., Liu, S., Loke, Y.M., Choo, B.L., Hilal, S., Xu, X., Ikram, M.K., Venketasubramanian, N., Chen, C.L.H., et al.: Distinct white matter mi-crostructural abnormalities and extracellular water increases relate to cogni-tive impairment in alzheimer’s disease with and without cerebrovascular disease. Alzheimer’s Research & Therapy 9(1), 63 (2017) 16. Ji, F., Wei, J.L.K., Leng, S., Zhong, L., Tan, R.S., Gao, F., Ng, K.K., Leong, R.L., Pasternak, O., Chee, M.W., et al.: Heart-brain mapping: Cardiac atrial function is associated with distinct cerebral regions with high free water in older adults. Journal of Cerebral Blood Flow & Metabolism 44 (7), 1218–1230 (2024) 17. Jiang, W., Wang, Y., Lu, B.l., Li, D.: Neurolm: A universal multi-task foundation model for bridging the gap between language and eeg signals. In: The Thirteenth International Conference on Learning Representations 18. Jiang, W., Zhao, L., Lu, B.l.: Large brain model for learning generic representations with tremendous eeg data in bci. In: The Twelfth International Conference on Learning Representations 19. Jones, D.K., Knösche, T.R., Turner, R.: White matter integrity, fiber count, and other fallacies: the do’s and don’ts of diffusion mri. Neuroimage 73 , 239–254 (2013) 20. Khajehnejad, M., Habibollahi, F., Razi, A.: Brainsymphony: A transformer-driven fusion of fmri time series and structural connectivity. arXiv preprint arXiv:2506.18314 (2025) 21. Le Bihan, D., Mangin, J.F., Poupon, C., Clark, C.A., Pappata, S., Molko, N., Chabriat, H.: Diffusion tensor imaging: concepts and applications. Journal of Mag-netic Resonance Imaging: An Official Journal of the International Society for Mag-netic Resonance in Medicine 13 (4), 534–546 (2001) 22. Lei, H., Cheng, X., Qin, Q., Wang, D., Fan, K., Huang, H., Gu, Q., Wu, Y., Jiang, Z., Chen, Y., et al.: M3-jepa: Multimodal alignment via multi-gate moe based on the joint-embedding predictive architecture. arXiv preprint arXiv:2409.05929 (2024) 23. Liu, A., Feng, B., Xue, B., Wang, B., Wu, B., Lu, C., Zhao, C., Deng, C., Zhang, C., Ruan, C., et al.: Deepseek-v3 technical report. arXiv preprint arXiv:2412.19437 (2024) 24. Loshchilov, I., Hutter, F.: Decoupled weight decay regularization. arXiv preprint arXiv:1711.05101 (2017) 25. Merluzzi, A.P., Dean III, D.C., Adluru, N., Suryawanshi, G.S., Okonkwo, O.C., Oh, J.M., Hermann, B.P., Sager, M.A., Asthana, S., Zhang, H., et al.: Age-dependent differences in brain tissue microstructure assessed with neurite orientation disper-sion and density imaging. Neurobiology of aging 43 , 79–88 (2016) 26. Miller, K.L., Alfaro-Almagro, F., Bangerter, N.K., Thomas, D.L., Yacoub, E., Xu, J., Bartsch, A.J., Jbabdi, S., Sotiropoulos, S.N., Andersson, J.L., et al.: Multimodal population brain imaging in the uk biobank prospective epidemiological study. Nature neuroscience 19 (11), 1523–1536 (2016) 27. Oord, A.v.d., Li, Y., Vinyals, O.: Representation learning with contrastive predic-tive coding. arXiv preprint arXiv:1807.03748 (2018) 28. Peters, B.D., Ikuta, T., DeRosse, P., John, M., Burdick, K.E., Gruner, P., Prender-gast, D.M., Szeszko, P.R., Malhotra, A.K.: Age-related differences in white matter tract microstructure are associated with cognitive performance from childhood to adulthood. Biological psychiatry 75 (3), 248–256 (2014) 29. Rui, S., Chen, L., Tang, Z., Wang, L., Liu, M., Zhang, S., Wang, X.: Multi-modal vision pre-training for medical image analysis. In: Proceedings of the Computer Vision and Pattern Recognition Conference. pp. 5164–5174 (2025) 18 Z. Dong et al. 30. Shazeer, N., Mirhoseini, A., Maziarz, K., Davis, A., Le, Q., Hinton, G., Dean, J.: Outrageously large neural networks: The sparsely-gated mixture-of-experts layer. In: International Conference on Learning Representations (2017) 31. Shen, L., Chen, G., Shao, R., Guan, W., Nie, L.: Mome: Mixture of multimodal experts for generalist multimodal large language models. Advances in neural infor-mation processing systems 37 , 42048–42070 (2024) 32. Sudlow, C., Gallacher, J., Allen, N., Beral, V., Burton, P., Danesh, J., Downey, P., Elliott, P., Green, J., Landray, M., et al.: Uk biobank: an open access resource for identifying the causes of a wide range of complex diseases of middle and old age. PLoS medicine 12 (3), e1001779 (2015) 33. Wang, T., Wan, Z., Cao, S., Yu, J., He, Y., Xie, Y., Zhang, F., Wu, Y.: Deep learning empowered microstructure codebook: New paradigm for multi-parameter tissue characterization estimation. Human Brain Mapping 47 (5), e70513 (2026) 34. Williams, P.L., Beer, R.D.: Nonnegative decomposition of multivariate information. arXiv preprint arXiv:1004.2515 (2010) 35. Xin, J., Yun, S., Peng, J., Choi, I., Ballard, J.L., Chen, T., Long, Q.: I2moe: Interpretable multimodal interaction-aware mixture-of-experts. arXiv preprint arXiv:2505.19190 (2025) 36. Xu, X., Chew, K., Wong, Z., Phua, A., Chong, E., Teo, C., Sathe, N., Chooi, Y., Chia, W., Henry, C., et al.: The singapore geriatric intervention study to re-duce cognitive decline and physical frailty (singer): study design and protocol. The Journal of Prevention of Alzheimer’s Disease 9(1), 40–48 (2022) 37. Yu, H., Qi, Z., Jang, L.K., Salakhutdinov, R., Morency, L.P., Liang, P.P.: Mmoe: Enhancing multimodal models with mixtures of multimodal interaction experts. In: Proceedings of the 2024 Conference on Empirical Methods in Natural Language Processing. pp. 10006–10030 (2024) 38. Yu, X., Przybelski, S.A., Reid, R.I., Lesnick, T.G., Raghavan, S., Graff-Radford, J., Lowe, V.J., Kantarci, K., Knopman, D.S., Petersen, R.C., et al.: Noddi in gray matter is a sensitive marker of aging and early ad changes. Alzheimer’s & Dementia: Diagnosis, Assessment & Disease Monitoring 16 (3), e12627 (2024) 39. Zhang, H., Schneider, T., Wheeler-Kingshott, C.A., Alexander, D.C.: Noddi: prac-tical in vivo neurite orientation dispersion and density imaging of the human brain. Neuroimage 61 (4), 1000–1016 (2012) BrainFIBRE 19 
+
+## A Theoretical Grounding of SPID as a Self-Supervised PID Objective 
+
+For notational brevity, we write  O, N, F  for ODI, NDI, and FWF, respectively. Classical partial information decomposition (PID) is defined with respect to a target variable. In our self-supervised setting, the natural target is the la-tent participant-specific state that generates both augmented views. We next show that the Counterfactual Candidate Construction (CCC) rules induce five expert-specific sufficient statistics Corresponding to a simplified PID (without explicitly modeling pairwise inter-modal interactions following [35]) with three unique atoms, one redundant atom, and one synergistic atom. Let 
+
+Xv = ( XvO , X vN , X vF ), v ∈ { A, B },
+
+denote the two augmented views of the same participant, and let  Xv 
+
+> −m
+
+denote all modalities except modality  m.
+
+Definition 1 (Expert-specific latent factors). For any perturbed triplet  ˜X,define the five expert factors as follows. For the three uniqueness experts, 
+
+CuO ( ˜X) = 
+
+(
+
+UO , if the  O-modality is present ,
+
+⊥, if the  O-modality is dropped , (10) 
+
+CuN ( ˜X) = 
+
+(
+
+UN , if the  N -modality is present ,
+
+⊥, if the  N -modality is dropped , (11) 
+
+CuF ( ˜X) = 
+
+(
+
+UF , if the  F -modality is present ,
+
+⊥, if the  F -modality is dropped . (12) 
+
+In a swap perturbation, the Corresponding  Um is taken from the swapped-in participant. For redundancy, define 
+
+Cred ( ˜X) = 
+
+
+
+R, if all non-dropped modalities in  ˜X
+
+originate from the same participant ,
+
+⊥, otherwise .
+
+(13) 
+
+For synergy, define 
+
+Csyn ( ˜X) = 
+
+
+
+S, if  ˜X contains all three modalities and they are aligned to the same participant ,
+
+⊥, otherwise .
+
+(14) 
+
+Here,  ⊥ denotes that the Corresponding factor is destroyed or undefined. 20 Z. Dong et al. 
+
+For each expert  k ∈ { uO, uN, uF, red , syn } and participant  i, let  Pk(i) denote the positive candidate set specified by the CCC expert-conditioning rules in Table 1 of the main paper. 
+
+Assumption 1 (Implicit target and PID state) Let  Y denote the latent par-ticipant state. Assume that 
+
+Y = ( UO , U N , U F , R, S ),
+
+where  UO , U N , U F , R, S  are mutually independent latent factors with the follow-ing semantics: 
+
+H(Um | Xvm) = 0 , I(Um; Xv
+
+> −m
+
+) = 0 , m ∈ { O, N, F }, v ∈ { A, B }, (15) 
+
+H(R | Xvm) = 0 , m ∈ { O, N, F }, v ∈ { A, B }, (16) 
+
+I(S; Xvm) = 0 , H(S | XvO , X vN , X vF ) = 0 , m ∈ { O, N, F }, v ∈ { A, B }.
+
+(17) 
+
+Thus,  Um is unique to modality  m, R is redundantly present in every modality, and  S is recoverable only from the aligned triplet jointly. Assume further that the two augmented views are conditionally independent given  Y :
+
+XA ⊥⊥ XB | Y. 
+
+Under this stylized model, the nonzero atoms of the induced five-atom simplified PID of  Y are 
+
+UI O = H(UO ), UI N = H(UN ), UI F = H(UF ), RI = H(R), SI = H(S).
+
+(18) 
+
+Assumption 2 (CCC perturbations) A dropout perturbation  drop m replaces modality  m with noise independent of  Y . A swap perturbation  swap m replaces modality  m by the Corresponding modality from an independent participant  Y ′ ∼
+
+p(Y ), where  Y ′ ⊥⊥ Y .
+
+Assumption 3 (No collisions) For each expert  k ∈ { uO, uN, uF, red , syn },if  Y and  Y ′ are independent participant states and both Corresponding expert factors are intact (i.e., not equal to  ⊥), then 
+
+P(Ck(Y ) = Ck(Y ′) | Ck(Y )̸ = ⊥, C k(Y ′)̸ = ⊥) = 0 .
+
+This rules out degenerate collisions where two unrelated participants have exactly the same expert-specific factor. 
+
+Theorem 1 (Correctness of the expert interaction rules). Under As-sumptions 1–3, the positive sets in Table 1 of the main paper are exactly the perturbations that preserve the Corresponding expert factor  Ck, and the negative sets are exactly the perturbations that destroy or alter that factor almost surely. BrainFIBRE 21 
+
+More precisely, for participant  i,
+
+z ∈ P uO (i) ⇐⇒ CuO (z) = U (i) 
+
+> O
+
+, z / ∈ P uO (i) = ⇒ CuO (z)̸ = U (i) 
+
+> O
+
+a.s. , (19) 
+
+and analogously for  uN  and  uF  ;
+
+z ∈ P red (i) ⇐⇒ Cred (z) = R(i), z / ∈ P red (i) = ⇒ Cred (z)̸ = R(i) a.s. , (20) 
+
+and 
+
+z ∈ P syn (i) ⇐⇒ Csyn (z) = S(i), z / ∈ P syn (i) = ⇒ Csyn (z)̸ = S(i) a.s.  (21) 
+
+Proof. For the  uO  expert, the positive set is 
+
+{b0, drop N , drop F , swap N , swap F }.
+
+In all these perturbations, the  O-modality still comes from participant  i, hence 
+
+CuO = U (i) 
+
+> O
+
+.
+
+In contrast,  drop O removes the  O-modality, so  CuO = ⊥, while  swap O replaces it by the  O-modality from an independent participant  j, so 
+
+CuO = U (j)
+
+> O
+
+̸ = U (i) 
+
+> O
+
+a.s. 
+
+by Assumption 3. This proves (19). The arguments for  uN  and  uF  are identical. For the redundancy expert, the positive set is 
+
+{b0, drop O , drop N , drop F }.
+
+These perturbations preserve participant consistency across all surviving modal-ities, so the same redundant factor  R(i) remains shared among them, implying 
+
+Cred (z) = R(i).
+
+In contrast, any  swap m makes at least one surviving modality originate from a different participant, hence there is no single factor shared across all surviving modalities, and therefore 
+
+Cred (z) = ⊥̸ = R(i).
+
+This proves (20). For the synergy expert, the positive set is 
+
+{b0}.
+
+Only  b0 contains all three modalities and keeps them aligned to the same par-ticipant, hence only  b0 preserves  S(i). Any  drop m removes a necessary modality, and any  swap m breaks cross-modal alignment, so in both cases 
+
+Csyn (z) = ⊥̸ = S(i).
+
+This proves (21). Therefore, the CCC expert-conditioning rules preserve exactly the designated expert factors and reject precisely those perturbations that de-stroy them. 22 Z. Dong et al. 
+
+Theorem 2 (The SPID interaction task admits a PID-factorized opti-mum). Let x denote the anchor triplet, let  Qk = fk(X) be the representation learned by expert  k. Consider the population version of the expert-wise contrastive task induced by the interaction loss in the main paper (Eq. (8)), i.e., the task of assigning high score to candidates in  Pk(i) and low score to the other candidates in the CCC pool. Under Assumptions 1–3, there exists a global optimum of this task of the form 
+
+QuO = TuO (UO ), QuN = TuN (UN ), QuF = TuF (UF ), (22) 
+
+Qred = Tred (R), Qsyn = Tsyn (S), (23) 
+
+where each  Tk is injective. Equivalently, each expert can solve its contrastive task using only its desig-nated PID factor. Proof. Fix an expert  k. By Theorem 1, for participant  i, a candidate is positive if and only if it preserves the same factor  Ck as the anchor, while every negative candidate has a different factor almost surely. Now choose any injective map  Tk and define 
+
+Qk = Tk(Ck).
+
+Let x denote the anchor Corresponding to participant i, and let z denote any candidate from the CCC pool. Because Tk is injective, 
+
+Qk(x) = Qk(z) ⇐⇒ Ck(x) = Ck(z).
+
+Define a score function 
+
+sk(x, z ) = 
+
+(
+
++α, if Qk(x) = Qk(z),
+
+−α, if Qk(x)̸ = Qk(z), α > 0.
+
+Under this score, every positive candidate receives strictly larger similarity than every negative candidate. Taking  α → ∞  yields perfect separation between pos-itives and negatives, hence a global optimum of the population contrastive clas-sification problem. Therefore, expert  k can solve its task using only the factor  Ck. Applying the same construction to all five experts yields the factorized solution 
+
+(QuO , Q uN , Q uF , Q red , Q syn )= ( TuO (UO ), T uN (UN ), T uF (UF ), T red (R), T syn (S)) .
+
+This proves the claim. 
+
+Corollary 1 (SPID realizes a simplified PID decomposition). Suppose training converges to the factorized solution of Theorem 2. Let 
+
+Q = ( QuO , Q uN , Q uF , Q red , Q syn ).BrainFIBRE 23 
+
+Then  Q is an injective transform of 
+
+(UO , U N , U F , R, S ),
+
+so that 
+
+H(Y | Q) = 0 .
+
+Consequently, 
+
+I(Y ; Q) = H(Y ) = H(UO ) + H(UN ) + H(UF ) + H(R) + H(S), (24) 
+
+where the five summands are exactly the three unique atoms, one redundant atom, and one synergistic atom of the simplified PID. Proof. By Theorem 2, each expert output is an injective function of one and only one latent factor. Hence the tuple  Q is an injective function of  (UO , U N , U F , R, S ),and therefore of  Y . It follows that 
+
+H(Y | Q) = 0 .
+
+Since the factors are mutually independent by Assumption 1, 
+
+H(Y ) = H(UO ) + H(UN ) + H(UF ) + H(R) + H(S).
+
+Therefore, 
+
+I(Y ; Q) = H(Y ) − H(Y | Q) = H(Y ),
+
+which is precisely the claimed five-term decomposition. 
+
+Interpretation. Theorems 1 and 2 show that the CCC rules used by SPID are not heuristic. They define five perturbation-invariant sufficient statistics, and under Assumption 1, these sufficient statistics coincide with the five PID factors. Therefore, the interaction loss in the main paper is mathematically grounded as a 
+
+self-supervised surrogate for a simplified PID decomposition of an implicit latent participant state. 
+
+Remark 1 (Scope of the claim). The mathematically precise claim is that SPID is PID-grounded at the level of a five-atom coarse decomposition . It does not claim exact recovery of the full three-source PID lattice, which is strictly finer than the five experts used here. Moreover, the present argument is a population-level grounding of the design; it does not imply finite-sample identifiability, nor does it require that optimization necessarily converges to the factorized optimum in practice. 
+
+## B Empirical Validation of the SPID Disentanglement 
+
+Section A has established the theoretical grounding of SPID as a self-supervised PID objective, mathematically linking formal PID quantities (unique, redun-dant, and synergistic information) to our architectural design. Specifically, The-orem 1 proves that the CCC rules effectively isolate target factors via positive 24 Z. Dong et al. 
+
+and negative perturbations, and Theorem 2 guarantees the existence of a fac-torized global optimum where experts solve contrastive tasks solely relying on their intended PID components. To empirically validate whether the proposed network architecture learns the PID components, we conduct a post-hoc representation alignment analysis on the held-out UK Biobank (UKB) test set using Canonical Correlation Analysis (CCA). To highlight the relative interaction preferences and mitigate the global baseline Correlation caused by intrinsic anatomical collinearity, the raw CCA scores are global z-score normalized across the entire 3 × 5 Correlation matrix (Figure 6). (a) Pre -Trained Only  (b) Finetuned on Sex  
+
+> Classification (UKB)
+> (b) Finetuned on Hippocampal
+> Atrophy Prediction (UKB)
+> Fig. 6: Empirical validation of SPID disentanglement via z-score normalized CCA.
+
+In this normalized space, the absolute magnitude of the z-score represents the significance of deviation from the average baseline alignment. Specifically, a large positive value indicates a prominent Correlation, implying stronger feature alignment. Conversely, a large negative value denotes an exceptionally weak Cor-relation, indicating feature selection or orthogonalization. A value near 0 suggests an average alignment with no distinct preference or repulsion. We extracted the modality embeddings  hm and expert embeddings  qk under three different network states: (a) utilizing the frozen pre-trained weights with-out any downstream finetuning, (b) after finetuning on the Sex Classification task, and (c) after finetuning on the Hippocampal Atrophy Prediction task. As shown in Figure 6, similar representation patterns emerge across all states. Each Uniqueness Expert ( uO, uN, uF ) exhibits the highest positive z-score exclusively with its Corresponding modality embedding, while showing much smaller or even negative z-scores with the other modalities. For Synergy Expert ( syn ), it exhibits much lower Correlation scores with individual modalities, sometimes dropping to near-zero or strongly negative values ( e.g. , −1.52 and −2.13 for ODI and NDI in finetuned tasks). This suggests the emergence of synergistic information: since synergy relies on the modality interactions from the joint combination of all modalities, it should be less aligned with or decoded from any single isolated modality. For Redundancy Expert ( red ), it consistently demonstrates elevated, positive z-scores across all three individual modality embeddings. This indicates BrainFIBRE 25  
+
+> Fig. 7: White matter tract attention rollout. BrainFIBRE learns differentiated modality–tract specialization, whereas ViT-LF produces more homogeneous responses.
+
+that qred extracts the shared intersection of information that is simultaneously present in and extractable from every single modality. Fig.7 further shows that BrainFIBRE learns disease-relevant modality–tract specialization for WMH prediction. Unlike the late-fusion baseline, which pro-duces relatively homogeneous tract attention, BrainFIBRE selectively empha-sizes FWF-related patterns in the cingulate gyrus/cingulum and superior longi-tudinal fasciculus. 
+
+## C Imaging Acquisition & Preprocessing 
+
+Diffusion MRI was acquired using multi-shell spin-echo echo-planar imaging pro-tocols optimized for microstructural modeling. In UK Biobank, data were col-lected on identical 3T Siemens MAGNETOM Skyra scanners using dual diffusion weightings (b = 1000 and 2000 s/mm ²) with 50 diffusion directions per shell, and 2 mm isotropic spatial resolution [1]. The Asian cohort was scanned on a 3T Siemens MAGNETOM Prisma system using a dual-shell diffusion scheme (b = 1000 and 2000 s/mm ², 50 directions per shell) with 1.8 mm isotropic resolution. The Human Connectome Project in Aging (HCP-A) dataset was acquired on a Siemens MAGNETOM Prisma 3T scanner using high-resolution multi-shell diffusion encoding (b = 1500 and 3000 s/mm ², approximately 90 directions per shell) with 1.5 mm isotropic spatial resolution [11]. Across cohorts, multiple b0 volumes and reversed phase-encoding acquisitions were obtained to enable Cor-rection of susceptibility-induced distortions. Diffusion-weighted images from all cohorts underwent standardized prepro-cessing prior to NODDI model fitting. Preprocessing included Correction for susceptibility-induced distortions using reversed phase-encoding b0 images, fol-lowed by joint eddy-current and rigid-body motion Correction with slice-wise outlier detection using FSL TOPUP and EDDY [1, 11]. Additional processing steps included gradient nonlinearity Correction (HCP-A), brain extraction, and spatial normalization [14]. NODDI parameters were estimated using a consis-tent fitting framework to generate NDI, ODI, and FWF maps. Quality control combined automated metrics summarizing motion, signal dropout, and model residuals with systematic visual inspection of raw diffusion volumes, Corrected 26 Z. Dong et al. 
+
+Table 5: Implementation details and hyperparameters for self-supervised pretraining.                                   
+
+> Configuration Value
+> Architecture & Input
+> Input Size 96 ×112 ×96
+> Patch Size 16 ×16 ×16
+> Encoder Embedding Dim ( denc )384 Expert Embedding Dim ( dexp )128
+> Optimization
+> Training Epochs (Warmup) 200 (5) Batch Size 280 Learning Rate 2×10 −4
+> Weight Decay 1×10 −4
+> Optimizer Betas ( β1, β 2)0.9, 0.999 Gradient Clipping 1.0
+> Loss Function Parameters
+> Temperature ( τcont ,τinter )0.2, 0.12 Weights ( βbalance ,γentropy )0.05, 0.01
+> Data Augmentation
+> Random Flip Spatial Axis 0 Random Affine Rotation ±10 ◦
+> Scale ±10%
+> Translation ±3voxels
+
+images, and derived parameter maps. Scans failing either automated or visual quality criteria were excluded from downstream analyses. All NODDI maps were aligned to the JHU ICBM-DTI-81 White-Matter Labels 2 mm Atlas for subse-quent analyses. 
+
+## D Implementation Details 
+
+Pre-Training Configurations. The hyperparameter settings and implementation details for self-supervised pretraining are provided in Table 5. Specifically, we adopted ViT-Small as the backbone for the unimodal encoder. The entire pre-training process utilized eight H200 GPUs, each with 140GB of memory. 
+
+Data Augmentation. During the pre-training phase, we employ spatial data augmentations for counterfactural candidate construction. We utilized one fixed random seed for each view (A/B) across a given batch. Specifically, we applied random 3D affine transformation with a probability of p = 0 .5. This transfor-mation introduces random rotations within ±10 ◦, spatial scaling within ±10% ,and translations of up to ±3 voxels along all three spatial axes. Any out-of-bounds voxels resulting from the affine transformations are handled using border padding. Furthermore, a random spatial flip is applied along the first spatial axis with a probability of p = 0 .2.BrainFIBRE 27 
+
+## E Baselines Comparison and Ablation Studies 
+
+E.1 Additional Multimodal Baselines 
+
+To provide a comprehensive comparison, we implemented two additional mul-timodal Vision Transformer (ViT) baselines and compared them on the UKB age prediction and Asian WMH prediction tasks. These baselines are explicitly designed to utilize the exact same three NODDI maps and ViT backbones as BrainFIBRE, but with standard fusion strategies. This ensures that any ob-served superiority of our model can be strictly attributed to the proposed SPID pre-training paradigm and PID-inspired MoE framework, rather than merely the advantage of having rich multimodal inputs. 
+
+– ViT-EF (Early Fusion) : A 3-channel ViT-S architecture that accepts the channel-wise concatenation of the three NODDI maps as a single input. 
+
+– ViT-LF (Late Fusion) : An architecture utilizing three independent ViT-S encoders to process each NODDI map separately, followed by embedding concatenation for modality fusion To ensure a fair comparison, both baselines were assessed under two training paradigms: (1) self-supervised contrastive pre-training (without interactions) on the identical UKB dataset used for BrainFIBRE followed by downstream fine-tuning, and (2) fully supervised training from scratch directly on the target labeled datasets. As reported in Table 6, BrainFIBRE consistently outperforms both standard fusion baselines across the UKB age prediction and Asian WMH prediction tasks. Although applying self-supervised pre-training to these baselines improves their efficacy over the supervised-from-scratch variants, their optimal performance remains significantly lower than that of BrainFIBRE. 
+
+E.2 Ablation Studies on Loss Terms 
+
+We conducted an ablation study to isolate the contribution of each individual loss term within our proposed SPID pre-training objective. Specifically, we pre-trained three variants of BrainFIBRE by systematically removing one loss com-ponent at a time: (1) w/o LCont , which removes the global contrastive loss; (2) w/o Lentropy , which drops the entropy regularization term; and (3) w/o Lbalance ,which excludes the expert balancing loss. These variants were then fine-tuned and evaluated on the downstream tasks to quantify the necessity of each op-timization constraint (Table 7). We also conduct ablation on Synergy and/or Redundancy experts and interaction loss LInter (Table 8). Removing either part degrades performance, confirming their individual contributions. 
+
+## F Visualization and Interpretation 
+
+F.1 Task-Specific Modality Interaction Patterns 
+
+We present the task-specific modality interaction patterns for the HCP-Aging dataset. To quantitatively evaluate these interactions, we plot the distribution of 28 Z. Dong et al. 
+
+Table 6: Additional baselines comparisons on UKB and Asian datasets.        
+
+> Model Pretrain UKB - Age Asian - WMH
+> MAE Corr MAE Corr ViT-EF
+
+✗ 4.23 ±0.01 0.71 ±0.01 2.35 ±0.32 0.32 ±0.08 
+
+✓ 4.15 ±0.19 0.72 ±0.04 2.45 ±0.28 0.38 ±0.02  
+
+> ViT-LF
+
+✗ 4.39 ±0.02 0.69 ±0.01 2.43 ±0.29 0.27 ±0.05 
+
+✓ 4.19 ±0.02 0.71 ±0.01 2.31 ±0.38 0.35 ±0.04  
+
+> BrainFIBRE
+
+✓ 3.95 ±0.02 0.76 ±0.00 2.08 ±0.30 0.59 ±0.02 
+
+> ViT-EF: Early Fusion. ViT-LF: Late Fusion.
+
+Table 7: Ablation study of different loss components in BrainFIBRE.          
+
+> Loss UKB - Age Asian - WMH
+> LInter LCont Lbalance Lentropy MAE Corr MAE Corr
+
+✓ ✓ ✓ 4.24 ±0.10 0.70 ±0.01 2.19 ±0.20 0.47 ±0.09 
+
+✓ ✓ ✓ 4.16 ±0.08 0.72 ±0.01 2.53 ±0.28 0.34 ±0.02 
+
+✓ ✓ ✓ 4.17 ±0.04 0.71 ±0.00 2.17 ±0.31 0.46 ±0.02 
+
+✓ ✓ ✓ ✓ 3.95 ±0.02 0.76 ±0.00 2.08 ±0.30 0.59 ±0.02 
+
+> ViT-EF: Early Fusion. ViT-LF: Late Fusion.
+
+expert weights across the test set for both the Flanker and Cardsort prediction tasks (Figure 8). For the HCP-Aging Flanker prediction task, the expert weight distribu-tion indicates that the free water fraction (FWF) provides the largest indepen-dent contribution, followed by neurite density (NDI) and orientation dispersion (ODI). In contrast, synergistic information contributes moderately, and redun-dancy remains relatively limited. This pattern suggests that extracellular water changes capture a substantial portion of the task-relevant signal, while neurite density and orientation provide complementary microstructural information In the HCP-Aging Card Sort task, the weight distribution shows that syn-ergistic information accounts for the largest proportion of the predictive signal, followed by redundancy, while the unique contributions from NDI, FWF, and ODI are comparatively minor. This suggests that performance on this task is primarily supported by integrated microstructural information across diffusion compartments rather than by any single microstructural feature. 
+
+Table 8: Ablation on Synergy and/or Redundancy experts and interaction loss LInter 
+
+Ours Expert Ablation Loss Ablation Metric BrainFIBRE w/o usyn w/o ured w/o both −L int 
+
+Corr. 0.76 ±0.00 0.66 ±0.02 0.68 ±0.02 0.67 ±0.01 0.71 ±0.00 
+
+MAE 3.95 ±0.02 4.55 ±0.09 4.41 ±0.08 4.48 ±0.05 4.22 ±0.07 BrainFIBRE 29 HCP -A: Flanker  HCP -A: Card Sort 
+
+uN uF uO syn red  uN uF uO syn red   
+
+> Fig. 8: Distribution of expert weights across the test set.
+> Fig. 9: Spatial attention patterns captured by different interaction experts.
+
+F.2 Salient Brain Regions Identified by Different Experts 
+
+In Section 4.5 of the main manuscript, we provided two examples of salient brain regions identified by different experts for the UKB and Asian age prediction tasks. Here, we present additional visualizations for the Flanker and Cardsort prediction tasks using the HCP-Aging dataset. Spatial interpretations of the expert representations reveal that while the Flanker and Card Sort tasks rely on shared white matter infrastructural sub-strates, they exhibit distinct, task-specific microstructural dependencies at the cortical level. In white matter, performance on both tasks critically depends on the com-bined contributions of FWF, NDI, and ODI within long-range association path-ways—specifically the cingulum bundle, superior longitudinal fasciculus, and uncinate fasciculus. These tracts structurally link frontal executive regions with parieto-temporal cortices, facilitating the distributed frontoparietal and limbic communication essential for overarching executive attention and cognitive flexi-bility. 30 Z. Dong et al. 
+
+At the cortical level, NDI consistently highlights association and limbic re-gions ( e.g. , entorhinal cortex, temporal pole) crucial for cognitive integration across both paradigms. However, the tasks diverge significantly in their specific spatial sensitivities to FWF and ODI. For the Flanker task, which probes in-hibitory control and selective attention, FWF uniqueness heavily dominates mid-dle frontal and sensory (occipital/perisylvian) cortices, suggesting that extracel-lular properties strongly influence attentional filtering and sensory transmission. Conversely, during the Card Sort task—which assesses task switching—FWF contributions shift towards the cingulo-opercular system (posterior cingulate, insular, and inferior frontal regions), while ODI captures the variations in vi-sual and perisylvian sensory regions. Together, these patterns demonstrate how distinct microstructural features dynamically support specialized executive de-mands atop a shared anatomical network.
