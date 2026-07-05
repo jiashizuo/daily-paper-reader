@@ -6,26 +6,32 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-07-04
-- 运行时间：2026-07-04 20:02:17 UTC
+- 最新运行日期：2026-07-05
+- 运行时间：2026-07-05 20:32:10 UTC
 - 运行状态：成功
-- 本次总论文数：2
-- 精读区：1
-- 速读区：1
+- 本次总论文数：3
+- 精读区：0
+- 速读区：3
 
 ### 今日简报（AI）
-今日精读高分MRI重建论文，速读AI可解释性跨模态对齐研究。最值得关注的方向是高维嵌入先验解决噪声K空间重建，以及AI叠加问题与患者-神经元图像对齐。下一步可深入了解这两项技术在医学影像质量和模型透明度上的突破。
-- 详情：[/202607/04/README](/202607/04/README)
+1) 今日速读3篇AI医学论文，聚焦MRI实时治疗引导、可解释性及神经数据分析。
+2) 最值关注《Closed-loop coupling...》（7.0分）：结合个性化与基础模型实现MRI实时治疗引导。
+3) 建议优先精读该文，了解闭环决策支持在临床MRI中的应用细节。
+- 详情：[/202607/05/README](/202607/05/README)
 
 ### 精读区论文标签
-1. [High-dimensional Embedding Prior for Noisy K-space Domain MRIReconstruction](/202607/04/2607.01176v1-high-dimensional-embedding-prior-for-noisy-k-space-domain-mrireconstruction)  
-   标签：评分：8.0/10、query:fbn
-   evidence：利用扩散模型进行噪声MRI重建，属于神经影像AI医疗
+- 本次无精读推荐。
 
 ### 速读区论文标签
-1. [Resolving superposition in AI for interpretability and cross-modal alignment in patient-neuronal images](/202607/04/2606.31394v2-resolving-superposition-in-ai-for-interpretability-and-cross-modal-alignment-in-patient-neuronal-images)  
+1. [Closed-loop coupling of personalised and foundation models for real-time treatment guidance with MRI](/202607/05/2607.00500v1-closed-loop-coupling-of-personalised-and-foundation-models-for-real-time-treatment-guidance-with-mri)  
    标签：评分：7.0/10、query:fbn
-   evidence：稀疏自编码器用于患者神经元图像的可解释潜在表示
+   evidence：闭环AI用于实时MRI引导治疗
+2. [Resolving superposition in AI for interpretability and cross-modal alignment in patient-neuronal images](/202607/05/2606.31394v1-resolving-superposition-in-ai-for-interpretability-and-cross-modal-alignment-in-patient-neuronal-images)  
+   标签：评分：6.0/10、query:fbn
+   evidence：稀疏自编码器用于患者来源神经元图像的可解释性
+3. [DRIADA: A Python Toolkit for Cross-Scale Analysis of Single-Neuron Selectivity and Population Dynamics](/202607/05/2607.00851v1-driada-a-python-toolkit-for-cross-scale-analysis-of-single-neuron-selectivity-and-population-dynamics)  
+   标签：评分：6.0/10、query:fbn
+   evidence：跨尺度脑网络分析工具包
 
 
 <div class="dpr-home-promo-card">
