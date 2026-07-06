@@ -6,32 +6,26 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-07-05
-- 运行时间：2026-07-05 20:32:10 UTC
+- 最新运行日期：2026-07-06
+- 运行时间：2026-07-06 21:18:33 UTC
 - 运行状态：成功
-- 本次总论文数：3
+- 本次总论文数：1
 - 精读区：0
-- 速读区：3
+- 速读区：1
 
 ### 今日简报（AI）
-1) 今日速读3篇AI医学论文，聚焦MRI实时治疗引导、可解释性及神经数据分析。
-2) 最值关注《Closed-loop coupling...》（7.0分）：结合个性化与基础模型实现MRI实时治疗引导。
-3) 建议优先精读该文，了解闭环决策支持在临床MRI中的应用细节。
-- 详情：[/202607/05/README](/202607/05/README)
+今日阅读1篇关于阿尔茨海默病早期预测与关键生物标志物识别的研究，方法结合深度神经网络与集成学习。  
+值得关注的方向是AI模型在疾病早期筛查中的表现，评分7.0/10。  
+建议普通读者关注该技术未来对早期诊断的潜在影响。
+- 详情：[/202607/06/README](/202607/06/README)
 
 ### 精读区论文标签
 - 本次无精读推荐。
 
 ### 速读区论文标签
-1. [Closed-loop coupling of personalised and foundation models for real-time treatment guidance with MRI](/202607/05/2607.00500v1-closed-loop-coupling-of-personalised-and-foundation-models-for-real-time-treatment-guidance-with-mri)  
+1. [Predicting Early Stages Of Alzheimer's Disease And Identifying Key Biomarkers Using Deep Artificial Neural Network And Ensemble Of Machine Learning Methodologies](/202607/06/2607.02142v1-predicting-early-stages-of-alzheimers-disease-and-identifying-key-biomarkers-using-deep-artificial-neural-network-and-ensemble-of-machine-learning-methodologies)  
    标签：评分：7.0/10、query:fbn
-   evidence：闭环AI用于实时MRI引导治疗
-2. [Resolving superposition in AI for interpretability and cross-modal alignment in patient-neuronal images](/202607/05/2606.31394v1-resolving-superposition-in-ai-for-interpretability-and-cross-modal-alignment-in-patient-neuronal-images)  
-   标签：评分：6.0/10、query:fbn
-   evidence：稀疏自编码器用于患者来源神经元图像的可解释性
-3. [DRIADA: A Python Toolkit for Cross-Scale Analysis of Single-Neuron Selectivity and Population Dynamics](/202607/05/2607.00851v1-driada-a-python-toolkit-for-cross-scale-analysis-of-single-neuron-selectivity-and-population-dynamics)  
-   标签：评分：6.0/10、query:fbn
-   evidence：跨尺度脑网络分析工具包
+   evidence：深度学习用于早期阿尔茨海默病诊断
 
 
 <div class="dpr-home-promo-card">
