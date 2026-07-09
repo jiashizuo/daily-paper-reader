@@ -6,24 +6,40 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-07-08
-- 运行时间：2026-07-08 20:40:45 UTC
+- 最新运行日期：2026-07-09
+- 运行时间：2026-07-09 20:51:27 UTC
 - 运行状态：成功
-- 本次总论文数：1
-- 精读区：0
-- 速读区：1
+- 本次总论文数：6
+- 精读区：2
+- 速读区：4
 
 ### 今日简报（AI）
-今日速读1篇论文，聚焦痴呆症大脑连接性变化。该研究揭示了痴呆症患者大脑连接性既有增强也有减弱，对理解认知衰退机制有参考价值。对神经科学或阿尔茨海默病感兴趣的读者可进一步阅读原文，或关注后续模型验证工作。
-- 详情：[/202607/08/README](/202607/08/README)
+1) 今日6篇脑影像研究聚焦双曲脑图诊断与生成式多模态编码，精读两篇评分达8-9分。
+2) 最值得关注：双曲空间学习有效挖掘脑图层次结构进行疾病诊断，以及生成式AI架构整合多模态神经影像特征。
+3) 建议尝试双曲图神经网络在脑疾病分析中落地，并跟进纵向多模态融合（如AT-Attn）提升诊断时效性。
+- 详情：[/202607/09/README](/202607/09/README)
 
 ### 精读区论文标签
-- 本次无精读推荐。
+1. [Navigating Hierarchy: Hyperbolic Learning on Brain Graphs for Disorder Diagnosis](/202607/09/2607.07077v1-navigating-hierarchy-hyperbolic-learning-on-brain-graphs-for-disorder-diagnosis)  
+   标签：评分：9.0/10、query:fbn
+   evidence：图神经网络用于脑图疾病诊断
+2. [Latent graph encoding of multimodal neuroimaging features with generative AI architectures](/202607/09/2607.07027v1-latent-graph-encoding-of-multimodal-neuroimaging-features-with-generative-ai-architectures)  
+   标签：评分：8.0/10、query:fbn
+   evidence：使用VAE和Transformer对多模态神经影像（包括功能连接）进行潜在图编码
 
 ### 速读区论文标签
-1. [On the Increased and Decreased Connectivity of the Demented Human Brain](/202607/08/2607.05654v1-on-the-increased-and-decreased-connectivity-of-the-demented-human-brain)  
+1. [Contextual Cellular Growth (ConCeG) of neural cells for realistic grey matter tissue generation for diffusion MRI simulations](/202607/09/2607.03286v1-contextual-cellular-growth-conceg-of-neural-cells-for-realistic-grey-matter-tissue-generation-for-diffusion-mri-simulations)  
    标签：评分：7.0/10、query:fbn
-   evidence：使用OASIS-3数据集研究痴呆症中脑结构连接变化，与脑连接组分析相关
+   evidence：用于扩散MRI模拟的真实灰质组织生成框架
+2. [EPRA U-Net: An Efficient Pyramid Residual Attention Framework for Accurate Infarct Segmentation in Diffusion-Weighted MRI](/202607/09/2607.03568v1-epra-u-net-an-efficient-pyramid-residual-attention-framework-for-accurate-infarct-segmentation-in-diffusion-weighted-mri)  
+   标签：评分：7.0/10、query:fbn
+   evidence：深度学习用于扩散加权脑MRI中梗死病灶的准确分割
+3. [AT-Attn: Temporal-Aware Cross-Attention for Longitudinal Multimodal Alzheimer's Disease Diagnosis](/202607/09/2607.07091v1-at-attn-temporal-aware-cross-attention-for-longitudinal-multimodal-alzheimers-disease-diagnosis)  
+   标签：评分：7.0/10、query:fbn
+   evidence：使用MRI和临床数据的多模态注意力机制用于AD诊断
+4. [AA-ViT: Anatomically Aware Vision Transformer with Structural and Frequency Guidance for Contrast Enhanced Brain MRI Synthesis](/202607/09/2607.07553v1-aa-vit-anatomically-aware-vision-transformer-with-structural-and-frequency-guidance-for-contrast-enhanced-brain-mri-synthesis)  
+   标签：评分：7.0/10、query:fbn
+   evidence：解剖感知ViT用于脑MRI合成
 
 
 <div class="dpr-home-promo-card">
