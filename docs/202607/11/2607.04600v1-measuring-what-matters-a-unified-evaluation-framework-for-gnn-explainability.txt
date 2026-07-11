@@ -1,0 +1,1287 @@
+Title: Measuring What Matters: A Unified Evaluation Framework for GNN Explainability
+
+URL Source: https://arxiv.org/pdf/2607.04600v1
+
+Published Time: Tue, 07 Jul 2026 03:26:59 GMT
+
+Number of Pages: 30
+
+Markdown Content:
+# Measuring What Matters: A Unified Evaluation Framework for GNN Explainability 
+
+## Francesco Paolo Nerini 1,∗, Mirko Zaffaroni 2, Paolo Baracco 3,Gabriele Ciravegna 4, Alan Perotti 2 
+
+> 1
+
+Sapienza University of Rome, Rome, Italy - nerini@diag.uniroma1.it  
+
+> 2
+
+Intesa Sanpaolo AI Research, Turin, Italy  
+
+> 3
+
+Anti Financial Crime Digital Hub, Turin, Italy  
+
+> 4
+
+Intesa Sanpaolo Innovation Center, Turin, Italy 
+
+Graph eXplainable AI (G-XAI) is increasingly important for making Graph Neural Networks interpretable and accountable. While a growing number of explainers are available, choosing the right method and assessing the trust-worthiness of its outputs remains unclear. Consistent evaluation practices and actionable guidance are still missing, hindering practical adoption. In this paper, we introduce a unified, quantitative benchmarking framework for G-XAI that requires no ground-truth assumptions. We formalize tab-ular explainability metrics for graph data, evaluating topological structure and node features as independent components. Our large-scale benchmark-ing study identifies explainers that consistently lie on the Pareto front across metric pairs and tasks, establishing robustly non-dominated solutions - while confirming that no single explainer achieves universal superiority. We distill our findings into actionable G-XAI usability guidelines to support Machine Learning practitioners in evaluating and deploying trustworthy GNN-based pipelines. 
+
+## 1. Introduction 
+
+Graph Neural Networks (GNNs) have emerged as a powerful paradigm for modeling relational data, achieving state-of-the-art performance across domains such as financial 1
+
+> arXiv:2607.04600v1 [cs.LG] 6 Jul 2026
+
+transaction monitoring, social network analysis, and biological interaction networks [1, 2]. However, their inherently recursive message-passing mechanisms render internal decision processes opaque. With legal frameworks such as the EU AI Act increasingly mandating transparency for high-risk AI systems, this “black-box” nature represents a critical barrier to deployment in regulated environments: one cannot deploy what one cannot explain. To address this tension, the field of Graph eXplainable AI (G-XAI) has introduced numerous post-hoc techniques that augment GNN predictions with interpretable infor-mation, typically by highlighting the most relevant nodes, edges, or features [3, 4, 5]. Yet this proliferation of explainers has created a new challenge: the problem is no longer a lack of solutions, but how to navigate them: there is no consensus on what constitutes a “good” graph explanation, leaving ML practitioners without objective, quantitative guidance for selecting the right tool for a given pipeline. Moreover, while the literature heavily favors node and graph classification for attribution-based methods, real-world applications routinely involve link classification and regression tasks as well. Recent evaluation efforts have either focused on tabular or image data [6], or relied on synthetic graph datasets with artificially injected ground-truth motifs [7, 8, 9]. However, in real scenarios the model may have internalized patterns that diverge from human-defined labels, and we argue that it is the model’s behavior, not the oracle, that ex-planations must faithfully reflect. Furthermore, a production-ready G-XAI framework must also focus on the pragmatic properties of explanation generation time, algorithmic reproducibility and human comprehensibility. This work is guided by the following Research Questions: 
+
+RQ1 How can core explanation properties be rigorously operationalized for graph-structured data, accounting for both topological and feature-level attributions, without relying on synthetic ground-truth motifs? 
+
+RQ2 How do state-of-the-art graph explainers compare across different GraphML tasks, and what trade-offs emerge between core explanation properties? 
+
+RQ3 Can benchmarking results transfer to operational guidelines to guide practitioners in explainer selection? To answer these questions, we introduce a unified, quantitative framework for benchmark-ing G-XAI methods across the full spectrum of GraphML tasks. Our main contributions are: (i) a quantitative, ground-truth-free evaluation framework for graphs ,where we adapt and extend three tabular metrics - Stability , Pertinence , and Effective Compactness , in addition to Time - to graph-structured explanations, independently evaluating both edge-based and feature-based attributions to capture the dual nature of graph explanations; (ii) an exhaustive, multi-task benchmarking study , in which we evaluate 8 strictly vetted explainers across 10 GraphML tasks and multiple GNN architectures, generating ∼2M explanations and revealing critical insights such as the generally high stability but severely lacking pertinence of various widely adopted meth-ods; and (iii) operational guidelines where we provide empirically derived criteria for 2metric acceptability to assist practitioners in explainer selection, alongside a structural approach to translating complex graph attributions into natural language for regulatory compliance. 
+
+## 2. Related Work 
+
+Graph Machine Learning (Graph ML) utilizes GNNs to process non-Euclidean relational data via message-passing mechanisms [10]. Formally, a graph is defined as 
+
+G = ( V, E ), and its inputs are characterized by their dual nature: a feature matrix 
+
+X ∈ Rn×m representing the attributes of n = |V | nodes with m features, and an ad-jacency matrix A ∈ { 0, 1}n×n capturing the topological structure. A GNN learns a mapping from this joint input space to a target prediction y, effectively modeling the function (X, A ) → y. The foundational formulation of GNNs was initially introduced to extend neural network models to process cyclic, directed, and undirected graph structures directly [11]. Standard modern architectures include Graph Convolutional Networks (GCNs) [12], Graph Attention Networks (GATs) [13], GraphSAGE [2], Graph Isomor-phism Networks (GINs) [14] and Spatial GCNs [15]. Recent advancements integrate self-supervised pre-training to establish Graph Foundation Models (GFMs) [16]. These architectures are deployed across various levels of granularity, typically catego-rized into node-level, edge-level, and graph-level tasks. At the node level, the primary objective is node classification , where the model predicts the target label yv of a specific node v ∈ V based on its feature vector xv and the broader structural context provided by the adjacency matrix A. At the link level, edge-classification models aim to infer the existence of an unobserved connection between a pair of nodes u and v, a fundamen-tal task for recommendation systems and knowledge graph completion. Finally, graph classification operates at the macroscopic level, predicting a global property yG for the entire graph. This requires the application of a readout or pooling function to aggregate localized node embeddings into a comprehensive global representation. All three tasks have their regression counterpart when the target y is continuous. 
+
+G-XAI considers explainers that identify the topological substructures, nodes, and fea-tures determining GNN predictions [10]. These methods are categorized into post-hoc and self-interpretable models that generate factual or counterfactual explanations. Post-hoc factual methods are primarily driven by attribution or perturbation mechanisms, often adapting general deep learning techniques to the graph domain. Gradient-based techniques leverage the model internal gradients to assign importance scores; these in-clude fundamental approaches such as Saliency maps [17], Input × Gradient [18], and Integrated Gradients [19], which aggregate gradients along a path from a baseline to the input. Advanced backpropagation variants like Guided Backpropagation [20] and Decon-volution [21] highlight influential features by suppressing negative gradients, while Layer-wise Relevance Propagation (LRP) [22] has been specifically reformulated for graphs as GNN-LRP [23] to decompose the final prediction score into relevance contributions that flow through the message-passing layers. In contrast, perturbation-based algorithms identify influential subgraphs by observing changes in the output when the input struc-3ture is masked. GNNExplainer [3] learns a soft mask over the adjacency matrix and the node features to identify an influential subgraph, while PGExplainer [24] extends this through a parameterized approach to produce global explanations. GraphMask [25] introduces a differentiable gating mechanism to selectively erase unnecessary edges dur-ing the message-passing process and revealing which path are actually essential for the model’s prediction. Other structural methods include GraphSHAP [26], which adapts Shapley values to graph neighborhoods, and SubgraphX [5], which uses Monte Carlo tree search to identify high-value subgraphs under a Shapley-based objective. Counterfactual explainers such as CF-GNNExplainer [27] and CLEAR [28] characterize model reasoning by identifying minimal topological perturbations that alter the prediction. Conversely, self-interpretable models constrain representations during training to produce inherently interpretable latent spaces, offering explanations via prototypes [29] or high-level con-cepts [30]. 
+
+G-XAI Evaluation requires standardized metrics and frameworks. Key metrics in-clude Fidelity, Sparsity, Stability, Graph Explanation Accuracy (GEA), Graph Explana-tion Faithfulness (GEF), and Graph Explanation Fairness (GECF) [8]. Benchmarking frameworks systematize these evaluations but differ markedly in scope and assumptions. GraphXAI uses the ShapeGGen generator to synthesize graphs with planted ground-truth explanations [8], while BAGEL’s plausibility and correctness metrics likewise re-quire reference rationales [7]; both presuppose a known ground truth. GraphFramEx instead evaluates post-hoc methods on real-world graphs via a fidelity-based Character-ization Score [31], and GnnX-Bench studies the stability and architectural sensitivity of perturbation-based explainers [32]. More specialized efforts target molecular datasets (B-XAIC [33]) and medical reasoning models (CURE-Bench [34]). Our framework dif-fers along three axes. First, it is ground-truth-free : instead of scoring agreement with a planted rationale (as in GraphXAI and BAGEL), our metrics measure an explanation’s consistency with the model’s own behaviour, applying even to proprietary data with no reference explanation. Second, it spans a broader task spectrum : prior benchmarks target classification, mostly at the node level, whereas we also cover regression and edge-level tasks, scoring feature and edge attributions jointly. Third, it targets production con-straints : we select explainers by software license and dual-attribution support, scale to 
+
+∼2M explanations via statistical early stopping, and distill the results into operational thresholds — aspects often absent from existing frameworks. 
+
+## 3. Metrics for G-XAI Evaluation 
+
+In this section, we describe our G-XAI evaluation framework. We define metrics to cover both node features and graph structure, and introduce optimizations to make them com-putationally tractable at industrial scale. Following the approach in [6], we identify four main qualities an explanation should possess for industrial applications: (i) algorithmic reproducibility and quasi-determinism; (ii) low cognitive load for a human; (iii) adherence to the model’s inner mechanism; (iv) low execution time to produce the explanation. The four quality dimensions we consider follow [6], but each operationalises a long-established 4Algorithm 1: Stability 
+
+Input : target t, graph G, model M , Explainer E, task_type, EarlyStop 
+
+Output: feat_stability, edge_stability  
+
+> 1
+
+Lf eat , Ledge ← [] , [] ; // Empty lists  
+
+> 2
+
+i ← 0; 
+
+> 3
+
+while ¬(EarlyStop (i, Lf eat ) ∧ EarlyStop (i, Ledge )) do  
+
+> 4
+
+(fj , s j ) ← E (t, G, M ) ∀ j ∈ { 1, 2} ; // Two attribution passes  
+
+> 5
+
+Lf eat .Append  StabilityPairFeat (f1, f 2, t, M, task_type , G ) ; // Alg. 2  
+
+> 6
+
+Ledge .Append  StabilityPairEdge (s1, s 2, t, M, task_type , G ) ; // Alg. 3  
+
+> 7
+
+i ← i + 1 ; 
+
+> 8
+
+return Average (Lf eat ), Average (Ledge );
+
+explanation-quality property rather than a new one. Effective Compactness is adapted from the tabular metric of [6]; Stability reuses its same-input formulation of the clas-sic consistency/robustness criterion; Pertinence is a faithfulness measure; and Time is a standard efficiency measure. Our contribution is to adapt these properties to the dual nature of graph data - scoring edge and feature attributions independently - and to keep them ground-truth-free. Each quality dimension is evaluated through a dedicated metric, described subsequently. Every metric has two implementations depending on whether it operates on the node feature attribution matrix f ∈ Rn×m (with n the number of nodes, and m the number of features) or the edge attribution s ∈ R|E|, with slight variations adopted per task. Execution time is measured directly during explanation generation. Time is a standard efficiency measure: the wall-clock runtime required to produce the explanation. Pseudocode is provided for each metric. 
+
+Stability captures how deterministic an explainer is: given the same datapoint and model, does the explainer produce consistent explanations? We adapt this same-input formulation of Stability from the tabular benchmark of [6]. It parallels Graph Expla-nation Stability [8] and, unlike input-perturbation robustness, serves to isolate the non-deterministic explainers that must be invoked several times. We measure this by gen-erating multiple pairs of explanations for the same input, computing their similarity, and averaging across pairs - as formalised in Algorithm 1. Let G = ( V, E ) represent a graph, M a model, and t an explanation target. We generate N independent pairs of explanations for the input (t, G, M ). We denote the sequence of explanation pairs as 
+
+(( f (k)1 , s (k)1 ), (f (k)2 , s (k)2 )) Nk=1 , with f the feature attribution matrix and s the edge attri-bution vector. In edge attributions (Algorithm 2), for a pair s1 and s2, we restrict the vectors to Erel (the edges in the computational graph of t), and apply the L2 normaliza-tion as ˆsi = si[Erel ] 
+
+> ∥si[Erel ]∥2
+
+for i ∈ { 1, 2}. For each pair we compute ρedge (s1, s 2) = 1 − ∥ˆs1−ˆs2∥2 
+
+> 2
+
+,and the overall stability is the average of these pairwise similarities: Stability edge (E, t, M, G ) = 1
+
+N
+
+> N
+
+X
+
+> k=1
+
+ρedge (s(k)1 , s (k)2 )
+
+For feature attributions (Algorithm 3), we partition each fi into fA,i , which comprises the attributions of the target t, and fB,i , which encompasses all remaining nodes within 5Algorithm 2: StabilityPairEdge 
+
+Input : s1, s2, target t, model M , task_type, graph G
+
+Output: edge_stability_pair  
+
+> 1
+
+if task_type == “node” then  
+
+> 2
+
+Erel ← GetEdgesInCompGraph (t, M, G ); 
+
+> 3
+
+else if task_type == “link” then  
+
+> 4
+
+(n1, n 2) ← t; 
+
+> 5
+
+Erel ← GetEdgesInCompGraph (n1, M, G ) ∪ GetEdgesInCompGraph (n2, M, G ); 
+
+> 6
+
+ai ← si[Erel ]/∥si[Erel ]∥2 ∀ i ∈ { 1, 2} ; // Filter & Norm.  
+
+> 7
+
+return 1 − ∥ a1 − a2∥2/2;
+
+Algorithm 3: StabilityPairFeature 
+
+Input : f1, f2, target t, model M , task_type, graph G
+
+Output: feat_stability_pair  
+
+> 1
+
+if task_type == “node” then  
+
+> 2
+
+Vneigh ← GetNodesInCompGraph (t, M, G ); 
+
+> 3
+
+fA,i ← fi[t] ∀ i ∈ { 1, 2}; 
+
+> 4
+
+else if task_type == “link” then  
+
+> 5
+
+(v1, v 2) ← t; 
+
+> 6
+
+Vneigh ← GetNodesInCompGraph (v1, M, G ) ∪ GetNodesInCompGraph (v2, M, G ); 
+
+> 7
+
+fA,i ← fi[v1] ⊕ fi[v2] ∀ i ∈ { 1, 2}; 
+
+> 8
+
+fB,i ← Flatten (fi[Vneigh ]) ∀ i ∈ { 1, 2}; 
+
+> 9
+
+fX,i ← fX,i /∥fX,i ∥2 ∀ X ∈ { A, B }, i ∈ { 1, 2} ; // L2 Norm.  
+
+> 10
+
+dX ← ∥ vX, 1 − vX, 2∥2/2 ∀ X ∈ { A, B }; 
+
+> 11
+
+return 1 − (dA + dB )/2;
+
+the computational graph. Both components are normalized (L2 element-wise norm) into 
+
+ˆfA,i and ˆfB,i , and we then compute dA and dB as: dX = ∥ ˆfX, 1− ˆfX, 2∥2 
+
+> 2
+
+for X ∈ { A, B }.For each pair we then define: ρf eat (f1, f 2) = 1 − dA+dB 
+
+> 2
+
+, and we compute their average to obtain: Stability f eat (E, t, M, G ) = 1
+
+N
+
+> N
+
+X
+
+> k=1
+
+ρf eat (f (k)1 , f (k)2 )
+
+Effective Compactness (EC) captures the amount of information in the explanation required to impact the black-box model significantly. EC is adapted from [6] and opera-tionalises the classic conciseness/Sparsity property [31]; it is conceptually related to the Effective Complexity of Nguyen and Martinez [35], but defined here in counterfactual terms, as the number of modifications needed to flip the prediction. However, in graphs, an explanation can easily involve thousands of different node-feature pairs and edges: since EC is mostly relevant for human interactions with the model, excessively large val-ues of the metric can be considered equivalent. For a target t with computational graph 
+
+Gtarget and prediction as ˆy = M (t, G target ), EC computes the number of iterative modi-fications, bounded by a maximum of 100, needed to change ˆy (i.e., the class is modified, or the regression output surpasses a threshold). 6Algorithm 4: ECEdge 
+
+Input : Edge attribution s, target t, graph G, model M
+
+Output: edge_ec  
+
+> 1
+
+Erel ← GetEdgesInCompGraph (t, M, G ); 
+
+> 2
+
+Isorted ← ArgSort (s[Erel ]) ; // Sort edges by attribution  
+
+> 3
+
+Gtarget ← GetSubgraph (G, t, M ); 
+
+> 4
+
+Gmod ← Gtarget ; 
+
+> 5
+
+i ← 0; 
+
+> 6
+
+while M (t, G mod ) = M (t, G target ) ∧ i < min(100 , |Erel |) do  
+
+> 7
+
+Gmod ← RemoveEdge (Isorted [i], G mod ); 
+
+> 8
+
+i ← i + 1 ; 
+
+> 9
+
+return i;
+
+On edge attributions (Algorithm 4), we first sort the edges in the computational graph 
+
+Erel by descending attribution score, obtaining the sequence Isorted . Let G(i) 
+
+> mod
+
+represent the graph obtained after removing the first i edges of Isorted from Gtarget . The edge EC is the smallest number of removals required to alter the original prediction, bounded by the maximum allowed iterations and the total size of Erel :EC edge (s, t, M, G ) = min 
+
+
+
+{i ≥ 1 | M (t, G (i)
+
+> mod
+
+)̸ = ˆ y} ∪ { 100 , |Erel |} 
+
+
+
+For feature EC (Algorithm 5), modifications are performed via substitutions from ref-erence graphs. We identify a set of reference computational graphs Gref from medoid targets tref whose baseline predictions ˆy′ differ from ˆy. In a regression task, we select medoids from the sets of nodes or edges that fall one standard deviation above and below the target prediction, while in a classification task we extract one medoid for class. Let 
+
+Vneigh be the nodes in Gtarget different from t. We split f in the target ( ftarget ) and neigh-bor ( fneighs ) attribution vectors. For a node t we have ftarget = f [t] ∈ Rm; for edge tar-gets t = ( v1, v 2), we define it by concatenation: ftarget = f [v1] ⊕ f [v2] ∈ R2m. We obtain 
+
+fneighs by performing a max pooling across nodes in Vneigh . We then construct a priority vector by concatenation ( fC = ftarget ⊕ fneighs ) and compute Isorted , the indices which sort fC in descending order. For each reference target tref and corresponding Gref , we es-tablish a random mapping ϕ from Vneigh to the nodes in the neighborhood of tref . Then, we perform iterative substitutions according to Isorted . When the i-th element of Isorted 
+
+corresponds to a target feature, it is replaced with the corresponding value from tref . If instead it corresponds to a neighbor feature, the substitution is applied across all nodes in 
+
+Vneigh using the mapping ϕ. If G(i)
+
+> mod
+
+(Gref ) denote the modified graph after i substitutions using Gref , we define k(Gref ) = min 
+
+
+
+{i ≥ 1 | M (t, G (i)
+
+> mod
+
+(Gref )) ̸ = ˆ y} ∪ { 100 , |fC |} 
+
+
+
+.The feature EC is defined as the minimum across all Gref :EC f eat (f, t, M, G ) = min  
+
+> Gref ∈G ref
+
+k(Gref )
+
+Pertinence addresses the adherence of the explanation to the actual model. Perti-nence is a faithfulness measure in the family of Fidelity and Graph Explanation Faith-fulness (GEF) [8]. It adapts the rank-based idea of the Rank Quality Index of [6] and, 7Algorithm 5: ECFeature 
+
+Input : Attribution matrix f , target t, graph G, model M , # features Nf
+
+Output: feature_ec  
+
+> 1
+
+Vneigh ← GetNodesInCompGraph (t, M, G ); 
+
+> 2
+
+fC ← f [t] ⊕ Max (f [Vneigh ], dim = 1) ; // f [v1]⊕f [v2] for links  
+
+> 3
+
+Isorted ← ArgSort (fC ); 
+
+> 4
+
+Gref ← GetRefGraphs (G); 
+
+> 5
+
+Gtarget ← GetSubgraph (G, t, M ); 
+
+> 6
+
+feature_ec ← 100 ; 
+
+> 7
+
+foreach (tref , G ref ) ∈ G ref s.t. M (tref , G ref )̸ = M (t, G target ) do  
+
+> 8
+
+ϕ ← CreateNodeMapping (Gtarget , G ref ); 
+
+> 9
+
+Gmod ← Gtarget ; 
+
+> 10
+
+i ← 0; 
+
+> 11
+
+while M (t, G mod ) = M (t, G target ) ∧ i < min(100 , |f |) do  
+
+> 12
+
+if Isorted [i] < |f | − Nf then  
+
+> 13
+
+Gmod ← SetTargetFeat (Isorted [i], G mod , G ref , ϕ ); 
+
+> 14
+
+else  
+
+> 15
+
+Gmod ← SetNeighsFeats (Isorted [i] mod Nf , G mod , G ref , ϕ ); 
+
+> 16
+
+i ← i + 1 ; 
+
+> 17
+
+feature_ec ← min( feature_ec , i ); 
+
+> 18
+
+return feature_ec ;
+
+like GraphFramEx [31], is ground-truth-free, but it additionally scores the attribution ordering against random baselines. A highly-pertinent explanation should impact the black-box model more than any randomly-generated one, while a low-pertinence one is indistinguishable from (or worse than) random baselines. We use the iterative modifica-tion procedures established for EC. Let K be the EC score (EC edge or EC f eat ). We define a deletion curve C(k) as the model’s output after k successive modifications ( 1 ≤ k ≤ K). We define Cdel as the deletion curve constructed according to the explanation ranking 
+
+Isorted , while Crand = {C(j)
+
+> rand
+
+}Nj=1 is a set of N random curves, generated by applying modifications according to a random permutation of Isorted . The pertinence score rela-tive to a single C(j) 
+
+> rand
+
+is the proportion of points where Cdel degrades the output strictly faster : p(Cdel , C rand ) = 1
+
+> K
+
+PKk=1 I(Cdel (k) < C rand (k)) .For edge attributions (Algorithm 6), the modifications are sequential edge removals from Gtarget . The edge pertinence is the average of p(Cdel , C rand ):Pertinence edge (s, t, M, G ) = 1
+
+N
+
+> N
+
+X
+
+> j=1
+
+p(Cdel , C (j)
+
+> rand
+
+)
+
+For feature attributions (Algorithm 7), modifications consist of feature substitutions. We construct a deletion curve Cdel (Gref ) and a set of random curves Crand (Gref ) for each reference graph Gref ∈ G ref . The feature pertinence is the average success ratio across 8Algorithm 6: PertinenceEdge 
+
+Input : Edge attribution s, edge_ec, target t, graph G, model M
+
+Output: edge_pertinence  
+
+> 1
+
+Erel ← GetEdgesInCompGraph (t, M, G ); 
+
+> 2
+
+Isorted ← ArgSort (s[Erel ]) ; 
+
+> 3
+
+Cdel ← CreateEdgeDelCurve (Isorted , edge_ec , t, G, M ) ; // Deletion curve  
+
+> 4
+
+Lpert ← [] ; 
+
+> 5
+
+i ← 0; 
+
+> 6
+
+while ¬EarlyStop (i, Lpert ) do  
+
+> 7
+
+Crand ← CreateEdgeDelCurve (RandPerm (Isorted ), edge_ec , t, G, M ); 
+
+> 8
+
+Lpert .Append (CompareCurves (Cdel , C rand )) ; 
+
+> 9
+
+i ← i + 1 ; 
+
+> 10
+
+return Average (Lpert );
+
+Algorithm 7: PertinenceFeature 
+
+Input : Attribution matrix f , feat_ec, target t, graph G, model M
+
+Output: feature_pertinence  
+
+> 1
+
+Vneigh ← GetNodesInCompGraph (t, M, G ); 
+
+> 2
+
+Isorted ← ArgSort (f [t] ⊕ Max (f [Vneigh ], dim = 1)) ; 
+
+> 3
+
+Gref ← GetRefGraph (G, task_type ); 
+
+> 4
+
+Lpert ← [] ; 
+
+> 5
+
+foreach (tref , G ref ) ∈ G ref s.t. M (tref , G ref )̸ = M (t, G target ) do  
+
+> 6
+
+Cdel ← CreateFeatDelCurve (Isorted , feat_ec , t, G ref , G, M ); 
+
+> 7
+
+Lcurr ← [] ; 
+
+> 8
+
+i ← 0; 
+
+> 9
+
+while ¬EarlyStop (i, Lcurr ) do  
+
+> 10
+
+Crand ← CreateFeatDelCurve (RandPerm (Isorted ), feat_ec , t, G ref , G, M ); 
+
+> 11
+
+Lcurr .Append (CompareCurves (Cdel , C rand )) ; 
+
+> 12
+
+i ← i + 1 ; 
+
+> 13
+
+Lpert .Append (Average (Lcurr )) ; 
+
+> 14
+
+return Average (Lpert );
+
+all random permutations and reference graphs: Pertinence f eat (f, t, M, G ) = 1
+
+|G ref |N
+
+X 
+
+> Gref ∈G ref
+> N
+
+X
+
+> j=1
+
+p(Cdel (Gref ), C (j)
+
+> rand
+
+(Gref )) 
+
+Computational Optimisation While our metrics do not introduce computational over-head beyond the explainer itself, repeated runs for stability and pertinence estimation can be costly in time-sensitive pipelines. To mitigate this, we implement an early stopping strategy that monitors the convergence of the observed distribution across runs, termi-nating evaluation once the estimate has stabilized - reducing wall-clock time without sacrificing accuracy. Let M = {m1, m 2, . . . , m i} be the set of stability/pertinence values collected after i
+
+independent trials. For i ≥ 30 , we model the confidence interval of the mean μM using 9the standard error SE = σM/√i, where σM represents the empirical standard deviation. We define two convergence tests based on a 95% confidence level: 1. Mean Convergence: Given a threshold τ , we perform a one-tailed z-test where the process terminates if z = |μM−τ | 
+
+> SE
+
+> 1.645 .2. Precision Tolerance: To ensure the stability of the estimate, we stop if the standard error falls within a predefined tolerance ϵ: z = ϵSE > 1.96 , corresponding to a two-tailed test. In all experiments we set τ = 0 .5 (the random-baseline expectation for Pertinence) and 
+
+ϵ = 0 .05 . We begin checking convergence after i = 30 trials and cap at N = 100 . In our benchmarking, this approach reduced the required iterations from a fixed N = 100 to an average of 35-40, yielding a significant reduction in wall-clock time with minimal impact on estimation variance. The metrics differ in evaluation cost. Stability re-invokes the explainer N times, so its cost scales with the explainer’s runtime (negligible for gradient methods, high for GNNExplainer and GraphMask). Effective Compactness is cheap, requiring a single deletion sequence of at most 100 model inferences, whereas Pertinence is the most expensive: it repeats that sequence over N random baselines, at a cost on the order of N times Effective Compactness. The early-stopping scheme above targets precisely the repeated estimation in Stability and Pertinence. 
+
+## 4. G-XAI Library 
+
+The proposed framework is implemented as a modular Python library designed to make GNN explanation quality measurable within existing ML pipelines with minimal integra-tion overhead. The library is proprietary and cannot be released as open source due to company copyright restrictions. To support reproducibility and follow-up research within these constraints, the authors can be contacted for access to selected snippets of code. Figure 1 illustrates the overall architecture, which is built upon the PyTorch Geometric module and follows an object-oriented design to ensure modularity and extensibility. 
+
+Core Abstractions The library’s design is centered around four fundamental abstrac-tion layers: 
+
+• BaseModel : An abstract wrapper that standardizes the interface for diverse GNN tasks. It handles the dual nature of graph inputs (feature matrix X ∈ Rn×f and adjacency matrix A ∈ { 0, 1}n×n) and provides uniform methods for both discrete (pred_discrete ) and continuous ( pred_continuous ) outputs. 
+
+• BaseExplainer : A high-level interface for explanation generation. We provide specialized subclasses for Attribution Methods (e.g., Integrated Gradients, LRP), while the architecture is designed to accommodate additional explainer families via the OtherTaskExplainer extension point. 
+
+• Xplanation : A container class that encapsulates generated attribution matrices alongside metadata regarding the target node/link and the explainer’s hyperpa-rameters. It also stores computed metrics to avoid redundant recomputations. 10 Explainers 
+
+> «Library»
+
+OtherTaskExplainer 
+
+> «Library»
+
+PytorchGeometricExplainer 
+
+> «Library»
+
+AttributionExplainer 
+
+> «Library»
+
+OTExplainer 
+
+> «ThirdParty»
+
+OTExplainer_IMPL 
+
+> «Library»
+
+GraphMask 
+
+> «Library»
+
+GNNExplainer 
+
+> «Library»
+
+CaptumExplainer 
+
+> «ThirdParty»
+
+GraphMask_IMPL 
+
+> «ThirdParty»
+
+GNNExplainer_IMPL 
+
+> «Library»
+
+Saliency 
+
+> «Library»
+
+Deconvolution 
+
+> «Library»
+
+LRP 
+
+> «Library»
+
+IntegratedGradients 
+
+> «Library»
+
+InputXGradient 
+
+> «Library»
+
+GuidedBackprop 
+
+> «ThirdParty»
+
+IntegratedGradients_IMPL 
+
+> «ThirdParty»
+
+InputXGradient_IMPL 
+
+> «ThirdParty»
+
+GuidedBackprop_IMPL 
+
+> «ThirdParty»
+
+Saliency_IMPL 
+
+> «ThirdParty»
+
+Deconvolution_IMPL 
+
+> «ThirdParty»
+
+LRP_IMPL 
+
+> «Library»
+
+BaseExplainer 
+
++explain() 
+
+output 
+
+Models 
+
+> «Connector»
+
+NodeClassificationModel 
+
+> «Connector»
+
+NodeRegressionModel 
+
+> «Connector»
+
+LinkClassificationModel 
+
+> «Connector»
+
+LinkRegressionModel 
+
+> «Library»
+
+BaseModel 
+
++pred_discrete() 
+
++pred_continuous() 
+
+> «External»
+
+GNN 
+
+> «External»
+
+GNN 
+
+> «External»
+
+GNN 
+
+> «External»
+
+GNN 
+
+> «External»
+
+GNN 
+
+> «External»
+
+GNN 
+
+> «External»
+
+GNN 
+
+> «External»
+
+GNN 
+
+Models 
+
+> «Connector»
+
+NodeClassificationModel 
+
+> «Connector»
+
+NodeRegressionModel 
+
+> «Connector»
+
+LinkClassificationModel 
+
+> «Connector»
+
+LinkRegressionModel 
+
+> «Library»
+
+BaseModel 
+
++pred_discrete() 
+
++pred_continuous() 
+
+> «External»
+
+GNN 
+
+> «External»
+
+GNN 
+
+> «External»
+
+GNN 
+
+> «External»
+
+GNN 
+
+Metrics 
+
+> «Library»
+
+Evaluator 
+
++compute_metrics_single() 
+
++compute_metrics_batch() 
+
++get_textual_explanation() 
+
+> «Library»
+
+Xplanation 
+
+uses 
+
+Metrics 
+
+> «Library»
+
+Evaluator 
+
++compute_metrics_single() 
+
++compute_metrics_batch() 
+
++get_textual_explanation() 
+
+> «Library»
+
+Xplanation 
+
+uses 
+
+Library original code 
+
+Color Category 
+
+External ML code 
+
+ML connector 
+
+Third -party library 
+
+Color Category 
+
+External ML code 
+
+ML connector 
+
+Third -party library 
+
+Library original code 
+
+Color Category 
+
+External ML code 
+
+ML connector 
+
+Third -party library 
+
+uses Figure 1: Architectural overview of the proposed XAI framework, illustrating the decou-pling between core evaluation logic (green), ML model connectors (orange), and the explainer suite (purple models and blue explainers). 
+
+• Evaluator : The orchestration layer responsible for metric computation. It facili-tates batch processing of metrics and integrates a Natural Language eXplanation (NLX) module to translate technical importance scores into human-intelligible sum-maries. 
+
+Integration and Performance The library implements custom model wrappers for 
+
+Node and Link tasks across both classification and regression settings. For link-level tasks, the library automatically handles the generation of computational subgraphs for the target edge (u, v ), ensuring that the explanation captures the relational context of both endpoints. This is a non-trivial requirement in link prediction tasks where nei-ther node alone determines the prediction. The library supports hardware acceleration (CUDA) and provides automated utilities for mapping neighborhood-level feature attri-butions back to a target-centric representation, making the output immediately inter-pretable within standard ML workflows. 
+
+Natural Language Explanations To bridge the gap between technical attributions and regulatory compliance, the library includes a Natural Language eXplanation (NLX) module via the Evaluator.get_textual_explanation() method. Given an Xplanation 
+
+object, the module: (i) ranks the top-k influential features and edges by attribution mag-nitude; (ii) maps indices to human-readable names using a user-provided dictionary; and 11 (iii) composes them into natural language via customizable templates. For instance, in a loan approval task, the module might output: “The application was denied primar-ily due to a high Debt-to-Income Ratio (importance: 0.73). While Credit History was positive, the Debt level exceeded thresholds. The model also considered connections to 3 accounts with prior defaults.” This approach ensures explanations remain faithful to the attributions while meeting EU AI Act transparency requirements. Templates support multi-lingual outputs and domain-specific terminology. We stress that the NLX mod-ule is a utility of the library for producing human-readable summaries; it is neither a benchmarked component nor part of the quantitative evaluation in Section 5. 
+
+## 5. Experiments 
+
+As a first use of our framework, we perform a large-scale benchmark of explainers across a variety of tasks, datasets, and models. 
+
+5.1. Experimental setup 
+
+For each task-dataset combination, we explain 100 target predictions (on either nodes or edges, according to the task), with the same targets across different models and explain-ers. We measure Pertinence, Effective Compactness, and Stability, alongside the time required by each explainer. We finally average the metrics across explanations, models, and datasets. 
+
+Datasets and Models We selected five graph datasets for classification and regression, using each on both node-level and edge-level tasks - thus creating 10 GraphML tasks. For classification tasks we utilized Cora [36], GitHub [37], and BAShapes [3]. To address the scarcity of regression benchmarks, we curated a modified version of MovieLens [38] and generated a second fully synthetic dataset. For each dataset and task, we use two-layer GCNs and GAT. We provide additional details on both datasets and models in the Appendix. 
+
+Explainers We initially identified many graph post-hoc explainers for our benchmark. However, in order to use them across different tasks and settings, we filtered them for their ability to handle both node and edge features, to explain classification and regres-sion tasks on nodes and edges, and to output both feature and edge attributions. Due to the industrial application of our framework, we additionally had to exclude explainers without an explicit open-source software license. Many state-of-the-art graph explainers were excluded by these criteria, such as PGExplainer [24], SubgraphX [5], GNN-LRP [23], GraphLIME [4], Degree [39] and Clear [28]. We ended in eight explainers for our bench-mark: Saliency [17], Input ×Gradient [18], Integrated Gradients [19], Guided Backpropa-gation [20], Deconvolution [21], Layer-wise Relevance Propagation (LRP) [22], GNNEx-plainer [3], and GraphMask [25]. They fall into two categories: gradient-based (e.g. Saliency) or attribution-redistribution approaches (e.g. LRP), both of which compute importance by backpropagating signals from the output to the input, and perturbation-based masking approaches (e.g. GNNExplainer), that optimize "soft masks" to isolate 12 Table 1: Benchmark results across models, datasets and tasks (best in bold). 
+
+Task Explainer Feature Pertinence Edge Pertinence Feature Eff. Comp. Edge Eff. Comp. Feature Stability Edge Stability Execution Time Node Class. Deconv 0.58 ±0.25 0.84 ±0.10 67.9 ±22.2 39.6 ±24.7 1.00 ±0.00 1.00 ±0.00 0.01 ±0.00 
+
+Node Class. GNNExp 0.90 ±0.10 0.54 ±0.12 32.2 ±12.8 42.8 ±23.0 0.97 ±0.01 0.96 ±0.03 0.87 ±0.10 Node Class. GraphMask 0.52 ±0.16 0.43 ±0.04 82.6 ±18.3 61.4 ±28.1 0.96 ±0.00 0.86 ±0.08 3.36 ±2.82 Node Class. GuidedBP 0.61 ±0.25 0.84 ±0.10 66.8 ±21.6 39.6 ±24.4 1.00 ±0.00 1.00 ±0.00 0.01 ±0.00 
+
+Node Class. Input ×Grad 0.94 ±0.06 0.86 ±0.08 25.1 ±10.9 38.4 ±23.3 1.00 ±0.00 1.00 ±0.00 0.01 ±0.00 
+
+Node Class. IntGrad 0.94 ±0.06 0.87 ±0.08 25.5 ±11.2 37.0 ±22.3 1.00 ±0.00 1.00 ±0.00 0.32 ±0.09 Node Class. LRP 0.87 ±0.09 0.75 ±0.05 35.9 ±9.5 43.1 ±28.6 1.00 ±0.00 1.00 ±0.00 0.01 ±0.00 
+
+Node Class. Saliency 0.61 ±0.25 0.68 ±0.06 50.3 ±26.6 42.1 ±27.5 1.00 ±0.00 1.00 ±0.00 0.01 ±0.00 
+
+Node Reg. Deconv 0.63 ±0.09 1.00 ±0.00 21.9 ±36.6 24.5 ±32.5 1.00 ±0.00 1.00 ±0.00 0.02 ±0.01 
+
+Node Reg. GNNExp 0.67 ±0.16 0.48 ±0.12 30.9 ±43.0 40.7 ±38.5 0.96 ±0.00 0.98 ±0.00 2.44 ±0.73 Node Reg. GraphMask 0.53 ±0.05 0.48 ±0.03 34.7 ±56.1 56.3 ±37.8 0.97 ±0.00 0.88 ±0.14 7.89 ±5.61 Node Reg. GuidedBP 0.63 ±0.09 1.00 ±0.00 21.9 ±36.6 24.5 ±32.5 1.00 ±0.00 1.00 ±0.00 0.03 ±0.01 Node Reg. Input ×Grad 0.90 ±0.07 1.00 ±0.00 7.0 ±9.9 24.5 ±32.5 1.00 ±0.00 1.00 ±0.00 0.02 ±0.01 
+
+Node Reg. IntGrad 0.90 ±0.07 1.00 ±0.00 7.3 ±11.0 24.9 ±33.2 1.00 ±0.00 1.00 ±0.00 0.93 ±0.34 Node Reg. LRP 0.75 ±0.17 0.74 ±0.25 20.5 ±20.7 37.0 ±30.1 1.00 ±0.00 1.00 ±0.00 0.02 ±0.02 
+
+Node Reg. Saliency 0.57 ±0.13 0.57 ±0.20 21.8 ±36.0 32.6 ±26.9 1.00 ±0.00 1.00 ±0.00 0.03 ±0.01 Edge Class. Deconv 0.56 ±0.25 0.81 ±0.25 86.9 ±14.9 50.7 ±14.9 1.00 ±0.00 1.00 ±0.00 0.02 ±0.01 
+
+Edge Class. GNNExp 0.76 ±0.26 0.54 ±0.21 44.7 ±19.3 63.3 ±18.6 0.97 ±0.00 0.96 ±0.02 1.75 ±0.86 Edge Class. GraphMask 0.31 ±0.24 0.31 ±0.21 90.8 ±5.2 82.9 ±13.7 0.96 ±0.00 0.80 ±0.15 12.43 ±18.19 Edge Class. GuidedBP 0.58 ±0.26 0.81 ±0.24 82.8 ±17.9 51.3 ±14.4 1.00 ±0.00 1.00 ±0.00 0.02 ±0.01 
+
+Edge Class. Input ×Grad 0.87 ±0.20 0.83 ±0.25 28.7 ±21.0 50.9 ±15.0 1.00 ±0.00 1.00 ±0.00 0.02 ±0.01 
+
+Edge Class. IntGrad 0.87 ±0.20 0.84 ±0.25 27.7 ±21.8 48.7 ±15.0 1.00 ±0.00 1.00 ±0.00 0.73 ±0.34 Edge Class. LRP 0.60 ±0.25 0.58 ±0.18 73.4 ±18.5 63.9 ±12.6 1.00 ±0.00 1.00 ±0.00 0.03 ±0.01 Edge Class. Saliency 0.51 ±0.24 0.63 ±0.21 82.5 ±24.3 55.4 ±12.8 1.00 ±0.00 1.00 ±0.00 0.02 ±0.01 
+
+Edge Reg. Deconv 0.57 ±0.07 0.97 ±0.05 49.0 ±53.8 49.0 ±52.1 1.00 ±0.00 1.00 ±0.00 0.03 ±0.00 
+
+Edge Reg. GNNExp 0.60 ±0.13 0.60 ±0.22 51.2 ±55.2 74.6 ±35.9 0.96 ±0.01 0.99 ±0.01 2.74 ±0.44 Edge Reg. GraphMask 0.61 ±0.14 0.38 ±0.19 51.3 ±68.8 78.1 ±31.0 0.97 ±0.00 0.89 ±0.09 7.44 ±1.32 Edge Reg. GuidedBP 0.57 ±0.07 0.97 ±0.05 49.0 ±53.8 49.0 ±52.1 1.00 ±0.00 1.00 ±0.00 0.03 ±0.00 
+
+Edge Reg. Input ×Grad 0.78 ±0.15 0.97 ±0.05 47.9 ±52.7 49.0 ±52.1 1.00 ±0.00 1.00 ±0.00 0.03 ±0.00 
+
+Edge Reg. IntGrad 0.77 ±0.15 0.98 ±0.03 47.9 ±52.7 49.1 ±52.2 1.00 ±0.00 1.00 ±0.00 1.32 ±0.02 Edge Reg. LRP 0.55 ±0.10 0.68 ±0.17 49.3 ±52.3 56.3 ±39.1 1.00 ±0.00 1.00 ±0.00 0.03 ±0.01 
+
+Edge Reg. Saliency 0.56 ±0.06 0.59 ±0.29 48.9 ±53.7 51.0 ±38.5 1.00 ±0.00 1.00 ±0.00 0.03 ±0.00 
+
+the most influential subgraphs and features. 
+
+5.2. Results 
+
+We compare explainers across the four main tasks we considered. We average the metrics across explanation targets, datasets, and models, providing a robust empirical bench-mark of the explainers’ performances for each task. We report these results in Table 1. Input ×Gradient and IntegratedGradients emerge as the top-performing explainers in ef-fective compactness. In contrast, GraphMask consistently ranks as the least in the metric. The 100-iteration cap reflects a comprehensibility limit rather than a mere computational bound: an explanation that requires altering more than 100 elements to change the pre-diction is already beyond what a human can meaningfully inspect. Within this range, Effective Compactness rewards the virtuous explainers that reach the decision boundary by acting on the fewest elements. The high performance of gradient methods in explanation fidelity/faithfulness to the model is also consistent with the G-XAI literature [31, 8, 33, 40, 9]. Since pertinence evaluates how faithfully an explanation reflects model decisions, gradient methods benefit from direct access to internal weights, allowing for a fine-grained behavior analysis. In contrast, graph-based explainers like GNNExplainer and GraphMask do not have access to the internal model, and have to rely on random perturbations, introducing noise in the explanations. 13 0.6 0.8 
+
+Features pertinence   
+
+> 20
+> 40
+> 60
+> 80
+> Features EC
+> 0.4 0.6 0.8
+
+Edges pertinence  
+
+> 40
+> 50
+> 60
+> Edges EC
+> 0.6 0.8
+
+Features pertinence     
+
+> 10 2
+> 10 1
+> 10 0
+> Time
+> 0.4 0.6 0.8
+
+Edges pertinence   
+
+> 10 2
+> 10 1
+> 10 0
+> Time
+
+Node Classification  
+
+> 0.6 0.8
+
+Features pertinence   
+
+> 10
+> 20
+> 30
+> Features EC
+> 0.50 0.75 1.00
+
+Edges pertinence  
+
+> 30
+> 40
+> 50
+> Edges EC
+> 0.6 0.8
+
+Features pertinence    
+
+> 10 1
+> 10 0
+> 10 1
+> Time
+> 0.50 0.75 1.00
+
+Edges pertinence  
+
+> 10 1
+> 10 0
+> 10 1
+> Time
+
+Node Regression  
+
+> 0.50 0.75
+
+Features pertinence  
+
+> 40
+> 60
+> 80
+> Features EC
+> 0.50 0.75
+
+Edges pertinence  
+
+> 50
+> 60
+> 70
+> 80
+> Edges EC
+> 0.50 0.75
+
+Features pertinence    
+
+> 10 2
+> 10 1
+> 10 0
+> 10 1
+> Time
+> 0.50 0.75
+
+Edges pertinence   
+
+> 10 2
+> 10 1
+> 10 0
+> 10 1
+> Time
+
+Edge Classification   
+
+> 0.6 0.7 0.8
+
+Features pertinence   
+
+> 48
+> 50
+> Features EC
+> 0.50 0.75 1.00
+
+Edges pertinence   
+
+> 50
+> 60
+> 70
+> 80
+> Edges EC
+> 0.6 0.7 0.8
+
+Features pertinence    
+
+> 10 1
+> 10 0
+> 10 1
+> Time
+> 0.50 0.75 1.00
+
+Edges pertinence  
+
+> 10 1
+> 10 0
+> 10 1
+> Time
+
+Edge Regression 
+
+> Deconv
+> GNNExp
+> GraphMask
+> GuidedBP
+> Input×Grad
+> IntGrad
+> LRP
+> Saliency
+> Pareto Front
+
+Figure 2: Pareto plots comparing the explainers across pairs of metrics. In all cases, the bottom-right region of the plot corresponds to more desirable trade-offs. A subset of methods scores pertinence below the 0.5 random baseline. This is not necessarily evidence of an attribution worse than random: coincident points of the ex-planation and random deletion curves are counted as failures, so tasks with few features (or many relevant ones) produce frequent ties that depress pertinence below 0.5. A dis-tinct, task-level effect arises when opposing classes are characterized by a multimodal distribution: the medoid reference targets then may poorly represent the target’s near-est alternative and feature perturbations may lead to unstable prediction flips, letting random orderings degrade the output almost as fast as the attribution (we detail these 14 cases in the Appendix). Computation variants that explicitly consider this phenomenon and remove this sub-baseline regime are left to future work. Notably, however, several methods exhibit specialized performance: GNNExplainer (in classification tasks) and LRP (in node tasks) excel at feature-level explanations, while Deconvolution and GuidedBackProp always perform better on edge attributions. In terms of stability, all explainers, with the exceptions of GNNExplainer and GraphMask, yield constant results due to their non-stochastic algorithms. A Stability of 1.00 means the explainer is fully deterministic, so a single invocation already yields a reproducible attribution. The metric’s main practical value is thus to isolate the non-deterministic explainers (here GNNExplainer and GraphMask), which must be invoked several times before their attributions can be considered reliable. Execution times, finally, vary dras-tically across the methods. Gradient-based methods are extremely efficient, typically requiring less than 0.01s, as they only need one model call. However, Integrated Gra-dients, GNNExplainer and GraphMask are significantly slower, lagging by two to four orders of magnitude, as they all require several model calls to generate an explanation. The Pareto plots in Figure 2 reveal no significant trade-off between pertinence and effective compactness: Input ×Gradient and Integrated Gradients function as dominant solutions across both metrics. This finding is consistent across most tasks, except for edge regression, where most methods show comparable performance regarding feature effective compactness. In this case, the feature pertinence provides a more nuanced eval-uation, showing that Integrated Gradients and Input ×Gradient still perform significantly better than the random baseline (which, for the way we defined the metric, corresponds to 0.5). We excluded stability due to its consistency across different explainers. When comparing execution time against feature and edge pertinence, instead, other gradient-based methods (LRP and Saliency) appear on the Pareto front due to their speed, with Input ×Gradient offering the best balance: it provides a substantial boost in pertinence for both edges and features with only a negligible increase in latency. Conversely, the marginal performance gains often offered by Integrated Gradients do not seem to justify an execution time that is two orders of magnitude higher. When considering edge per-tinence, however, Deconvolution and Guided Backpropagation are almost on par with Input ×Gradient. Finally, we observe that edges serve as the primary information source for models in regression tasks. However, this effect, alongside the limited variability in feature effective compactness in edge regression, may derive from the specific synthetic datasets used and might not generalize to other contexts. 
+
+5.3. Operational Guidelines 
+
+From our benchmarking results, we distill a set of practical guidelines for explainer se-lection and quality assessment, detailed in the Appendix. Amongst the most relevant components are empirically grounded quality thresholds, transferability considerations, and explainer recommendations. 
+
+Quality thresholds Based on our benchmarking results, we derive empirically grounded thresholds for Stability, Pertinence, and EC across all four Graph ML tasks, alongside transferability considerations and explainer recommendations. Stability thresholds trans-15 fer reliably across datasets, while Pertinence and Effective Compactness should be reval-idated on proprietary data - particularly Edge EC, which varies with node degree. Full guidelines, including deployment workflows and tabular summaries, are provided in the Appendix. 
+
+Transferability notes. Stability transfers reliably from benchmarks to new datasets, as it primarily depends on the explainer’s algorithm. Pertinence and Effective Compactness are indicative but should be revalidated on proprietary data - particularly Edge EC, which varies with node degree. We recommend a minimum sample of 50–100 instances for initial assessment and 200+ for production validation. 
+
+Explainer recommendation. For most graph tasks, Input ×Gradient offers the best trade-off: near-optimal pertinence and compactness with execution times under 0.03s. Integrated Gradients provides marginal gains at 100 × higher latency, justified only when time is unconstrained. GraphMask consistently underperforms and should be avoided. 
+
+## 6. Conclusion 
+
+In this paper, we introduced an empirical evaluation framework for GNN post-hoc expla-nations designed for seamless application across diverse real-world datasets, models, and tasks. By implementing these metrics within a dedicated library, we enabled the integra-tion and testing of ML models alongside a wide selection of explainers. Our benchmarking across both node and link tasks revealed that Input ×Gradient (a relatively simple, de-terministic, gradient-based technique) outperforms or matches the performance of more complex or graph-specific explainers. Our findings cross-validate results in the G-XAI benchmark literature and demonstrate a clear relationship between current fidelity met-rics and our proposed Pertinence and Effective Compactness metrics. The scope of our benchmark was constrained by our selection criteria: each explainer had to handle node and edge tasks under both classification and regression, and to produce feature and edge attributions simultaneously (dual-attribution). We further stress that our metrics deliberately measure consistency with the model’s own behaviour rather than correctness with respect to real-world phenomena: in line with the true-to-the-model paradigm, it is the model, not an external oracle, that explanations must faithfully reflect. Validating explanations against domain knowledge is a complementary, human-centred direction that we leave to future work. While necessary for a uniform comparison across tasks, these criteria introduce a selection bias, since several graph-native explainers do not meet them and thus fall outside our comparison. Nevertheless, our modular methodology provides a robust foundation for the future integration of new techniques and tasks. Subsequent research will expand this framework to include emerging graph explainability approaches, such as counterfactuals, while leveraging the insights from this benchmark to develop more flexible and effective graph explainers. 16 References 
+
+[1] Zonghan Wu, Shirui Pan, Feng Chen, Guodong Long, Chengqi Zhang, and Philip S. Yu. A comprehensive survey on graph neural networks. IEEE Transactions on Neural Networks and Learning Systems , 32(1):4–24, 2020. [2] Will Hamilton, Zhitao Ying, and Jure Leskovec. Inductive representation learning on large graphs. In Advances in Neural Information Processing Systems (NeurIPS) ,volume 30, 2017. [3] Zhitao Ying, Dylan Bourgeois, Jiaxuan You, Marinka Zitnik, and Jure Leskovec. Gnnexplainer: Generating explanations for graph neural networks. Advances in neural information processing systems , 32, 2019. [4] Qiang Huang, Makoto Yamada, Yuan Tian, Dinesh Singh, and Yi Chang. Graphlime: Local interpretable model explanations for graph neural networks. IEEE Transactions on Knowledge and Data Engineering , 35(7):6968–6972, 2022. [5] Hao Yuan, Haiyang Yu, Jie Wang, Kang Li, and Shuiwang Ji. On explainability of graph neural networks via subgraph explorations. In International Conference on Machine Learning (ICML) , pages 12241–12252. PMLR, 2021. [6] Alan Perotti, Claudio Borile, Arianna Miola, Francesco Paolo Nerini, Paolo Baracco, and André Panisson. Explainability, quantified: Benchmarking xai techniques. In 
+
+World Conference on Explainable Artificial Intelligence . Springer, 2024. [7] Mandeep Rathee, Thorben Funke, Avishek Anand, and Megha Khosla. Bagel: A benchmark for assessing graph neural network explanations. In Thirty-sixth Con-ference on Neural Information Processing Systems Datasets and Benchmarks Track ,2022. [8] Chirag Agarwal, Owen Queen, Himanshu Chugh, and Marinka Zitnik. Evaluating explainability for graph neural networks. Scientific Data , 10(1):144, 2023. [9] Corrado Monti, Paolo Bajardi, Francesco Bonchi, André Panisson, and Alan Perotti. A true-to-the-model axiomatic benchmark for graph-based explainers. Trans. Mach. Learn. Res. , 2024, 2024. [10] Mauparna Nandan, Soma Mitra, and Debashis De. Graphxai: a survey of graph neural networks (gnns) for explainable ai (xai). Neural Computing and Applications ,37(17):10949–11000, 2025. [11] Franco Scarselli, Marco Gori, Ah Chung Tsoi, Markus Hagenbuchner, and Gabriele Monfardini. The graph neural network model. IEEE transactions on neural net-works , 20(1):61–80, 2008. [12] Thomas N Kipf and Max Welling. Semi-supervised classification with graph convo-lutional networks. In International Conference on Learning Representations , 2017. 17 [13] Petar Veličković, Guillem Cucurull, Arantxa Casanova, Adriana Romero, Pietro Liò, and Yoshua Bengio. Graph attention networks. In International Conference on Learning Representations , 2018. [14] Keyulu Xu, Weihua Hu, Jure Leskovec, and Stefanie Jegelka. How powerful are graph neural networks? In International Conference on Learning Representations ,2018. [15] Tomasz Danel, Przemysław Spurek, Jacek Tabor, Marek Śmieja, Łukasz Struski, Agnieszka Słowik, and Łukasz Maziarka. Spatial graph convolutional networks. In 
+
+International conference on neural information processing . Springer, 2020. [16] Ziwen Zhao, Yixin Su, Yuhua Li, Yixiong Zou, Ruixuan Li, and Rui Zhang. Asurvey on self-supervised graph foundation models: Knowledge-based perspective. 
+
+IEEE Transactions on Knowledge and Data Engineering , 2025. [17] Karen Simonyan, Andrea Vedaldi, and Andrew Zisserman. Deep inside convolutional networks: Visualising image classification models and saliency maps. arXiv preprint arXiv:1312.6034 , 2013. [18] Avanti Shrikumar, Peyton Greenside, and Anshul Kundaje. Learning important features through propagating activation differences. In International conference on machine learning , pages 3145–3153. PMlR, 2017. [19] Mukund Sundararajan, Ankur Taly, and Qiqi Yan. Axiomatic attribution for deep networks. In International conference on machine learning . PMLR, 2017. [20] J Springenberg, Alexey Dosovitskiy, Thomas Brox, and M Riedmiller. Striving for simplicity: The all convolutional net. In ICLR (workshop track) , 2015. [21] Matthew D Zeiler and Rob Fergus. Visualizing and understanding convolutional networks. In European conference on computer vision . Springer, 2014. [22] Sebastian Bach, Alexander Binder, Grégoire Montavon, Frederick Klauschen, Klaus-Robert Müller, and Wojciech Samek. On pixel-wise explanations for non-linear classifier decisions by layer-wise relevance propagation. PloS one , 10(7):e0130140, 2015. [23] Thomas Schnake, Oliver Eberle, Jonas Lederer, Shinichi Nakajima, Kristof T Schütt, Klaus-Robert Müller, and Grégoire Montavon. Higher-order explanations of graph neural networks via relevant walks. IEEE transactions on pattern analysis and ma-chine intelligence , 44(11):7581–7596, 2021. [24] Dongsheng Luo, Wei Cheng, Dongkuan Xu, Wenchao Yu, Bo Zong, Haifeng Chen, and Xiang Zhang. Parameterized explainer for graph neural network. Advances in neural information processing systems , 33:19620–19631, 2020. 18 [25] Michael Sejr Schlichtkrull, Nicola De Cao, and Ivan Titov. Interpreting graph neural networks for nlp with differentiable edge masking. In International Conference on Learning Representations , 2021. [26] Alan Perotti, Paolo Bajardi, Francesco Bonchi, and André Panisson. Explaining identity-aware graph classifiers through the language of motifs. In 2023 International Joint Conference on Neural Networks (IJCNN) , pages 1–8, 2023. [27] Ana Lucic, Maartje A Ter Hoeve, Gabriele Tolomei, Maarten De Rijke, and Fabrizio Silvestri. Cf-gnnexplainer: Counterfactual explanations for graph neural networks. In International conference on artificial intelligence and statistics . PMLR, 2022. [28] Jing Ma, Ruocheng Guo, Saumitra Mishra, Aidong Zhang, and Jundong Li. Clear: Generative counterfactual explanations on graphs. Advances in neural information processing systems , 35:25895–25907, 2022. [29] Zaixi Zhang, Qi Liu, Hao Wang, Chengqiang Lu, and Cheekong Lee. Protgnn: To-wards self-explaining graph neural networks. In Proceedings of the AAAI conference on artificial intelligence , volume 36, pages 9127–9135, 2022. [30] Steve Azzolin, Antonio Longa, Pietro Barbiero, Pietro Lio, and Andrea Passerini. Global explainability of gnns via logic combination of learned concepts. In The Eleventh International Conference on Learning Representations , 2023. [31] Kenza Amara, Zhitao Ying, Zitao Zhang, Zhichao Han, Yang Zhao, Yinan Shan, Ulrik Brandes, Sebastian Schemm, and Ce Zhang. Graphframex: Towards system-atic evaluation of explainability methods for graph neural networks. In Learning on Graphs Conference , pages 44–1. PMLR, 2022. [32] Mert Kosan, Samidha Verma, Burouj Armgaan, Khushbu Pahwa, Ambuj Singh, Sourav Medya, and Sayan Ranu. GNNX-BENCH: Unravelling the utility of perturbation-based GNN explainers through in-depth benchmarking. In The Twelfth International Conference on Learning Representations , 2024. [33] Magdalena Proszewska, Tomasz Danel, and Dawid Rymarczyk. B-xaic dataset: Benchmarking explainable ai for graph neural networks using chemical data. arXiv preprint arXiv:2505.22252 , 2025. [34] Shanghua Gao, Richard Yuxuan Zhu, Zhenglun Kong, Xiaorui Su, Curtis Ginder, Sufian Aldogom, Ishita Das, Taylor Evans, Theodoros Tsiligkaridis, and Marinka Zitnik. Cure-bench. https://kaggle.com/competitions/cure-bench , 2025. 2025 Neural Information Processing Conference (Neurips 2025) Competition. [35] An phi Nguyen and María Rodríguez Martínez. On quantitative aspects of model interpretability, 2020. [36] Zhilin Yang, William Cohen, and Ruslan Salakhudinov. Revisiting semi-supervised learning with graph embeddings. In International conference on machine learning ,pages 40–48. PMLR, 2016. 19 [37] Benedek Rozemberczki, Carl Allen, and Rik Sarkar. Multi-scale attributed node embedding. Journal of Complex Networks , 9(2):cnab014, 2021. [38] F Maxwell Harper and Joseph A Konstan. The movielens datasets: History and context. Acm transactions on interactive intelligent systems (tiis) , 5(4):1–19, 2015. [39] Qizhang Feng, Ninghao Liu, Fan Yang, Ruixiang Tang, Mengnan Du, and Xia Hu. Degree: Decomposition based explanation for graph neural networks. In 10th Inter-national Conference on Learning Representations, ICLR 2022 , 2022. [40] Francesco Paolo Nerini, Francesco Bonchi, and André Panisson. A true-to-the-model benchmark for edge-level attributions of gnn explainers. In Joint European Conference on Machine Learning and Knowledge Discovery in Databases . Springer, 2025. 
+
+## A. Operational Guidelines for G-XAI Practitioners 
+
+This appendix provides actionable guidance for machine learning practitioners seeking to integrate explainability into Graph Neural Network pipelines. The recommendations derive from our extensive benchmarking study and are structured around the three phases of ML deployment: pre-development consultation, development-phase validation, and production integration. 
+
+A.1. Explainer Selection Guidelines 
+
+A.1.1. Primary Recommendation 
+
+Based on our benchmarking results across four Graph ML tasks, we provide the following explainer selection hierarchy: 1. Input ×Gradient (Recommended Default): Consistently exhibits excellent per-formance across all tasks, characterized by high pertinence ( > 0.78 ), low effective compactness, perfect stability (1.0), and minimal execution time ( < 0.03 s). This method should be the default choice unless specific requirements dictate otherwise. 2. Integrated Gradients : Offers marginally higher pertinence in some scenarios but requires approximately two orders of magnitude more computation time ( 0.3–1.3s). Recommended only when explanation quality is essential, and latency constraints are relaxed. 3. Deconvolution / Guided Backpropagation : Viable alternatives when the pri-mary focus is edge attribution. These methods achieve high edge pertinence ( > 0.81 
+
+for classification tasks) with negligible computational overhead. 4. GNNExplainer / LRP : Acceptable for feature-focused explanations in node clas-sification tasks. However, GNNExplainer exhibits stability issues (0.96–0.97) that may be problematic for regulatory compliance scenarios. 20 Methods to Avoid : GraphMask consistently yields inadequate results across our benchmarking tasks (pertinence often below 0.5, high effective compactness, low stability) and should be excluded from initial explainer selection. 
+
+A.1.2. Task-Specific Considerations 
+
+Table 2 summarizes explainer recommendations stratified by Graph ML task. Table 2: Task-specific explainer recommendations based on benchmarking results.           
+
+> Task Primary Choice Alternatives
+> Node Classification Input ×Gradient IntGrad, LRP (features) Node Regression Input ×Gradient IntGrad, Deconv (edges) Link Classification Input ×Gradient IntGrad, GuidedBP (edges) Link Regression Input ×Gradient IntGrad, Deconv (edges)
+
+A.2. Quality Thresholds and Acceptance Criteria 
+
+Establishing appropriate quality thresholds is critical for determining whether an ex-plainer meets deployment requirements. We provide empirically-derived thresholds based on our benchmarking study, while emphasizing that these values should be adapted to specific application domains. 
+
+A.2.1. Stability Thresholds 
+
+Stability values range from 0 (completely random explanations) to 1 (perfectly determin-istic). We recommend the following interpretation: 
+
+• ≥ 0.95 : Highly deterministic; suitable for regulatory reporting where reproducibil-ity is paramount. 
+
+• 0.80 –0.95 : Moderate stability; acceptable for internal model diagnostics and devel-opment workflows. 
+
+• < 0.80 : Potentially problematic; may undermine user trust and should trigger investigation into explainer configuration or selection of alternative methods. For high-stakes applications (e.g., financial fraud detection, anti-money laundering monitoring) where explanations may be scrutinized by auditors or used in legal proceed-ings, stability thresholds should be set conservatively at 0.80 or higher. 
+
+A.2.2. Pertinence Thresholds 
+
+Pertinence measures how well explanations capture the model’s actual decision-making process compared to random baselines. The metric inherently centers at 0.5 (equivalent to random): 21 • < 0.5: Explanation performs worse than random; should be rejected. 
+
+• 0.5–0.6: Marginally better than random; acceptable only for inherently difficult tasks. 
+
+• 0.6–0.7: Moderate alignment with model behavior; acceptable for most applica-tions. 
+
+• > 0.7: Strong alignment; target threshold for classification tasks with balanced classes. 
+
+Important Caveat : Certain task-data combinations legitimately produce lower per-tinence values. In particular, the metric relies on medoid reference targets: when an opposing class is multimodal (several distinct clusters), a single medoid poorly repre-sents the target’s nearest alternative, so substitutions follow an incoherent direction and the attribution loses its advantage over random orderings. Practitioners should interpret pertinence in context rather than applying universal thresholds. 
+
+A.2.3. Effective Compactness Thresholds 
+
+Effective compactness quantifies the cognitive load required to comprehend an explana-tion. For graph data, we cap this metric at 100 for computational tractability. Acceptable ranges depend on dataset characteristics: 
+
+• Feature EC : We recommend targeting 10 –25% of total features, depending on task complexity. For node-level tasks, 10% of features represents a reasonable upper bound; for link-level tasks, 25% may be acceptable given the dual-endpoint nature of explanations. 
+
+• Edge EC : Thresholds are highly dataset-dependent due to varying graph densi-ties and node degrees. We do not prescribe universal thresholds but recommend establishing baselines on representative samples from the target deployment distri-bution. 
+
+A.2.4. Execution Time Thresholds 
+
+Computational efficiency requirements are deployment-dependent: 
+
+• Real-time systems (interactive dashboards): < 100 –300 ms per explanation. 
+
+• Batch processing (historical analysis): seconds to minutes per explanation. 
+
+• Offline audit/compliance : hours of computation acceptable if quality justifies cost. 
+
+A.2.5. Summary of Recommended Thresholds 
+
+Table 3 synthesizes our recommended quality thresholds for graph tasks. 22 Table 3: Recommended quality thresholds for graph explainability metrics.                                                             
+
+> Metric Node Cls. Node Reg. Link Cls. Link Reg.
+> Feature EC ≤10% feats ≤10% feats ≤25% feats ≤25% feats Edge EC dataset-dep. dataset-dep. dataset-dep. dataset-dep. Feature Pertinence ≥0.6≥0.6≥0.6≥0.6
+> Edge Pertinence ≥0.6≥0.6≥0.6≥0.6
+> Feature Stability ≥0.8≥0.8≥0.8≥0.8
+> Edge Stability ≥0.8≥0.8≥0.8≥0.8
+> Execution Time <5s<5s<5s<5s
+
+A.3. Metric Interpretation and Transferability 
+
+A.3.1. Local vs. Global Assessment 
+
+All four evaluation metrics are computed at the instance level (individual nodes or edges) and subsequently aggregated. This design reflects that explanation quality varies across different regions of the input space. To obtain statistically reliable global assessments: 
+
+• Minimum sample size : 50–100 instances for initial assessment. 
+
+• Robust validation : 200–500 instances for production deployment. 
+
+• Stratified sampling : When computational budgets are constrained, stratify across prediction confidence levels and/or classes to capture explainer behavior in both high-certainty and ambiguous decision regions. 
+
+A.3.2. Transferability from Benchmark to Production 
+
+Different metrics exhibit varying degrees of transferability: 
+
+• Stability (High Transferability): Primarily depends on algorithmic determinism rather than data characteristics. A stochastic explainer producing inconsistent results on benchmark graphs will likely exhibit similar instability on proprietary data. 
+
+• Execution Time (High Transferability): Scales proportionally with graph com-plexity (nodes, edges, layers). Benchmark timings provide reliable estimates when adjusted for hardware differences. 
+
+• Pertinence (Medium Transferability): Sensitive to data distribution, feature cor-relations, and decision boundary complexity. Requires domain-specific validation. 
+
+• Effective Compactness (Medium Transferability): Affected by number of fea-tures, graph density, and model architecture (e.g., transitioning from 1-hop to 3-hop GNNs significantly increases computational graph size). Practitioners should interpret benchmarking results as informative priors rather than absolute guarantees for novel problem settings. 23 A.4. Computational Optimization Strategies 
+
+A.4.1. Early Stopping for Iterative Metrics 
+
+Both stability and pertinence require iterative computation (100 trials by default). We implement an early stopping criterion that reduces computation by 60–80% with minimal accuracy loss: 1. After 30 trials, compute running mean μ and standard error SE = σ/ √n.2. Mean convergence test : Terminate if z = |μ − τ |/SE > 1.645 (one-tailed, 95% confidence), where τ is an optional threshold. 3. Precision tolerance test : Terminate if z = ϵ/ SE > 1.96 (two-tailed, 95% confi-dence), where ϵ is the acceptable tolerance (default: 0.05). This approach reduced average iterations from 100 to 35–40 in our benchmarking study. 
+
+A.4.2. Binomial Algorithm for Stability 
+
+For deployment scenarios requiring rapid stability assessment, we provide an alternative “binomial” algorithm: 1. Extract M explanations such that M (M − 1) /2 ≈ N (target number of pairs). 2. Compute stability across all  M
+
+> 2
+
+ possible pairs. 3. Return the average pairwise stability. This approach requires only M explanation generations instead of 2N , significantly reducing computational overhead for production monitoring. 
+
+A.4.3. Trade-off Analysis 
+
+We recommend conducting parallel experiments during development: 
+
+• Exhaustive evaluation : Full 100-iteration metric computation on development set. 
+
+• Early stopping evaluation : Same computation with early stopping enabled. 
+
+• Comparison : Quantify precision-efficiency trade-off to inform production config-uration. The acceptable trade-off depends critically on inference pipeline architecture: real-time systems with sub-second latency constraints necessitate aggressive approximations, whereas batch pipelines executed during off-peak hours can afford exhaustive computa-tion. 24 A.5. Deployment Workflow 
+
+A.5.1. Phase 1: Pre-Development Consultation 
+
+Before model development, leverage benchmarking results to inform explainability strat-egy: 1. Identify task type (node/link classification/regression). 2. Consult benchmark rankings (Table 2) to shortlist candidate explainers. 3. Evaluate trade-offs: pertinence vs. execution time, feature vs. edge attribution quality. 4. Document explainability requirements aligned with regulatory obligations (EU AI Act, domain-specific mandates). 
+
+A.5.2. Phase 2: Development Validation 
+
+During model development, validate that benchmark performance transfers to propri-etary data: 1. Wrap trained model using appropriate model class (e.g., NodeClassificationModel ). 2. Configure Evaluator with dataset-specific parameters. 3. Evaluate shortlisted explainers on representative sample ( ≥ 100 instances). 4. Compare metrics against thresholds (Table 3). 5. Select final explainer based on validated performance. 
+
+A.5.3. Phase 3: Production Integration 
+
+Deploy selected explainer alongside ML model: 1. Integrate explainer into inference pipeline. 2. Configure natural language translation for end-user consumption. 3. Establish monitoring protocols to track metric stability over time. 4. Define re-validation triggers: model retraining, data distribution shift, regulatory updates. 25 A.6. Translating Explanations for Regulatory Compliance 
+
+Technical explanations (attribution matrices, edge importance vectors) require transla-tion for non-technical stakeholders. Our framework provides natural language generation capabilities that convert low-level explainer outputs into narrative explanations. For attribution methods, the translation follows this template: 
+
+“The model’s prediction for [target] was primarily influenced by [top-k features] of [target node/nodes]. The structural context, particularly connections to [important neighbors], also contributed to the decision. Specifically, [feature 1] had the highest impact, followed by [feature 2] and [feature 3].” 
+
+A.6.1. Regulatory Alignment 
+
+These natural language outputs address key regulatory requirements: 
+
+• Transparency : Explanations are human-readable without technical expertise. 
+
+• Accountability : Specific features and connections are identified, enabling audit trails. 
+
+• Contestability : Affected individuals can understand and challenge decisions based on the explanation. 
+
+A.7. Common Pitfalls and Troubleshooting 
+
+Table 4 summarizes common issues encountered during G-XAI deployment and recom-mended resolutions. 
+
+A.8. Checklist for Production Deployment 
+
+Before deploying G-XAI in production, verify completion of the following: 
+
+□ Explainer selected based on benchmark consultation 
+
+□ Validated on proprietary data ( ≥ 100 representative samples) 
+
+□ All metrics meet or exceed recommended thresholds 
+
+□ Early stopping / optimization configured if latency-constrained 
+
+□ Natural language translation verified for target audience 
+
+□ Monitoring dashboard configured for ongoing metric tracking 
+
+□ Re-validation protocol documented (triggers, frequency) 
+
+□ Regulatory compliance documentation prepared 26 Table 4: Troubleshooting guide for common G-XAI deployment issues. 
+
+Issue Probable Cause Resolution 
+
+Pertinence < 0.5 Inherently difficult task (anomaly detection on normal points, regres-sion near baseline) Verify if legitimate for task; con-sider alternative evaluation ap-proaches Low stability Stochastic explainer (GNNEx-plainer, GraphMask) Switch to deterministic method (Input ×Gradient) High effective com-pactness Dense graphs, many features Accept if unavoidable; consider hi-erarchical explanation presentation Excessive execution time Using IntGrad, GNNExplainer, or GraphMask Switch to Input ×Gradient or other gradient-based methods Unstable metrics across samples Insufficient sample size Increase evaluation set to 200+ in-stances Metrics don’t match benchmark Distribution shift, different model architecture Re-validate on proprietary data; adjust thresholds accordingly NaN/invalid attri-butions Numerical instability, incompatible model Check model compatibility; verify preprocessing pipeline 
+
+## B. Datasets Details 
+
+In this Section we provide additional details on each of the datasets which we used in our experiments, providing more details for each of them. In Table 5 we summarise their statistics. Table 5: Summary of dataset statistics. "Reg." is used instead of a number of classes in datasets with regression tasks. Dataset Num. Nodes Num. Edges Num. Features Num. Classes Num. Edge Classes Cora 2,708 8,448 1,433 7 2GitHub 37,700 462,406 128 2 2BA-Shapes 700 3,942 700 4 6Movielens 1,180 226,272 404 Reg. Reg. Synthetic 10,000 150,324 16 Reg. Reg. 27 B.0.1. Cora 
+
+The Cora dataset is a standard benchmark dataset for node classification and link pre-diction. represents a citation network, where each node is an article and an edge implies a citation between papers. The graph is undirected, since the effective direction of a citation is not taken into account. The dataset has 2,708 nodes and 4,224 edges. Each node has a bag-of-words as features, with 1,433 different terms. The node task is to correctly classify a node according to the seven subjects of the datasets, while the link task is to predict if a given citation exists or not. 
+
+B.0.2. GitHub 
+
+The GitHub dataset is a larger and denser benchmark, connecting approximately 37,700 nodes representing developers through 231,203 "follows". This dataset allows for the creation of larger explanations to test. It supports a node-based classification task to distinguish between web and machine learning developers, and an edge-based task to predict the existence of a "follow" relationship between developers. The features are a 128 dimension embedding for each node. 
+
+B.0.3. BAShapes 
+
+Another common benchmark, specifically used to test explainers. The dataset is com-posed of 100 small synthetic graphs of 70 nodes each, produced by a Barabási-Albert model, each of which has a small, “house-shaped” structure, strongly distinct from the rest of the graph in terms of connectivity. Each node is initalized with a one-hot encoding embedding, to distinguish it from the others inside the GNN, but they have no feature otherwise. The task on the nodes is to predict if a node belongs to the random graph, or if it belongs to the “base”, the “top” or the “roof” of the “house”. Similarly, on edges we have defined a multiclassification problem, where the task is to predict which part of the motif the edge is (e.g., part of the random graph, connecting the random graph to the “house”, or a specific edge of the “house” motif). 
+
+B.0.4. Movielens 
+
+A dataset extracted from a larger and richer dataset from the website “MovieLens”, collecting movies and users who review them. Out Movielens dataset is a graph of 1,180 movies which are connected if they share at least 20 watchers who reviewed them. It is very dense, with 113,136 edges, and each node has a feature vector of 404 features representing the genres to which they can belong. On the nodes, we defined a regression task to predict the average movie rating, while on the edges we must predict the fraction of watchers which two movie share. When performing the regression on the nodes, we use the shared fraction of watchers as additional edge weights. 28 B.0.5. Synthetic 
+
+The last dataset is a full synthetic graph. The graph structure has been generated from a Erdős-Rényi model, with 10,000 nodes and 75,162 edges ( p = 0 .0015 that two nodes have an edge). Each edge has a set of 16 random features, generated from a normal distribution of mean 0 and variance 1. Both on nodes and edges we define a custom regression task. The node labels have been produced by an arbitrary, weighted aggregation between the features of a node and its 2-hop neighborhood (i.e. all its neighbours and the neighbours of its neighbours). The aggregation gives different weights to each of the original features, making certain features more relevant than others. The edge labels are instead given by sums between the node-level labels of the edge vertices. In both cases, the purpose is to retrieve the original arbitrary aggregation rule (or an approximation). 
+
+## C. Models 
+
+As mentioned in the main text, we used two different model architectures: a 2-layer GCN and a 2-layer GAT. We trained all models for 200 epochs, an early stopping of 10 epochs, dropout regularization, and Adam optimizer. For each dataset and task, we performed an hyperparameter grid search with the following hyperparameters and ranges: 
+
+• Hidden channels in [8 , 16 , 32 , 64 , 128] ;
+
+• Learning rate in [10 −4, 10 −3, 10 −2];
+
+• Weight decay in [10 −5, 10 −4, 10 −3];
+
+• Dropout probability in [0 .0, 0.2, 0.3, 0.4, 0.5] .Classification models use a ReLU non-linearity between the two layers, while regression models use a LeakyReLU. Additionally, models for link task use an additional decoder to perform edge-level predictions, which consist of a inner product between the embeddings (with size given by the hidden channels) of the vertices of the target edge. For the edge-level task on the Synthetic dataset, we performed a further simplification, replacing the inner product with a sum between the two (scalar) embeddings of the vertices. Table 6: Model performances on classification tasks, measured as accuracy. Task Node Classification Link Classification Model GCN GAT GCN GAT BA-Shapes 0.81 0.87 0.97 0.99 Cora 0.76 0.79 0.86 0.92 Github 0.86 0.86 0.62 0.60 We report all the results in Table 6 and Table 7. Classification tasks are evaluated through accuracy, while we use r2 for regression tasks. Although the GCN model un-derperforms on both link regression on Sythetic and node regression on Movielens, we 29 do not expect this to impact the pertinence or the effective compactness of the explana-tions, as these metrics do not take into account the true labeling of a target, but only the model rationale in predicting a label. As long as the model’s output is not a constant value (which would remove the existence of reference targets with alternative predictions, fundamental for our algorithms), the metrics can still be measured correctly. Table 7: Model Performances measured as r2 in regression tasks. Task Node Regression Link Regression Model GCN GAT GCN GAT Movielens 0.44 0.64 0.78 0.76 Synthetic 0.80 0.90 0.31 0.64 
+
+## D. Hardware Architecture 
+
+All experiments were executed on a machine equipped with an NVIDIA A100 GPU (80GB VRAM) and an Intel Xeon Gold 6248R 15-core CPU. 30
