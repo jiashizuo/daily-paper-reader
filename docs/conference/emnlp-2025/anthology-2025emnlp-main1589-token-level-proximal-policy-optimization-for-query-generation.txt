@@ -1,0 +1,782 @@
+Title: 2025.emnlp-main.1589.pdf
+
+URL Source: https://aclanthology.org/2025.emnlp-main.1589.pdf
+
+Published Time: Sat, 03 Jan 2026 16:57:37 GMT
+
+Number of Pages: 15
+
+Markdown Content:
+Proceedings of the 2025 Conference on Empirical Methods in Natural Language Processing , pages 31196–31210 November 4-9, 2025 ©2025 Association for Computational Linguistics Token-level Proximal Policy Optimization for Query Generation 
+
+Yichen Ouyang 1,† , Lu Wang 2,* , Fangkai Yang 2, Pu Zhao 2, Chenghua Huang 3,† ,Jianfeng Liu 2, Bochen Pang 2, Yaming Yang 2, Yuefeng Zhan 2,
+
+Hao Sun 2, Qingwei Lin 2, Saravan Rajmohan 2,
+
+Weiwei Deng 2, Dongmei Zhang 2, Feng Sun 2, Qi Zhang 2
+
+> 1
+
+Zhejiang University 2Microsoft 3Fudan University 
+
+Correspondence: 1blackezylryb@gmail.com *wlu@microsoft.com 
+
+Abstract 
+
+Query generation is a critical task for web search engines (e.g. Google, Bing) and recom-mendation systems. Recently, state-of-the-art query generation methods leverage Large Lan-guage Models (LLMs) for their strong capabili-ties in context understanding and text genera-tion. However, they still face challenges in gen-erating high-quality queries in terms of infer-ring user intent based on their web search inter-action history. In this paper, we propose Token-level Proximal Policy Optimization (TPPO), a noval approach designed to empower LLMs perform better in query generation through fine-tuning. TPPO is based on the Reinforcement Learning from AI Feedback (RLAIF) paradigm, consisting of a token-level reward model and a token-level proximal policy optimization mod-ule to address the sparse reward challenge in traditional RLAIF frameworks. We conducted experiments on both open-source dataset and an industrial dataset that was collected from a globally-used search engine, demonstrating that TPPO significantly improves the perfor-mance of query generation for LLMs and out-performs its existing competitors. The code for TPPO is available at https://anonymous. 4open.science/r/TPPO-D6C6 .
+
+1 Introduction 
+
+Web query generation is essential for search en-gines (He et al., 2009; Aggarwal et al., 2016; Cai et al., 2016; Wu et al., 2018). The task of web query generation is to make the generated queries align with users’ personal preferences that bet-ter represent their search intent. Such personal-ized web query is inferred from user’s historical search records and should be relevant and mean-ingful to each user (Baek et al., 2024a; Yang et al., 2023a). It is particularly important for the cur-rent personalized search engines such as Bing and 
+
+> *
+
+Corresponding author. 
+
+> †
+
+Work is done during an internship at Microsoft. text ... sentence reward assigment 0 0 0 0 0 2Aligned Policy Sentence-level PPO ... Token-level Reward Model 'discount' 'of' 'shoes' ',' 'cheap' 'road' 2 1 2 0 2 1Token-level Aligned Policy TPPO (Ours) irrelevant token relevant token zero-reward token Reward Model 'discount' 'of' 'shoes' ',' 'cheap' 'road' text token rewards assigment 
+
+Figure 1: Reward assignment in sentence-level PPO and token-level PPO (TPPO). Sentence-level PPO assigns reward only at the end of a response, whereas TPPO assigns reward for each token in a response. 
+
+Google. Large Language Models (LLMs) have im-proved search engines and recommendation sys-tems through their text understanding capabili-ties (Li et al., 2023; Zhao et al., 2023; Wu et al., 2024). However, there still exist challenges in domain-specific tasks such as web query gener-ation in terms of inferring user intents from histori-cal short and ambiguous search queries. Supervised fine-tuning (SFT) shows promise for improving LLMs’ query generation (Li et al., 2023). However, it faces challenges with language variability, as queries like "cheap flights to New York" and "budget flights NYC" demonstrate di-verse phrasing that fixed ground-truth labels can’t fully capture. Reinforcement Learning from Hu-man Feedback (RLHF) (Christiano et al., 2017; Ziegler et al., 2019; Stiennon et al., 2020; Ouyang et al., 2022; Bai et al., 2022a) or AI Feedback (RLAIF) (Bai et al., 2022b; Lee et al., 2023) po-tentially offers better performance than SFT. By incorporating feedback into RL, these approaches learn reward functions and optimize policies to generate aligned responses (Ouyang et al., 2022; Ziegler et al., 2019), helping LLMs better adapt 
+
+31196 User History Personalized Query Generation click: [] search: ['pinterest app', 'jjshouse', 'pageant dress rental', 'pageant dresses'] visit: ['Pinterest', 'Fifth Avenue Showstopper', 'View All Rent the Runwa', 'Dresses for Women - Party', 'The Holiday Edit Rent t', 'Prom Dresses Rent the R', 'Southern Belle Pageant Re', 'dress with cape JJsHouse.', "JJ's House Evening Dresse", 'Buy Evening Dresses with'] LLM (with RLAIF) |1 evening dresses with sleeves 2 pageant dresses plus size 3 jjshouse dresses with cape 4 lightinthebox dresses discount 5 pageant dress rental near me Figure 2: The Query Generation Task. Taking user history as input, the LLM after RLAIF alignment outputs several personalized queries that the user is interested in. 
+
+to domain-specific tasks (Kirk et al., 2023; Wang et al., 2023; Ge et al., 2024). As a seminal policy gradient algorithm in RL, Proximal Policy Optimization (PPO) (Schulman et al., 2017) plays a key role in optimizing agent policies within the RLAIF framework. However, the training of PPO is known to be unstable (Chris-tiano et al., 2017; Rafailov et al., 2024b; Zhong et al., 2024) and one potential reason could be that the reward signal is typically provided at the end of the response sentence, making the reward sparse. The sparse reward makes current PPO in RLAIF actually be sentence-level *, resulting in some inherent limitations. Firstly, the sparsity of sentence-level rewards creates challenges (Guo et al., 2024; Wu et al., 2023; Rafailov et al., 2024a). Rewards only appear at sentence end, while each token generation is an action receiving no explicit feedback. This sparsity leads to inefficient explo-ration and makes sentence-level PPO struggle to identify good versus bad actions within sentences. Additionally, sentence-level PPO suffers from tem-poral delay (Arjona-Medina et al., 2019; Hung et al., 2018) between token generation and rewards, causing training instability. Secondly, traditional PPO formulation mismatches with sentence-level rewards (Uesato et al., 2022; Lightman et al., 2023). While PPO is designed for multi-step RL with step-by-step value estimation, sentence-level rewards prevent the value function from accurately captur-ing individual actions’ long-term impact, resulting in sub-optimal policy updates. To address above limitations and challenges, our work proposes a token-level PPO (TPPO) as shown in Figure 1. By using token-level reward models and corresponding policies, we mitigate sparse re-wards issues and increase training stability. Firstly, to tackle sentence-level reward sparsity, we propose 
+
+> *Throughout the paper, we use the term “sentence-level” to represent the sparse reward cases where reward is given at the end of a response or each sentence.
+
+a token-level reward model that assigns rewards to individual tokens within sentences, providing fine-grained feedback. Secondly, to address the PPO formulation mismatch, we introduce a token-level PPO policy aligned with the token-level reward model. This policy learns a value function estimat-ing expected rewards at token level, enabling more informed decisions based on each action’s immedi-ate impact. This alignment between token-level re-ward model and PPO policy mitigates sub-optimal updates. By assigning rewards to individual tokens, the algorithm more accurately attributes credit to specific actions, resulting in more stable updates. We conduct experiments on both industrial dataset and public benchmarks. Results show TPPO increases query generation relevance by 2%-4% compared to PPO, with 2%-8% higher win rate in item-by-item comparisons. TPPO demon-strates better convergence with steadily increasing rewards, smaller variance, and improved loss. Our model has been successfully deployed in real-world applications. The key contributions are summa-rized as follows: • We propose token-level Proximal Policy Opti-mization (TPPO) for RLAIF, incorporating token-level reward labeling, reward model training, and token-level PPO. • We are the first to adopt TPPO to empower the query generation task that benefits both academia and industry. • Comprehensive experiments validate our ap-proach’s effectiveness and practicality. 
+
+2 Related Work 
+
+2.1 Query Generation 
+
+Query generation in web search creates new queries aligned with user interests based on search history, browsing behaviors, and contextual information. 31197 The aim is to anticipate future information needs and provide relevant search suggestions (He et al., 2009; Aggarwal et al., 2016; Cai et al., 2016). Fig-ure 2 shows the inference process: by analyzing historical queries, browsing behavior, and context, the system generates queries matching the user’s specific interests. However, query generation faces challenges in inferring user intent from short queries and under-standing search context (Mustar et al., 2021; Jan-nach et al., 2022). Recent works leverage LLMs for query generation in recommendation systems (Li et al., 2023; Zhao et al., 2023; Wu et al., 2024; Wei et al., 2024; Lin et al., 2024; Li et al., 2024; Baek et al., 2024b). For instance, GPT4Rec (Li et al., 2023) uses queries generated by fine-tuned GPT-2 to retrieve recommendation items. Despite LLMs’ knowledge and in-context learning capabil-ities, their performance in domain-specific tasks remains suboptimal due to differences between training and domain-specific tasks, and inadequate domain knowledge in pretraining (Bao et al., 2023; Zhang et al., 2023; Yang et al., 2023b; Wang et al., 2024). Reinforcement Learning from AI Feedback (RLAIF) (Bai et al., 2022b; Lee et al., 2023) better aligns LLMs with human preferences in domain-specific tasks. We apply RLAIF to query gener-ation, enabling LLMs to generate queries better aligned with user preferences. 
+
+2.2 Proximal Policy Optimization 
+
+Proximal Policy Optimization (PPO) (Schulman et al., 2017) is a popular and effective algorithm for policy optimization in reinforcement learn-ing (Kakade and Langford, 2002). Recently, re-searchers have explored the usage of PPO in the context of RLAIF for natural language processing (NLP) tasks (Ziegler et al., 2019; Bai et al., 2022a; Yue et al., 2023). However, adapting PPO in RLAIF leads to unstable training (Rafailov et al., 2024b; Zhong et al., 2024). Traditional PPO rewards each action, while RLAIF PPO treats entire responses as actions with rewards only at completion. In practice, LLMs generate tokens sequentially, with each token being an action, making sentence-level rewards sparse. This mismatch causes inefficient exploration, sub-optimal updates, and training in-stability (Xia et al.; Xu et al., 2024). In this paper, we propose token-level PPO that rewards each to-ken to address sparse reward and temporal delay issues (Arjona-Medina et al., 2019; Hung et al., 2018), aligning RLAIF PPO with traditional RL PPO to improve stability and enhance LLM perfor-mance in web search query generation. 
+
+3 Methodology 
+
+In this section, we introduce the problem formu-lation for the query generation task in Section 3.1 and we then describe the workflow of our token-level PPO within RLAIF framework consists of token-level reward labeling (Section 3.2), reward model training (Section 3.3), and LLM training with token-level PPO (Section 3.4). 
+
+3.1 Problem Formulation 
+
+We formulate query generation task as a sequen-tial token generation problem. Given an input prompt x and the previously generated t − 1 tokens 
+
+{y<t } = [ y1, y 2, . . . , y t−1] of the query †, the lan-guage model, i.e., the policy πθ predicts the proba-bility distribution of the next token πθ(·| x, {y<t }).In the our token-level PPO formulation, the state of the tth step st is a concatenation of the input prompt and the generated response up to this step, denoted as st = [ x, {y<t }]. An action corresponds to the next generated token, denoted as at = yt, and the 
+
+reward at this step is defined as Rt = R(st, a t).Our objective is to maximize the expected cumula-tive reward over the sequence of tokens generated by a policy πθ. The state-action value function is defined as: 
+
+Qπθ (st, a t) = Eπθ
+
+[ ∞∑
+
+> k=0
+
+γkRt+k | st, a t
+
+]
+
+.
+
+Then, we define the state value function 
+
+Vπθ (st) = Eat∼πθ [Qπθ (st, a t)] ,
+
+and the advantage function 
+
+Aπθ (st, a t) = Qπθ (st, a t) − Vπθ (st)
+
+for πθ.
+
+3.2 Token-Level Reward Labeling 
+
+Labeling token-level rewards manually is costly and time-consuming, while LLM-based annota-tion provides comparable performance(Bai et al., 2022b; Lee et al., 2023; Zheng et al., 2023; Chen et al., 2024). We validated this approach in real-world projects, finding high consistency between LLM and human judgments across sentence-level,   
+
+> †The initial token is generated given the prompt xonly.
+
+31198 Phase I: Word-level Reward Collection User History: Model Response: Phase II: From Word to Token-level Reward sequence reward: 2 LlaMA3-70B Feedback: {"search": [".dtop.gov.pr", "mehron", "proface", "proface professional make up remover"] , "click": ["http://www.dtop.gov.pr", "http://www.bubbasikes.com", "www.proknows.com"]. question: Display Ads Query Prediction Task: An ads search engine exists that gen-erates interesting display ads to be shown to the user on third party web domains. ** Your task** is to predict **3** ads queries based on the user history information that generates interesting display ads that the user is likely to searchand click on. You will receive 2 data sources: {{User History}}. For the Display Ads Query Prediction Task, provide at most 3 short text search ads queries:} \n\n answer: Model Input: proface makeup remover, proface makeup remover cream, walmart word rewards: {"proface":2, "makeup":2, "remover":2, "cream":1, "walmart":1} Token-level Reward Model question: {{User History}}. \n\n answer: {{Model Response}} 'pro' 'face' 'make' 'up' 'remover' ',' 'pro' 'face' 'make' 'up' 'remover' 'cream' ',' 'walmart' irrelevant token relevant token zero-reward token input 2 2 2 2 2 0 2 2 2 2 2 1 0 1output From word to token-level rewards: {"pro":2, "face":2, "make":2, "up":2, "remover":2, "cream":1, "walmart":1} Figure 3: Token-level reward labeling. In phase I, we use LLaMA 3 (70B) to label word-level and sentence-level rewards for the dataset. In phase II, we map the word-level rewards to token-level rewards. The model response and user history are used to construct input for token-level reward model and the mapped token rewards are used as the ground truth for output. 
+
+word-level annotation, and evaluation. By using word-level rather than token-level annotation, and employing global (sentence-level) and local (word-level) annotations as mutual checks, we further ensure labeling accuracy and quality. In this paper, we adopt LLaMA 3 (70B) to label token-level rewards due to its strong labeling capa-bility (Touvron et al., 2023) as Phase I in Figure 3 shows, where the query responses are generated by SFT-tuned Mistral-7B model. Compared with sentence-level reward which overlooks the impact of individual tokens (Zeng et al., 2024; Cao et al., 2024; Zeng et al., 2024), the token-level reward is assigned to each token, capturing finer-grained feedback. On the other side, the sentence-level re-ward provides a holistic feedback on the entire gen-erated query/response, and we include the sentence-level reward to guide the token-level rewards as it is typically easier and less prone to noise. We design prompts for LLaMA 3 (70B) to score each token’s relevance in generated queries (token-level reward) and provide overall query relevance (sentence-level reward). Rewards use three cat-egories: 0 for non-reward/masked tokens, 1 for irrelevant tokens, and 2 for relevant tokens. Only categories 1 and 2 are used for PPO policy updates. 
+
+From word-level reward to token-level reward. 
+
+We first label at word-level for better manageability and generalizability across models with different to-kenizers, then map to token-level rewards as shown in Figure 3. For example, the word relevant is assigned with a word-level reward of 2. Depending on the tokenizer, the word could split into: • Model 1: ["re", "levant"] 
+
+• Model 2: ["relev", "ant"] 
+
+We assign the same reward category 2 to each to-ken: • Model 1: "re" → 2, "levant" → 2
+
+• Model 2: "relev" → 2, "ant" → 2
+
+3.3 Reward Model Training 
+
+As shown in Figure 4, we use token-level and sentence-level rewards from LLaMA 3 (70B) to de-sign local and global losses for training our token-level reward model. 
+
+Local loss of reward model. We apply attention and activation masks to exclude padding areas and non-response tokens. To address class imbalance, we use a probability mask maintaining a 1:3 to 3:1 ratio between label 2 and label 1 tokens, while pre-serving label 0 tokens. This ensures stable training and proper model convergence. After applying these masks, the remaining to-kens form the valid set , denoted as V, which is used for loss computation and gradient back-propagation. The local loss is defined as a weighted cross-entropy loss over a batch of n samples, pre-dicting the probability of each token belonging to 31199 question: ... \n\n answer: pro face make up remover, pro face make up remover cream, walmart <pad> <pad> ... token reward labels: tokens: attention mask activate mask probability mask model pred logits to labels: gt global label: gt local labels: model pred global label: Local Loss (cross entropy loss) 0 0 0 0 0 0 0valid zone: 2 0 1 2 1 1 1(2 + 2 + 1 + 2 + 2 + 1 + 1 + 1) / 8 2Global Loss (mse loss) Loss = w * Local Loss + (1-w) * Global Loss 2 2 2 2 2 0 2 2 2 2 2 1 10 0 0 ... 2 22 0 2 2 1 0 12 2make up , pro face remover cream, walmart Figure 4: Objectives of token-level reward model. The position after masking (valid zone) is used to calculate the loss and return gradient. The loss of the token-level reward model is the weighted sum of local loss and global loss. 
+
+one of the three reward categories {0, 1, 2}. The loss function Llocal (ϕ) is expressed as: 
+
+− 1
+
+n
+
+> n
+
+∑
+
+> i=1
+
+∑
+
+> (st,a t)∈V
+> 2
+
+∑
+
+> c=0
+
+wc 1[Rϕ(st,a t)= c] log P (c | st, a t),
+
+(1) 
+
+where P (c | st, a t) is the predicted probability that token (st, a t) belongs to class c given by the reward model Rϕ parameterized by ϕ, and wc is a class weight. The indicator function 1[·] equals 1 when the condition holds, and 0 otherwise. Specifi-cally, the reward model Rϕ is implemented using Longformer (Beltagy et al., 2020). 
+
+Global loss of reward model. The global loss pro-vides partial supervision by aligning the average token rewards in V with the sentence-level reward. It is formulated as the mean squared error (MSE) loss over n samples, measuring the difference be-tween the average token reward and the ground truth global reward. The loss function Lglobal (ϕ) is expressed as: 
+
+1
+
+n
+
+> n
+
+∑
+
+> i=1
+
+ 1
+
+|V| 
+
+∑
+
+> (st,a t)∈V
+
+Rϕ(st, a t) − Rglobal 
+
+
+
+> 2
+
+, (2) 
+
+where |V| is the number of tokens in the valid set, Rϕ(st, a t) = arg max c∈{ 0,1,2} P (c | st, a t)
+
+is the predicted token reward, and Rglobal is the ground truth global reward. This loss encourages consistency between token-level and sentence-level rewards, ensuring coherent supervision across dif-ferent levels of granularity. The total loss for training the reward model com-bines the local and global losses: 
+
+Ltotal (ϕ) = λlocal Llocal (ϕ) + λglobal Lglobal (ϕ),
+
+(3) where λlocal and λglobal are hyperparameters controlling the trade-off between local and global supervision. 
+
+Length-weighted penalty. When applying the to-ken reward model with PPO, we introduce a length-weighted penalty ( lwp ) to prevent overly long re-sponses: 
+
+lwp (l) = 11 + eα(l−sl )−6 , (4) Here, l is the current token’s position, sl is the suggested length (estimated reasonable response length), and α controls penalty intensity. The sl is calculated as the median token length of all gener-ated queries multiplied by the number of queries. Equation 4 ensures tokens before sl have lwp ≈
+
+1, while tokens beyond sl have rapidly decreasing 
+
+lwp toward 0. We multiply original token-level rewards by this position-specific penalty: 
+
+R′
+
+> ϕ
+
+(st, a t) = lwp (l) · Rϕ(st, a t). (5) 
+
+3.4 LLM Training with Token-Level PPO 
+
+We introduce token-level PPO where the formula-tion is matched with token-level reward signal. 
+
+Token-level PPO objective function. The token-level PPO objective function is formulated as: 
+
+max 
+
+> πθ
+
+Ex,y <t ∼D , y t∼πθ (·| [x,y <t ]) 
+
+[
+
+min 
+
+(
+
+rt(θ)Aπref (st, a t),
+
+clip (rt(θ), 1 − ϵ, 1 + ϵ) Aπref (st, a t)
+
+)]
+
+,
+
+(6) 
+
+where 
+
+rt(θ) = πθ (at | st)
+
+πref (at | st) (7) 31200 is the ratio between the new policy πθ and the old policy πref at the token level. Here, ϵ is a hyperparameter controlling the clipping range, and 
+
+Aπref (st, a t) is the advantage function based on the reference policy πref .
+
+Derivation of the optimal policy. Starting from the token-level PPO objective in Equation 6, we aim to derive the optimal policy π∗ 
+
+> θ
+
+. To ensure the policy remains close to a reference policy πref ,we introduce a Kullback–Leibler (KL) divergence constraint. The optimization problem is formulated as: 
+
+π∗ 
+
+> θ
+
+= arg max 
+
+> πθ
+
+Est∼D , a t∼πθ (·| st)
+
+[
+
+Aπref (st, a t)
+
+− β KL ( πθ(· | st) ∥ πref (· | st)) 
+
+]
+
+, (8) where β > 0 controls the strength of the KL di-vergence regularization. The closed-form solution to the optimization problem in Equation 8 is:             
+
+> π∗
+> θ(at|st) =
+> πref (at|st) exp
+> (1
+> βAπref (st, a t)
+> )
+> Z(st;β),(9)
+
+where Z(st; β) = ∑ 
+
+> at
+
+πref (at |
+
+st) exp 
+
+( 1 
+
+> β
+
+Aπref (st, a t)
+
+)
+
+is the partition function ensuring that π∗ 
+
+> θ
+
+is a valid probability distribution. 
+
+Lemma 1. The optimization problem in Equation 8 yields the optimal policy as given in Equation 9. 
+
+4 Experiments 
+
+This experiments aim to answer two questions: 
+
+Is TPPO more effective than SFT and RL base-lines in query generation tasks? To answer this question, we select strong baselines from SFT-based methods and RL-base methods: GPT4Rec (Li et al., 2023) (enhanced with Mistral 7B (Jiang et al., 2023) instead of GPT-2) for SFT methods, and PPO for RL methods. We evaluate using: (1) Relevance rate : alignment scores between generated queries and user history via LLaMA 3 (70B), calculated as total relevance scores divided by sample count; and (2) Win-Tie-Lose rates : pair-wise comparisons between models using LLaMA 3 (70B) voting. Evaluation prompts and additional details are in Appendices D and E-G. 
+
+Is TPPO more stable and convergent than PPO in query generation tasks? To investigate this question, we conduct experimental analysis on re-ward model training and PPO training process sepa-rately. Specifically, we compare token-level versus 
+
+Table 1: Dataset information.         
+
+> Industrial Dataset Open Dataset User History Keys search, click, purchase, visit search, click
+> Dataset Size Train: 200k, Train: 25k, Eval1: 2k, Eval2: 2k Eval: 2k
+> Tagert Query Num 10 3
+
+Table 2: Results of Relevance Rate on Open-source Dataset.      
+
+> GPT4Rec PPO TPPO Relevance rate 41.25 47.65 50.00
+
+sentence-level reward models through evaluation loss curves and weighted AUC metrics, then ana-lyze TPPO versus PPO training trajectories using mean scores and standard deviations to assess sta-bility properties. 
+
+4.1 Experiments on Open-source Data 4.1.1 Dataset Description 
+
+The query generation field has limited public datasets, with AOL being the most widely used benchmark. The AOL dataset contains approxi-mately 20 million web queries from about 650k users over three months (MacAvaney et al., 2022), providing real query log data for search research. As shown in Table1, we filtered 27k data points from AOL to create an open-source dataset for query generation. Each data point includes user history (earlier search queries and click records) and the newest 3 search queries as generation tar-gets. We used 25k data for supervised finetuning (2k for evaluation), 10k Llama3-70B-labeled data for token-level reward model training, and 20k data for token-level PPO training (2k for evaluation). 
+
+4.1.2 Results of Token-level PPO Policy 
+
+As shown in Figure 7 and Table 2, we compared GPT4Rec, PPO, and TPPO using average relevance scores and pairwise comparisons. TPPO consis-tently outperforms both alternatives, with win rates 8.75% higher than GPT4Rec and 2.35% higher than PPO in win-tie-lose comparisons. Moreover, we compared the training perfor-mance of models obtained using the traditional PPO and our token-level PPO policy on the same training set. Figure 5 shows that token-level PPO training is more stable (smaller variance) and learns reward model preferences more efficiently (faster score improvement) than traditional PPO. 31201 0 10 20 30 40 50                
+
+> Steps
+> 0.94
+> 0.95
+> 0.96
+> Scaled Reward  TPPO Training Curve
+> Mean Score
+> 010 20 30 40 50
+> Steps
+> 0.05
+> 0.06
+> 0.07
+> 0.08
+> Standard Deviation  TPPO Training Curve
+> Standard Deviation
+> 010 20 30 40 50
+> Steps
+> 0.22
+> 0.24
+> 0.26
+> Scaled Reward  PPO Training Curve
+> Mean Score
+> 010 20 30 40 50
+> Steps
+> 0.30
+> 0.32
+> 0.34
+> Standard Deviation  PPO Training Curve
+> Standard Deviation
+
+Figure 5: PPO Training Curves on Open-source Dataset. 0 50 100 150 200             
+
+> Steps
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> Eval Loss
+> Token-level RM
+> eval loss
+> 050 100 150 200
+> Steps
+> 0.6
+> 0.8
+> 1.0
+> Weighted Auc
+> Token-level RM
+> weighted auc
+> 050 100 150 200
+> Steps
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> Eval Loss
+> Sentence-level RM
+> eval loss
+> 050 100 150 200
+> Steps
+> 0.6
+> 0.8
+> 1.0
+> weighted auc
+> Sentence-level RM
+> weighted auc
+
+Figure 6: Reward Model Training Curve on Open-source Dataset. +6.40% +8.75% +2.35% 
+
+Figure 7: Win-Tie-Lose Comparisons on Open-source Dataset. 
+
+4.1.3 Results of Token-level Reward Model 
+
+As shown in Figure 6, we compared the train-ing curves of the traditional sentence-level reward model and our token-level reward model, both of which have undergone class balancing to achieve best performance. This comparison highlights the advantages of the token-level reward model over the traditional sentence-level approach. Benefited from more granular information, the token-level reward model demonstrates better training stabil-ity, faster convergence, and higher performance in terms of AUC (Yang and Ying, 2022). 
+
+4.2 Experiments on Industrial data 4.2.1 Dataset Description 
+
+As shown in Table 1, we collected industrial data from a popular search engine serving billions of users worldwide. From 400k real user data, we fil-tered 200k to create an industrial dataset for query generation. This dataset’s user history includes four components—search, click, purchase and visit, 
+
+Table 3: Results of Relevance Rate on Industrial Dataset, Sentence-level Template for Evaluating. 
+
+GPT4Rec PPO TPPO Relevance rate (Eval 1) 84.10 85.05 88.85 Relevance rate (Eval 2) 84.35 87.50 91.45 
+
+Table 4: Results of Relevance Rate on Industrial Dataset, Token-level Template for Evaluating. 
+
+GPT4Rec PPO TPPO Relevance rate (Eval 1) 85.75 92.43 94.79 Relevance rate (Eval 2) 87.40 92.25 94.21 
+
+with the recent 10 search queries serving as gener-ation targets. We created two separate 2k-sample evaluation sets (eval1 and eval2) from different time periods to account for distribution differences. 
+
+4.2.2 Results of Token-level PPO Policy 
+
+Figure 11 compares traditional PPO with our token-level PPO policy on the same training set, demon-strating token-level PPO provides more stable train-ing (smaller variance) and faster learning of reward model preferences (quicker score improvement). We used two scoring templates with Llama3-70B: one directly scoring sentences and another scoring words first then sentences. We evaluated on two industrial dataset test sets from different months to validate our approach’s stability and ap-plicability. Table 3 shows our method improves rel-evance rates compared to GPT4Rec and PPO when directly scoring sentences. Table 4 confirms this im-provement when scoring tokens first then sentences. Figure 8 presents pairwise win-lose comparisons across both evaluation sets and templates, demon-strating TPPO’s superior preference fitting. This multi-template, multi-dataset approach confirms TPPO consistently outperforms alternatives regard-less of scoring mechanism or dataset timeframe, highlighting its effectiveness and adaptability in real-world industrial applications. 
+
+4.2.3 Results of Token-level Reward Model 
+
+Figure 9 demonstrates our token-level reward model’s advantages over conventional sentence-level approaches. Trained and evaluated on identi-cal datasets with class balancing, our model shows greater stability, faster convergence, and higher AUC scores by utilizing fine-grained token-level in-formation, highlighting the effectiveness of token-level granularity in reward modeling. 31202 (a) (b) Sentence Template Eval1 Dataset Eval2 Dataset (c) (d) Token Template Eval1 Dataset Token Template Eval2 Dataset 
+
++0.90% +4.70% +3.80% +6.51% +8.85% +2.24% +3.15% +7.10% +6.75% +4.94% +6.92% +2.00% 
+
+Sentence Template Figure 8: Win-Tie-Lose Comparisons on Industrial Dataset. 0 20 40 60 80 100                
+
+> Steps
+> 0.3
+> 0.4
+> 0.5
+> 0.6
+> 0.7
+> Eval Loss
+> Token-level RM
+> eval loss
+> 020 40 60 80 100
+> Steps
+> 0.5
+> 0.6
+> 0.7
+> 0.8
+> 0.9
+> weighted auc
+> Token-level RM
+> weighted auc
+> 020 40 60 80 100
+> Steps
+> 0.3
+> 0.4
+> 0.5
+> 0.6
+> 0.7
+> Eval Loss
+> Sentence-level RM
+> eval loss
+> 020 40 60 80 100
+> Steps
+> 0.5
+> 0.6
+> 0.7
+> 0.8
+> 0.9
+> weighted auc
+> Sentence-level RM
+> weighted auc
+
+Figure 9: Reward Model Training Curve on Industrial Dataset Eval / Loss  w=0.2 w=0.4 w=0.5 w=0.6 w=0.8 w=0.9 w=1.0 
+
+Figure 10: Ablation Study of Losses in Token-level Reward Model Training. 
+
+5 Ablation Study 
+
+We conducted ablation experiments on the indus-trial dataset examining the two core components of our approach: token-level reward model and token-level PPO policy. 
+
+5.1 Losses of Token-level Reward Model 
+
+For the Token-level Reward Model training, we used a weighted sum of local and global losses. Figure 10 shows training curves for different values of local loss weight w (0-1). Higher w values pro-duce smaller converged loss values, indicating local labels provide stronger supervision than global la-bels. Moderate w values (0.4-0.6) show the largest loss reduction from start to convergence, suggest-ing balanced combination of local and global loss optimizes reward model learning. This confirms the importance of integrating both token-level and sentence-level information. 0 10 20 30 40 50                
+
+> Steps
+> 1.12
+> 1.13
+> 1.14
+> 1.15
+> Scaled Reward  TPPO Training Curve
+> Mean Score
+> 010 20 30 40 50
+> Steps
+> 0.12
+> 0.14
+> 0.16
+> Standard Deviation  TPPO Training Curve
+> Standard Deviation
+> 010 20 30 40 50
+> Steps
+> 0.26
+> 0.28
+> 0.30
+> 0.32
+> Scaled Reward  PPO Training Curve
+> Mean Score
+> 010 20 30 40 50
+> Steps
+> 0.30
+> 0.32
+> 0.34
+> Standard Deviation  PPO Training Curve
+> Standard Deviation
+
+Figure 11: PPO Training Curves on Industrial Dataset. Tokens / Responses_len_mean alpha=0.5 alpha=1.0 
+
+Figure 12: Ablation Study of Length Penalty in Token-level PPO Training. 
+
+5.2 Length Penalty of Token-level PPO Policy 
+
+We proposed Token-level PPO (TPPO), a novel approach addressing PPO limitations in existing RLHF frameworks for query generation. By in-troducing token-level reward models and policies, TPPO mitigates sparse rewards, aligns PPO in RLHF with traditional RL PPO, and improves train-ing stability. Experiments on public and industrial datasets demonstrate TPPO’s effectiveness, increas-ing query relevance by 2%-4% compared to PPO, with 2%-8% higher win rates in item-by-item com-parisons. TPPO training shows better convergence with stable reward increases, reduced variance, and improved loss. The successful application of TPPO to the query generation task opens up new possi-bilities for improving the quality and relevance of search results in real-world search engines. 31203 6 Conclusion 
+
+We proposed Token-level PPO (TPPO), address-ing PPO limitations in RLHF for query generation through token-level reward models and policies. TPPO mitigates sparse rewards, aligns RL-PPO with RLHF, and improves training stability. Ex-periments show TPPO increases query relevance by 2%-4% with 2%-8% higher win rates versus PPO, while demonstrating better convergence. This TPPO approach enhances real-world search quality. 
+
+7 Limitations 
+
+TPPO’s effectiveness may vary across domains, potentially requiring specific adaptations. In the future research, we will explore the application of our token-level to various domains and further demonstrate the generalizability of the techniques introduced in this work. 
+
+References 
+
+Charu C Aggarwal and 1 others. 2016. Recommender systems , volume 1. Springer. Jose A. Arjona-Medina, Michael Gillhofer, Michael Widrich, Thomas Unterthiner, Johannes Brandstet-ter, and Sepp Hochreiter. 2019. Rudder: Re-turn decomposition for delayed rewards. Preprint ,arXiv:1806.07857. Jinheon Baek, Nirupama Chandrasekaran, Silviu Cucerzan, Allen herring, and Sujay Kumar Jauhar. 2024a. Knowledge-Augmented Large Language Models for Personalized Contextual Query Sugges-tion. arXiv preprint . ArXiv:2311.06318 [cs]. Jinheon Baek, Nirupama Chandrasekaran, Silviu Cucerzan, Allen herring, and Sujay Kumar Jauhar. 2024b. Knowledge-augmented large language mod-els for personalized contextual query suggestion. 
+
+Preprint , arXiv:2311.06318. Yuntao Bai, Andy Jones, Kamal Ndousse, Amanda Askell, Anna Chen, Nova DasSarma, Dawn Drain, Stanislav Fort, Deep Ganguli, Tom Henighan, and 1 others. 2022a. Training a helpful and harmless assistant with reinforcement learning from human feedback. arXiv preprint arXiv:2204.05862 .Yuntao Bai, Saurav Kadavath, Sandipan Kundu, Amanda Askell, Jackson Kernion, Andy Jones, Anna Chen, Anna Goldie, Azalia Mirhoseini, Cameron McKinnon, and 1 others. 2022b. Constitutional ai: Harmlessness from ai feedback. arXiv preprint arXiv:2212.08073 .Keqin Bao, Jizhi Zhang, Yang Zhang, Wenjie Wang, Fuli Feng, and Xiangnan He. 2023. Tallrec: An ef-fective and efficient tuning framework to align large language model with recommendation. In Proceed-ings of the 17th ACM Conference on Recommender Systems , pages 1007–1014. Iz Beltagy, Matthew E. Peters, and Arman Cohan. 2020. Longformer: The long-document transformer. 
+
+Preprint , arXiv:2004.05150. Fei Cai, Maarten De Rijke, and 1 others. 2016. A survey of query auto completion in information retrieval. 
+
+Foundations and Trends® in Information Retrieval ,10(4):273–363. Meng Cao, Lei Shu, Lei Yu, Yun Zhu, Nevan Wichers, Yinxiao Liu, and Lei Meng. 2024. Drlc: Reinforce-ment learning with dense rewards from llm critic. 
+
+arXiv preprint arXiv:2401.07382 .Guiming Hardy Chen, Shunian Chen, Ziche Liu, Feng Jiang, and Benyou Wang. 2024. Humans or llms as the judge? a study on judgement biases. arXiv preprint arXiv:2402.10669 .Paul F Christiano, Jan Leike, Tom Brown, Miljan Mar-tic, Shane Legg, and Dario Amodei. 2017. Deep reinforcement learning from human preferences. Ad-vances in neural information processing systems , 30. Yingqiang Ge, Wenyue Hua, Kai Mei, Juntao Tan, Shuyuan Xu, Zelong Li, Yongfeng Zhang, and 1 oth-ers. 2024. Openagi: When llm meets domain experts. 
+
+Advances in Neural Information Processing Systems ,36. Geyang Guo, Ranchi Zhao, Tianyi Tang, Wayne Xin Zhao, and Ji-Rong Wen. 2024. Beyond imitation: Leveraging fine-grained quality signals for alignment. 
+
+Preprint , arXiv:2311.04072. Qi He, Daxin Jiang, Zhen Liao, Steven CH Hoi, Kuiyu Chang, Ee-Peng Lim, and Hang Li. 2009. Web query recommendation via sequential query prediction. In 
+
+2009 IEEE 25th international conference on data engineering , pages 1443–1454. IEEE. Chia-Chun Hung, Timothy Lillicrap, Josh Abramson, Yan Wu, Mehdi Mirza, Federico Carnevale, Arun Ahuja, and Greg Wayne. 2018. Optimizing agent behavior over long time scales by transporting value. 
+
+Preprint , arXiv:1810.06721. Dietmar Jannach, Massimo Quadrana, and Paolo Cre-monesi. 2022. Session-based recommender systems. In Recommender Systems Handbook , pages 301–334. Springer. Albert Q. Jiang, Alexandre Sablayrolles, Arthur Men-sch, Chris Bamford, Devendra Singh Chaplot, Diego de las Casas, Florian Bressand, Gianna Lengyel, Guil-laume Lample, Lucile Saulnier, Lélio Renard Lavaud, Marie-Anne Lachaux, Pierre Stock, Teven Le Scao, Thibaut Lavril, Thomas Wang, Timothée Lacroix, and William El Sayed. 2023. Mistral 7b. Preprint ,arXiv:2310.06825. 31204 Sham M. Kakade and John Langford. 2002. Approxi-mately optimal approximate reinforcement learning. In International Conference on Machine Learning .Robert Kirk, Ishita Mediratta, Christoforos Nalmpantis, Jelena Luketina, Eric Hambro, Edward Grefenstette, and Roberta Raileanu. 2023. Understanding the ef-fects of rlhf on llm generalisation and diversity. arXiv preprint arXiv:2310.06452 .Harrison Lee, Samrat Phatale, Hassan Mansoor, Thomas Mesnard, Johan Ferret, Kellie Lu, Colton Bishop, Ethan Hall, Victor Carbune, Abhinav Rastogi, and 1 others. 2023. Rlaif: Scaling reinforcement learn-ing from human feedback with ai feedback. arXiv preprint arXiv:2309.00267 .Jinming Li, Wentao Zhang, Tian Wang, Guanglei Xiong, Alan Lu, and Gerard Medioni. 2023. Gpt4rec: A generative framework for personalized recommenda-tion and user interests interpretation. arXiv preprint arXiv:2304.03879 .Yongqi Li, Xinyu Lin, Wenjie Wang, Fuli Feng, Liang Pang, Wenjie Li, Liqiang Nie, Xiangnan He, and Tat-Seng Chua. 2024. A survey of generative search and recommendation in the era of large language models. 
+
+Preprint , arXiv:2404.16924. Hunter Lightman, Vineet Kosaraju, Yura Burda, Harri Edwards, Bowen Baker, Teddy Lee, Jan Leike, John Schulman, Ilya Sutskever, and Karl Cobbe. 2023. Let’s verify step by step. arXiv preprint arXiv:2305.20050 .Jianghao Lin, Xinyi Dai, Yunjia Xi, Weiwen Liu, Bo Chen, Hao Zhang, Yong Liu, Chuhan Wu, Xi-angyang Li, Chenxu Zhu, Huifeng Guo, Yong Yu, Ruiming Tang, and Weinan Zhang. 2024. How can recommender systems benefit from large language models: A survey. Preprint , arXiv:2306.05817. Sean MacAvaney, Craig Macdonald, and Iadh Ounis. 2022. Reproducing personalised session search over the aol query log. Preprint , arXiv:2201.08622. Agnès Mustar, Sylvain Lamprier, and Benjamin Pi-wowarski. 2021. On the study of transformers for query suggestion. ACM Transactions on Information Systems (TOIS) , 40(1):1–27. Long Ouyang, Jeffrey Wu, Xu Jiang, Diogo Almeida, Carroll Wainwright, Pamela Mishkin, Chong Zhang, Sandhini Agarwal, Katarina Slama, Alex Ray, and 1 others. 2022. Training language models to follow in-structions with human feedback. Advances in neural information processing systems , 35:27730–27744. Rafael Rafailov, Archit Sharma, Eric Mitchell, Stefano Ermon, Christopher D. Manning, and Chelsea Finn. 2024a. Direct preference optimization: Your lan-guage model is secretly a reward model. Preprint ,arXiv:2305.18290. Rafael Rafailov, Archit Sharma, Eric Mitchell, Christo-pher D Manning, Stefano Ermon, and Chelsea Finn. 2024b. Direct preference optimization: Your lan-guage model is secretly a reward model. Advances in Neural Information Processing Systems , 36. John Schulman, Filip Wolski, Prafulla Dhariwal, Alec Radford, and Oleg Klimov. 2017. Prox-imal policy optimization algorithms. Preprint ,arXiv:1707.06347. Nisan Stiennon, Long Ouyang, Jeffrey Wu, Daniel Ziegler, Ryan Lowe, Chelsea Voss, Alec Radford, Dario Amodei, and Paul F Christiano. 2020. Learn-ing to summarize with human feedback. Advances in Neural Information Processing Systems , 33:3008– 3021. Hugo Touvron, Louis Martin, Kevin Stone, Peter Al-bert, Amjad Almahairi, Yasmine Babaei, Nikolay Bashlykov, Soumya Batra, Prajjwal Bhargava, Shruti Bhosale, and 1 others. 2023. Llama 2: Open foun-dation and fine-tuned chat models. arXiv preprint arXiv:2307.09288 .Jonathan Uesato, Nate Kushman, Ramana Kumar, Fran-cis Song, Noah Siegel, Lisa Wang, Antonia Creswell, Geoffrey Irving, and Irina Higgins. 2022. Solv-ing math word problems with process-and outcome-based feedback. arXiv preprint arXiv:2211.14275 .Cunxiang Wang, Xiaoze Liu, Yuanhao Yue, Xiangru Tang, Tianhang Zhang, Cheng Jiayang, Yunzhi Yao, Wenyang Gao, Xuming Hu, Zehan Qi, and 1 others. 2023. Survey on factuality in large language models: Knowledge, retrieval and domain-specificity. arXiv preprint arXiv:2310.07521 .Yuling Wang, Changxin Tian, Binbin Hu, Yanhua Yu, Ziqi Liu, Zhiqiang Zhang, Jun Zhou, Liang Pang, and Xiao Wang. 2024. Can small language models be good reasoners for sequential recommendation? In Proceedings of the ACM on Web Conference 2024 ,pages 3876–3887. Wei Wei, Xubin Ren, Jiabin Tang, Qinyong Wang, Lixin Su, Suqi Cheng, Junfeng Wang, Dawei Yin, and Chao Huang. 2024. Llmrec: Large language models with graph augmentation for recommendation. In Pro-ceedings of the 17th ACM International Conference on Web Search and Data Mining , pages 806–815. Bin Wu, Chenyan Xiong, Maosong Sun, and Zhiyuan Liu. 2018. Query suggestion with feedback memory network. In Proceedings of the 2018 World Wide Web Conference , pages 1563–1571. Likang Wu, Zhi Zheng, Zhaopeng Qiu, Hao Wang, Hongchao Gu, Tingjia Shen, Chuan Qin, Chen Zhu, Hengshu Zhu, Qi Liu, and 1 others. 2024. A sur-vey on large language models for recommendation. 
+
+World Wide Web , 27(5):60. Zeqiu Wu, Yushi Hu, Weijia Shi, Nouha Dziri, Alane Suhr, Prithviraj Ammanabrolu, Noah A. Smith, Mari 31205 Ostendorf, and Hannaneh Hajishirzi. 2023. Fine-grained human feedback gives better rewards for lan-guage model training. Preprint , arXiv:2306.01693. Han Xia, Songyang Gao, Qiming Ge, Zhiheng Xi, Qi Zhang, and Xuanjing Huang. Inverse-Q*: Token Level Reinforcement Learning for Aligning Large Language Models without Preference Data. Dehong Xu, Liang Qiu, Minseok Kim, Faisal Ladhak, and Jaeyoung Do. 2024. Aligning Large Language Models via Fine-grained Supervision. arXiv preprint .ArXiv:2406.02756 [cs]. Fan Yang, Zheng Chen, Ziyan Jiang, Eunah Cho, Xiao-jiang Huang, and Yanbin Lu. 2023a. Palr: Person-alization aware llms for recommendation. Preprint ,arXiv:2305.07622. Fangkai Yang, Pu Zhao, Zezhong Wang, Lu Wang, Bo Qiao, Jue Zhang, Mohit Garg, Qingwei Lin, Sar-avan Rajmohan, and Dongmei Zhang. 2023b. Em-power large language model to perform better on industrial domain-specific question answering. In 
+
+Proceedings of the 2023 Conference on Empirical Methods in Natural Language Processing: EMNLP 2023 - Industry Track, Singapore, December 6-10, 2023 , pages 294–312. Association for Computational Linguistics. Tianbao Yang and Yiming Ying. 2022. Auc maximiza-tion in the era of big data and ai: A survey. Preprint ,arXiv:2203.15046. Zhenrui Yue, Sara Rabhi, Gabriel de Souza Pereira Mor-eira, Dong Wang, and Even Oldridge. 2023. Llamarec: Two-stage recommendation using large language models for ranking. Preprint ,arXiv:2311.02089. Yongcheng Zeng, Guoqing Liu, Weiyu Ma, Ning Yang, Haifeng Zhang, and Jun Wang. 2024. Token-level direct preference optimization. arXiv preprint arXiv:2404.11999 .Jianyi Zhang, Aashiq Muhamed, Aditya Anantharaman, Guoyin Wang, Changyou Chen, Kai Zhong, Qingjun Cui, Yi Xu, Belinda Zeng, Trishul Chilimbi, and 1 others. 2023. Reaugkd: Retrieval-augmented knowl-edge distillation for pre-trained language models. In 
+
+Proceedings of the 61st Annual Meeting of the As-sociation for Computational Linguistics (Volume 2: Short Papers) , pages 1128–1136. Zihuai Zhao, Wenqi Fan, Jiatong Li, Yunqing Liu, Xi-aowei Mei, Yiqi Wang, Zhen Wen, Fei Wang, Xi-angyu Zhao, Jiliang Tang, and 1 others. 2023. Rec-ommender systems in the era of large language mod-els (llms). arXiv preprint arXiv:2307.02046 .Lianmin Zheng, Wei-Lin Chiang, Ying Sheng, Siyuan Zhuang, Zhanghao Wu, Yonghao Zhuang, Zi Lin, Zhuohan Li, Dacheng Li, Eric Xing, and 1 others. 2023. Judging llm-as-a-judge with mt-bench and chatbot arena. Advances in Neural Information Pro-cessing Systems , 36:46595–46623. Han Zhong, Guhao Feng, Wei Xiong, Li Zhao, Di He, Jiang Bian, and Liwei Wang. 2024. Dpo meets ppo: Reinforced token optimization for rlhf. arXiv preprint arXiv:2404.18922 .Daniel M Ziegler, Nisan Stiennon, Jeffrey Wu, Tom B Brown, Alec Radford, Dario Amodei, Paul Chris-tiano, and Geoffrey Irving. 2019. Fine-tuning lan-guage models from human preferences. arXiv preprint arXiv:1909.08593 .
+
+A Proof of Lemma 1 
+
+To derive the optimal policy π∗ 
+
+> θ
+
+for the optimization problem in Eq. 8, we frame the problem using the method of Lagrange multipliers to incorporate the normalization constraint of the probability distribu-tion πθ. The Lagrangian L is defined as: 
+
+L(πθ, λ (st)) = ∑
+
+> at
+
+πθ(at|st)
+
+[
+
+Aπref (st, a t)
+
+− β log πθ(at|st)
+
+πref (at|st)
+
+]
+
+− λ(st)
+
+( ∑ 
+
+> at
+
+πθ(at|st) − 1
+
+)
+
+(10) where λ(st) is the Lagrange multiplier ensuring that πθ sums to 1 over all actions at.Taking the derivative of L with respect to 
+
+πθ(at|st) and setting it to zero gives:        
+
+> ∂L
+> ∂π θ(at|st) =Aπref (st, a t)
+> −β
+> (
+> 1 + log πθ(at|st)
+> πref (at|st)
+> )
+> −λ(st) = 0 .
+> (11)
+
+Solving for πθ(at|st):                          
+
+> βlog πθ(at|st)
+> πref (at|st) =Aπref (st, a t)−β−λ(st),
+> log πθ(at|st)
+> πref (at|st) = 1
+> β Aπref (st, a t)−λ(st)
+> β−1,πθ(at|st) =
+> πref (at|st) exp
+> (1
+> β Aπref (st, a t)−λ(st)
+> β−1
+> )
+> .
+> (12)
+
+The terms − λ(st) 
+
+> β
+
+− 1 are constants with respect to at for a given st and ensure that πθ is a valid probability distribution. They can be absorbed into the partition function Z(st; β). Thus, we can write:         
+
+> π∗
+> θ(at|st) =
+> πref (at|st) exp
+> (1
+> βAπref (st, a t)
+> )
+> Z(st;β),(13)
+
+31206 where the partition function Z(st; β) is defined as: 
+
+Z(st; β) = ∑
+
+> at
+
+πref (at|st) exp 
+
+( 1
+
+β Aπref (st, a t)
+
+)
+
+.
+
+(14) This completes the proof. 
+
+B Theoratical Justification for Why Token-level Rewards Results in Better Policy 
+
+TPPO improves upon traditional PPO by address-ing key limitations such as sparse rewards, delayed credit assignment, and high variance. Below, we outline a theoretical analysis to justify its superior-ity: 
+
+B.1 Improved Gradient Signal PPO Gradient. The PPO objective gradient with sparse rewards is: 
+
+∇θJPPO = Eπθ [At∇θ log πθ(at | st)] , (15) where At (advantage) is based on sentence-level rewards. For t < H , At ≈ 0, resulting in weak gradients for earlier tokens. 
+
+TPPO Gradient. TPPO uses dense token-level rewards R(st, a t), where: 
+
+∇θJTPPO = Eπθ
+
+[Atoken  
+
+> t
+
+∇θ log πθ(at | st)] ,
+
+(16) and Atoken  
+
+> t
+
+= Qtoken (st, a t) − V token (st). Since 
+
+R(st, a t) provides feedback for all tokens, the gra-dient signal is significantly stronger: 
+
+∥∇ θJTPPO ∥ > ∥∇ θJPPO ∥. (17) 
+
+B.2 Variance Reduction PPO Variance In PPO, the advantage function At
+
+at time step t is defined as: 
+
+At = Q(st, a t) − V (st), (18) where Q(st, a t) is the expected cumulative reward and V (st) is the baseline value function. For sparse sentence-level rewards, the cumula-tive reward Q(st, a t) depends primarily on the final reward rfinal , discounted back to time step t:
+
+Q(st, a t) = γH−trfinal , (19) where H is the length of the sequence. Earlier tokens ( t < H ) rely on the final reward rfinal (x, y )
+
+as feedback. The discount factor γ ∈ (0 , 1] reduces the contribution of this reward as it is propagated backward, making earlier tokens highly dependent on γH−t.The variance of the advantage function At is di-rectly proportional to the variance of the discounted reward Q(st, a t):
+
+Var( At) ∝ Var( Q(st, a t)) ∝ γ2( H−t) · Var (rfinal )
+
+(20) 
+
+TPPO Variance. In TPPO, token-level rewards 
+
+R(st, a t) provide stepwise feedback for each token, distributing the reward signal evenly: Var (Atoken  
+
+> t
+
+) ∝ 1
+
+H
+
+> H
+
+∑
+
+> t=1
+
+Var (R(st, a t)) . (21) This reduces the dependency on γH−t and ensures a lower variance in advantage estimation across all tokens. Thus, TPPO reduces variance in advantage esti-mation, stabilizing policy updates. 
+
+B.3 Faster Convergence PPO Convergence. Sparse rewards delay feedback for earlier tokens, slowing learning. Improvement per update is: 
+
+∆JPPO ∝ ∥∇ θJPPO ∥ · 1
+
+Var (At) . (22) 
+
+TPPO Convergence. Dense rewards provide im-mediate feedback, increasing ∥∇ θJTPPO ∥ and re-ducing Var (Atoken  
+
+> t
+
+):
+
+∆JTPPO > ∆JPPO . (23) Thus, TPPO achieves faster convergence due to stronger gradients and lower variance. 
+
+C Analysis and Comparison of The Algorithmic Complexity and Convergency between TPPO and Prior Work 
+
+We have analyzed the convergence properties of our method in Figure 5 and Figure 11, which demon-strate TPPO’s superior convergence characteristics compared to baseline approaches. Here, we pro-vide a brief analysis for algorithmic complexity analysis and comparisons between TPPO and PPO: 31207 Our method, TPPO, has a similar complexity to PPO because the dominant computational cost in both methods comes from the policy update step, which scales as O(H ·N ), where H is the sequence length and N is the number of model parameters. While TPPO introduces token-level rewards with an additional O(H · N ) cost for reward computa-tion (M being the reward model complexity), this step can be efficiently parallelized. In practice, the additional overhead is negligible, and the overall training time is comparable to PPO. TPPO thus achieves better stability and performance without significant computational cost increases. 
+
+D Prompt Template for Labeling Relevance Score 
+
+Figure. 13 shows the token template for labeling relevance score, where the "User Queries" repre-sents the ground truth, and "Returned Queries" are our model-generated outputs, with relevance scores annotated by LLM between these pairs. In this work, we use sentence templates (Figure 14) for PPO training and token templates (Figure 13) for TPPO training - they serve different purposes in our framework. Sentence templates only label sentence-level rewards, while Token templates la-bel word-level rewards and sentence-level rewards. # Task - Background: A chatbot exists that can summarize user history into predicted ads search queries. These ads search queries are then fed into an ads search engine to generate relevant display ads to show the user. The order of queries does not matter. - Task: review the input to the chatbot and the generated queries, and make various judgements about the quality of each word in the queries generated by the chatbot relevant to the user history. Each judgment should be accompanied by a score, do not provide explanation. # Judgement Criterias ## Word Sequence Metrics - Relevance: taking the context of the returned queries into consideration, is the word relevant to the user queries? -- Scoring rules: 0 indicates the word is irrelevant or hardly relevant, 1 indicates the word is higly relevant. -- Scoring type: integer ## Across Queries Metrics - Relevance: are the returned queries relevant to the user queries? -- Scoring rules: 0 indicates the returned queries are irrelevant or hardly relevant, 1 indicates the returned queries are higly relevant. -- Scoring type: integer # Formatting Rules Output the responses as a JSON Dictionaries: <WORD_SEQUENCE_JUDGEMENTS> {"<word1>" : {"Relevance":{"Score" : 0 or 1}}, "<word2>" : {"Relevance":{"Score" : 0 or 1}}, "<word3>" : {"Relevance":{"Score" : 0 or 1}}, ... }</WORD_SEQUENCE_JUDGEMENTS> <ACROSS_QUERY_JUDGEMENTS> {"Relevance":{"Score" : 0 or 1}} </ACROSS_QUERY_JUDGEMENTS> # Begin Task ## User History {{USER_HISTORY_DATA}} ## User Queries {{USER_QUERIES_DATA}} ## Returned Queries {{RETURNED_QUERIES_DATA}} Output the responses as a JSON Dictionaries: 
+
+Figure 13: Token Template for Labeling Relevance Score. # Task - Background: A chatbot exists that can summarize user history into predicted ads search queries. These ads search queries are then fed into an ads search engine to generate relevant display ads to show the user. The order of queries does not matter. - Task: review the input to the chatbot and the generated queries, and make various judgements about the quality of the queries generated by the chatbot relevant to the user history. Each judgment should be accompanied by a score, do not provide explanation. # Judgement Criterias ## Across Queries Metrics - Relevance: are the returned queries relevant to the user queries? -- Scoring rules: 0 indicates the returned queries are irrelevant or hardly relevant, 1 indicates the returned queries are higly relevant. -- Scoring type: integer # Formatting Rules <ACROSS_QUERY_JUDGEMENTS> {"Relevance":{"Score" : 0 or 1}} </ACROSS_QUERY_JUDGEMENTS> # Begin Task ## User History {{USER_HISTORY_DATA}} ## User Queries {{USER_QUERIES_DATA}} ## Returned Queries {{RETURNED_QUERIES_DATA}} Output the responses as a JSON Dictionaries: 
+
+Figure 14: Sentence Template for Labeling Relevance Score. Table 5: The Hyper-parameters of TPPO. 
+
+Training Configuration Extra Hyperparameters Learning rate: 5e-6 Query nums: 10 Batch size: 32 Alpha: 2.0 Hardware: 8*A100 GPUs Training epochs: 2 KL coefficient: 0.2 Ouput max length: 400 
+
+E Hyper-parameters of TPPO Setting in Experiment 
+
+Here we clarify the parameters used in our im-plementation: the hyper-parameters of TPPO in our implementation are show in Table 5, and the hyper-parameters of Token-level Reward Model are shown in Table 6. 
+
+F Brief Pseudocode for TPPO (Natural Language) 
+
+We provide a simplified pseudocode for policy training below: 
+
+Initialize the policy model ( πθ) and token-level reward model ( Rϕ) with their respective learning rates and hyperparameters (e.g., KL coefficient, clip threshold). 
+
+For each training iteration: 
+
+Table 6: The Hyper-parameters of Token-level Reward Model. 
+
+Training Configuration Extra Hyperparameters Learning rate: 1e-5 Num class labels: 3 Batch size: 32 POS NEG Ratio: 3.0 Hardware: 1 x V100 GPU Local Weight: 0.4 Gradient accumulation step: 8 Global Weight: 0.6 Max length: 2048 31208 • Sample a batch of prompts from the dataset. • Generate responses for each prompt using the current policy model ( πθ). • Compute token-level rewards ( Rϕ(st, a t)) for each token in the responses using the reward model. • Calculate token-level advantages ( At) using the token rewards and value estimates. • Update the policy model ( πθ) by optimizing the PPO objective, ensuring stable updates with clipping. • Update the token-level reward model ( Rϕ)based on token labels and global constraints. 
+
+Output the optimized policy model ( πθ). 
+
+G Models Used in Each Step and Online Serving Implementation 
+
+Model usage in each step. To further clarify the whole process, we summarize the each step with model used: 1. Train Mistral-7B by SFT. The user history and ground truth queries are given as training data. 2. Use SFT-tuned Mistral-7B to generate mul-tiple queries. These queries are later used for la-beling relevance score (reward) by comparing with ground truth user queries, as shown in Figure 13. 3. Employ Llama3-70B to generate token-level and sentence-level reward, creating data for reward model training. 4. Train Longformer as reward model through SFT. We implement a novel combination of local and global loss to enable token-level reward predic-tion capabilities of Longformer. 5. Finally, we optimize the SFT-tuned Mistral-7B using our TPPO policy. It is notable that, during this step, the SFT-tuned Longformer serve as the token-level reward model, without further training. 
+
+Online serving implementation. In our produc-tion environment, the in-house LLMs undergo con-tinuous iteration and exist at various scales. Al-though the base LLMs vary, we consistently apply our TPPO methodology in training. For the purpose of academic demonstration in this paper, we se-lected Mistral-7B as our experimental base model to demonstrate the superiority of TPPO method. 
+
+H Additional DPO Experiments 
+
+To comprehensively evaluate different reinforce-ment learning methods, we conducted additional experiments using DPO (Direct Preference Opti-mization). The experimental setup and results are detailed below. 
+
+H.1 Experimental Setup 
+
+In constructing the training data, we main-tained consistency with the PPO training dataset prompts, using real user queries as accept data and GPT4REC-generated queries as corresponding re-ject data, creating a 20k training dataset. We im-plemented and trained DPO with a batch size of 64 and learning rate of 5e-6 for 2 epochs until conver-gence, then performed inference and evaluation on the industrial dataset validation set (consistent with the validation set in the paper). 
+
+H.2 Results 
+
+The experimental results are presented in Tables 7 and 8. The results demonstrate that DPO per-forms slightly better than GPT4REC (relevance rate: 84.50 vs 84.10), slightly worse than PPO (84.50 vs 85.05), and significantly worse than our proposed TPPO method (84.50 vs 88.85). These findings support our conclusion that DPO may not be optimal for complex query generation tasks due to sparse reward signals. The experimental results further validate that our TPPO method outperforms both advanced SFT baselines (such as GPT4REC) and mainstream reinforcement learning approaches (including PPO and DPO). 
+
+> Table 7: Relevance Rate Comparison
+
+Model Relevance Rate 
+
+GPT4REC 84.10 PPO 85.05 DPO 84.50 TPPO 88.85             
+
+> Table 8: DPO Performance Comparison
+> Metric vs. GPT4REC vs. PPO vs. TPPO
+> Win Rate 13.60% 12.20% 9.40% Tie Rate 73.15% 75.05% 76.85% Lose Rate 13.25% 12.75% 13.75%
+
+31209 I Ground Truth Validation of Reward Labels 
+
+To validate the reliability of LLaMA-3 annotations used in our reward modeling, we conducted a con-sistency test comparing model annotations with human labels on a sample set of 60 examples. The validation was performed at two granularity levels: 
+
+> Table 9: Annotation Consistency between LLaMA-3 and Human Labels
+
+Consistency Level Agreement Rate 
+
+Word-level 91.18% Sentence-level 80.95% The high consistency rates, particularly the 91.18% agreement at word level, demonstrate that LLaMA-3 provides reliable annotations that align well with human judgment. 31210
