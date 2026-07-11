@@ -1,0 +1,850 @@
+Title: To Reason or to Fabricate: Reasoning Without Shortcuts via Hint-Anchored Pairwise Aggregation
+
+URL Source: https://arxiv.org/pdf/2606.29481v1
+
+Published Time: Tue, 30 Jun 2026 01:19:45 GMT
+
+Number of Pages: 17
+
+Markdown Content:
+# To Reason or to Fabricate: Reasoning Without Shortcuts via Hint-Anchored Pairwise Aggregation 
+
+## Jiuheng Lin, Chen Zhang and Yansong Feng *
+
+Wangxuan Institute of Computer Technology, Peking University linjiuheng@stu.pku.edu.cn {zhangch, fengyansong }@pku.edu.cn 
+
+Abstract 
+
+While reinforcement learning (RL) significantly enhances LLM reasoning, its efficacy is severely undermined by Pre-RL data overlap , where RL datasets overlap with pretraining or SFT corpora, causing models to exploit shortcuts by memo-rizing correct answers and fabricating post-hoc reasoning. To address this, we introduce HIPPO, a novel RL framework that integrates hint-injected aggregation with a tailored pairwise reward model. By utilizing hint injection to deliberately trigger overlap-induced behaviors, the resulting traces naturally serve as explicit anchors for pairwise comparison. This provides highly discriminable preference signals, enabling a lightweight judge model to reliably distinguish genuine reasoning deduc-tion from shortcut-driven rationalization, while the pairwise formulation ensures stable and robust optimization compared to standard PRMs. Extensive experiments demonstrate that HIPPO yields substantial improvements over standard base-lines and generalizes effectively to out-of-distribution general tasks, showing it extracts authentic, transferable reasoning skills rather than superficial shortcut patterns. 1
+
+## 1 Introduction 
+
+Large Language Models (LLMs) have achieved remarkable success, with their reasoning capabilities recently experienc-ing massive leaps driven by Reinforcement Learning with Verifiable Rewards (RLVR) (Shao et al. 2024; Guo et al. 2025; Yu et al. 2025). However, many commonly used challenging RL datasets inevitably overlap with the models’ pretraining or supervised fine-tuning (SFT) corpora (Wu et al. 2025; Balunovi ´c et al. 2026) due to reuse of scarce high-quality data pools, as illustrated in Figure 1. We formally define this phenomenon as Pre-RL Data Overlap .Pre-RL data overlap severely undermines the efficacy of re-inforcement learning. Under Pre-RL data overlap, the model retains partial memory of the solution without genuinely mas-tering the complete deductive process. While standard RLVR drives models to tackle complex tasks and autonomously dis-cover reasoning patterns through final-answer correctness, exploiting superficial memory for answer retrieval also yields maximal rewards, acting as a trivial shortcut much easier to learn than executing rigorous logical deduction. Conse-quently, the training process degenerates into enhancing a 
+
+> *
+
+Corresponding author. 
+
+> 1
+
+Code is open sourced at: https://github.com/Infinite-set/HIPPO GSM-8K MATH      
+
+> AMC23 AIME24
+> AoPS ...
+> Pretrain & SFT
+> Corpora
+> Difficulty
+> Pruning
+> Sampling
+> Expert
+> Annotation
+> Evolving RL Dataset
+> Pretraining
+> Supervised Fine-tuning
+> DeepScaleR
+> Q: What is
+> the 10th digit
+> of 7^2011 ?
+> A: 4
+> Oh! I remember the answer is
+> 4! But wait, how did I actually
+> get there... hmm...
+
+Figure 1: An illustration of Pre-RL data overlap, using Deep-ScaleR (Luo et al. 2025) as an example. See Appendix E for detailed analysis across more RL datasets. retrieval shortcut—retrieving the memorized answer, then generating a post-hoc spurious rationale (Lin et al. 2025; Wu et al. 2025). Consequently, Pre-RL data overlap suppresses exploratory depth, degrades reasoning reliability and causing an illusory inflation of capabilities (Yan et al. 2026). Existing studies focus exclusively on detecting data over-lap between training corpora and evaluation benchmarks (Tao et al. 2026; Wang et al. 2026a), overlooking the negative im-pact of data overlap across training phases. Moreover, driven by the persistent demand to inject high-quality reasoning data into base models to establish strong reasoning capability boundaries and maximize their RL potential (Yue et al. 2025; Zhao et al. 2025; Dong et al. 2026), enforcing strict Pre-RL data isolation is both practically unfeasible and detrimental, as it inevitably discards valuable data and hinders model per-formance. Therefore, we shift our focus from detection to mitigation and ask: How can we extract genuine reasoning gains from limited, partially contaminated datasets? 
+
+To answer this, we propose Hint-Injected Pairwise Policy 
+
+Optimization (HIPPO), a novel RL framework designed to mitigate Pre-RL data overlap. We begin by formally model-ing the active training policy and a hypothetical policy that has learned to exploit overlap-induced shortcuts. The natural approach to penalize shortcut behaviors is to maximize the distributional KL divergence between them, but directly opti-mizing this divergence is mathematically intractable and un-bounded. To overcome this, we theoretically derive a bounded 
+
+> arXiv:2606.29481v1 [cs.CL] 28 Jun 2026
+
+surrogate objective by leveraging Pinsker’s inequality and the dual form of TV distance (Nguyen, Wainwright, and Jor-dan 2010), finally reduce the intractable divergence into the reward expectation of generations produced by both policies. Next, we instantiate this hypothetical policy directly on-policy via answer-level hint injection. Since directly interven-ing in a model’s internal parametric memory during Pre-RL overlap is difficult, this explicit hint serves as an accessible behavioral anchor. While operating on the input space, it effectively simulates the information-asymmetry of Pre-RL data overlap —knowing the answer before reasoning (Chua and Evans 2025; Chen et al. 2025). By deliberately recreating this shortcut-reliant behavior (Marioriyad et al. 2025; Young 2026), we can algorithmically penalize it without requiring access to latent parametric states. Finally, we implement the reward judge as a pairwise Bradley–Terry comparator, max-imizing the expected win rate of standard rollouts against hint-injected ones, thereby sidestepping the intransitivity and miscalibration that plague standard reward models (Swamy et al. 2024; Xu et al. 2025; Sutawika et al. 2026). Our experiments validate the effectiveness of HIPPO across mathematical and medical reasoning. Compared to standard RL, HIPPO yields consistent performance gains in both in-domain and out-of-distribution (OOD) scenarios, demonstrating capabilities to extract genuine reasoning from heavily overlapping datasets while maintaining strong gener-alizability. Furthermore, we show our hint-injected compari-son provides a much clearer and more stable preference signal than direct pairwise comparison, enabling cost-efficient small models to serve as reliable judges, and provide evidences for the mechanism by which Pre-RL data overlap degrades RL training. Our main contributions are summarized as follows: (1) We identify the Pre-RL data overlap problem, theoretically re-duce it to a bounded surrogate, and propose a mechanistic ex-planation regarding its impact on reasoning. (2) We propose HIPPO, a novel RL framework employing a hint-injected pairwise reward aggregation to suppress overlap-induced behaviors. (3) Extensive experiments show that HIPPO en-hances reasoning and generalizability, while delivering supe-rior optimization stability and clearer preference signals. 
+
+## 2 Methodology 
+
+In this section, we introduce HIPPO, with its overall frame-work illustrated in Figure 2. We begin by formally defining the Pre-RL data overlap mitigation task. Then we theoreti-cally reduce the formulation into a bounded and empirically optimizable surrogate to overcome the intractable nature of directly optimizing divergence. Finally, we detail the practi-cal implementation of our framework. 
+
+2.1 Preliminary 
+
+Reinforcement learning for LLMs. Let (x, y ) ∼ D,where x denotes a prompt and y its reference answer. A language model πθ generates a reasoning trajectory z ∈ Z 
+
+before emitting a final answer, with Z the space of token sequences. Sampling proceeds autoregressively: z ∼ πθ (· | 
+
+x) = Q|z| 
+
+> t=1
+
+πθ (zt | x, z <t ). Under group-based RL train-ing (e.g., GRPO and DAPO; Shao et al. 2024; Yu et al. 2025), for each prompt x we draw a group of G rollouts 
+
+{z(g)}Gg=1 ∼ πθ (· | x), score them with a scalar reward r(·),then form the standardized advantage and compute the PPO clipped surrogate (Schulman et al. 2017). 
+
+Pre-RL data overlap. Pre-RL data overlap—where the training data used for RL has already been exposed to the model during pre- or post-training—is prevalent and difficult to avoid in practice. To model and mitigate its effect, we for-malize the trajectory distribution of the aforementioned con-taminated shortcut-reliant hypothetical policy as πC (z | x).This distribution characterizes a generation process where the model relies on memorized clues to bypass genuine deduc-tion, thereby executing a reasoning shortcut directly leading to critical intermediate steps or ground-truth answer. 
+
+2.2 Direct KL Optimization and Its Limitations 
+
+The core training objective is to ensure that the current pol-icy πθ (z | x) remains distinguishable from πC (z | x) when trained on already contaminated datasets—meaning the pol-icy actively avoids reasoning shortcuts even when it has im-plicitly memorized the answers due to Pre-RL data overlap. A natural formalization is to maximize the Kullback–Leibler (KL) divergence between the two policies: 
+
+DKL 
+
+ πθ πC
+
+ = Ez∼πθ
+
+
+
+log πθ (z | x)
+
+πC (z | x)
+
+
+
+. (1) Adopting Eq. (1) as a direct RL objective, however, is problematic in two ways. First, the per-sample diver-gence log[ πθ /π C ] is a sum of token-level log-probability differences whose variance scales with trajectory length, overwhelming the policy gradient signal in long reasoning chains (Yu et al. 2025; Liu et al. 2025). Second, the KL di-vergence is unbounded in θ: πθ can concentrate probability mass on regions where πc has near-zero density to make the divergence go to infinity, leading to reward hacking rather than genuine reasoning (Gao, Schulman, and Hilton 2023). These issues motivate replacing Eq. (1) with a stable and bounded surrogate. 
+
+2.3 From KL Divergence to Pairwise Comparisons 
+
+Directly optimizing the KL divergence is mathematically intractable. To overcome this, we introduce a reward-form surrogate estimated via pairwise comparisons between gen-erations from active policy and contaminated policy. This mechanism provides a highly discriminable preference signal with superior robustness, tractability, and empirical estima-bility. We now formally derive how this pairwise approach serves as a provable lower bound surrogate for Eq. (1). 
+
+Lemma 2.1 (Pinsker’s inequality; Tsybakov 2009; Nguyen, Wainwright, and Jordan 2010). For any proba-bility distributions p, q on Z,
+
+DKL (p ∥ q) ≥ 2 D2TV (p, q ), (2) where DTV (p, q ) := sup A⊆Z p(A) − q(A) .
+
+Pinsker’s inequality furnishes a bounded surrogate lower bound for the unbounded KL objective, offering a safe guar-antee for distancing the active policy from the shortcut-reliant behaviors. Hinted Traces Genuine                         
+
+> (Genuine CoT &Correct Ans )
+> The last two digits of
+> 7^n repeat in a cycle
+> of four , ... Therefore,
+> the answer is 4.
+> (Exploit Shortcut in CoT )
+> Okay, now I know answer
+> is 4.Then just need a
+> convincing excuse ...
+> 0.0
+> 0.0
+> 1.0
+> 1.0
+> 1.0
+> 1.0
+> Question :
+> What is
+> the 10th
+> digit of
+> 7^2011 ?
+> Rollout Response 1 Rollout
+> Response 2
+> Genuine &Correct
+> Rollout
+> Response 3
+> Shortcut &Correct
+> Rollout
+> Response 4
+> Incorrect
+> Hint Response 1 Hint Response 2
+> Shortcut
+> Hint Response 3
+> Shortcut
+> Hint Response 4
+> Hint 1Hint 2Hint 3Hint 4
+> Rollout 1
+> Rollout 2
+> Rollout 3
+> 0.75
+> 0.75
+> 0.0
+
+?  
+
+> Format
+> Reward
+> Answer
+> Reward
+> Hint-Injected
+> Pairwise Reward
+> Win
+> Rate
+> Judge
+> LLM
+> Answer :4
+> Hint-Injected
+> Sampling
+> RL Rollout
+> Win
+> Rate
+> Reward
+> Score
+> 1.0
+> 1.0
+> 1.0
+> 1.0
+> 1.0
+> Rollout Traces
+
+Hint-Injected 
+
+Pairwise Policy 
+
+Optimization Figure 2: The overall framework of HIPPO. Given a task, HIPPO performs standard RL rollouts paired with hint-injected sampling, followed by a pairwise comparison between the standard and the hint-injected traces. 
+
+Lemma 2.2 (Variational representation of TV). For any probability distributions p, q on Z and any measurable func-tion T : Z → [0 , 1] , the TV distance admits the equivalent form 
+
+DTV (p, q ) = sup 
+
+> T
+
+
+
+Ez∼p[T (z)] − Ez∼q [T (z)] 
+
+
+
+, (3) with the supremum attained at T ⋆ = 1A⋆ , A⋆ := {z ∈ Z :
+
+p(z) ≥ q(z)}.This variational form converts a distance between in-tractable distributions into the expected score gap of a [0 , 1] -valued discriminator T , which is density-free and directly amenable to Monte Carlo estimation. Moreover, the supre-mum is attained precisely when T correctly separates the two distributions, implying that the closer T is to the optimal discriminator, the tighter the lower bound. Concretely, in our setting, consider p = πθ (· | x) and 
+
+q = πC (· | x), for any capable reward model T : Z → [0 , 1] ,
+
+ Ez∼πθ [T (z)] − Ez∼πC [T (z)] 2 ≈ D2TV (πθ , π H ). (4) The leftmost term is a [0 , 1] -bounded expectation difference— density-free and estimable from rollouts—that provably lower-bounds the original KL objective. The next step is specifying T .
+
+Instantiating T via Pairwise Comparisons. The bound in Eq. (4) is tight only when T closely approximates the optimal discriminator T ⋆ = 1A⋆ , i.e., when T accurately de-tects whether a trace is influenced by contamination. While tractable, evaluating a single trajectory via a pointwise re-ward model T (z) can be problematic: previous works indi-cate that pointwise RM can only express transitive, Bradley– Terry-style preference structures and are notoriously poorly calibrated across distributions (Xu et al. 2025; Wang et al. 2026c). Pairwise comparators, by contrast, provably reduce vari-ance and robustly handle non-Markovian or intransitive pref-erence signals while being resilient to the compounding er-rors (Swamy et al. 2024; Zhang et al. 2026). We therefore instantiate T via a pairwise judge J : Z × Z → [0 , 1] , where 
+
+J(za, z b) denotes the judgment that za is preferred to zb.Concretely, we define 
+
+TJ (z) := Ez′∼πC (·| x)
+
+J(z, z ′) ∈ [0 , 1] , (5) which automatically lies in [0 , 1] , satisfying the requirement of Lemma 2.3 and is agnostic to the implementation of J.
+
+Lemma 2.3. Let J be a pairwise comparator satisfying strict symmetry 2, i.e., J(z, z ′) + J(z′, z ) = 1 for all (z, z ′).Then for any distribution q, the marginal expectation over independent samples is constant: 
+
+Ez,z ′∼q [J(z, z ′)] = 12 . (6) Substituting Eq. (5) into Eq. (4) and applying Lemma 2.3 with q = πC , the subtrahend collapses to a constant: 
+
+Ez∼πC [TJ (z)] = Ez,z ′∼πC [J(z, z ′)] = 12 .
+
+Final Surrogate Objective. Combining Lemmas 2.3–2.3, our RL objective maximizes the following lower bound on the KL divergence: 
+
+Ez∼πθ , z ′∼πC
+
+J(z, z ′) − 12 . (7) Empirically, we observe that traces from the active policy 
+
+πθ typically exhibit higher quality than the contaminated baseline (i.e., Ez∼πθ , z ′∼πC [J(z, z ′)] ≥ 1/2; as detailed in Section 4.3). Therefore, maximizing the absolute value in Eq. (7) is equivalent to maximizing the expectation alone, and we estimate it via an unbiased Monte Carlo reward: 
+
+rHIPPO (z; x) := 1
+
+K
+
+> K
+
+X
+
+> k=1
+
+J z, z ′
+
+> (k)
+
+ K→∞ 
+
+−−−−→ TJ (z), (8) where z′ 
+
+> (k)
+
+∼ πC (· | x) are K independent trajectories sam-pled from the contaminated policy. This formulation com-pletely reduces the pathological KL target into a bounded, variance-reduced stable pairwise signal. See more lemma prove and learning objective analysis in Appendix A. 
+
+> 2
+
+In practice, we eliminiate the LLM judge’s position bias by averaging both orderings; see Appendix A for details. 2.4 Practical Instantiation of HIPPO 
+
+We detail the practical instantiation of the theoretical learning objective during RL training. We first instantiate the contaminated shortcut-reliant pol-icy πC . Inspired by observations that prompt injections can reliably induce specific model behaviors (e.g., unfaithful rea-soning or stylistic biases) (Marioriyad et al. 2025; Young 2026), we model the shortcut-reliant policy via an answer-level hint injection, denoted as πH (· | x, h ). Specifically, we inject the ground-truth answer h into the prompt prior to the reasoning generation. This intervention has been empirically shown to effectively elicit the shortcut-reliant behaviors (Mar-ioriyad et al. 2025; Young 2026). Next, we instantiate the pairwise judge J(za, z b) by com-paring standard rollouts against these hint-injected samples. As illustrated in Figure 2, for each rollout z ∼ πθ (· | x)
+
+that yields a correct final answer, we sample K hinted re-sponses z(k) 
+
+> h
+
+∼ πH (· | x, h ) under the same model and conduct pairwise comparisons. Recalling that the supremum in Lemma 2.3 is attained when the reward function evaluates to a {0, 1} binary score, we strictly binarize the continuous preference signal: win rate exceeding a predefined threshold (0.5) are mapped to 1, while all others are strictly assigned 0.Finally, this pairwise reward is integrated with standard answer accuracy and format reward to form a comprehen-sive signal, penalizing flawed reasoning while suppressing shortcut-driven correct traces, ensuring that the policy is re-warded only for genuine, step-by-step deduction. Further details and discussions about reward configuration are pro-vided in Appendix C and D. 
+
+## 3 Experimental Setup 
+
+Implementation Details We evaluate HIPPO on two rep-resentative domains: mathematical and medical reasoning. Training data is curated from DeepScaleR (Luo et al. 2025) for math and MedQA (Jin et al. 2019) for medicine. We filter out trivial instances that the base model can solve in over 50% of its trials, to ensure that the model has not yet mastered the genuine reasoning paths. This filtering yields about 5,000 instances for each domain. To deliberately simulate Pre-RL data overlap, ensuring the model acquires prior knowledge of the answer without the underlying deduction, we then conduct SFT using solely the final answers as targets, sup-plemented by a 20% subset of data with rationales to prevent reasoning collapse. Finally we perform domain-specific RL training with the same data, to assess the performance under Pre-RL data overlap. We adopt Qwen2.5-7B-Instruct and 
+
+Qwen3-4B as our backbone. 
+
+Evaluation Datasets We evaluate on both in-domain and out-of-domain (OOD) tasks to disentangle shortcut-driven gains from genuine reasoning improvements. For math, we evaluate on DeepScaleR (Luo et al. 2025), MATH-500 (Light-man et al. 2023), MMLU-Pro math subset (Wang et al. 2024), and CARP-EN (Zhang et al. 2023). For medicine, we utilize MedQA (Jin et al. 2019), MedMCQA (Pal, Umapathi, and Sankarasubbu 2022), the MMLU-Pro Health and Biology subsets, and the GPQA Genetics and Molecular Biology sub-sets (Rein et al. 2024). OOD generalization is measured on TheoremQA (Chen et al. 2023) together with the remaining MMLU-Pro subsets. To mitigate randomness, we sample 4 responses per question and report the average accuracy. 
+
+Baselines To systematically disentangle the sources of performance gains and validate our theoretical reduction, we compare HIPPO against two categories of baselines: (i) Standard Training References (SFT-only , SFT with outcome-based RL ). These models bound the baseline con-tribution of the RL phase itself and quantify the gap be-tween contamination-driven memorization and our shortcut-resistant training. (ii) Reward-Shaping Alternatives , includ-ing: RL with Pointwise RM employs a standard absolute scalar reward model (standard PRM) to evaluate individual trajec-tory quality independently; Pref-GRPO (Wang et al. 2026c) incorporates a pairwise preference framework, comparing and optimizing directly between all the rollout sequences; 
+
+Privileged Pairwise Self-Play (SP3F) (Sutawika et al. 2026) further augments the pairwise judge model with privileged information (i.e., gold rationales). These baselines quantify the specific superiority of pairwise RM and our hint-injection mechanism. 
+
+## 4 Results and Analysis 
+
+4.1 Main Results 
+
+We evaluate HIPPO’s effectiveness in Table 1 and Table 2 against all baselines across benchmarks. 
+
+Superior and Generalizable Performance. HIPPO achieves consistent improvements over the base model and demon-strates superior performance against standard RL and all strong reward-shaping baselines. Moreover, the reasoning capabilities learned by HIPPO are highly generalizable to broader, general-purpose tasks. Despite training on mathe-matical questions, our approach shows substantial gains on out-of-distribution general reasoning benchmarks. 
+
+Enhanced Reasoning Quality. Beyond accuracy, our ap-proach elevates the response quality. As shown in Figure 3, while standard RL degrades reasoning quality under Pre-RL data overlap, HIPPO consistently produces more rigorous and coherent rationales across various backbone LLMs. To fully unpack the mechanisms driving these gains, we structure our subsequent analyses by first validating our hint-injection paradigm as a reliable proxy for Pre-RL data overlap through fine-grained quality analysis, then demonstrating its substantial benefits on optimization stability and scaling, and finally mechanistically interpreting the reasoning degradation induced by Pre-RL data overlap. 
+
+4.2 Reasoning Degradation Analysis 
+
+Under Pre-RL data overlap, standard RL degrades ra-tionale quality. We first investigate the direct impact of Pre-RL data overlap on reasoning capabilities. We sample cor-rect responses using the MedQA training data and conduct pairwise comparisons against responses from the SFT model to observe the performance shifts introduced by subsequent RL training. As illustrated in Figure 3, applying standard RL notably yields lower rationale quality than the SFT baseline on these overlapping data. This degradation indicates that Method Mathematical Reasoning General Reasoning Avg. DeepScaleR MATH-500 CARP-EN TheoremQA MMLU-Pro 
+
+Standard Training 
+
+Qwen2.5 7B 10.1 12.1 41.9 28.3 33.0 25.1 + SFT 38.8 67.2 55.6 39.6 53.0 50.8 + RL 45.2 68.2 58.7 42.4 55.4 54.0 
+
+Reward-Shaping 
+
+PRM RL 45.5 66.2 56.1 40.1 56.0 52.8 PREF -GRPO 42.2 68.3 58.9 40.7 56.8 53.4 SP3F 46.0 68.0 54.1 38.2 56.1 52.5 
+
+Ours HIPPO 46.2 69.3 59.3 44.1 58.8 55.5 
+
+Table 1: Performance of the model trained on DeepScaleR across mathematical tasks and out-of-domain general reasoning benchmarks. Best scores are bold , with the second underlined. Results for Qwen3 4B are detailed in Table 8 in Appendix D. 
+
+Method MedQA MedMCQA MMLU-Pro GPQA Avg. 
+
+Health Biology Genetics MolBio Qwen2.5 7B 49.4 53.8 51.3 65.0 21.9 47.9 48.2 + SFT 49.5 48.4 48.2 67.0 26.6 44.4 47.4 + RL 61.2 55.1 57.5 74.5 25.0 44.8 53.0 PRM RL 57.7 52.0 41.1 65.7 21.8 48.7 47.8 PREF -GRPO 56.6 51.8 52.9 71.7 25.0 41.1 49.9 SP3F 61.1 56.0 55.4 68.0 28.0 45.6 52.4 HIPPO 61.7 57.0 56.8 75.0 32.8 48.8 55.4 
+
+Table 2: Performance of the model trained on MedQA. Results for Qwen3 4B are detailed in Table 9 in Appendix D. standard RL fails to enhance genuine reasoning (see more detailed mechanistic discussion on the RL-induced shortcut retrieval behavior in Section 5). In contrast, HIPPO outper-forms all baselines, demonstrating its capability to extract genuine reasoning rather than cultivating memorization. 
+
+The reliability of using hint-injection sampling as a behav-ior proxy for Pre-RL data overlap. In Figure 3, applying hint-injection substantially degrades the quality of generated responses, consistent with prior findings (Chen et al. 2025; Marioriyad et al. 2025; Wang et al. 2026b). Beyond exhibit-ing a more severe drop in overall quality than that in standard RL under Pre-RL data overlap, we further delve into fine-grained quality characteristics to establish hint-injection as a more observable and comprehensive proxy. As shown in Table 3, using the correlation between rea-soning error dimensions as an analytical lens, we find this correlation between most dimensions—measured by co-occurrence agreement—is significantly higher in our hint-injected paradigm than in standard RL failures. This indicates that errors are more coupled under hint-injection than natural Pre-RL data overlap : rationales tend to be either faultless or simultaneously riddled with multiple flaws. Therefore, hint-injection amplifies the flaw density of natural Pre-RL data overlap and significantly improves observability—detecting solely a fraction of these errors suffices for the judge to iden-tify poor rationales, thus lowering evaluation difficulty and enhancing discriminability, as empirically demonstrated next. 20 30 40 50 60 70 80                 
+
+> Current Method Win Rate (%)
+> 20
+> 30
+> 40
+> 50
+> 60
+> 70
+> 80
+> Baseline (SFT) Win Rate (%)
+> Current Quality Better ( ")
+> Baseline (SFT) Quality Better ( #)
+> ¢= ¡15 :0
+> ¢= ¡5:0
+> ¢= ¡47 :0
+> ¢= + 8 :1
+> ¢= ¡5:3
+> ¢= ¡11 :8
+> ¢= ¡24 :3
+> ¢= + 13 :8
+> Vanilla Qwen
+> Qwen-Hint
+> Qwen2.5-7B
+> + Standard RL
+> + HIPPO
+> Qwen3-4B
+
+Figure 3: Response quality of different methods on MedQA overlapped data, measured via pairwise comparisons against the SFT baseline using a strong judge (Gemini-3.1-Pro). 
+
+4.3 Why Hint-Injected Pairwise Rewards Work 
+
+Efficacy of Small Open-Source LLMs in Pairwise Eval-uation. To validate the reliability of small pairwise LLM judges, we sample correct reasoning traces together with their hinted counterparts on the validation set, and use a strong LLM (Gemini-3.1-pro) to establish ground-truth quality an-notations. we then evaluate judge of varying size and architec-ture. As shown in Table 4, pointwise evaluation heavily relies on the capability of the judge model. Without sufficient ca-pacity, small models degrade to near-random guessing, which explicitly explains the poor performance of our pointwise RM baseline. In contrast, pairwise judgment demonstrates superior stability across all evaluated models, consistently Metric Accuracy Knowledge Logic Assertion Accuracy - 0.67 0.74 0.76 
+
+Knowledge 0.55 - 0.70 0.73 
+
+Logic 0.70 0.66 - 0.84 
+
+Assertion 0.75 0.66 0.84 -
+
+Table 3: Average quality scores across dimensions evaluated by Gemini-3.1-Pro. The upper-right and lower-left triangles denote Hint-Injection and Standard RL , respectively (detailed criteria in Appendix C). 
+
+Judge Model Pointwise Acc AUROC Precision@1 
+
+Llama3.1 8b 52.8 68.0 72.7 Qwen2.5 7b 53.9 73.2 86.9 
+
+Qwen3 4b 78.2 78.4 84.7 
+
+Table 4: Performance comparison of different Judge models. Evaluation metrics include judge accuracy in pointwise as-sessment, alongside AUROC and Precision@1 in pairwise evaluation (we set N = 8 ). achieving high AUC-ROC and Precision@1 scores, which shows its effectiveness in both global preference ranking and precise top-quality trace identification. These properties are valuable for group-based RL optimization, as it helps provide a clear and stable gradient signal for policy alignment. 
+
+Hint-Injection Enhances Discriminability and Transitiv-ity. By serving as a contaminated reference anchor, the hinted reference simplifies the evaluation landscape, yielding more stable and consistent optimization. First, it sharpens the contrast between high- and low-quality traces. We examine this by comparing the pairwise scores derived from our hint-injected approach against a standard pairwise baseline (i.e., comparing pairs of vanilla rollout generations directly). As shown in Figure 4, the av-erage distance between ground-truth high- and low-quality traces increases substantially under hint-injection, yielding a clearer separable boundary and a more informative reward signal. Second, hint-injected pairwise judging significantly miti-gates the issue of intransitive preferences . As noted by pre-vious works (Swamy et al. 2024; Xu et al. 2025), pointwise reward models are notoriously prone to it. While switching to pairwise comparison alleviates this issue (Sutawika et al. 2026; Wang et al. 2026c), our hint-injected approach fur-ther maximizes this mitigation. We quantify this issue via the Percentage of Non-Transitive (PNT) metric (Xu et al. 2025)—the fraction of trace triplets that violate transitiv-ity. Figure 5 demonstrates that our hint-injected approach consistently achieves lower PNT than direct pairwise compar-isons, thus substantially simplifying the preference learning problem. Moreover, our method exhibits a distinctly positive scaling trend—as model capacity increases, our approach continuously drives the PNT lower without bottlenecking, demonstrating significantly superior effectiveness and scala-bility. See Appendix B.1 for calculation details. Hint-Injected 
+
+> High Quality
+> Direct
+> High Quality
+> Hint-Injected
+> Low Quality
+> Direct
+> Low Quality
+> −1.0
+> −0.5
+> 0.0
+> 0.5
+> 1.0
+> Mean Pairwise Score (Qwen3-4B)
+> μ=0.356
+> σ=0.383
+> μ=0.094
+> σ=0.193
+> μ=-0.258
+> σ=0.277
+> μ=-0.188
+> σ=0.187
+
+Figure 4: Score comparison between the direct and hint-injected pairwise judges. Hint-injection effectively enlarges the decision boundary between high- and low-quality traces. 5 10 15      
+
+> Rollout Number ( N)
+> 10
+> 20
+> 30
+> 40
+> PNT (  ← )
+> LLaMA-3.1-8B
+> 510 15
+> Rollout Number ( N)
+> 10
+> 20
+> 30
+> 40
+> PNT (  ← )
+> Qwen2.5-7B
+> 510 15
+> Rollout Number ( N)
+> 10
+> 20
+> 30
+> 40
+> PNT (  ← )
+> Qwen3-4B
+> Direct Judge Hint-Injected Judge
+
+Figure 5: Comparison of PNT statistics between the direct pairwise judge and our hint-injected pairwise judge. Our pro-posed method consistently exhibits better evaluation stability and overall performance across all tested models. 
+
+## 5 Exploring the Degradation Mechanism 
+
+While the preceding analyses establish that Pre-RL data over-lap degrades reasoning reliability and generalizability, its driving mechanism remains underexplored. We thus propose a hypothesis: familiar questions trigger memorized answer retrieval rather than genuine deduction. Consequently, RL optimizes for memory exploitation over reasoning enhance-ment. In this section, we validate this hypothesis by demon-strating that Pre-RL data overlap indeed triggers premature answer retrieval, reducing the subsequent reasoning to mere post-hoc rationalizations. 
+
+Experimental Setup. We design two pilot experiments. First, we examine the internal representations of the model under Pre-RL data overlap using the Logit Lens (Nostal-gebraist 2020; Belrose et al. 2025). By directly projecting intermediate hidden states from all layers into the vocabu-lary space across the entire generation sequence, we verify whether the final answer token becomes identifiable at shal-low layers or during the early beginning of token generation. Either scenario implies that the target answer is accessible prior to substantial reasoning, signaling a shortcut. Second, we employ the Independent Causal Mechanisms (ICM) principle (Janzing et al. 2012; Schoelkopf et al. 2012; Jin et al. 2021) to analyze the generative information flow under overlap. ICM postulates that the true causal direc-0% 10% 20% 30% 40% 50% 60% 70% 80% 90%            
+
+> Generation Progress (%)
+> 0
+> 1
+> 2
+> 3
+> 4
+> 5
+> 6
+> 7
+> 21
+> 22
+> 23
+> 24
+> 25
+> 26
+> 27
+> 28
+> Layer Index
+> Qwen2.5 7b (SFT)
+> 0% 10% 20% 30% 40% 50% 60% 70% 80% 90%
+> Generation Progress (%)
+> Qwen2.5 7b (SFT+RL)
+> −3.00
+> −2.00
+> −1.00
+> −0.50
+> −0.25
+> 0.00
+> log 10  P(answer)
+
+Figure 6: Logit Lens visualizations of answer probability across hidden layers and generation steps. 
+
+Model MATH-500 DeepScaleR 
+
+A+R |A R+A |R ∆ A+R |A R+A |R ∆
+
+Qwen2.5 7B 63.22 49.50 13.72 71.42 56.58 14.84 + SFT 96.80 89.88 6.92 104.86 98.78 6.08 + RL 90.45 86.17 4.28 90.85 89.92 0.93 
+
+Table 5: Estimated complexity on overlapping data (Deep-ScaleR training set) compared to a uncontaminated dataset (MATH-500). tion C → E minimizes Kolmogorov complexity, satisfying 
+
+K(PC )+ K(PE|C ) ≤ K(PE )+ K(PC|E ), which means the non-causal direction contains redundant information. Since true Kolmogorov complexity is uncomputable, we follow pre-vious works (Burden, Cebrian, and Hernandez-Orallo 2024) and approximate K(·) using negative token log-likelihoods. We evaluate the complexity difference between the two gener-ative directions— [K(y) + K(z | y)] − [K(z) + K(y | z)] —across the base, SFT, and SFT+RL models, to reveal the causal direction shifts the reasoning z and the final answer y.Detailed theoretical justifications and experimental settings are provided in Appendix B.3. 
+
+Results The Logit Lens visualizations in Figure 6 reveal a behavioral divergence after the model undergoes RL. Specifi-cally, we observe a dramatic increase in the target answer’s probability within exceptionally shallow hidden layers . This phenomenon indicates that the model forms an internal rep-resentation of the final answer well before executing any meaningful latent computation. Moreover, this shallow-layer prominence persists throughout the entire generation process, providing clear evidence that the model anchors its output to a pre-retrieved answer rather than deriving it sequentially. This observation challenges the authenticity and functional necessity of the generated reasoning chain. The result of causal information flow, shown in Table 5, further confirms the model’s already known the answer be-fore reasoning. On the non-overlapping MATH-500 dataset, the causal direction remains robustly aligned with z → y,as evidenced by the large positive ∆ values across all train-ing stages, indicating that reasoning naturally precedes the conclusion. However, on the overlapping DeepScaleR data, this complexity gap collapses precipitously after RL training, dropping to almost zero ( 0.93 ). This structural collapse re-flects a shift from a strictly forward reasoning process toward a mixed causal dynamic: while the model still genuinely resolves half of the instances, the other half now clearly exhibits a reversed causal flow : the model anchors on the answer-retrieval shortcut, relegating the subsequent chain-of-thought to a fabricated, post-hoc rationalization. Together, these empirical findings validate our hypothesis, demonstrat-ing that Pre-RL data overlap inherently drives RL to replace sequential logical deduction with shortcut-driven memory retrieval. 
+
+## 6 Related Works 
+
+RL for LLM Reasoning While RL has driven remark-able leaps in LLM reasoning, it carries inherent risks. With-out explicit reasoning monitoring, RL can stagnate perfor-mance or even induce detrimental behaviors, such as logical inconsistency (Lin et al. 2025), unfaithfulness (Chen et al. 2025), or collapsing into mere memory retrieval due to re-ward breakdown (Wu et al. 2025). To monitor the reasoning process, various Process Reward Models have been proposed. Although large-scale commercial models deliver state-of-the-art evaluation, they incur prohibitive costs (Chen et al. 2024; Zhang et al. 2026). Alternatively, optimizing the evalu-ation paradigm can enable much smaller LLMs to serve as PRMs. Pairwise reward modeling, a prominent advancement in this vein, effectively addresses the instability, intransitivity, and miscalibration that plague standard PRMs (Swamy et al. 2024). Furthermore, it better aligns with human annotation behavior by evaluating relative preferences between ambigu-ous trajectories (Wang et al. 2026c; Zhang et al. 2026). Building upon this pairwise framework, our method in-troduces hint-injected generation as an explicit anchor. This design further stabilizes the optimization process and yields clearer, more discriminable reward signals, particularly under the challenge of Pre-RL data overlap. 
+
+Data Overlap Across Training Stages Previous stud-ies mostly adopt a training–evaluation lens, focusing on whether training corpora leak into test benchmarks (Cheng, Chang, and Wu 2025). Within the context of pre-training and SFT, this perspective has driven the development of output-distribution detectors (Dong et al. 2024), paraphrase-evasive probes (Lan et al. 2026), and competition-math au-dits (Balunovi ´c et al. 2026), alongside stress tests reveal-ing that such detection mechanisms often falter on modern reasoning models (Wang et al. 2026a). Other works extend this paradigm to RL training, investigating whether expo-sure to specific RL-stage data spuriously inflates benchmark scores (Tao et al. 2026; Wu et al. 2026; Kocyigit and Yildirim 2026). While existing analyses remain rigidly anchored to evaluation leakage, we identify a critical yet underexplored regime where pre-RL corpora act as the contamination source, with the RL stage itself serving as the vulnerable sink. 
+
+## 7 Conclusion 
+
+We identify the Pre-RL data overlap problem which severely undermines RL efficacy by driving models to exploit memo-rization shortcuts. We introduce HIPPO, a novel framework that theoretically reformulates an intractable divergence ob-jective into a stable, pairwise-rewarded surrogate. By utiliz-ing hint-injected aggregation to deliberately trigger shortcut behaviors, the resulting traces naturally serve as explicit an-chors for pairwise comparison. HIPPO yields a highly dis-criminable, stable, and learnable preference signal, ultimately achieving superior reasoning capabilities and strong general-izability. 
+
+## References 
+
+Albalak, A.; Phung, D.; Lile, N.; Rafailov, R.; Gandhi, K.; Castricato, L.; Singh, A.; Blagden, C.; Xiang, V.; Mahan, D.; and Haber, N. 2025. Big-Math: A Large-Scale, High-Quality Math Dataset for Reinforcement Learning in Language Mod-els. arXiv:2502.17387. Balunovi ´c, M.; Dekoninck, J.; Petrov, I.; Jovanovi ´c, N.; and Vechev, M. 2026. MathArena: Evaluating LLMs on Uncon-taminated Math Competitions. arXiv:2505.23281. Belrose, N.; Ostrovsky, I.; McKinney, L.; Furman, Z.; Smith, L.; Halawi, D.; Biderman, S.; and Steinhardt, J. 2025. Elic-iting Latent Predictions from Transformers with the Tuned Lens. arXiv:2303.08112. Burden, J.; Cebrian, M.; and Hernandez-Orallo, J. 2024. Con-versational Complexity for Assessing Risk in Large Lan-guage Models. arXiv:2409.01247. Chen, J.; Cai, Z.; Ji, K.; Wang, X.; Liu, W.; Wang, R.; Hou, J.; and Wang, B. 2024. HuatuoGPT-o1, Towards Medical Complex Reasoning with LLMs. arXiv:2412.18925. Chen, W.; Yin, M.; Ku, M.; Lu, P.; Wan, Y.; Ma, X.; Xu, J.; Wang, X.; and Xia, T. 2023. TheoremQA: A Theorem-driven Question Answering dataset. arXiv:2305.12524. Chen, Y.; Benton, J.; Radhakrishnan, A.; Uesato, J.; Denison, C.; Schulman, J.; Somani, A.; Hase, P.; Wagner, M.; Roger, F.; Mikulik, V.; Bowman, S. R.; Leike, J.; Kaplan, J.; and Perez, E. 2025. Reasoning Models Don’t Always Say What They Think. arXiv:2505.05410. Cheng, Y.; Chang, Y.; and Wu, Y. 2025. A Sur-vey on Data Contamination for Large Language Models. arXiv:2502.14425. Chua, J.; and Evans, O. 2025. Are DeepSeek R1 And Other Reasoning Models More Faithful? arXiv:2501.08156. Cobbe, K.; Kosaraju, V.; Bavarian, M.; Chen, M.; Jun, H.; Kaiser, L.; Plappert, M.; Tworek, J.; Hilton, J.; Nakano, R.; Hesse, C.; and Schulman, J. 2021. Training Verifiers to Solve Math Word Problems. arXiv preprint arXiv:2110.14168 .Dong, Y.; Jiang, X.; Liu, H.; Jin, Z.; Gu, B.; Yang, M.; and Li, G. 2024. Generalization or Memorization: Data Con-tamination and Trustworthy Evaluation for Large Language Models. In Ku, L.-W.; Martins, A.; and Srikumar, V., eds., 
+
+Findings of the Association for Computational Linguistics: ACL 2024 , 12039–12050. Bangkok, Thailand: Association for Computational Linguistics. Dong, Y.; Jiang, X.; Tao, Y.; Liu, H.; Zhang, K.; Mou, L.; Cao, R.; Ma, Y.; Chen, J.; Li, B.; Jin, Z.; Huang, F.; Li, Y.; and Li, G. 2026. RL-PLUS: Countering Capability Boundary Collapse of LLMs in Reinforcement Learning with Hybrid-policy Optimization. arXiv:2508.00222. Gao, L.; Schulman, J.; and Hilton, J. 2023. Scaling Laws for Reward Model Overoptimization. In Proceedings of the 40th International Conference on Machine Learning (ICML) .Guo, D.; Yang, D.; Zhang, H.; Song, J.; Zhang, R.; Xu, R.; Zhu, Q.; Ma, S.; Wang, P.; Bi, X.; et al. 2025. Deepseek-r1: Incentivizing reasoning capability in llms via reinforcement learning. arXiv preprint arXiv:2501.12948 .He, J.; Liu, J.; Liu, C. Y.; Yan, R.; Wang, C.; Cheng, P.; Zhang, X.; Zhang, F.; Xu, J.; Shen, W.; Li, S.; Zeng, L.; Wei, T.; Cheng, C.; An, B.; Liu, Y.; and Zhou, Y. 2025. Skywork Open Reasoner Series. Notion Blog. Hendrycks, D.; Burns, C.; Kadavath, S.; Arora, A.; Basart, S.; Tang, E.; Song, D.; and Steinhardt, J. 2021. Measur-ing Mathematical Problem Solving With the MATH Dataset. 
+
+NeurIPS .Janzing, D.; Mooij, J.; Zhang, K.; Lemeire, J.; Zscheis-chler, J.; Daniu ˇsis, P.; Steudel, B.; and Sch ¨olkopf, B. 2012. Information-geometric approach to inferring causal direc-tions. Artif. Intell. , 182–183: 1–31. Jin, Q.; Dhingra, B.; Liu, Z.; Cohen, W. W.; and Lu, X. 2019. PubMedQA: A Dataset for Biomedical Research Question Answering. arXiv:1909.06146. Jin, Z.; von K ¨ugelgen, J.; Ni, J.; Vaidhya, T.; Kaushal, A.; Sachan, M.; and Sch ¨olkopf, B. 2021. Causal Direction of Data Collection Matters: Implications of Causal and An-ticausal Learning for NLP. In Moens, M.-F.; Huang, X.; Specia, L.; and Yih, S. W.-t., eds., Proceedings of the 2021 Conference on Empirical Methods in Natural Language Pro-cessing , 9499–9513. Online and Punta Cana, Dominican Republic: Association for Computational Linguistics. Kocyigit, M. Y.; and Yildirim, C. 2026. The Impact of Post-training on Data Contamination. arXiv:2601.06103. Kumar, A.; Zhuang, V.; Agarwal, R.; Su, Y.; Co-Reyes, J. D.; Singh, A.; Baumli, K.; Iqbal, S.; Bishop, C.; Roelofs, R.; Zhang, L. M.; McKinney, K.; Shrivastava, D.; Paduraru, C.; Tucker, G.; Precup, D.; Behbahani, F.; and Faust, A. 2024. Training Language Models to Self-Correct via Reinforcement Learning. arXiv:2409.12917. Kwon, W.; Li, Z.; Zhuang, S.; Sheng, Y.; Zheng, L.; Yu, C. H.; Gonzalez, J. E.; Zhang, H.; and Stoica, I. 2023. Efficient Memory Management for Large Language Model Serving with PagedAttention. In Proceedings of the ACM SIGOPS 29th Symposium on Operating Systems Principles .Lan, Y.; Cao, Y.; Wang, H.; Lin, L.; and Chen, J. 2026. The Illusion of Reasoning: Exposing Evasive Data Contamination in LLMs via Zero-CoT Truncation. arXiv:2605.21856. LI, J.; Beeching, E.; Tunstall, L.; Lipkin, B.; Soletskyi, R.; Huang, S. C.; Rasul, K.; Yu, L.; Jiang, A.; Shen, Z.; Qin, Z.; Dong, B.; Zhou, L.; Fleureau, Y.; Lample, G.; and Polu, S. 2024. NuminaMath. Lightman, H.; Kosaraju, V.; Burda, Y.; Edwards, H.; Baker, B.; Lee, T.; Leike, J.; Schulman, J.; Sutskever, I.; and Cobbe, K. 2023. Let’s Verify Step by Step. arXiv preprint arXiv:2305.20050 .Lin, J.; Jiang, C.; Wu, Z.; Sun, J.; and Feng, Y. 2025. CLAR-ity: Reasoning Consistency Alone Can Teach Reinforced Experts. arXiv:2510.09278. Liu, Z.; Chen, C.; Li, W.; Qi, P.; Pang, T.; Du, C.; Lee, W. S.; and Lin, M. 2025. Understanding R1-Zero-Like Training: A Critical Perspective. arXiv:2503.20783. Luo, M.; Tan, S.; Wong, J.; Shi, X.; Tang, W. Y.; Roongta, M.; Cai, C.; Luo, J.; Zhang, T.; Li, L. E.; Popa, R. A.; and Stoica, I. 2025. DeepScaleR: Surpassing O1-Preview with a 1.5B Model by Scaling RL. Notion Blog. Mahdavi, S.; Li, M.; Liu, K.; Thrampoulidis, C.; Sigal, L.; and Liao, R. 2025. Leveraging Online Olympiad-Level Math Problems for LLMs Training and Contamination-Resistant Evaluation. arXiv:2501.14275. Marioriyad, A.; Adim, S.; Alighardashi, N.; Banghshah, M. S.; and Rohban, M. H. 2025. Unspoken Hints: Ac-curacy Without Acknowledgement in LLM Reasoning. arXiv:2509.26041. Nguyen, X.; Wainwright, M. J.; and Jordan, M. I. 2010. Es-timating divergence functionals and the likelihood ratio by convex risk minimization. IEEE Transactions on Information Theory , 56(11): 5847–5861. Nostalgebraist. 2020. interpreting GPT: the logit lens. Less-Wrong .Pal, A.; Umapathi, L. K.; and Sankarasubbu, M. 2022. MedM-CQA: A Large-scale Multi-Subject Multi-Choice Dataset for Medical domain Question Answering. In Flores, G.; Chen, G. H.; Pollard, T.; Ho, J. C.; and Naumann, T., eds., Proceed-ings of the Conference on Health, Inference, and Learning ,volume 174 of Proceedings of Machine Learning Research ,248–260. PMLR. Rein, D.; Hou, B. L.; Stickland, A. C.; Petty, J.; Pang, R. Y.; Dirani, J.; Michael, J.; and Bowman, S. R. 2024. GPQA: A Graduate-Level Google-Proof Q&A Benchmark. In First Conference on Language Modeling .Schoelkopf, B.; Janzing, D.; Peters, J.; Sgouritsa, E.; Zhang, K.; and Mooij, J. 2012. On Causal and Anticausal Learning. arXiv:1206.6471. Schulman, J.; Moritz, P.; Levine, S.; Jordan, M.; and Abbeel, P. 2018. High-Dimensional Continuous Control Using Gen-eralized Advantage Estimation. arXiv:1506.02438. Schulman, J.; Wolski, F.; Dhariwal, P.; Radford, A.; and Klimov, O. 2017. Proximal Policy Optimization Algorithms. 
+
+ArXiv , abs/1707.06347. Shao, Z.; Wang, P.; Zhu, Q.; Xu, R.; Song, J.; Bi, X.; Zhang, H.; Zhang, M.; Li, Y. K.; Wu, Y.; and Guo, D. 2024. DeepSeekMath: Pushing the Limits of Mathematical Reason-ing in Open Language Models. arXiv:2402.03300. Sutawika, L.; Swamy, G.; Wu, Z. S.; and Neubig, G. 2026. Gained in Translation: Privileged Pairwise Judges Enhance Multilingual Reasoning. arXiv:2601.18722. Swamy, G.; Dann, C.; Kidambi, R.; Wu, Z. S.; and Agarwal, A. 2024. A Minimaximalist Approach to Reinforcement Learning from Human Feedback. arXiv:2401.04056. Tao, Y.; Wang, T.; Dong, Y.; Liu, H.; Zhang, K.; Hu, X.; and Li, G. 2026. Detecting Data Contamination from Reinforce-ment Learning Post-training for Large Language Models. arXiv:2510.09259. Tsybakov, A. B. 2009. Introduction to Nonparametric Esti-mation . Springer Series in Statistics. New York: Springer. Wang, H.; Li, H.; Ko, B.; and Zhang, H. 2026a. On The Fragility of Benchmark Contamination Detection in Reason-ing Models. arXiv:2510.02386. Wang, X.; Han, J.; Jiang, Z.; Li, T.; Liang, J.; Jiang, S.; Dai, Z.; Ma, S.; Yu, F.; and Xiao, Y. 2026b. Don’t Tell the Answer, Truly Guide the Reasoning During RL Rollouts. arXiv:2510.09388. Wang, Y.; Li, Z.; Zang, Y.; Zhou, Y.; Bu, J.; Wang, C.; Lu, Q.; Jin, C.; and Wang, J. 2026c. Pref-GRPO: Pairwise Preference Reward-based GRPO for Stable Text-to-Image Reinforce-ment Learning. arXiv:2508.20751. Wang, Y.; Ma, X.; Zhang, G.; Ni, Y.; Chandra, A.; Guo, S.; Ren, W.; Arulraj, A.; He, X.; Jiang, Z.; et al. 2024. Mmlu-pro: A more robust and challenging multi-task language under-standing benchmark. arXiv preprint arXiv:2406.01574 .Wu, F.; Tu, A.; Xuan, W.; Qi, H.; Huang, X.; Zeng, Q.; Talaei, S.; Xiao, Y.; Xia, P.; Tang, X.; Zhuang, Y.; Hu, B.; Cao, H.; Shi, W.; Yang, R.; Liu, N.; Yao, H.; Liu, G.; Li, L. E.; Saberi, A.; Yokoya, N.; Leskovec, J.; and Choi, Y. 2026. Position: The Hidden Costs and Measurement Gaps of Reinforcement Learning with Verifiable Rewards. arXiv:2509.21882. Wu, M.; Zhang, Z.; Dong, Q.; Xi, Z.; Zhao, J.; Jin, S.; Fan, X.; Zhou, Y.; Lv, H.; Zhang, M.; Fu, Y.; Liu, Q.; Zhang, S.; and Zhang, Q. 2025. Reasoning or Memorization? Unreliable Re-sults of Reinforcement Learning Due to Data Contamination. arXiv:2507.10532. Xu, Y.; Ruis, L.; Rockt ¨aschel, T.; and Kirk, R. 2025. Investigating Non-Transitivity in LLM-as-a-Judge. arXiv:2502.14074. Yan, L.; Li, R.; Chen, G.; Li, Q.; Geng, J.; Li, W.; Wang, V.; and Lee, C. 2026. Spurious Rewards Paradox: Mechanis-tically Understanding How RLVR Activates Memorization Shortcuts in LLMs. arXiv:2601.11061. Young, R. J. 2026. Lie to Me: How Faithful Is Chain-of-Thought Reasoning in Reasoning Models? arXiv:2603.22582. Yu, Q.; Zhang, Z.; Zhu, R.; Yuan, Y.; Zuo, X.; Yue, Y.; Dai, W.; Fan, T.; Liu, G.; Liu, L.; Liu, X.; Lin, H.; Lin, Z.; Ma, B.; Sheng, G.; Tong, Y.; Zhang, C.; Zhang, M.; Zhang, W.; Zhu, H.; Zhu, J.; Chen, J.; Chen, J.; Wang, C.; Yu, H.; Song, Y.; Wei, X.; Zhou, H.; Liu, J.; Ma, W.-Y.; Zhang, Y.-Q.; Yan, L.; Qiao, M.; Wu, Y.; and Wang, M. 2025. DAPO: An Open-Source LLM Reinforcement Learning System at Scale. arXiv:2503.14476. Yue, Y.; Chen, Z.; Lu, R.; Zhao, A.; Wang, Z.; Yue, Y.; Song, S.; and Huang, G. 2025. Does Reinforcement Learning Re-ally Incentivize Reasoning Capacity in LLMs Beyond the Base Model? arXiv:2504.13837. Zeng, W.; Huang, Y.; Liu, Q.; Liu, W.; He, K.; Ma, Z.; and He, J. 2025. SimpleRL-Zoo: Investigating and Taming Zero Reinforcement Learning for Open Base Models in the Wild. arXiv:2503.18892. Zhang, B.; Zhou, K.; Wei, X.; Zhao, W. X.; Sha, J.; Wang, S.; and Wen, J.-R. 2023. Evaluating and Improving Tool-Augmented Computation-Intensive Math Reasoning. arXiv preprint arXiv:2306.02408 .Zhang, Q.; Chen, B.; Zhang, F.; Ding, R.; Wang, S.; Wang, Q.; Huang, Y.; Zhang, H.; Zhu, R.; Wang, P.; Ren, A.; Li, X.; Xie, P.; Liu, J.; Guo, N.; Zhou, J.; and Zha, Z.-J. 2026. ArenaRL: Scaling RL for Open-Ended Agents via Tournament-based Relative Ranking. arXiv:2601.06487. Zhao, R.; Meterez, A.; Kakade, S.; Pehlevan, C.; Jelassi, S.; and Malach, E. 2025. Echo Chamber: RL Post-training Am-plifies Behaviors Learned in Pretraining. arXiv:2504.07912. A Proofs 
+
+A.1 Proof of Lemma 2.3 (Pinsker’s inequality) 
+
+We prove DKL (p∥q) ≥ 2 D2TV (p, q ) in two steps: (i) reduc-tion to a Bernoulli case via the data-processing inequality, and (ii) direct verification for Bernoulli distributions. 
+
+Step (i): Reduction. Let A⋆ = {z : p(z) ≥ q(z)} and define f (z) := 1{z ∈ A⋆}. The pushforward distributions 
+
+P := f#p and Q := f#q are Bernoulli on {0, 1}: P =Ber( α), Q = Ber( β) with α := p(A⋆), β := q(A⋆).By the data-processing inequality for KL divergence, 
+
+DKL (p∥q) ≥ DKL (P ∥Q). Meanwhile, DTV (P, Q ) = |α −
+
+β| = p(A⋆) − q(A⋆) = DTV (p, q ), where the last equality follows from Lemma 2.3 with the optimal witness T ⋆ = 1A⋆ .Hence it suffices to prove DKL (P ∥Q) ≥ 2 D2TV (P, Q ) for the Bernoulli case. 
+
+Step (ii): Bernoulli case. We need to show that for all 
+
+α, β ∈ (0 , 1) ,
+
+g(α, β ) := α log αβ +(1 −α) log 1 − α
+
+1 − β −2( α−β)2 ≥ 0. (9) 
+
+Fix β and regard g as a function of α. Then: • g(β, β ) = 0 .• ∂g ∂α α=β
+
+= log ββ − log 1 − β
+
+1 − β − 4( β − β) = 0 .• ∂2g∂α 2 = 1
+
+α + 11 − α − 4 = 1
+
+α(1 − α) − 4 ≥ 4 − 4 = 0 ,where the inequality uses α(1 − α) ≤ 1/4.Since g is convex in α with g(β, β ) = 0 and ∂αg|α=β = 0 ,we conclude g(α, β ) ≥ 0 for all α ∈ (0 , 1) . □
+
+A.2 Proof of Lemma 2.3 (Variational representation of TV) 
+
+We show DTV (p, q ) = sup T :Z→ [0 ,1] 
+
+ Ep[T ] − Eq [T ].
+
+Upper bound. For any T : Z → [0 , 1] ,
+
+Ep[T ] − Eq [T ] = X
+
+> z
+
+T (z) p(z) − q(z). (10) Partition the sum over A⋆ := {z : p(z) ≥ q(z)} and A⋆c := 
+
+{z : p(z) < q (z)}:
+
+Ep[T ] − Eq [T ] = X
+
+> z∈A⋆
+
+T (z) p(z) − q(z)| {z } 
+
+> ≥0
+
++ X
+
+> z∈A⋆c
+
+T (z) p(z) − q(z)| {z } 
+
+> <0
+
+.
+
+(11) Applying T (z) ≤ 1 on A⋆ and T (z) ≥ 0 on A⋆c :
+
+Ep[T ] − Eq [T ] ≤ X
+
+> z∈A⋆
+
+ p(z) − q(z)
+
+= p(A⋆) − q(A⋆) ≤ DTV (p, q ),
+
+(12) where the last inequality follows from the definition 
+
+DTV (p, q ) = sup A |p(A) − q(A)|.
+
+Achievability. Setting T = 1A⋆ yields Ep[1A⋆ ] −
+
+Eq [1A⋆ ] = p(A⋆) − q(A⋆). By the Hahn decomposition, 
+
+DTV (p, q ) = p(A⋆) − q(A⋆), so the supremum is attained. 
+
+□
+
+A.3 Proof of Lemma 2.3 (Symmetry pins the baseline) 
+
+Under q ⊗ q, the variables z and z′ are exchangeable, so 
+
+Ez,z ′∼q [J(z, z ′)] = Ez,z ′∼q [J(z′, z )] = Ez,z ′∼q [1 − J(z, z ′)] = 1 − Ez,z ′∼q [J(z, z ′)] ,
+
+(13) whence Ez,z ′∼q [J(z, z ′)] = 1 /2. □
+
+Practical realization. LLM-as-judge implementations of 
+
+J exhibit non-negligible position bias and therefore violate 
+
+J(z, z ′) + J(z′, z ) = 1 in general. We restore symmetry at the implementation level by averaging the two orderings, 
+
+˜J(a, b ) := 12
+
+ J(a, b ) + 1 − J(b, a ), (14) which satisfies ˜J(a, b ) + ˜J(b, a ) = 1 by construction. All downstream identities are stated for the symmetrized com-parator ˜J; for readability we write J in place of ˜J hereafter. 
+
+A.4 More Analysis on Learning Objectives 
+
+We compare the variance of the pairwise reward rHIPPO 
+
+(Eq. (8) ) with that of the per-sample KL reward r∗(z) = log[ πθ (z | x)/π H (z | x, h )] .
+
+KL reward: variance grows with trajectory length. Un-der autoregressive decomposition, r∗(z) = PTt=1 ∆t where 
+
+∆t = log πθ (zt|x,z <t )  
+
+> πH(zt|x,h,z <t )
+
+and T = |z|. When the token-level log-ratios have a common positive variance lower bound 
+
+σ2 > 0 and non-negative correlations—a reasonable assump-tion when πθ and πH diverge consistently across steps—we have Var[ r∗] ≥ T σ 2, scaling at least linearly with trajectory length (Schulman et al. 2018). 
+
+Pairwise reward: variance is uniformly bounded. Since 
+
+J ∈ [0 , 1] , the reward rHIPPO ∈ [0 , 1] as well. By Popovi-ciu’s inequality, any random variable supported on [a, b ] sat-isfies Var[ X] ≤ (b − a)2/4, so 
+
+Var[ rHIPPO ] ≤ 14 , (15) independent of trajectory length T . More precisely, by the law of total variance, 
+
+Var[ rHIPPO ] = Ez
+
+Var {z}[rdiv | z]| {z } 
+
+> ≤1/(4 K)
+
++ Var z [TJ (z)] 
+
+| {z } 
+
+> ≤1/4
+
+. (16) The first term is the Monte Carlo estimation noise, which vanishes as K → ∞ ; the second is the irreducible variance due to the variability of z under TJ , bounded by 1/4 since 
+
+TJ ∈ [0 , 1] .B Evaluation Details 
+
+B.1 Percentage of Non-Transitive cases (PNT) 
+
+We follow the same set of non-transitivity criteria as Xu et al. (2025); the complete enumeration of violation patterns is given in their appendix and we do not reproduce it here. For the direct (unhinted) baseline, we apply this protocol verbatim: every triple of rollouts drawn for the same prompt is compared by the judge model, and the fraction of triples that exhibit any of the violation patterns is reported as PNT. In our hint-injected setting, the protocol is adapted on a single axis: the middle element of each triple is a hinted 
+
+rollout rather than an unhinted one. The two edges involving the hinted reference are still decided by the judge model, but the relative quality between the two outer (unhinted) rollouts is determined by their pairwise scores against the hint set rather than by a separate judge query. All other counting rules follow Xu et al. (2025) unchanged. 
+
+B.2 Gold Quality Score 
+
+Throughout the analyses in Section 4.2, Section 4.3 and Ap-pendix B.1, the gold scalar score r(z) is obtained by prompt-ing a stronger judge model (Gemini-3.1-pro) to assign a [0 , 1] 
+
+score on each of a fixed set of quality dimensions. A trace is labeled good only if it receives a passing score on ev-ery dimension; otherwise it is labeled bad . The full prompt template is documented in our released code. 
+
+B.3 Causal Analysis: Detailed Setup 
+
+This section provides the formal background and the experi-mental protocol omitted from Section 5. 
+
+Independent causal mechanisms. The diagnostic in Sec-tion 5 rests on the principle of independent causal mecha-nisms (ICM) (Janzing et al. 2012; Schoelkopf et al. 2012; Jin et al. 2021), which posits that the causal generative process of a system’s variables decomposes into autonomous modules that carry no shared information. A direct corollary is that, for any pair of variables (C, E ) standing in a true causal relation 
+
+C → E, the Kolmogorov complexity of the joint distribution admits the asymmetric factorization          
+
+> K(PC,E ) = K(PC)+ K(PE|C)≤K(PE)+ K(PC|E),(17)
+
+because the causal factorization is built from two indepen-dent modules ( PC and the mechanism PE|C ), whereas the anti-causal factorization mixes them and typically carries redundant information. The sign of the gap ∆ := K(PE ) + 
+
+K(PC|E ) − K(PC ) + K(PE|C ) therefore identifies the causal direction. 
+
+Token-probability surrogate. Kolmogorov complexity is uncomputable. Following Burden, Cebrian, and Hernandez-Orallo (2024), we approximate it by the negative log-likelihood under the policy: 
+
+K(t | context ) ≈ − 
+
+> |t|
+
+X
+
+> i=1
+
+log pθ
+
+ ti t<i , context . (18)       
+
+> Reward Variant MedQA (val)
+> Soft reward (raw win-rate) 58.3 Hard reward ( αdiv = 0 .125 )62.0 Hard reward ( αdiv = 0 .25 )61.7
+
+Table 6: Hard binarized reward outperforms the soft (win rate) variant, in line with our theoretical analysis. Substituting Eq. (18) into Eq. (17) with C instantiated by the reasoning trace R and E by the answer A, we obtain the empirical estimator          
+
+> b∆( x) = K(A|x)+ K(R|A, x )−K(R|x)+ K(A|R, x ),
+> (19)
+
+which is positive when the data are best explained by R → A
+
+and negative under A → R.
+
+Experimental protocol. For each policy under inspection (Vanilla, SFT-only, SFT-then-RL) and each evaluation set (contaminated, OOD), we sample n rollouts per prompt, re-tain only those whose final answer is correct, and compute 
+
+b∆( x) on each retained instance. The per-instance gaps are then averaged within the eligible subset, so that the reported 
+
+∆ in Table 5 represents the mean causal-direction gap condi-tional on answer correctness. Restricting to correct samples removes the confound that incorrect traces may exhibit artifi-cially low K(A | R) for reasons unrelated to causal structure. 
+
+## C More Implementation Details 
+
+C.1 Training Configuration 
+
+We implement HIPPO on top of the VeRL library (Kwon et al. 2023), running on a single node with 8× NVIDIA A800 GPUs. We use weights 1.0 for the answer-correctness term, 1.0 for the format term, and 0.25 for the hint-injected pairwise term; additional ablations on the pairwise reward configuration are reported in Appendix D.2. At each training step we draw K = 8 hinted rollouts per prompt to estimate 
+
+rHIPPO . The remaining training hyperparameters are listed in Table 7. 
+
+C.2 Prompts 
+
+We document the prompt templates used in our pipeline: the rubric prompt that produces the dimension-wise quality labels for the gold score r(·) (Table 11), the pairwise-judge tem-plate used by both the reward judge J and the PNT analysis (Table 12), and the two rollout templates that materialize the unhinted policy πθ and the hinted reference πH (Table 13). 
+
+C.3 Data Use 
+
+Our use of the datasets is consistent with their intended pur-poses and complies with their respective licenses. 
+
+## D Additional Experimental Results 
+
+D.1 Generalization Across Backbones: Qwen3-4B 
+
+To verify that the gains of HIPPO are not tied to a specific backbone, we replicate the main experiment on Qwen3-4B. Table 8 and Table 9 reports in-domain and out-of-domain Category Parameter Value                           
+
+> General Advantage estimator GRPO Gamma ( γ)1Lambda ( λ)1Batch size 128 Max prompt length 1024 Gradient checkpointing Enabled Actor Learning rate 1×10 −6
+> Mini-batch size 1024 Dynamic batch size Enabled KL penalty role Loss KL loss type Low-variance KL KL loss coefficient ( β)0.001 Entropy coefficient 0.001 Clip ratio 0.2 Gradient clipping 1.0 Sequence parallel size Model-specific Rollout Backend vLLM Tensor model parallel size 1Rollouts per sample 8Nucleus sampling p1.0 GPU memory utilization 0.6 Sampling temperature 1.0 Qwen2.5-7B Max response length 2048
+
+Table 7: Training configuration for HIPPO. We use VeRL version 0.5.                 
+
+> Model DeepScaleR MATH-500 CARP-EN TheoremQA Avg.
+> Qwen3 4B 27.2 49.6 46.2 29.1 38.0 + SFT 39.5 60.2 48.1 31.8 44.9 HIPPO 62.1 74.6 57.4 51.2 61.3
+
+Table 8: Results on Qwen3-4B trained on DeepScalR. HIPPO improves both in-domain and out-of-domain accu-racy, demonstrating backbone-agnostic gains. (TheoremQA) accuracy. HIPPO consistently outperforms both the original instruction-tuned model and the SFT-then-standard-RL baseline, confirming that the contamination-resistant signal transfers across model scales and architec-tures. 
+
+D.2 Hard vs. Soft Pairwise Reward 
+
+The main results use the binarized (hard) variant of rHIPPO ,in which the Monte Carlo win-rate is thresholded at 0.5. We compare this against a continuous (soft) variant that uses the raw win-rate as the reward, and a hard variant with different weight. As shown in Table 6, the hard variant outperforms the soft variant at matched reward scale. This is consistent with the theoretical analysis: Lemma 2.3 attains its supremum precisely at the indicator witness T ⋆ = 1A⋆ , so a {0, 1}-valued reward is the one that tightens the lower bound in Eq. (4) on the underlying divergence.                     
+
+> Model MedQA MedMCQA MMLU-Pro Avg.
+> Health Bio Qwen3 4B 57.2 62.2 38.1 50.9 52.1 + SFT 51.6 49.7 46.8 72.6 55.2 HIPPO 58.1 53.3 56.7 78.8 61.7
+
+Table 9: Results on Qwen3-4B trained on MedQA.      
+
+> RL Dataset / Family Direct Upstream Sources SimpleRL-Zoo GSM8K (train) + MATH (train)
+> Big-Math-RL-Verified MATH + GSM8K + AM-C/AIME + AoPS
+> DeepScaleR AIME (1984–2023) + AMC (≤2023 ) + Omni-MATH
+> NuminaMath Series
+> (OpenR1, Skywork-OR1) AoPS + MATH + GSM8K + AMC/AIME
+
+Table 10: Summary of Pre-RL data overlap lineages in widely adopted RL reasoning datasets. These datasets directly source from benchmarks that have been empirically proven to be exposed to modern base models prior to RL training. 
+
+## E Evidence of Pre-RL Data Overlap in Common RL Reasoning Datasets 
+
+A critical premise of our work is that many widely adopted reasoning datasets utilized in recent RL post-training pipelines inherently suffer from Pre-RL data overlap. Specifi-cally, the upstream benchmarks used to construct these RL datasets have already been ingested by modern LLMs during their pre-training or supervised fine-tuning (SFT) phases. In this section, we systematically trace four reliable lineages of data overlap, demonstrating how state-of-the-art RLVR (Reinforcement Learning with Verifiable Rewards) datasets inherit this contamination. A high-level summary is presented in Table 10. The datasets primarily trace back to four reliable lineages of overlap. Chain 1: SimpleRL-Zoo (Zeng et al. 2025). This dataset directly utilizes the official training splits of GSM8K (Cobbe et al. 2021) and MATH (Hendrycks et al. 2021). The contamination of these upstream benchmarks is extensively documented, with models like Qwen2.5-Math-7B exhibiting up to a 54.6% exact-match regurgitation rate on MATH prompts (Wu et al. 2025). Chain 2: Big-Math-RL-Verified (Albalak et al. 2025). Comprising over 250k instances, it explicitly includes subsets of MATH, GSM8K, and AMC/AIME. Chain 3: DeepScaleR (Luo et al. 2025). This dataset relies heavily on historical AIME and AMC problems. Chain 4: The NuminaMath Ecosystem (LI et al. 2024). Datasets such as OpenR1-Math-220k and Skywork-OR1 (He et al. 2025) rely on NuminaMath as their founda-tional data source, a dataset that is itself pervasively utilized as a pre-RL training corpus (Mahdavi et al. 2025). F Case Study 
+
+To complement the aggregate metrics with a qualitative view, we present a representative prompt from the MedQA valida-tion set. On this instance, the SFT-then-standard-RL baseline produces a reasoning trace riddled with severe hallucinations to rationalize a memorized correct answer, while HIPPO produces a reliable, faithful derivation. 
+
+Analysis. As illustrated in Table 14, the baseline RL model falls into a severe hallucination trap driven by shortcut ex-ploitation. Despite successfully arriving at the correct final op-tion (D), its underlying reasoning is entirely unreliable. The model explicitly misidentifies the pathogen as Pseudomonas aeruginosa , yet forcibly aligns it with the clinical vignette by attributing the distinct pathophysiological mechanism of 
+
+Bordetella pertussis (the inactivation of the G αi protein and subsequent cAMP elevation) to Pseudomonas Exotoxin A. Moreover, it explicitly fabricates the claim that Regan-Lowe medium—the definitive culture for B. pertussis —is used to selectively isolate Pseudomonas .In contrast, HIPPO exhibits faithful, forward-chaining log-ical deduction: accurately diagnosing B. pertussis , explaining its true toxin mechanism, and logically deriving Regan-Lowe medium as the correct clinical decision. 
+
+## G Limitations 
+
+Scope of Hint Injection. Currently, our framework exclu-sively employs the correct answers for hint injection. How-ever, injecting incorrect answers could further elicit diverse reasoning failures, allowing the pairwise reward model to cap-ture finer-grained preference signals. For instance, it could help the judge distinguish between minor calculation slips and severe logical hallucinations among two incorrect traces, thereby providing a denser and more informative signal to boost RL optimization efficiency. We leave the exploration of incorrect-hint injection as a promising avenue for future work. 
+
+Utilization of Rollout Traces. In our current implementa-tion, the standard and hint-injected rollouts are generated independently from scratch. A more efficient and syner-gistic approach would be to enforce prefix-sharing or ap-ply token-level perturbations, ensuring both traces share the identical initial reasoning path before divergence. This alignment would make the paired traces strictly comparable, substantially reducing the capability requirements for the judge model. Furthermore, it could naturally facilitate self-correction mechanisms (Kumar et al. 2024). Optimizing the utilization of rollout trajectories to unlock such self-evolution remains an open challenge. 
+
+Computational Overhead. Although HIPPO utilizes a rel-atively small 4B LLM as the pairwise reward model, running an additional model concurrently during RL inevitably in-troduces computational overhead. A faster alternative could involve replacing the LLM judge with a lightweight discrim-inator. However, training such a discriminator typically re-quires additional labeled preference data, which compromises the data-efficiency of our current framework. We therefore leave the development of a lightweight, label-efficient judge to future research. 1. Accuracy (Score: 1, 0, -1 or -2) 
+
+Focus: Does the final answer match the correct answer? 
+
+Score 1 (Correct): The answer is numerically or semantically equivalent to the correct answer. This includes minor formatting differences, unsimplified fractions, scientific notation, rounding to an acceptable range, or the use of equivalent values (e.g., if the model provides a decimal or fraction and the correct answer is an integer rounded from that decimal, this is acceptable). 
+
+Score 0 (Incorrect): The answer is wrong, missing, or fundamentally different. 
+
+Score -1 (Reference Error): If the correct answer is incomplete (e.g., a question asks for both maximum and minimum values, but only one value is provided), assign a −1 to indicate that the reference data requires review. 
+
+2. Knowledge (Score: 1 or 0) 
+
+Focus: This dimension checks only for errors in memorized facts (e.g., value of constants, standard textbook formulas). It does not penalize misuse of valid knowledge. 
+
+Score 1 (Correct): All external knowledge (such as mathematical formulas, physical constants, legal statutes, medical symptoms, etc.) used is theoretically correct (e.g., stating E = mc 2 or π ≈ 3.14159 ). 
+
+Note 1: If the model uses a correct formula (e.g., V = 43 πr 3 for the volume of a sphere), even if the formula is not relevant to the problem, this still counts as 1 for Knowledge. We care only about whether the factual knowledge is correct, not whether it is applied in the right context. 
+
+Note 2: If the model writes the correct formula but calculates it wrong or substitutes the wrong value into the formula, this is still Score 1 for Knowledge. 
+
+Note 3: If the model hallucinates a specific equation for the problem (e.g., “We assume x + y = 10 ”) that turns out to be invalid for the scenario, this is Score 1 here. It is an assumption failure rather than a Knowledge error unless it is a universal theorem. 
+
+Score 0 (Error): The model hallucinates a false universal truth, such as a non-existent formula or remembering a constant incorrectly (e.g., stating “The sum of angles in a triangle is 360 degrees”, attributing a historical event to the wrong century). 
+
+3. Calculation (Score: 1 or 0) 
+
+Focus: Is the arithmetic execution correct? 
+
+Score 1 (Correct): All arithmetic calculations are performed correctly based on the numbers present in the reasoning. Note: A wrong final answer does not necessarily indicate a calculation error; it could be due to using the wrong formula or flawed logic. This category focuses only on the correctness of the calculations themselves. Besides, if there is no need for calculations in the problem, then this should be scored as 1. 
+
+Score 0 (Error): The model makes calculation errors (e.g., calculating the wrong result number, substituting the wrong value into a correct formula). 
+
+4. Logic Properness (Score: 1 or 0) 
+
+Focus: This evaluates the logical coherence of the reasoning process. Check whether each step logically follows from the previous ones, and whether all necessary conditions are satisfied to draw the conclusion. 
+
+Score 1 (Valid): The reasoning is coherent, and each step logically follows from its premises. 
+
+Score 0 (Flawed): When the reasoning involves any of the following: • Insufficient conditions: the evidence is insufficient to draw the conclusion (e.g., concluding a quadrilateral is a square solely because it has 4 right angles, missing the necessary condition of equal side lengths). • Self-contradiction: the model makes logical errors such as contradicting its own earlier reasoning (e.g., first states “ x > 0” and later assumes “ x = −5”), or draws conclusions that do not logically follow from the premises (e.g., reasoning points to Answer A, but the final conclusion is Answer B). • Other logical mistakes. 
+
+5. Assertion Correctness (Score: 1 or 0) 
+
+Focus: This evaluates the correctness of assertions made during the reasoning process. Specifically, it checks if the model introduces any assumptions or numbers that appear out of nowhere and lack support. 
+
+Score 1 (Grounded): All numbers, variables, and constraints introduced are traceable to the question or previous steps. 
+
+Score 0 (Hallucinated/Fabricated): When the reasoning involves any of the following: • Fabricated constraints: the model introduces rules or assumptions that cannot be supported by the question or previous steps (e.g., “Assume x is an integer” or “Assume the triangle is equilateral” when this was not provided). • Magic steps/numbers: new numbers or results appear without any explanation or calculation (e.g., suddenly stating “Let’s consider a possible solution of 12769” without showing the calculation or derivation). • Reverse engineering: abruptly stating the correct answer without a sufficient reasoning path. 
+
+Note 1 (vs. Knowledge error): if the model hallucinates a specific equation for the problem (e.g., “We assume x + y = 10 ”) that turns out to be invalid for the scenario, this is not a Knowledge error but an Assertion error, as the specific equation is not a universal theorem. 
+
+Note 2 (vs. Calculation error): if an incorrect assertion stems from a visible computation/derivation, and the claim is wrong only because the calculation itself is incorrect (e.g., claiming “ 25 + 1 is divisible by 4” due to an incorrect evaluation of (2 5 + 1) mod 4 ), this should be treated as a Calculation error, not an Assertion error. However, if the model does not explain where the number/claim comes from at all, and it simply appears out of nowhere, then it is a magic number / fabricated claim, which is an Assertion error. 
+
+Table 11: Quality-evaluation rubric used to produce the dimension-wise gold labels referenced in Appendix B.2. A trace is labeled good only if it receives a passing score on every dimension. You are an expert evaluator of reasoning chains in the medical domain. Below are two reasoning traces (Chain-of-Thought) for the same medical/mathmetical problem. 
+
+Problem : {question }
+
+Trace A : {trace a }
+
+Trace B : {trace b }
+
+Evaluation Criteria. Compare the traces based on the following 5 dimensions. A ”better” trace is one that exhibits higher rigor and fewer flaws across these categories: 1. Logical Properness & Coherence: seamless logical flow. Penalize logic jumps or self-contradictions. 2. Assertion Correctness & Groundedness: no “magic numbers” or “reverse engineering” to match a target answer. 3. Clinical Reasoning Rigor & Knowledge Validity: follows established clinical guidelines and does not hallucinate false medical facts. 4. Depth & Clarity: comprehensive, step-by-step derivation over abrupt or shallow explanations. Penalize unnecessary verbosity. 
+
+Task. Analyze both traces according to the criteria above. Determine which one demonstrates a more authentic, efficient, and rigorous reasoning process overall. Output your final decision in the following format: 
+
+[[Decision]]: [Trace A is better / Trace B is better / Equal quality] 
+
+Table 12: Pairwise-judge prompt used by the reward comparator J and the PNT analysis. 
+
+Unhinted rollout (active policy πθ ). 
+
+system: A conversation between User and Assistant. The user asks a question, and the Assistant solves it. The assistant first thinks about the reasoning process in the mind and then provides the user with the answer. The reasoning process and answer are enclosed within 
+
+<think> </think> and <answer> </answer> tags, respectively, i.e., <think> reasoning process here </think> <answer> answer here 
+
+</answer> .
+
+user: {question }
+
+assistant: <think> 
+
+Hinted rollout (contaminated reference πH ). 
+
+system: A conversation between User and Assistant. The user asks a question, and the Assistant solves it. The assistant provides the final answer first, then follows up with a comprehensive reasoning process. The answer and reasoning process are enclosed within <answer> </answer> and <think> </think> tags, respectively, i.e., <answer> answer here </answer><think> reasoning process here </think> .
+
+user: {question }
+
+assistant: <answer> {the correct answer } </answer><think> 
+
+Table 13: The two rollout templates. The unhinted template (top) elicits a reasoning-first generation that defines the active policy πθ . The hinted template (bottom) front-loads the ground-truth answer so the subsequent reasoning becomes a post-hoc rationalization, materializing the contaminated reference πC used by the pairwise reward rHIPPO .Prompt. A 4-year-old girl from a recently immigrated family presents to the emergency department with episodes of severe coughing lasting up to several minutes followed by vomiting. She had a low grade fever and runny nose over the last 2 weeks but these coughing episodes just began one day prior to presentation. A complete blood count shows a lymphocytic infiltrate and Gram stain reveals a gram-negative coccobacillus. The emergency department physician explains that this organism causes disease by toxin-mediated inactivation of an inhibitory signaling molecule. Which of the following could be used to culture the most likely cause of this disorder? Options: (A) Charcoal yeast with iron and cysteine (B) Eaton agar (C) Loffler medium (D) Regan-Lowe medium (E) Thayer-Martin agar 
+
+SFT-then-standard-RL output (abbreviated) 
+
+<think> The most likely cause of this patient’s severe coughing and vomiting is Pseudomonas aeruginosa , a gram-negative coccobacillus. The pathophysiology of Pseudomonas aeruginosa involves the production of a potent exotoxin, pseudomonas exotoxin A (PE), which is a type II protein-toxin. PE is a preformed, heat-stable protein that is secreted by the bacterium. Once released into the host, PE is cleaved by host trypsin to become active. The active form of PE is a highly toxic, highly immunogenic protein that acts as a cytotoxin. It is best known for its ability to inactivate the host’s inhibitory signaling molecule, the inhibitory G-protein alpha subunit (Galpha-i). By deactivating Galpha-i, the toxin prevents the normal negative feedback of the cyclic AMP (cAMP) signaling pathway, leading to an abnormally high concentration of cAMP in the host cell. This elevated cAMP promotes the expression of virulence genes, such as those encoding for exotoxins and biofilm formation, and enhances the bacterium’s ability to colonize and multiply in the host’s respiratory tract and other mucosal surfaces. 
+
+Pseudomonas aeruginosa is a highly opportunistic pathogen that commonly causes severe infections in immunocompromised or chronically ill patients, as well as in patients with underlying lung diseases such as cystic fibrosis. It is a non-fermenting, oxidase-positive, and catalase-positive organism. To culture this organism, a selective medium containing specific growth factors is required. Regan-Lowe medium is a specialized culture medium used for the selective isolation of Pseudomonas species. It is a nutrient-rich medium that contains iron, cysteine, and vitamins, which are essential for the growth of Pseudomonas . The addition of iron and cysteine provides the necessary sulfur and nitrogen sources for the synthesis of the bacterium’s characteristic, highly mucoid, blue-green pigmentation. 
+
+</think> <answer> D </answer> 
+
+HIPPO output (abbreviated) 
+
+<think> The clinical presentation of severe, prolonged coughing followed by vomiting, combined with a lymphocytic leukocytosis and a Gram stain revealing a gram-negative coccobacillus, is highly characteristic of Bordetella pertussis , the causative agent of whooping cough (pertussis). 
+
+Bordetella pertussis is a highly specialized, highly virulent Gram-negative bacterium that induces its pathogenesis through the production of two major exotoxins: pertussis toxin (also known as pertactin) and filamentous hemagglutinin. Pertussis toxin is a highly potent ADP-ribosylating toxin that targets the G αi subunit of Gi-coupled G-protein receptors. By inactivating this inhibitory G-protein, the toxin prevents the normal downregulation of adenylate cyclase. This leads to a massive increase in intracellular cAMP, which subsequently activates protein kinase A (PKA). PKA drives the excessive, paroxysmal coughing characteristic of the disease by stimulating the cough center in the medulla oblongata and inhibiting the normal relaxation of the laryngeal muscles. The most reliable method for culturing B. pertussis is the Regan-Lowe medium. This specialized agar is heavily enriched with vitamins, iron, and cysteine, which are critical for the bacterium’s growth. The medium also contains bile salts and crystal violet, which inhibit the growth of other competing organisms. Because B. pertussis is highly fastidious and grows very slowly (with a doubling time of approximately 16 hours), it requires specific growth conditions. Therefore, Regan-Lowe medium is the preferred culture medium for isolating this organism. </think> <answer> D </answer> 
+
+Table 14: A model response example from different methods in MedQA validation set.
