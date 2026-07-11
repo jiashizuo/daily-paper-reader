@@ -1,0 +1,863 @@
+Title: Imagination-Limited Q-Learning for Offline Reinforcement Learning
+
+URL Source: https://www.ijcai.org/proceedings/2025/0642.pdf
+
+Published Time: Thu, 18 Sep 2025 13:41:59 GMT
+
+Number of Pages: 9
+
+Markdown Content:
+# Imagination-Limited Q-Learning for Offline Reinforcement Learning 
+
+## Wenhui Liu 1 , Zhijian Wu 1 , Jingchao Wang 1 , Dingjiang Huang 1∗ and Shuigeng Zhou 21East China Normal University 
+
+> 2
+
+## Fudan University 
+
+## {whliu 14, zjwu 97, jcwang }@stu.ecnu.edu.cn, djhuang@dase.ecnu.edu.cn, sgzhou@fudan.edu.cn 
+
+## Abstract 
+
+Offline reinforcement learning seeks to derive im-proved policies entirely from historical data but of-ten struggles with over-optimistic value estimates for out-of-distribution (OOD) actions. This issue is typically mitigated via policy constraint or con-servative value regularization methods. However, these approaches may impose overly constraints or biased value estimates, potentially limiting per-formance improvements. To balance exploitation and restriction, we propose an Imagination-Limited Q-learning (ILQ) method, which aims to maintain the optimism that OOD actions deserve within ap-propriate limits. Specifically, we utilize the dy-namics model to imagine OOD action-values, and then clip the imagined values with the maximum behavior values. Such design maintains reason-able evaluation of OOD actions to the furthest ex-tent, while avoiding its over-optimism. Theoret-ically, we prove the convergence of the proposed ILQ under tabular Markov decision processes. Par-ticularly, we demonstrate that the error bound be-tween estimated values and optimality values of OOD state-actions possesses the same magnitude as that of in-distribution ones, thereby indicating that the bias in value estimates is effectively mit-igated. Empirically, our method achieves state-of-the-art performance on a wide range of tasks in the D4RL benchmark. 
+
+## 1 Introduction 
+
+Offline Reinforcement Learning (RL) [Lange et al. , 2012; Fujimoto et al. , 2019] is designed to learn optimal policies purely from a static dataset previously collected by an un-known policy (behavior policy). By eliminating the need for online interaction with environments, it offers dual benefits. On the one hand, it can mitigate the expensive costs [Gu et al. , 2017] and potential risks [Sallab et al. , 2017] associated with trial-and-error learning in real-world applications; on the other hand, it can be leveraged to enhance the generalization ability and scalability of RL models when the logged data is 
+
+> ∗Corresponding author
+
+massive and diverse. However, the offline learning paradigm unavoidably incurs distributional shifts [Levine et al. , 2020] of state-action visitation between the learned policy and the behavior policy, which makes it difficult to correctly assess out-of-distribution (OOD) action-values. Especially, over-optimistic estimates may even invalidate the learned policy. To address this challenge, two main classes of techni-cal routes are commonly employed in the model-free ap-proaches [Prudencio et al. , 2023]. 1) Policy constraint: It usually explicitly restricts the gap between the learned and behavior policy. The batch-constrained Q-learning (BCQ) [Fujimoto et al. , 2019] was devised to restrict the action space via adding perturbations on a state-conditioned behav-ior model. Kumar et al. [Kumar et al. , 2019] proposed BEAR to reduce maximum mean discrepancy between the learned policy and the behavior one. Subsequently, differ-ent methods corresponding to other metrics have been pro-posed, such as KL divergence for BRAC [Wu et al. , 2019] and mean squared error for TD3-BC [Fujimoto and Gu, 2021; Srinivasan and Knottenbelt, 2024], which similarly seeks to steer the policy closer to actions in the dataset. However, these learned models are limited to the neighborhood of the behavior policy hindering their performance, especially when the dataset is collected by poor policies. 2) Value regulariza-tion: It aims to utilize value regularizations to suppress OOD action-values. The conservative Q-learning (CQL) [Kumar et al. , 2020] was designed to penalize the expectation of OOD action-values, thus mitigating optimistic estimates outside the dataset. Kostrikov et al. [Kostrikov et al. , 2022] introduced implicit Q-learning (IQL) to estimate value function through expectile regression to implicitly depress OOD action-values. The MCQ [Lyu et al. , 2022] was proposed to regularize OOD action-values with the maximum behavior value. And the OAC-BVR [Huang et al. , 2024] was developed to regard the difference between the Q-function and the behavior value as a regularization term. While these methods effectively limit OOD optimism, they also introduce uncontrollable bias into Q-value estimates, as illustrated in Fig. 1(a). Especially, the Q-values under CQL exhibit noticeable bias of pessimism over all MuJoCo tasks, as shown in Fig. 1(c). To mitigate value bias while maintaining appropriate re-strictions on over-optimism, we propose an Imagination-Limited Q-learning (ILQ) method. The insight of our method is straightforward: For in-sample state-action pairs, we adopt Proceedings of the Thirty-Fourth International Joint Conference on Artificial Intelligence (IJCAI-25)    
+
+> 5770 Conservative value OOD value regularization Optimal value Samples Imagination-limited value Learned value Max return in datasets ILQ (ours) CQL medium medium-expert medium-replay medium medium-expert medium-replay Q-Value Action
+
+(a) Action  
+
+> Q-Value
+
+(b) 0.0 0.2 0.4 0.6 0.8 1.0 400 600            
+
+> Halfcheetah
+> 0.0 0.2 0.4 0.6 0.8 1.0 200 250
+> Averaged Q-Value Hopper
+> 0.0 0.2 0.4 0.6 0.8 1.0
+> Steps ( ×10 6)
+> 200 300
+> Walker2d
+
+(c) Halfcheetah Hopper Walker2d  
+
+> 050 100 150 200 250 300
+> Normalized Score
+
+(d) Figure 1: (a) illustrates the fundamental principle of value regularization methods. While effectively suppressing OOD action-values, it may introduce uncontrolled bias in estimations. In contrast, instead of indiscriminately suppressing OOD action-values, ILQ, depicted in (b), envisions reasonable values (purple line) and then appropriately limits potential over-estimations using the maximum behavior value Qβ
+
+> max
+
+(black dashed line), resulting in more appropriate policy evaluation (cyan line). (c) demonstrates that Q-value estimations of CQL across MuJoCo “-v2” tasks are notably compromised, falling well below maximum returns (black line) in datasets. Conversely, ILQ maintains rea-sonably optimistic Q-value estimations in anticipation of superior policies. Finally, (d) shows that ILQ’s ultimate performance is significantly improved, particularly in medium tasks. 
+
+the standard Bellman backup based on in-sample transitions to estimate their values. For OOD state-action pairs, instead of blindly applying value regularizations to suppress their action-values, we envision what the values would be with-out any restrictions . The one-step bootstrapped values un-der an imaged dynamics model would be reasonable estima-tions, ideally approximating the ground truth when the im-aged model closely matches the environment. However, er-rors in the model fitting are inevitable, and optimistic esti-mates may still exist. Therefore, we need to further consider 
+
+how to appropriately limit the imagination values . We em-ploy the maximum behavior value as the ceiling of the imag-ined one. Specifically, if the imagined value is less than the maximum value, it is maintained; otherwise, the maximum behavior value is applied. Figure 1(b) illustrates the intu-ition behind our method. This design ensures a more reason-able evaluation with appropriate constraints on OOD actions, thereby avoiding unnecessary value suppression and improv-ing the generalization ability of the learned policy. We validate the effectiveness of ILQ both theoretically and empirically. We prove that the policy evaluation Bellman op-erator of ILQ is a contraction operator under tabular Markov Decision Processes (MDPs), ensuring convergence. Particu-larly, we analyze the action-value gap between the fixed point obtained by our method and that obtained by the Bellman optimality equation, demonstrating that the error bound of OOD action-values can reach the same order of magnitude as in-distribution ones. Empirically, our method maintains reasonably optimistic Q-values compared to conservative Q-learning (Fig. 1(c)) and achieves state-of-the-art performance across a wide range of tasks in the standard benchmark. 
+
+## 2 Background 
+
+Reinforcement Learning (RL) is commonly modeled as a Markov Decision Process (MDP), characterized by a tuple 
+
+(S, A, r, P, ρ 0, γ ) [Sutton and Barto, 2018], where S is state space, A is action space, r : S × A → [−rmax , r max ] is re-ward function, P : S ×A×S → [0 , 1] is transition dynamics, 
+
+ρ0 is probability distribution of initial states, and γ ∈ [0 , 1) is discount factor. The RL agent takes actions on the environ-ment according to its policy, defined as π : S × A → [0 , 1] .During the learning process, evaluating the expected return of a state-action pair (s, a ) under a policy π, called the action-value (or Q-value) Q(s, a ), is essential. Theoretically, it can be obtained by Eπ [P∞ 
+
+> t=0
+
+γtr(st, a t) | s0 = s, a 0 = a]. In practice, it is usually approximated by minimizing the Bell-man residual E[( Q(s, a ) − (T Q)( s, a )) 2], where T is the Bellman optimality operator defined as 
+
+(T Q)( s, a ) := r(s, a )+ γEs′∼P (·| s,a )
+
+h
+
+max  
+
+> a′∼π
+
+Q(s′, a ′)
+
+i
+
+. (1) Generally, a delayed approximator Q− is applied in the above target T Q for training stability [Mnih et al. , 2015]. 
+
+2.1 Offline Reinforcement Learning 
+
+In offline RL, the agent is no longer allowed to interact with the environment and learns policies exclusively from a lim-ited static dataset D, which is typically gathered from an un-known behavior policy β. The dataset D is usually repre-sented by a set of transition tuples {(s, a, r, s ′)}. The goal of the agent remains to maximize the expectation of cumulative rewards. Without online correction, erroneously optimistic estimates of OOD action-values are inevitable [Levine et al. ,2020]. These biases can cause the learned policy to favor in-correct OOD actions, potentially leading to it failure. The representative value regularization method is CQL [Kumar et al. , 2020], which adds penalties for OOD action-values to the standard Q-value update objective, as follows: 
+
+αCQL 
+
+
+
+Es∼D ,a ∼μ(·| s)[Q(s, a )] − Es∼D ,a ∼β(·| s)[Q(s, a )] 
+
+
+
++ 12 E
+
+h Q(s, a ) − T Q(s, a )2i
+
+,
+
+where μ(·| s) is a distribution to produce OOD actions, αCQL 
+
+is a hyperparameter to adjust the degree of conservatism. Proceedings of the Thirty-Fourth International Joint Conference on Artificial Intelligence (IJCAI-25) 
+
+5771 3 Related Work 
+
+3.1 Model-free Offline RL 
+
+Recent advancements in offline RL have focused on address-ing the challenges posed by OOD actions. Importance sam-pling methods [Nachum et al. , 2019] have been developed to correct evaluation under distributional shifts, but they often suffer from high variance. Policy constraint methods [Ku-mar et al. , 2019; Wu et al. , 2021; Fujimoto and Gu, 2021; Li et al. , 2023; Chen et al. , 2024] are employed to limit the deviation of learned policies; however, their performance tends to degrade when the behavior policy is suboptimal. Our method aligns more closely with value regularization approaches. For instance, CQL [Kumar et al. , 2020] and CSVE [Chen et al. , 2023] directly penalize OOD action-values, effectively controlling over-optimism but often result-ing in overly pessimistic estimates. Methods like MCQ [Lyu 
+
+et al. , 2022] and OAC-BVR [Huang et al. , 2024] attempt to relax restrictions by assigning maximum behavior values or behavior values, respectively, to OOD action values. How-ever, this introduces uncontrolled value bias for OOD ac-tions. Although MCQ additionally employs policy constraint weighting to mitigate this bias in practical implementations, it offers limited theoretical guarantees for OOD action-value estimates. In contrast, our proposed method preserves more honest estimates of OOD action-values within the limitation of maximum behavior values, and offers theoretical guaran-tees for its value estimates. 
+
+3.2 Model-based Offline RL 
+
+Model-based methods aim to enhance collected datasets by generating synthetic trajectories using learned dynam-ics models. Various strategies have been proposed to ef-fectively leverage these synthetic data, including uncertainty quantification [Ovadia et al. , 2019; Kidambi et al. , 2020; Yu et al. , 2020; Diehl et al. , 2021], conservative value esti-mation [Yu et al. , 2021], representation balancing [Lee et al. ,2021], and adversarial learning [Bhardwaj et al. , 2023]. In contrast, our proposed ILQ avoids trajectories generation, re-lying solely on the dynamics model to produce one-step sub-sequent states and rewards of in-sample states for estimating imagined OOD action-values. While ILQ utilizes the dynam-ics model, it remains fundamentally a model-free learning framework and circumvents challenges of error accumulation associated with longer trajectories in model-based methods. 
+
+## 4 Imagination-Limited Q-learning Method 
+
+We start by elucidating our novel Imagination-Limited Bell-man (ILB) operator in Subsection 4.1. Subsequently, we elaborate on its practical implementation details and theo-retical analysis in Subsection 4.2 and 4.3, respectively. And the Imagination-Limited Q-learning (ILQ) algorithm is ulti-mately summarized in Subsection 4.4. 
+
+4.1 Imagination-Limited Bellman Operator 
+
+In online RL, researchers typically use the Bellman optimal-ity operator Eq. (1) to evaluate policies. However, in offline settings, the absence of online corrections makes policy eval-uation highly susceptible to OOD over-optimism [Levine et al. , 2020] under the standard operator. Existing value regu-larization methods primarily focus on directly restricting the OOD action-values [Kumar et al. , 2020; Lyu et al. , 2022; Chen et al. , 2023; Huang et al. , 2024], which introduces un-controllable bias in value estimates and lacks theoretical guar-antees for OOD actions. We argue that establishing reasonable estimates for out-of-distribution state-actions should take precedence, followed by the imposition of suitable restrictions, rather than directly em-ploying value regularization. To achieve this goal, we intro-duce a novel Imagination-Limited Bellman operator, defined as follows. 
+
+Definition 1. The Imagination-Limited Bellman (ILB) oper-ator is defined as 
+
+TILB Q(s, a )=
+
+
+
+r(s, a ) + γEs′∼P
+
+max 
+
+> ˜a′∼π
+
+Q(s′, ˜a′), if β(a|s) > 0min 
+
+n
+
+yQ
+
+> img
+
+, y Q
+
+> lmt
+
+o
+
++ δ, otherwise. 
+
+(2) 
+
+where β is the behavior policy, 
+
+yQ 
+
+> img
+
+= br(s, a ) + γEbs′∼ bP (·| s,a )
+
+h
+
+max  
+
+> ˜a′∼π
+
+Q(bs′, ˜a′)
+
+i
+
+, (3) 
+
+and 
+
+yQ 
+
+> lmt
+
+= max  
+
+> ba∈Supp( β(·| s))
+
+Q(s, ba) (4) 
+
+are the imagined value and its limitation, respectively. The bP
+
+is the empirical transition kernel, br is the empirical reward function, δ is a hyperparameter with a small absolute value, and Supp( ·) means support-constrained on the dataset. 
+
+Here is the insight behind the proposed ILB operator. For an in-sample state-action pair (s, a ), i.e., β(a | s) > 0, we have its corresponding transition (s, a, r, s ′) in the dataset, allowing us to apply the standard Bellman operator without any obstacles. However, for an out-of-sample state-action pair (s, a oos ), the standard Bellman backup cannot be applied solely due to the absence of its successor state and reward. To address this, one could utilize empirical dynamics model to predict the next state bs′ and reward br and obtain the imagi-nation value yQ 
+
+> img
+
+as Eq. (3), which provides a relatively ac-curate approximation for an OOD state-action. Nevertheless, it may still result in optimistic estimates because of fitting er-rors. To tackle this issue, we use the maximum in-distribution action-value Eq. (4) as the upper limit for the imagined value. This design offers dual benefits: First, it maximally maintains the imagined value, reducing estimation bias on OOD ac-tions; second, the maximum behavior value ensures that there is always an in-distribution action-value greater than or equal to the OOD ones, encouraging the policy to more likely favor in-distribution actions during the actor improvement process. We analyze the ILB operator’s properties and demonstrate that the ILB operator exhibits the same γ-contraction prop-erty as the standard Bellman operator, ensuring convergence in policy evaluation. The proof is provided in the Appendix. 
+
+Theorem 1 (Convergence ). The ILB operator defined in Eq. 
+
+(2) is a γ-contraction operator in the L∞ norm, and Q-function iteration rule obeying the ILB operator can converge to a unique fixed point. Proceedings of the Thirty-Fourth International Joint Conference on Artificial Intelligence (IJCAI-25) 
+
+> 5772
+
+4.2 Practical Implementation of Imagination and Limitation Value 
+
+Imagination Value 
+
+We fit the environment dynamics to derive empirical transfer kernel bP and reward function br in the simplest manner using 
+
+max 
+
+> bTψ
+
+E(s,a,r,s ′)∼D 
+
+h
+
+log bTψ (r, s ′ | s, a )
+
+i
+
+, (5) where bTψ stands for both bP and br for brevity, and is repre-sented by a multivariate Gaussian distribution with parame-ters ψ practically. We then obtain the imagined value yQ
+
+> img
+
+.
+
+Limitation Value 
+
+In fact, the behavior policy β(· | s) in Eq. (4) is unknown and needs to be empirically modeled. In light of the expressive-ness of diffusion models [Ho et al. , 2020], we fit the behavior policy using a conditional diffusion model. Specifically, it is constructed via a reverse diffusion chain, formulated as 
+
+Diff ω (a | s) := N (aK ; 0 , I )
+
+> K
+
+Y
+
+> k=1
+
+pω (ak−1 | ak, s ) (6) where superscript k denotes the diffusion timestep, a := a0
+
+is the final sampled action, ak, k = 1, · · · , K − 1, are latent variables, aK ∼ N (0 , I ) is Gaussian noise. Typ-ically, pω (ak−1 | ak, s ) is modeled as a Gaussian distri-bution N  ak−1; μω (ak, s, k ), Σω (ak, s, k ) with the covari-ance matrix Σω (ak, s, k ) = βkI and the mean defined as 
+
+μω (ak, s, k ) = 1
+
+√αk
+
+
+
+ak − βk
+
+√1 − ¯αk
+
+ξω (ak, s, k )
+
+
+
+, (7) where βk is the variance schedule, αk := 1 − βk, ¯αk := Qki=1 αi, and ξω (·) is the noise prediction network with pa-rameters ω. The conditional diffusion model is optimized by maximizing the evidence lower bound, which can be simpli-fied [Ho et al. , 2020] to minimize the following objective 
+
+min  
+
+> ω
+
+E ξ∼N (0 ,I ) 
+
+> k∼U ,(s,a )∼D
+
+ξ − ξω (√¯αka + √1 − ¯αkξ, s, k ) 2 , (8) where U is an uniform distribution over {1, · · · , K }. Similar diffusion behavior modeling methods are also applied in other works [Wang et al. , 2023; Hansen-Estruch et al. , 2023]. Accordingly, we adopt the limitation value as shown in the following equation: 
+
+yQ 
+
+> lmt
+
+= max   
+
+> bam∼Diff ω(·| s)
+> m=1 ,··· ,M
+
+Q (s, bam) , (9) where M is the number of sampled actions. Due to possible errors in the fitting process, this may result in a deviation be-tween the estimated value Eq. (9) and the true value Eq. (4). In order to offset this gap, we introduced the hyperparameter 
+
+δ in definition Eq. (2), typically set to a small absolute value. 
+
+4.3 Theoretical Analysis 
+
+We now theoretically discuss the action-value gap between the fixed point in Theorem 1 and the Bellman optimality value. Before proceeding further, we make some commonly used assumptions about the reward function [Huang et al. ,2024, Assumption 1]. 1. The reward function is bounded, i.e., |r(s, a )| ≤ rmax .Actually, this is consistent with what is required by its definition r(s, a ) : S × A → [−rmax , r max ].2. Similar to the Lipschitz condition, i.e., |r(s, ˜a1) −
+
+r(s, ˜a2)| ≤ ℓ∥˜a1 − ˜a2∥∞, ∀s ∈ S and ∀˜a1, ˜a2 ∈ A ,where ℓ is a constant. This requires that the reward func-tion satisfies Lipschitz continuity with respect to actions. In addition, the error bound assumption between the empiri-cal models and the real ones are required, which is also uti-lized in both [Kumar et al. , 2020] and [Huang et al. , 2024]. Suppose the br and bP are the empirical reward function and empirical transition dynamics, respectively, the following re-lationships hold with high probability ≥ 1 − ζ, ζ ∈ (0 , 1) ,
+
+br(s, a ) − r(s, a ) 1
+
+≤ ζr/√D, (10) 
+
+bP (· | s, a ) − P (· | s, a ) 1
+
+≤ ζP/√D, (11) where D is the constant related to the dataset size, ζr and ζP
+
+are constants related to ζ.We begin by analyzing the Bellman optimality value gap between the learned policy and behavior policy. 
+
+Theorem 2. Suppose Qβ∗ is the fixed point of the support-constrained Bellman optimality operator. The following gap can be obtained 
+
+|Qβ∗ (s, π (s)) − Qβ∗ (s, β (s)) | ≤ ℓϵ π + γ |S| rmax 
+
+1 − γ ϵP , (12) 
+
+where ϵπ := max s ∥π(s) − β(s)∥∞ and ϵP := 
+
+P π − P β
+
+> ∞
+
+.
+
+Accordingly, we could prove the error bound between the imagination value and Bellman optimality value. 
+
+Theorem 3. Suppose Qβ∗ is the fixed point of support-constrained Bellman optimality operator. The gap between the imagination value yQβ∗ 
+
+> img
+
+and Qβ∗ has: 
+
+yQβ∗ 
+
+> img
+
+− Qβ∗ (s, a )
+
+≤ ζr
+
+√D + γℓϵ π + γ2 |S| rmax 
+
+1 − γ ϵP + γ ζP
+
+√Drmax 
+
+1 − γ .
+
+(13) Based on above theorems, we can estimate the action-value gap between the fixed point of the ILB operator and Qβ∗ .
+
+Theorem 4 (Action-value gap ). Suppose QILB and Qβ∗
+
+denote the fixed point of the ILB operator and support-constrained Bellman optimality operator, separately. The action-value gap can be bounded as 
+
+∥QILB (s, a ) − Qβ∗ (s, a )∥∞
+
+≤ 11 − γζr
+
+√D + ℓ
+
+1 − γ ϵπ
+
++ γ|S| rmax 
+
+(1 − γ)2 ϵP + γr max 
+
+(1 − γ)2
+
+ζP
+
+√D + 11 − γ |δ|,
+
+(14) 
+
+where ζr , ζ P are defined in Eq. (10) and Eq. (11) , ϵr , ϵ P are defined in Theorem 2, δ is defined in the ILB operator. 
+
+According to Theorem 4, we conclude that error bounds for in-sample and out-of-sample actions are of the same mag-nitude O(rmax /(1 −γ)2). This result aligns with the conclusion of CQL [Kumar et al. , 2020] within the support region. All proofs are detailed in the Appendix. Proceedings of the Thirty-Fourth International Joint Conference on Artificial Intelligence (IJCAI-25) 
+
+5773 4.4 The ILQ Algorithm 
+
+In deep RL, the Q-function is commonly approximated by a neural network with parameters θ, while the correspond-ing target network has parameters θ−. As described in the background, it can be optimized by minimizing the temporal difference (TD) loss E(s,a,r,s ′)[( Qθ (s, a ) − T Qθ− (s, a )) 2].Intuitively, under the ILB operator we developed, the corre-sponding loss function can be constructed as 
+
+E(s,a,r,s ′)
+
+h Qθ (s, a ) − T ILB Qθ− (s, a )2i
+
+. (15) Since in-sample and out-of-sample state-action pairs have different TD targets, as defined by our ILB operator, a com-mon way is to split the above loss function into a weighted sum of in-sample and out-of-sample components as follows 
+
+LQ(θ) = ηE(s,a,r,s ′)∼D 
+
+h Qθ (s, a ) − T ILB Qθ− (s, a )2i
+
++(1 − η)E s∼D 
+
+> aoos ∼u(·| s)
+
+h Qθ (s, a oos ) − T ILB Qθ− (s, a oos )2i
+
+,
+
+(16) where η is a trade-off factor, (s, a oos ) refers to the out-of-sample state-action pair. The u(· | s) is any distribution that can produce out-of-sample actions. In practice, we directly treat policy π as the sampling distribution u.We also incorporate the double network [Hasselt, 2010] to reduce overestimation, which is widely utilized in both online [Mnih et al. , 2015] and offline RL [Fujimoto and Gu, 2021]. Therefore, combining the definition of ILB operator Eq. (2), we have the target, for in-sample transition (s, a, r, s ′), as: 
+
+TILB Qθ− (s, a ) = r(s, a )+ γ min  
+
+> j=1 ,2
+
+E˜a′∼πϕ(·| s′)
+
+h
+
+Qθ−
+
+> j
+
+(s′, ˜a′)
+
+i
+
+,
+
+(17) where πϕ is the learned policy represented by a neural net-work with parameters ϕ and Qθ−
+
+> j
+
+is the j-th target network. Similarly, for out-of-sample (s, a oos ), the target is formulated as: 
+
+TILB Qθ− (s, a oos ) = min 
+
+n
+
+yQ
+
+> img
+
+, y Q
+
+> lmt
+
+o
+
++ δ, (18) where 
+
+yQ 
+
+> img
+
+= br (s, a oos )+ γ min  
+
+> j=1 ,2
+
+Ebs′∼ bP (·| s,a oos )˜a′∼πϕ(·| bs′)
+
+h
+
+Qθ−
+
+> j
+
+(bs′, ˜a′)
+
+i
+
+,
+
+(19) 
+
+yQ 
+
+> lmt
+
+= min  
+
+> j=1 ,2
+
+max   
+
+> bam∼Diff ω(·| s)
+> m=1 ,··· ,M
+
+Qθ−
+
+> j
+
+(s, bam) . (20) Here Eq. (20) is obtained by coupling Eq. (9). During policy improvement, we adopt the same objective as in vanilla SAC [Haarnoja et al. , 2018] to optimize the actor network without any complex design, as follows: 
+
+max  
+
+> ϕ
+
+E s∼D ,a∼πϕ(·| s)
+
+
+
+min  
+
+> j=1 ,2
+
+Qθj (s, a ) − α log πϕ(a | s)
+
+
+
+, (21) where α is a multiplier for the entropy. Combining above steps, our method is derived, with its pseudo-code presented in Algorithm 1. 
+
+Algorithm 1 Imagination-Limited Q-Learning (ILQ) 
+
+Require: The offline dataset D, number of iterations N , dis-count factor γ, target network update rate τ , trade-off fac-tor η, and offset parameter δ.
+
+1: Initialize critic networks Qθ1 , Qθ2 , actor network πϕ, tar-get networks Qθ−
+
+> 1
+
+, Qθ−
+
+> 2
+
+with θ− 
+
+> i
+
+← θi, i = {1, 2}.
+
+2: // Pre-train the dynamics model and behavior policy 
+
+3: Train the dynamics model bTψ (s′, r | s, a ) via (5). 
+
+4: Train the diffusion model Diff ω (· | s) for modeling the behavior policy by optimizing (8). 
+
+5: // Policy training 
+
+6: for step n = 1 to N do 
+
+7: Sample a mini-batch of transitions B = {(s, a, r, s ′)}
+
+from dataset D.
+
+8: Compute target value for (s, a ) in B as (17). 
+
+9: Sample OOD actions conditioned on sates in B via πϕ,and calculate target value according to (18) via the pre-trained behavior policy and dynamics model. 
+
+10: Update parameters θi, i = 1 , 2 for each critic network via minimizing (16). 
+
+11: Update actor ϕ via (21). 
+
+12: Update the target networks 
+
+θ− 
+
+> i
+
+← τ θ i + (1 − τ )θ− 
+
+> i
+
+, i = 1 , 2.
+
+13: end for 
+
+## 5 Experiments 
+
+In this section, we empirically validate the effectiveness of our method ILQ. 1) We demonstrate the superiority of ILQ over existing methods by comparing performance across a series of tasks. 2) We conduct sensitivity analyses on the hy-perparameters involved in ILQ, confirming the stability of the proposed method. 3) We then perform ablation experiments on both imagination and limitation components to verify their impacts. 4) We also delve into the Q-value estimations to further validate the effectiveness of the two components de-signed; details are in the Appendix due to space constraints. 
+
+5.1 Experimental Settings 
+
+We evaluate ILQ on the D4RL [Fu et al. , 2020] benchmark. The commonly used domain is Gym MuJoCo “-v2”, includ-ing halfcheetah, hopper, and walker2d tasks at four levels: random (r), medium (m), medium-replay (mr), and medium-expert (me). We also assess ILQ on Maze2D “-v1” domain, which offers three layouts with two reward types, i.e., umaze (u), umaze-dense (ud), medium (m), medium-dense (md), large (l), and large-dense (ld). In addition, comparisons on several adroit “-v0” tasks are conducted. Due to page limita-tions, descriptions of compared algorithms and extra experi-mental results have been relocated to the Appendix. Details of hyperparameters settings and implementation specifics are also provided in the Appendix to ensure reproducibility. 
+
+5.2 Performance Comparison 
+
+In comparing ILQ with state-of-the-art methods on MuJoCo tasks, as shown in Table 1, ILQ performs significantly bet-ter than policy constraint methods (BCQ [Fujimoto et al. ,Proceedings of the Thirty-Fourth International Joint Conference on Artificial Intelligence (IJCAI-25) 
+
+5774 Task Name BC BCQ CQL UWAC One-step TD3+BC IQL MCQ CSVE OAP DTQL OAC-BVR TD3-BST ILQ(Ours) halfcheetah-r 2.2 2.2 17 .5 2.3 3.7 11 .0 13 .1 28 .5 26 .7 24 .0 - 31 .1 - 31 .7 ± 0.7
+
+hopper-r 3.7 7.8 7.9 2.7 5.6 8.5 7.9 31 .8 27 .0 8.8 - 7.4 - 31 .6 ± 0.2
+
+walker2d-r 0.2 4.9 5.1 2.0 5.2 1.6 5.4 17 .0 6.1 5.1 - 9.8 - 21 .6 ± 0.1
+
+halfcheetah-m 42 .4 46 .6 44 .0 42 .2 48 .6 48 .3 47 .4 64 .3 48 .6 56 .4 57 .9 52 .2 62 .1 65 .7 ± 0.5
+
+hopper-m 53 .4 59 .4 58 .5 50 .9 56 .7 59 .3 66 .3 78 .4 99 .4 82 .0 99 .6 95 .0 102 .9 92 .1 ± 5.8
+
+walker2d-m 66 .9 71 .8 72 .5 75 .4 80 .3 83 .7 78 .3 91 .0 82 .5 85 .6 89 .4 86 .0 90 .7 91 .5 ± 0.7
+
+halfcheetah-mr 34 .9 42 .2 45 .5 35 .9 38 .6 44 .6 44 .2 56 .8 54 .8 53 .4 50 .9 48 .3 53 .0 59 .6 ± 1.0
+
+hopper-mr 28 .1 60 .9 95 .0 25 .3 94 .1 60 .9 94 .7 101 .6 91 .7 98 .5 100 .0 95 .3 101 .2 102 .7 ± 0.3
+
+walker2d-mr 19 .2 57 .0 77 .2 23 .6 49 .3 81 .8 73 .9 91 .3 78 .5 84 .3 88 .5 77 .3 90 .4 95 .3 ± 1.8
+
+halfcheetah-me 60 .4 95 .4 91 .6 42 .7 91 .7 90 .7 86 .7 87 .5 93 .1 83 .4 92 .7 93 .1 100 .7 100 .0 ± 0.4
+
+hopper-me 51 .5 106 .9 105 .4 44 .9 83 .1 98 .0 91 .5 111 .2 95 .2 85 .9 109 .3 96 .5 110 .3 111 .6 ± 0.6
+
+walker2d-me 96 .7 107 .7 108 .8 96 .5 112 .9 110 .1 109 .6 114 .2 109 .0 111 .1 110 .0 112 .0 109 .4 117 .0 ± 1.2
+
+MuJoCo total 459 .6 662 .8 729 .0 444 .4 669 .8 698 .5 719 .0 873 .6 812 .6 778 .5 - 804 .0 - 920 .4
+
+Table 1: Comparison of normalized average scores for ILQ and existing state-of-the-art methods on MuJoCo tasks over the final 10 evalua-tions. Experiments are conducted using 5 different random seeds. The highest score is bolded.                                                                                                                 
+
+> Task Name ROMI-BCQ BEAR CQL IQL MCQ Diffuser PlanCP ILQ(Ours) maze2d-u 139 .565 .718 .947 .481 .5113 .9116 .491 .9±26 .0
+> maze2d-ud 98 .332 .614 .448 .9107 .8--116 .2±15 .4
+> maze2d-m 82 .425 .014 .634 .9106 .8121 .5128 .5163 .6±31 .4
+> maze2d-md 102 .619 .130 .547 .1112 .7--137 .8±9.2
+> maze2d-l 83 .181 .016 .058 .6111 .2123 .0130 .9198 .5±23 .8
+> maze2d-ld 124 .0133 .846 .975 .4118 .5--152 .8±10 .4
+> Maze2D total 629 .9357 .2141 .3312 .3638 .5--860 .8
+> Task Name BCQ TD3+BC CQL IQL MCQ DQL DTQL ILQ(Ours) pen-human 68 .964 .835 .271 .568 .572 .864 .177 .3±7.9
+> pen-cloned 44 .449 27 .237 .349 .457 .381 .385 .6±10 .2
+> Adroit total 113 .3113 .862 .4108 .8117 .9130 .1145 .4162 .9
+
+Table 2: Comparison of normalized scores on Maze2D and Aroit datasets. The scores are also averaged over the final 10 evaluations across 5 different random seeds. 
+
+2019], UWAC [Wu et al. , 2021], One-step [Brandfonbrener 
+
+et al. , 2021], TD3+BC [Fujimoto and Gu, 2021], and OAP [Yang et al. , 2023]) in a wide range of random- and medium-level tasks. This is because policy constraint methods restrict the learned policy to be within a neighborhood of the behav-ior policy. Although TD3-BST [Srinivasan and Knottenbelt, 2024] introduces fine-grained weighting on the constraints of TD3+BC to enhance performance, it remains inferior to ILQ overall. The value regularization methods (CQL [Kumar 
+
+et al. , 2020], MCQ [Lyu et al. , 2022], CSVE [Chen et al. ,2023], OAC-BVR [Huang et al. , 2024]) show higher scores in average. ILQ continues to show performance beyond them in 11 /12 tasks. DTQL [Chen et al. , 2024] integrates implicit value regularization and policy constraints to enhance perfor-mance, but it still falls short compared to ILQ, especially in halfcheetah tasks. According to Table 2, neither policy constraint approaches nor value regularization approaches performed well enough on Maze2D tasks. Although ROMI-BCQ [Wang et al. , 2021] achieves advanced performance on maze2d-u by utilizing a reverse dynamics model, it performs mediocrely on other tasks. Diffuser [Janner et al. , 2022] and PlanCP [Sun et al. ,2023] leverage diffusion models to improve their planning ca-pabilities in maze2d-u, while still lag behind ILQ on maze2d-m and maze2d-l, further demonstrating stitching abilities of ILQ. The experimental results on Adroit tasks demonstrate that our method continues to outperform others, highlighting its applicability across different tasks. 0.0 0.2 0.4 0.6 0.8 1.0 
+
+Steps ( ×10 6)       
+
+> 0
+> 20
+> 40
+> 60
+> 80
+> 100
+> Normalized Score
+> δ= − 2.0
+> δ= − 1.0
+> δ= − 0.5
+> δ= 0.0
+> δ= 0.5
+> δ= 1.0
+> δ= 2.0
+
+(a) halfcheetah-me 0.0 0.2 0.4 0.6 0.8 1.0 
+
+Steps ( ×10 6)        
+
+> 20
+> 40
+> 60
+> 80
+> 100
+> Normalized Score
+> δ= − 2.0
+> δ= − 1.0
+> δ= − 0.5
+> δ= 0.0
+> δ= 0.5
+> δ= 1.0
+> δ= 2.0
+
+(b) hopper-mr 0.0 0.2 0.4 0.6 0.8 1.0 
+
+Steps ( ×10 6)       
+
+> 0
+> 20
+> 40
+> 60
+> 80
+> 100
+> Normalized Score
+> δ= − 2.0
+> δ= − 1.0
+> δ= − 0.5
+> δ= 0.0
+> δ= 0.5
+> δ= 1.0
+> δ= 2.0
+
+(c) hopper-me 0.0 0.2 0.4 0.6 0.8 1.0 
+
+Steps ( ×10 6)        
+
+> 0
+> 20
+> 40
+> 60
+> 80
+> Normalized Score
+> δ= − 2.0
+> δ= − 1.0
+> δ= − 0.5
+> δ= 0.0
+> δ= 0.5
+> δ= 1.0
+> δ= 2.0
+
+(d) walker2d-m Figure 2: Performances under different values of offset parameter δ.
+
+5.3 Parameter Study 
+
+Offset parameter δ
+
+To assess impacts of parameter δ, we conduct sensitivity analyses by varying δ across {− 2, −1, −0.5, 0, 0.5, 1, 2}.We evaluate the performance on halfcheetah-me, hopper-mr, hopper-me, and walker2d-m, where each experiment was run over 3 random seeds. Figure 2 shows that the score curve re-mains stable as δ changes. Overall, performance is slightly lower when δ is negative compared to when it is positive. Notably, a negative δ always ensures a safe learned policy. However, when δ is positive, meaning the limit exceeds the maximum behavior value a little bit, there may exists policy failure, as illustrated in Fig. 2(c). These indeed validate our argument that overly restricting OOD values could inhibit po-tential performance gains, and taking the maximum behavior value ( δ = 0 ) as a ceiling of the imagined value is consis-tently a solid choice. 
+
+Trade-off Factor η
+
+To evaluate the impact of the trade-off factor η, we conduct sensitivity analyses by varying η around its optimal value. Proceedings of the Thirty-Fourth International Joint Conference on Artificial Intelligence (IJCAI-25) 
+
+5775 0.0 0.2 0.4 0.6 0.8 1.0        
+
+> Steps ( ×10 6)
+> 0
+> 10
+> 20
+> 30
+> 40
+> 50
+> 60
+> Normalized Score
+> η= 0.95
+> η= 0.90
+> η= 0.85
+> η= 0.80
+> η= 0.75
+> η= 0.70
+> η= 0.60
+
+(a) halfcheetah-m 0.0 0.2 0.4 0.6 0.8 1.0        
+
+> Steps ( ×10 6)
+> 0
+> 20
+> 40
+> 60
+> 80
+> 100
+> Normalized Score
+> η= 0.60
+> η= 0.50
+> η= 0.45
+> η= 0.40
+> η= 0.35
+> η= 0.30
+
+(b) hopper-me 0.0 0.2 0.4 0.6 0.8 1.0        
+
+> Steps ( ×10 6)
+> 0
+> 20
+> 40
+> 60
+> 80
+> 100
+> Normalized Score
+> η= 0.95
+> η= 0.90
+> η= 0.85
+> η= 0.80
+> η= 0.75
+> η= 0.70
+> η= 0.60
+
+(c) walker2d-mr 0.0 0.2 0.4 0.6 0.8 1.0        
+
+> Steps ( ×10 6)
+> 0
+> 20
+> 40
+> 60
+> 80
+> 100
+> 120
+> Normalized Score
+> η= 0.90
+> η= 0.85
+> η= 0.80
+> η= 0.75
+> η= 0.70
+> η= 0.60
+
+(d) walker2d-me Figure 3: Performances under different values of trade-off factor η.
+
+According to results in Fig. 3(a) and 3(c), ILQ achieves ro-bust performance for all variations of η around 0.9, making it a typically safe choice for medium and medium-replay tasks. This suggests that ILQ should place greater trust in in-sample value estimates when evaluating policies. In medium tasks, the Q-value of OOD actions generated by the learned policy rarely reach the maximum behavior value. Consequently, as-signing too high a weight to these OOD action-values, i.e., a smaller η, may lead to misplaced trust in OOD actions and ultimately cause policy failure, as illustrated in Fig. 3(c). In medium-expert tasks, the in-sample data comprises a mixture of medium and expert levels, and the value of the OOD ac-tions generated by the learned policy can approach the max-imum behavior value. Therefore, the value estimate needs to be more balanced between in-sample and out-of-sample. In this case, the optimal value of η is usually around 0.6 for all medium-expert tasks. The overall results in Fig. 3 show that ILQ maintains stable performance when η varies around its optimal parameter. 
+
+5.4 Ablation Study 
+
+To understand the contribution of each component in our OOD target action-value Eq. (18), we conduct an ablation study. This study evaluates the impact of removing either the imagination component or the limitation value from the tar-get value. All experiments are run over 3 random seeds. More results can be found in the Appendix. 
+
+Without Imagination 
+
+In this part, we assess the performance of ILQ without the imagination component yQ
+
+> img
+
+, indicating solely the maximum behavior value is considered as the regularization target. The results are illustrated in Fig. 4. As shown in Fig. 4(a) and (b), the performance degrades significantly and the curve of nor-malized score exhibits a very oscillatory behavior. This is be-cause directly using the maximum behavior value as the target values for OOD actions introduces uncontrollable bias and ul-timately impairs policy improvement. This demonstrates the ILQ w/o imagination ILQ 0.0 0.2 0.4 0.6 0.8 1.0 
+
+> Steps ( ×10 6)
+> 0
+> 20
+> 40
+> 60
+> 80
+> 100
+> Normalized Score
+
+(a) halfcheetah-me 0.0 0.2 0.4 0.6 0.8 1.0  
+
+> Steps ( ×10 6)
+> 0
+> 20
+> 40
+> 60
+> 80
+> Normalized Score
+
+(b) walker2d-m Figure 4: Performance comparison of the ILQ algorithm with and without the imagined value yQ 
+
+> img
+
+in the target value. ILQ w/o limitation ILQ 0.0 0.2 0.4 0.6 0.8 1.0 
+
+> Steps ( ×10 6)
+> 0
+> 20
+> 40
+> 60
+> Normalized Score
+
+(a) halfcheetah-m 0.0 0.2 0.4 0.6 0.8 1.0  
+
+> Steps ( ×10 6)
+> 0
+> 20
+> 40
+> 60
+> 80
+> 100
+> Normalized Score
+
+(b) hopper-m Figure 5: Performance comparison of the ILQ algorithm with and without the limitation value yQ 
+
+> lmt
+
+in the target value. 
+
+necessity of the imagination component for providing cali-brated target values under the limitation. 
+
+Without Limitation 
+
+Here we exclude the limitation component yQ 
+
+> lmt
+
+from the tar-get value, relying solely on yQ 
+
+> img
+
+for learning. This approach is intended to evaluate the importance of the limitation com-ponent. In one specific case, Fig. 5(a), performance in-creased when relying solely on the imagination value, indi-cating that the imagination component can sometimes pro-vide highly reliable guidance. However, in most tasks, perfor-mance dropped significantly, with some policies in hopper-m task Fig. 5(b) collapsing completely. This underscores the importance of the limitation component in preventing the in-correctly optimistic estimates. These studies suggest both of the two components play critical role on OOD estimates. 
+
+## 6 Conclusion 
+
+In conclusion, the Imagination-Limited Q-learning (ILQ) method effectively mitigates bias of value estimations by maintaining reasonable evaluations of OOD action-values within appropriate limits. Specifically, it utilizes a dynamics model to help generate imagined values and capping these with the maximum behavior values for OOD actions, while standard target values for in-distribution ones. Theoretical analysis confirms the convergence of ILQ and demonstrates that the error bound between estimated and optimal values for OOD actions is comparable to that for in-distribution actions, thereby enhancing performance improvements. Empirical re-sults show that ILQ achieves state-of-the-art performances on a wide range of tasks in the D4RL benchmark. We hope this work can provide new insights into the value estimates for offline RL. Proceedings of the Thirty-Fourth International Joint Conference on Artificial Intelligence (IJCAI-25) 
+
+5776 Acknowledgments 
+
+This work was partially supported by the National Science Foundation of China (62072185 and U1711262). The Ap-pendix is available at https://github.com/LiuWH-AI/ILQ. 
+
+## References 
+
+[Bhardwaj et al. , 2023] Mohak Bhardwaj, Tengyang Xie, Byron Boots, Nan Jiang, and Ching-An Cheng. Adversar-ial model for offline reinforcement learning. In Advances in Neural Information Processing Systems , volume 36, pages 1245–1269, 2023. [Brandfonbrener et al. , 2021] David Brandfonbrener, Will Whitney, Rajesh Ranganath, and Joan Bruna. Offline rl without off-policy evaluation. In Advances in Neural In-formation Processing Systems , volume 34, pages 4933– 4946, 2021. [Chen et al. , 2023] Liting Chen, Jie Yan, Zhengdao Shao, Lu Wang, Qingwei Lin, Saravanakumar Rajmohan, Thomas Moscibroda, and Dongmei Zhang. Conservative state value estimation for offline reinforcement learning. In Advances in Neural Information Processing Systems ,volume 36, pages 35064–35083, 2023. [Chen et al. , 2024] Tianyu Chen Chen, Zhendong Wang, and Mingyuan Zhou. Diffusion policies creating a trust region for offline reinforcement learning. In Advances in Neural Information Processing Systems , volume 37, pages 1–22, 2024. [Diehl et al. , 2021] Christopher Diehl, Timo Sievernich, Martin Kr¨ uger, Frank Hoffmann, and Torsten Bertram. UMBRELLA: Uncertainty-aware model-based offline re-inforcement learning leveraging planning. arXiv preprint arXiv:2111.11097 , 2021. [Fu et al. , 2020] Justin Fu, Aviral Kumar, Ofir Nachum, George Tucker, and Sergey Levine. D4RL: Datasets for deep data-driven reinforcement learning. arXiv preprint arXiv:2004.07219 , 2020. [Fujimoto and Gu, 2021] Scott Fujimoto and Shixi-ang Shane Gu. A minimalist approach to offline reinforcement learning. In Advances in Neural Informa-tion Processing Systems , volume 34, pages 20132–20145, 2021. [Fujimoto et al. , 2019] Scott Fujimoto, David Meger, and Doina Precup. Off-policy deep reinforcement learning without exploration. In International Conference on Ma-chine Learning , pages 2052–2062, 2019. [Gu et al. , 2017] Shixiang Gu, Ethan Holly, Timothy Lilli-crap, and Sergey Levine. Deep reinforcement learning for robotic manipulation with asynchronous off-policy up-dates. In IEEE International Conference on Robotics and Automation , pages 3389–3396, 2017. [Haarnoja et al. , 2018] Tuomas Haarnoja, Aurick Zhou, Kristian Hartikainen, George Tucker, Sehoon Ha, Jie Tan, Vikash Kumar, Henry Zhu, Abhishek Gupta, Pieter Abbeel, et al. Soft actor-critic algorithms and applications. 
+
+arXiv preprint arXiv:1812.05905 , 2018. [Hansen-Estruch et al. , 2023] Philippe Hansen-Estruch, Ilya Kostrikov, Michael Janner, Jakub Grudzien Kuba, and Sergey Levine. IDQL: Implicit q-learning as an actor-critic method with diffusion policies. arXiv preprint arXiv:2304.10573 , 2023. [Hasselt, 2010] Hado Hasselt. Double q-learning. In Ad-vances in Neural Information Processing Systems , vol-ume 23, pages 1–9, 2010. [Ho et al. , 2020] Jonathan Ho, Ajay Jain, and Pieter Abbeel. Denoising diffusion probabilistic models. In Advances in Neural Information Processing Systems , volume 33, pages 6840–6851, 2020. [Huang et al. , 2024] Longyang Huang, Botao Dong, Wei Xie, and Weidong Zhang. Offline reinforcement learning with behavior value regularization. IEEE Transactions on Cybernetics , 54(6):3692–3704, 2024. [Janner et al. , 2022] Michael Janner, Yilun Du, Joshua Tenenbaum, and Sergey Levine. Planning with diffusion for flexible behavior synthesis. In International Confer-ence on Machine Learning , pages 9902–9915, 2022. [Kidambi et al. , 2020] Rahul Kidambi, Aravind Rajeswaran, Praneeth Netrapalli, and Thorsten Joachims. MOReL: Model-based offline reinforcement learning. In Advances in Neural Information Processing Systems , volume 33, pages 21810–21823, 2020. [Kostrikov et al. , 2022] Ilya Kostrikov, Ashvin Nair, and Sergey Levine. Offline reinforcement learning with im-plicit q-learning. In International Conference on Learning Representations , pages 1–11, 2022. [Kumar et al. , 2019] Aviral Kumar, Justin Fu, Matthew Soh, George Tucker, and Sergey Levine. Stabilizing off-policy q-learning via bootstrapping error reduction. In Advances in Neural Information Processing Systems , volume 32, pages 1–11, 2019. [Kumar et al. , 2020] Aviral Kumar, Aurick Zhou, George Tucker, and Sergey Levine. Conservative q-learning for offline reinforcement learning. In Advances in Neural In-formation Processing Systems , volume 33, pages 1179– 1191, 2020. [Lange et al. , 2012] Sascha Lange, Thomas Gabel, and Mar-tin Riedmiller. Batch reinforcement learning. In 
+
+Reinforcement learning: State-of-the-art , pages 45–73. Springer, 2012. [Lee et al. , 2021] Byung-Jun Lee, Jongmin Lee, and Kee-Eung Kim. Representation balancing offline model-based reinforcement learning. In International Conference on Learning Representations , pages 1–22, 2021. [Levine et al. , 2020] Sergey Levine, Aviral Kumar, George Tucker, and Justin Fu. Offline reinforcement learning: Tu-torial, review, and perspectives on open problems. arXiv preprint arXiv:2005.01643 , 2020. [Li et al. , 2023] Jianxiong Li, Xianyuan Zhan, Haoran Xu, Xiangyu Zhu, Jingjing Liu, and Ya-Qin Zhang. When data Proceedings of the Thirty-Fourth International Joint Conference on Artificial Intelligence (IJCAI-25) 
+
+> 5777
+
+geometry meets deep function: Generalizing offline rein-forcement learning. In The Eleventh International Confer-ence on Learning Representations , pages 1–35, 2023. [Lyu et al. , 2022] Jiafei Lyu, Xiaoteng Ma, Xiu Li, and Zongqing Lu. Mildly conservative q-learning for offline reinforcement learning. In Advances in Neural Informa-tion Processing Systems , volume 35, pages 1711–1724, 2022. [Mnih et al. , 2015] Volodymyr Mnih, Koray Kavukcuoglu, David Silver, Andrei A Rusu, Joel Veness, Marc G Belle-mare, Alex Graves, Martin Riedmiller, Andreas K Fidje-land, Georg Ostrovski, et al. Human-level control through deep reinforcement learning. Nature , 518(7540):529–533, 2015. [Nachum et al. , 2019] Ofir Nachum, Yinlam Chow, Bo Dai, and Lihong Li. DualDICE: Behavior-agnostic estimation of discounted stationary distribution corrections. In Ad-vances in Neural Information Processing Systems , vol-ume 32, pages 1–11, 2019. [Ovadia et al. , 2019] Yaniv Ovadia, Emily Fertig, Jie Ren, Zachary Nado, D. Sculley, Sebastian Nowozin, Joshua Dillon, Balaji Lakshminarayanan, and Jasper Snoek. Can you trust your model's uncertainty? evaluating predictive uncertainty under dataset shift. In Advances in Neural Information Processing Systems , volume 32, pages 1–12, 2019. [Prudencio et al. , 2023] Rafael Figueiredo Prudencio, Mar-cos ROA Maximo, and Esther Luna Colombini. A survey on offline reinforcement learning: Taxonomy, review, and open problems. IEEE Transactions on Neural Networks and Learning Systems , 2023. [Sallab et al. , 2017] Ahmad EL Sallab, Mohammed Abdou, Etienne Perot, and Senthil Yogamani. Deep reinforce-ment learning framework for autonomous driving. arXiv preprint arXiv:1704.02532 , 2017. [Srinivasan and Knottenbelt, 2024] Padmanaba Srinivasan and William Knottenbelt. Offline reinforcement learning with behavioral supervisor tuning. In Proceedings of the Thirty-Third International Joint Conference on Artificial Intelligence , pages 1–9, 2024. [Sun et al. , 2023] Jiankai Sun, Yiqi Jiang, Jianing Qiu, Parth Nobel, Mykel J Kochenderfer, and Mac Schwager. Con-formal prediction for uncertainty-aware planning with dif-fusion dynamics model. In Advances in Neural Informa-tion Processing Systems , volume 36, pages 80324–80337, 2023. [Sutton and Barto, 2018] Richard S Sutton and Andrew G Barto. Reinforcement learning: An introduction . MIT press, 2018. [Wang et al. , 2021] Jianhao Wang, Wenzhe Li, Haozhe Jiang, Guangxiang Zhu, Siyuan Li, and Chongjie Zhang. Offline reinforcement learning with reverse model-based imagination. In Advances in Neural Information Process-ing Systems , volume 34, pages 29420–29432, 2021. [Wang et al. , 2023] Zhendong Wang, Jonathan J Hunt, and Mingyuan Zhou. Diffusion policies as an expressive policy class for offline reinforcement learning. In The Eleventh International Conference on Learning Representations ,pages 1–17, 2023. [Wu et al. , 2019] Yifan Wu, George Tucker, and Ofir Nachum. Behavior regularized offline reinforcement learning. arXiv preprint arXiv:1911.11361 , 2019. [Wu et al. , 2021] Yue Wu, Shuangfei Zhai, Nitish Srivastava, Joshua M Susskind, Jian Zhang, Ruslan Salakhutdinov, and Hanlin Goh. Uncertainty weighted actor-critic for of-fline reinforcement learning. In International Conference on Machine Learning , pages 11319–11328, 2021. [Yang et al. , 2023] Qisen Yang, Shenzhi Wang, Matthieu Gaetan Lin, Shiji Song, and Gao Huang. Boosting offline reinforcement learning with action pref-erence query. In International Conference on Machine Learning , pages 39509–39523, 2023. [Yu et al. , 2020] Tianhe Yu, Garrett Thomas, Lantao Yu, Ste-fano Ermon, James Y Zou, Sergey Levine, Chelsea Finn, and Tengyu Ma. MOPO: Model-based offline policy opti-mization. In Advances in Neural Information Processing Systems , volume 33, pages 14129–14142, 2020. [Yu et al. , 2021] Tianhe Yu, Aviral Kumar, Rafael Rafailov, Aravind Rajeswaran, Sergey Levine, and Chelsea Finn. Combo: Conservative offline model-based policy opti-mization. In Advances in Neural Information Processing Systems , volume 34, pages 28954–28967, 2021. Proceedings of the Thirty-Fourth International Joint Conference on Artificial Intelligence (IJCAI-25)

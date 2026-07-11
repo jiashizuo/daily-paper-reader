@@ -1,0 +1,452 @@
+Title: Token-Level Accept or Reject: A Micro Alignment Approach for Large Language Models
+
+URL Source: https://www.ijcai.org/proceedings/2025/0931.pdf
+
+Published Time: Thu, 18 Sep 2025 14:48:19 GMT
+
+Number of Pages: 9
+
+Markdown Content:
+# Token-Level Accept or Reject: A Micro Alignment Approach for Large Language Models 
+
+## Yang Zhang 1 , Yu Yu 2 , Bo Tang 3,2∗ , Yu Zhu 4 , Chuxiong Sun 5 , Wenqiang Wei 2 ,
+
+## Jie Hu 5 , Zipeng Xie 6 , Zhiyu Li 2 , Feiyu Xiong 2 and Edward Chung 11Hong Kong Polytechnic University, Hong Kong SAR, China 
+
+> 2
+
+## MemTensor (Shanghai) Technology Co., Ltd, Shanghai, China 
+
+> 3
+
+## University of Science and Technology of China, Suzhou Institute for Advanced Research, Suzhou, China 
+
+> 4
+
+## University of Science and Technology of China, Hefei, China 
+
+> 5
+
+## China Telecom Corporation Limited Beijing Research Institute, Beijing, China 
+
+> 6
+
+## Nanjing University of Information Science and Technology, Nanjing, China 
+
+## Abstract 
+
+With the rapid development of Large Language Models (LLMs), aligning these models with hu-man preferences and values is critical to ensuring ethical and safe applications. However, existing alignment techniques such as RLHF or DPO of-ten require direct fine-tuning on LLMs with bil-lions of parameters, resulting in substantial com-putational costs and inefficiencies. To address this, we propose Micro token-level Accept-Reject 
+
+Aligning (MARA) approach designed to operate independently of the language models. MARA simplifies the alignment process by decompos-ing sentence-level preference learning into token-level binary classification, where a compact three-layer fully-connected network determines whether candidate tokens are “Accepted” or “Rejected” as part of the response. Extensive experiments across seven different LLMs and three open-source datasets show that MARA achieves sig-nificant improvements in alignment performance while reducing computational costs. The source code and implementation details are publicly available at https://github.com/IAAR-Shanghai/ MARA, and the trained models are released at https://huggingface.co/IAAR-Shanghai/MARA AGENTS. 
+
+## 1 Introduction 
+
+The alignment of Large Language Models (LLMs) with hu-man values and preferences has emerged as a crucial chal-lenge in AI development [Wang et al. , 2023b]. The alignment is extremely important for LLMs that operate safely and eth-ically. Among various alignment approaches, Reinforcement Learning from Human Feedback (RLHF) [Ouyang et al. ,2022] and Direct Preference Optimization (DPO) [Rafailov et al. , 2024b] have emerged as two dominant paradigms. RLHF fine-tunes language models using a reward model trained on  
+
+> ∗Corresponding Author <tangbo@mail.ustc.edu.cn >.
+
+human preference datasets, while DPO directly optimizes the models through pairwise comparisons without relying on ex-plicit reward modeling. Although RLHF, DPO and their variants [Perez et al. ,2023; Bai et al. , 2022b; Lee et al. , 2023; Zeng et al. , 2024; Azar et al. , 2024; Wang et al. , 2023a] have demonstrated impressive capabilities in aligning performance, they face a critical challenge: excessive computational resource con-sumption. These methods require fine-tuning billion or even hundred-billion parameter of language models, typically de-manding hundreds of GPU hours and substantial memory resources. Such computational intensity poses a significant barrier for real-world applications [Anwar et al. , 2024], par-ticularly in scenarios requiring rapid alignment updates or resource-constrained environments. To address this challenge, we pose a fundamental question: 
+
+Can we develop a micro alignment approach that operates in-dependently of the language model while maintaining excel-lent alignment performance? 
+
+As shown in Figure 1, unlike aligning operated on the language model, our key insight is that the alignment pro-cess can be simplified into accepting or rejecting a token us-ing a streamlined alignment model. Specifically, the align-ment model is the first to be implemented as a micro fully-connected network. Given the prompt, the partially gener-ated response, and a candidate set of tokens that are sorted by sampling probabilities from a supervised fine-tuned model, our alignment model sequentially determines whether to ac-cept or reject each candidate token during the generation pro-cess. This approach transforms the alignment task into a sim-ple binary classification problem, significantly reducing the computational overhead while ensuring effective alignment performance. A concurrent work called Aligner [Ji et al. , 2024a] shares a similar motivation of decoupling alignment from the up-stream language model. However, our approach differs sig-nificantly in both scale and methodology. While Aligner em-ploys a seq2seq model with 2B-13B parameters, our method utilizes a micro fully-connected network with merely millions of parameters. Moreover, our execution process is fundamen-tally simpler, focusing on token-level accept/reject decisions Proceedings of the Thirty-Fourth International Joint Conference on Artificial Intelligence (IJCAI-25)    
+
+> 8375 Alignment Model Prompt Inputs Encoding
+> Multi-Head Attention Feed Forward Add & Norm
+> Add & Norm 12X
+> Our Approach Answer Aligning on Language Models Prompt Inputs Encoding Multi-Head Attention Feed Forward Add & Norm Add & Norm 12X
+> Answer …
+> Accept Micro Alignment Model
+> Reject
+
+Figure 1: Unlike RLHF or DPO based alignment approach which fine-tunes the language models, the key insight of our approach is simplifying the alignment process into accepting or rejecting a token using a streamlined alignment model. 
+
+rather than reformulating entire output sentences. In summary, we propose Micro token-level Accept-Reject 
+
+Aligning (MARA) approach, which offers three significant advantages: • Computation-friendly: Our approach requires only a three-layer fully-connected network as the align-ment model, reducing the computation overhead sig-nificantly. Specifically, for aligning an 8B-parameter language model, MARA requires training only a 4M-parameter alignment model, whereas RLHF, DPO, and 
+
+Aligner necessitate training language models with over 20M parameters, even when employing parameter-efficient Low-Rank Adaptation (LoRA). • Effectiveness: While operating at a micro level, our approach achieves superior alignment performance .Specifically, with Llama 3.1-8B as the base model, MARA demonstrates substantial improvements across different benchmark datasets: +31.8% over RLHF, +18.8% over DPO, and +8.8% over Aligner .• Compatibility: The decoupled architecture of MARA-trained alignment models enables seamless integration with various LLMs, i.e., an alignment model trained on one LLM can be effectively transferred to other LLMs while maintaining strong performance . For in-stance, an alignment model trained on Mistral-7B-v0.3 enhances the alignment performance of Llama 3-8B by 25.5% on average across three evaluation datasets. 
+
+## 2 Preliminaries 
+
+This section introduces the standard RLHF framework, which consists of two primary phases: supervised fine-tuning (SFT) and reinforcement learning-based optimization. We first for-malize these phases and then present a token-level decompo-sition of the alignment process. 
+
+2.1 RLHF Framework 
+
+SFT Phase: The pre-trained language model is initially fine-tuned on high-quality human demonstrations to generate ap-propriate responses. This process is optimized through the following objective: 
+
+JSF T = −E(x,y )∼D SF T [log πref (y|x)] (1) where x and y denote the input prompt and model response, respectively, sampled from the supervised fine-tuning dataset 
+
+DSF T . πref denotes the fine-tuned language model serving as the reference model for subsequent optimization. 
+
+RL-based Optimization Phase: Following SFT, the model undergoes reinforcement learning optimization to align with human preferences. The objective function for this phase is: 
+
+JRL =Ex∼D RL ,y ∼πθ (·| x) [r (x, y )
+
+−λD KL (πθ (·| x) ∥ πref (·| x))] (2) where πθ denotes the model undergoing RL optimization, and DRL represents the optimization dataset. The coefficient 
+
+λ controls the KL divergence penalty between the reference model and the aligned model. The reward model r(x, y ) evaluates the alignment be-tween model outputs and human preferences. Given a pref-erence dataset D containing triples (x, y w, y l), where x is the prompt, yw is the preferred response, and yl is the less pre-ferred response, the reward model is trained to minimize: 
+
+L (rϕ) = −E(x,y w ,y l)∼D [log ( σ (rϕ (x, y w) − rϕ (x, y l)))] 
+
+(3) where σ denotes the Sigmoid function. 
+
+2.2 Token-Level Decomposition 
+
+At its core, the RLHF alignment process can be decomposed into a sequence of token-level decisions. The sentence gener-ation process is formally expressed as: 
+
+πθ (y|x) = πθ (y1,y2, . . . , y H |x) = 
+
+> H
+
+Y
+
+> i=1
+
+πθ (yi|x, y <i )yi∼Ti
+
+(4) where Ti denotes the vocabulary space of available tokens at the i-th position in the output sequence y, and H denotes the sequence length. This token-level decomposition reveals the possibility of performing alignment at the granularity of individual tokens, enabling more precise control over the generation process. Furthermore, this granular perspective can be refined into ex-plicit accept-or-reject decisions for each token, which moti-vates our proposed method detailed in the following sections. 
+
+## 3 Our Approach 
+
+In this section, we present MARA, a novel token-level accept-reject approach for LLM alignment. Building upon the foun-dation established by the SFT phase, MARA introduces a lan-guage model-independent alignment mechanism, replacing the original language model optimization in RLHF. Specifi-cally, we first formalize the alignment task as a Markov Deci-sion Process (MDP), then detail our accept-reject mechanism, and finally discuss implementation specifics. Proceedings of the Thirty-Fourth International Joint Conference on Artificial Intelligence (IJCAI-25) 
+
+8376 Prompt Token 1 Token 2 Token 3 Token k 
+
+> …
+> Candidate Tokens
+> Select Direction
+> Reference Model by SFT Alignment Model
+> Token 1 Token 2 Token 3 Token k
+> …
+> Alignment Model
+> Prompt
+> Select Direction
+> Prompt
+> Continue … Candidate Tokens
+> Reference Model by SFT
+
+Figure 2: Architecture of MARA which utilizes an alignment model to perform token selection through accept-reject decisions. 
+
+3.1 MDP Formulation of Alignment 
+
+Given the reference model πref from the SFT phase, we for-mulate the alignment process as a MDP, characterized by the tuple (S, A, ρ, P, r ), where: • State space ( s ∈ S ): For the i-th token generation at time step τ , the state sτ = x, y <i , t ki comprises the input prompt x, previously generated response y<i , and the current candidate token tki ∈ Ti, where Ti denotes a truncated candidate token set (detailed below), and k
+
+indexes the candidate token in Ti.• Action space ( a ∈ { 0, 1}): Binary action where atki = 1 
+
+indicates accepting the candidate token tki to concatenate with the generated response y<i , while atki = 0 indicates rejection. To facilitate understanding, we use atki instead of aτ referring to the action on the candidate token. • Initial state distribution ( ρ): Defines the distribution over initial states. • Reward function ( r : S × A → R) will be detailed in Section 3.3. • State transition ( P): The dynamics follow: 
+
+sτ +1 =
+
+( x, y <i +1 , t 1 
+
+> i+1
+
+, if atki = 1; 
+
+x, y <i , t k+1  
+
+> i
+
+, else . (5) To enhance computational efficiency, we employ a hybrid vocabulary truncation strategy combining two widely-used methods: top-k sampling, which retains only the k most prob-able tokens, and top-p (nucleus) sampling, which selects the smallest set of tokens whose cumulative probability exceeds p. This combination clips the vocabulary space Ti at each generation step to form a reduced candidate set Ti. This hy-brid approach ensures both diversity and quality of the candi-date tokens while maintaining computational tractability. 
+
+3.2 Token-level Accept-Reject Aligning Mechanism 
+
+Unlike traditional RLHF that fine-tunes the entire language model, our approach introduces a micro accept-reject model that operates at the token level. This model is implemented as a compact three-layer fully connected neural network. The alignment process follows four key steps: 
+
+Step 1: Candidate Generation. Given the prompt x
+
+and the previously generated tokens y<i , we use the ref-erence model πref to generate a candidate token set Ti =
+
+{t1 
+
+> i
+
+, t 2 
+
+> i
+
+, . . . , t |Ti| 
+
+> i
+
+} through hybrid sampling that combines top-p and top-k strategies. 
+
+Step 2: Probability-based Sorting. Sort the candidate to-ken set Ti in descending order according to their conditional probabilities πref (tki |x, y <i ), resulting in an ordered set eTi.
+
+Step 3: Token Evaluation. For the first token in the eTi,apply the accept-reject model to evaluate whether to accept or reject the token. The input of the accept-reject model con-sists of the last hidden state of the token sequence: prompt x,previously generated tokens y<i , and the first candidate token in eTi. The output is a binary decision: accept or reject. If ac-cepting the token, add it to the output sentence y, and return to Step 1 until the EOS token is selected or the output length reaches its predefined limit. Otherwise, proceed to Step 4. 
+
+Step 4: Candidate Update. Upon rejection, remove the token from the candidate token set eTi, and return to Step 3. To maintain generation quality, we order candidate tokens by their sampling probabilities in descending order, as higher probability tokens typically better align with the reference model’s learned patterns, thus reducing the risk of generating grammatically incorrect or contextually inconsistent content. For cases when all tokens in the candidate set are rejected by the accept-reject model, we employ a fallback mechanism to ensure generation continuity. Specifically, we enforce the acceptance of the final candidate token, formally expressed as 
+
+atki ∈ { 1} when k = eTi . This strategy ensures generation proceeds by selecting lower-probability tokens when neces-sary, thereby balancing quality and diversity. According to the above token-level aligning approach, the sampling probability for any token tki , representing the k-th candidate token in the candidate set eTi, is formalized as: 
+
+πθ
+
+ yi = tki
+
+ =πθ
+
+
+
+atki = 1 |x, y <i 
+
+
+
+> k−1
+
+Y
+
+> k′=1
+
+πθ
+
+
+
+atk′
+
+> i
+
+= 0 |x, y <i 
+
+ 
+
+> tki∈eTi
+
+.
+
+(6) Note that we still use πθ to denote the accept-reject model parameterized by θ.From above, the complete aligned response generation pro-cess can thus be expressed as: 
+
+πθ (y|x) = 
+
+> H
+
+Y
+
+> i=1
+
+πθ (yi = tki |x, y <i ) t∼eTi . (7) Proceedings of the Thirty-Fourth International Joint Conference on Artificial Intelligence (IJCAI-25) 
+
+8377 3.3 Implementation 
+
+Reward Design 
+
+A key challenge in MARA is bridging the gap between sentence-level rewards in standard RLHF and token-level de-cisions. Our reward function is designed with two objectives: (1) maximizing the reward model score r(x, y ) to maintain alignment with human preferences as in RLHF, and (2) pre-venting reward hacking by constraining the token distribu-tion divergence between the aligned model and the reference model, thereby avoiding unnatural token selections [Eisen-stein et al. , 2023]. Specifically, for any action atki at state sτ , we define the token-level reward as: 
+
+rτ =
+
+
+
+−λD KL (πθ (tki |x, y <i ) ∥ πref (tki |x, y <i )) ,
+
+if sτ is not terminal ;
+
+r(x, y ) − λD KL (πθ (tki |x, y <i ) ∥ πref (tki |x, y <i )) ,
+
+else .
+
+(8) where r(x, y ) denotes the evaluation score by reward model trained by Eq. 3. This formulation represents a token-level decomposition of the RLHF objective in Eq. 2. We adopt the distributed Soft Actor-Critic (SAC) algorithm [Haarnoja et al. , 2018] instead of the conventional Proximal Policy Optimization (PPO) al-gorithm used in RLHF due to SAC’s higher computation ef-ficiency, especially in distributed training environment. PPO requires synchronization between distributed nodes for sam-ple collection and model updates, creating waiting periods. In contrast, SAC enables continuous sample collection across all nodes with real-time parameter updates via a global replay buffer, eliminating waiting periods. 
+
+Training Objectives 
+
+The alignment model serves as the actor in our framework, with its loss function defined as: 
+
+L (πθ ) = −Ex∼D [αhH (πθ (s)) + Etik ∼πθ [min ( V1 (s) , V 2 (s))]] (9) where H represents the entropy term of the alignment model that promotes diverse token selection, while V1(s) and V2(s)
+
+are two critic heads for robust value estimation and overfitting prevention. The critic network, parameterized by φ, is trained using the following loss: 
+
+L(πφ) = Ex∼D 
+
+" V1(s) + V2(s)2 − r(x, π θ (x)) 
+
+− αhH(πθ (s′)) − γEti′ 
+
+> k∼πθ
+
+ min( V ′ 
+
+> 1
+
+(s′), V ′ 
+
+> 2
+
+(s′)) 2#
+
+(10) where πφ denotes the critic network with parameters φ.
+
+V ′ 
+
+> 1
+
+(s′) and V ′ 
+
+> 2
+
+(s′) denote the two heads of target critic net-work. The entropy coefficient αh is automatically adjusted ac-cording to: 
+
+L(αh) = Eah∼πθ
+
+−αhπθ (aτ |sτ ) − ατ H (11) where H = 2 is the minimum entropy threshold based on the action space dimension. 
+
+## 4 Experiments 
+
+We conduct comprehensive experiments to evaluate MARA’s effectiveness across diverse datasets, reward models, and base LLMs. 
+
+4.1 Experimental Setup 
+
+Datasets. Our experiments mainly leverage three compre-hensive evaluation benchmarks for utility, safety and ethical assessment: PKU-SafeRLHF (SafeRLHF) [Ji et al. , 2024b], which serves as our primary training dataset and contains 83.4K preference pairs with safety meta-labels and human preferences for helpfulness and harmlessness; BeaverTails [Ji 
+
+et al. , 2024c], covering 14 safety categories including sen-sitive topics like abuse and political discussions; and Harm-fulQA [Bhardwaj and Poria, 2023], comprising 10 themes of ChatGPT-generated conversations for evaluating responses in potentially harmful scenarios. 
+
+Upstream LLMs. We evaluate our alignment model on two widely-adopted open-source LLM families with vari-ous model scales and versions. Specifically, the Llama fam-ily includes Llama-3-8B, Llama-3.1-8B, Llama-3.2-3B, and Llama-3.2-1B [AI@Meta, 2024], while the Mistral family comprises Mistral-7B-v0.1, Mistral-7B-v0.2, and Mistral-7B-v0.3 [Jiang et al. , 2023]. Due to computational con-straints, we do not include larger models such as Llama-3-70B in our experiments. For brevity, we omit the suffix ’In-struct’ from all model names. 
+
+Evaluation Metrics. Following the methodology of 
+
+aligner [Ji et al. , 2024a], we adopt the preference rate met-ric to evaluate model performance across two critical dimen-sions: helpfulness and harmlessness, which respectively as-sess the utility and safety aspects of generated responses. The preference rate is defined as: 
+
+w = Nw − Nl
+
+Nw + Ne + Nl
+
+× 100% (12) where Nw, Ne, and Nl denote the numbers of wins, ties, and loses respectively in pairwise comparisons between different alignment approaches. 
+
+Reward Models. Our alignment training utilizes a combi-nation of two specialized models: beaver-7b-v1.0-reward for utility evaluation and beaver-7b-v1.0-cost [Dai et al. , 2024] for safety evaluation (where a negative cost score indicates a safe response). The final reward r(x, y ) is computed as: 
+
+r(x, y ) = αr R(x, y ) − αcC(x, y ) (13) where R(x, y ) and C(x, y ) denote the evaluation scores from the reward and cost models respectively, and αr and αc are their corresponding weights. For the Llama family of models, we employ a balanced weighting scheme with αr = αc = 1 . For the Mistral family, we adopt an asymmetric weighting ( αr = 2 , αc = 1 ) to coun-teract their inherent bias towards safety over utility, thereby achieving a better utility-safety trade-off. 
+
+Computing Resources. Our experiments are performed on one Nvidia H800-80GB GPU. The machine is equipped Proceedings of the Thirty-Fourth International Joint Conference on Artificial Intelligence (IJCAI-25)                                 
+
+> 8378 Upstream LLM + MARA vs. Upstream LLM Upstream LLM SafeRLHF BeaverTails HarmfulQA Llama 3-8B +33.67% +36.86% +52.05% Llama 3.1-8B +39.70% +35.43% +62.09% Llama 3.2-1B +45.23% +31.71% +59.43% Llama 3.2-3B +32.66% +29.43% +35.45% Mistral-7B-v0.1 +11.06% +17.43% +10.45% Mistral-7B-v0.2 +4.52% +14.29% +4.92% Mistral-7B-v0.3 +17.09% +16.00% +11.07% Average +26.28% +25.88% +33.64%
+> Table 1. Performance improvements of MARA across PKU-SafeRLHF, BeaverTails, and HarmfulQA datasets. Each entry shows the percentage improvement in preference rate achieved by applying MARA compared to using the original LLM alone.
+
+with 192 Intel(R) Xeon(R) Platinum 8468v processors and has a CPU memory of 1584 GB. 
+
+4.2 Experiment Results 
+
+Performance on Different Evaluation Datasets. 
+
+Table 1 shows that MARA significantly improves the align-ment performance of various upstream LLMs with different scales and versions in all three challenging datasets. For the Llama family, MARA achieves remarkable improvements, with gains of up to +45.23% on SafeRLHF, +36.86% on BeaverTails, and +62.09% on HarmfulQA. The improve-ments are particularly pronounced for Llama 3.1-8B, which shows the strongest overall performance gains. For the Mis-tral family, while the improvements are more modest, MARA still demonstrates consistent positive impacts, with average gains of +10.89%, +15.91%, and +8.81% across the three datasets respectively. On average, MARA yields substantial improvements of +26.28%, +25.88%, and +33.64% across SafeRLHF, BeaverTails, and HarmfulQA respectively, in-dicating its robust generalization capability across different evaluation scenarios. 
+
+Comparison with Different Baselines. 
+
+Table 2 presents a comprehensive comparison between MARA and three representative baselines: RLHF, DPO, and 
+
+Aligner . For the implementation of RLHF and DPO, we uti-lize the source code from [Zheng et al. , 2024]; For the im-plementation of Aligner , we utilize the aligner-7b-v1.0 align-ment model from [Aligners, 2024]. Note that we don’t in-clude recent variants of RLHF and DPO (e.g., RLAIF, RL-HAIF, TDPO, IPO) as baselines since they mainly improve specific aspects (e.g., feedback sources, overfitting) rather than proposing fundamentally different alignment mecha-nisms. The experimental results demonstrate that MARA consistently outperforms RLHF and DPO across all three datasets, achieving average improvements of +18.65% and +12.59% respectively. Compared to Aligner , MARA shows marginally lower per-formance on certain Llama-based models, likely because 
+
+Aligner was trained using Llama models as base models. Nevertheless, MARA demonstrates competitive advantages on SafeRLHF (+5.60%) and BeaverTails (+4.37%) evaluation datasets. More importantly, MARA shows significant compu-tational advantages: it requires only a micro three-layer align-ment model (4M parameters) compared to Aligner ’s 7B pa-rameters, achieving higher inference speed (31.41 vs. 20.63 tokens/s). 
+
+Compatibility Analysis. 
+
+To verify the compatibility of our approach, we conduct com-prehensive experiments examining how alignment models trained on one LLM generalize to other inference LLMs. Ta-ble 3 presents the results for two alignment models, trained on Llama-3.1-8B and Mistral-7B-v0.3 respectively, when ap-plied to various inference LLMs. The results show that the alignment model trained on Llama-3.1-8B demonstrates strong generalization capability, achieving substantial im-provements across all evaluation datasets. Even when applied to different model families, it maintains robust performance, with improvements ranging from +4.02% to +28.14% across different Mistral versions. Similarly, the Mistral-7B-v0.3-trained alignment model shows consistent improvements across both model families, with particularly strong perfor-mance when applied to Llama 3-8B (SafeRLHF: +18.09%, BeaverTails: +20.71%, HarmfulQA: +37.70%). Overall, our approach demonstrates strong cross-model compatibil-ity with average improvements of +13.82%, +13.91%, and +17.87% across SafeRLHF, BeaverTails, and HarmfulQA re-spectively. 
+
+4.3 Ablation Studies 
+
+Ablation on Training Datasets 
+
+The experiments introduced before utilized PKU-SafeRLHF datasets for training the alignment model. To verify MARA’s effectiveness across different training datasets, we evaluate its performance against SFT, RLHF, DPO and Aligner on two additional training datasets: HH-RLHF [Bai et al. , 2022a] and Ultra-Feedback [Cui et al. , 2023]. Table 4 presents the results using Llama 3.1-8B as the upstream LLM. The ex-perimental results demonstrate MARA’s consistent superior-ity, with substantial average improvements over all baselines: +23.25% over SFT, +31.75% over RLHF, +18.75% over DPO, and +8.75% over Aligner . Notably, MARA achieves particularly strong performance on HH-RLHF, with improve-ments of up to +43.00% over RLHF, while maintaining robust gains on Ultra-Feedback across all baseline comparisons. 
+
+Ablation on Reward Signal Distribution 
+
+To analyze the impact of different reward signal distribu-tions, we conduct experiments with various ratios between reward and cost model signals ( αr :αc). As shown in Ta-ble 5, we observe distinct trade-offs between helpfulness and harmlessness across different configurations. When solely using the reward model ( αr :αc=1:0), the model shows im-proved helpfulness (up to +37.57%) but decreased harmless-ness. Conversely, using only the cost model ( αr :αc=0:1) leads to significant gains in harmlessness (up to +65.83%) but often at the expense of helpfulness. A balanced ra-tio of αr :αc=2:1 achieves the best overall performance across datasets, with preference rate improvements reach-ing +17.09% on SafeRLHF, +16.00% on BeaverTails, and +11.07% on HarmfulQA using Mistral-7B-v0.3. This sug-gests that while both reward signals are important, slightly Proceedings of the Thirty-Fourth International Joint Conference on Artificial Intelligence (IJCAI-25) 
+
+> 8379
+
+MARA vs. RLHF MARA vs. DPO MARA vs. Aligner 
+
+Upstream LLM SafeRLHF BeaverTails HarmfulQA SafeRLHF BeaverTails HarmfulQA SafeRLHF BeaverTails HarmfulQA Llama 3-8B +29.65% +22.14% +45.08% +15.08% +14.86% +28.28% +5.53% +2.71% +5.74% Llama 3.1-8B +21.61% +28.00% +5.74% +0.00% +14.57% +1.64% +0.50% -3.14% -11.89% Llama 3.2-1B +39.20% +22.29% +38.93% +0.50% +0.14% +14.96% -6.03% -12.0% -9.63% Llama 3.2-3B +8.54% +7.43% -1.02% +1.01% +2.71% -4.92% -2.01% -6.71% -12.91% Mistral-7B-v0.1 +8.04% -0.14% +0.00% +9.55% +17.29% +6.15% +10.55% +17.0% +0.61% Mistral-7B-v0.2 +24.62% +16.86% +17.01% +22.61% +27.0% +21.93% +14.57% +13.43% +4.30% Mistral-7B-v0.3 +14.07% +16.86% +26.64% +17.09% +29.86% +23.98% +16.08% +19.29% +11.48% Average +20.82% +16.21% +18.91% +9.41% +15.20% +13.15% +5.60% +4.37% -1.76% 
+
+Table 2. Performance comparison of MARA against RLHF, DPO, and Aligner measured by percentage improvements of preference rate. 
+
+MARA vs. Inference LLM Training LLM Inference LLM SafeRLHF BeaverTails HarmfulQA Llama-3.1-8B Llama 3.1-8B +39.70% +35.43% +62.09% Llama 3-8B +27.14% +28.14% +45.29% Mistral-7B-v0.3 +14.07% +5.00% +6.15% Mistral-7B-v0.2 +4.02% +7.00% +7.17% Mistral-7B-v0.1 +17.09% +12.57% +1.64% Mistral-7B-v0.3 Mistral-7B-v0.3 +9.05% +9.14% +6.97% Mistral-7B-v0.2 +3.02% +1.71% +1.43% Mistral-7B-v0.1 +4.52% +6.86% +4.30% Llama 3.1-8B +1.51% +12.57% +5.94% Llama 3-8B +18.09% +20.71% +37.70% Average +13.82% +13.91% +17.87% 
+
+Table 3. Compatibility analysis for our approach, that an align-ment model trained with a LLM to be aggregate with other inference LLM. The value of each cell represents the percentage improvement in preference rate of our algorithm over the upstream model, i.e., in-ference model. 
+
+Dataset vs. SFT vs. RLHF vs. DPO vs. Aligner 
+
+HH-RLHF +24.00% +43.00% +28.50% +8.50% Ultra-Feedback +22.50% +20.50% +9.00% +9.00% Average +23.25% +31.75% +18.75% +8.75% 
+
+Table 4. Performance comparison of MARA against baseline approaches (SFT, RLHF, DPO, and Aligner ) on various training datasets, reported as percentage improvements in preference rate. All experiments use Llama 3.1-8B as the upstream model. 
+
+emphasizing the reward model over the cost model leads to optimal balance between helpfulness and safety. 
+
+4.4 Visualisation of Accepted Tokens Distribution 
+
+To visualize the accept or rejection process for candidate to-kens under our approach, and evaluate the impact of sam-pling parameters on token selection, we present an instance of the experiment performed on PKU-SafeRLHF dataset with Llama-3.2-1B as the upstream LLM. Figure 3 shows the distribution of accepted tokens across the candidate token set under different sampling parameter configurations. The analysis reveals three key findings: 1) Dominance of first token: Across all parameter settings, the first candidate token demonstrates strong dominance, ac-counting for 65.9-74.0% of all acceptances. This suggests the model maintains high confidence in its primary predictions with the greatest sampling probability. 74.0% 20.3% 4.4% 
+
+> k=10 of Top-k, p=0.7 of Top-p
+> 66.9% 20.6% 7.9% 3.2%
+> k=10 of Top-k, p=0.9 of Top-p
+> 72.2% 20.8% 4.9%
+> k=20 of Top-k, p=0.7 of Top-p
+> 65.9% 20.8% 8.2% 3.4%
+> k=20 of Top-k, p=0.9 of Top-p
+> Top 5 Categories Accept first token Accept second token Accept third token Accept fourth token Accept fifth token
+
+Figure 3: Token acceptance distribution under various Top-k and Top-p sampling configurations using Llama 3.2-1B on the PKU-SafeRLHF dataset. The plots show the first five most frequently accepted token positions, with acceptance rates below 2% omitted. 
+
+2) Parameter sensitivity: Increasing the Top-p value and Top-k value results in a notable decrease in first token accep-tance, while simultaneously increasing the acceptance rates of second and third tokens. This indicates that higher sam-pling thresholds promote more diverse token selection. 3) Optimal decision window: The acceptance distribution demonstrates MARA has learned to concentrate its safety-alignment decisions within a compact token space, where over 95% of all acceptances occur within the top three po-sitions. Such a focused decision mechanism helps maintain generation efficiency while ensuring safety controls. 
+
+## 5 Related Works 
+
+Prior approaches to language model alignment can be cate-gorized along two primary dimensions: the utilization of RL and the granularity of alignment. Proceedings of the Thirty-Fourth International Joint Conference on Artificial Intelligence (IJCAI-25) 
+
+8380 Reward distribution SafeRLHF BeaverTails HarmfulQA Upstream LLM Helpful( ↑) Harmless( ↑) Perference( ↑) Helpful( ↑) Harmless( ↑) Perference( ↑) Helpful( ↑) Harmless( ↑) Perference( ↑)Mistral-7B-v0.1                                                                                                                         
+
+> αr:αc=1:0 +29.65% -26.13% +2.01% +37.29% -22.57% +7.29% +21.93% -18.44% +1.43%
+> αr:αc=0:1 -55.78% +63.82% +4.02% -34.29% +51.57% +8.57% -49.39% +53.89% +2.46%
+> αr:αc=1:1 -37.49% +49.25% +6.03% -19.71% +48.71% +14.43% -40.78% +51.84% +5.53%
+> αr:αc=2:1 -16.58% +28.69% +11.06% -2.71% +37.21% +17.43% -22.75% +43.44% +10.45%
+> Mistral-7B-v0.2
+> αr:αc=1:0 +24.62% -20.60% +2.01% +31.71% -21.14% +5.29% +27.05% -22.95% +2.05%
+> αr:αc=0:1 -91.96% +40.70% -1.01% -30.00% +33.71% +1.86% -52.87% +52.46% -0.20%
+> αr:αc=1:1 -22.61% +35.68% +6.53% -15.43% +35.14% +9.71% -41.19% +50.41% +4.51%
+> αr:αc=2:1 -20.6% +30.15% +4.52% +9.43% +19.29% +14.29% -31.56% +41.6% +4.92%
+> Mistral-7B-v0.3
+> αr:αc=1:0 +29.65% -9.05% +10.55% +37.57% -11.29% +13.00% +11.07% -9.84% +0.61%
+> αr:αc=0:1 -39.70% +65.83% +13.07% -37.71% +45.71% +4.00% -56.97% +60.25% +1.64%
+> αr:αc=1:1 -31.66% +54.27% +11.56% -17.14% +43.14% +13.00% -50.41% +69.06% +9.22%
+> αr:αc=2:1 -17.39% +50.75% +17.09% -2.29% +34.71% +16.00% -42.62% +64.75% +11.07%
+
+Table 5. Impact of reward signal distribution on model performance in terms of helpful, harmless, and preference rate. αr :αc represents the ratio between reward model (beaver-7b-v1.0-reward) and cost model (beaver-7b-v1.0-cost) signals in the reward of r(x, y ). Bold numbers indicate the best performance under each metric (helpful/harmless/preference) for each model version. 
+
+5.1 Alignment Methodology 
+
+RL-based Alignment: RL has demonstrated remark-able effectiveness across various language tasks, including question-answering, machine translation, and text summa-rization [Kang et al. , 2020; Ziegler et al. , 2019; Stiennon 
+
+et al. , 2020; Nakano et al. , 2021]. Recent years have wit-nessed its successful application in aligning language mod-els with human values and preferences. State-of-the-art lan-guage models, notably InstructGPT [Ouyang et al. , 2022] and Llama2 [Touvron et al. , 2023], leverage RL-based fine-tuning. A prominent paradigm in this domain is RLHF, which constructs reward models from human preference data to guide model fine-tuning. Building upon RLHF, RLxF ex-tends this framework to incorporate diverse feedback sources beyond human responses. The variable x in RLxF encom-passes AI feedback (RLAIF) [Bai et al. , 2022b; Lee et al. ,2023] and hybrid human-AI feedback (RLHAIF) [Wu et al. ,2021; Saunders et al. , 2022; Perez et al. , 2023]. 
+
+Non-RL Alignment: Given the implementation complex-ity and computational demands of RL-based approaches, al-ternative methodologies have emerged. RAFT [Dong et al. , 2023] and RRHF [Yuan et al. , 2023] employ selec-tive fine-tuning on high-quality samples. Rain [Li et al. ,2024] and Aligner [Ji et al. , 2024a] adopt output rectifi-cation strategies, with Rain utilizing an evaluation-rewind mechanism and Aligner implementing a supervised, decou-pled alignment model. DPO [Rafailov et al. , 2024b] estab-lishes a theoretical mapping between optimal policies and re-ward functions, eliminating explicit reward modeling. Build-ing upon DPO, recent extensions—IPO [Azar et al. , 2024], Token-DPO [Zeng et al. , 2024], and DPO-f [Wang et al. ,2023a]—address challenges in overfitting, fine-grained align-ment, and reverse KL regularization constraints, respectively. Our approach maintains alignment quality comparable to RL-based methods while achieving computational efficiency su-perior to existing non-RL techniques. 
+
+5.2 Alignment Granularity 
+
+Sentence-Level Alignment: In most alignment research, the alignment environment is modeled as a bandit environment, treating complete sentences as atomic actions. This paradigm encompasses RLHF [Ouyang et al. , 2022] and its variants (RLAIF [Bai et al. , 2022b; Lee et al. , 2023], RLHAIF [Wu 
+
+et al. , 2021; Saunders et al. , 2022; Perez et al. , 2023]), as well as DPO-based methods [Rafailov et al. , 2024b; Azar et al. , 2024; Wang et al. , 2023a]. Additional approaches in this category include Rain and Aligner ’s comprehensive sentence correction mechanisms, and RAFT and RRHF’s high-quality sentence filtering strategies. 
+
+Token-Level Alignment: Recently, there has been in-creased interest in token-level alignment, decomposing the task into sequential token generation decisions for enhanced granularity and control. Both RLHF [Zhong et al. , 2024] and DPO [Zeng et al. , 2024; Rafailov et al. , 2024a] have evolved to support token-level alignment through MDP formulations, enabling more precise intervention at each generation step. A concurrent work, IVO [Liu et al. , 2025], shares a similar idea with MARA in terms of token-level control. While they focus on improving value estimation, our primary advantage lies in the accuracy of value estimation. MARA employs a lightweight 4M-parameter alignment model, compared to the Llama-3.2-1B model used in [Liu et al. , 2025]. This advan-tage stems from our novel approach of simplifying alignment to binary selection (accept/reject) rather than token sampling. 
+
+## 6 Conclusion 
+
+This paper proposes MARA, a micro alignment approach that enhances LLMs’ adherence to human preferences through token-level control. Our key innovation lies in introducing a micro alignment model that operates independently from the base language model, making Accept/Reject decisions for candidate tokens to achieve fine-grained alignment. Im-plemented as a compact three-layer fully-connected network, MARA significantly reduces computational overhead com-pared to existing SOTA approaches while maintaining supe-rior alignment performance. Extensive experiments across multiple evaluation datasets and LLM architectures demon-strate MARA’s effectiveness. Proceedings of the Thirty-Fourth International Joint Conference on Artificial Intelligence (IJCAI-25) 
+
+8381 Ethical Statement 
+
+Our research on MARA presents a novel approach to lan-guage model alignment that significantly reduces computa-tional requirements while maintaining alignment effective-ness. Our experimental validation utilizes publicly available datasets like PKU-SafeRLHF, BeaverTails and HarmfulQA, which are designed to promote helpful, harmless, and honest AI responses. While our efficient alignment approach could theoretically be misused for harmful purposes, we strongly oppose any malicious applications and advocate for the re-sponsible development of alignment techniques. To promote transparency and reproducibility, we release our complete implementation code under open-source licens-ing. To maintain anonymity during the review process, we temporarily withhold our trained models and training logs to avoid disclosing author information. Upon acceptance, we will release all materials on the Hugging Face platform. We encourage the AI community to build upon our work while maintaining strict ethical standards, with the goal of making AI alignment more accessible while serving human values and social good. 
+
+## Acknowledgments 
+
+This work was supported by the Innovation and Technology Commission - Mainland-Hong Kong Joint Funding Scheme (Grant No. MHP/038/23). 
+
+## Contribution Statement 
+
+Yang Zhang and Yu Yu contribute to this work equally. 
+
+## References 
+
+[AI@Meta, 2024] AI@Meta. Llama 3 model card. 2024. [Aligners, 2024] Aligners. aligner/aligner-7b-v1.0 · Hug-ging Face — huggingface.co. https://huggingface.co/ aligner/aligner-7b-v1.0, 2024. [Accessed 24-01-2025]. [Anwar et al. , 2024] Usman Anwar, Abulhair Saparov, Javier Rando, Daniel Paleka, Miles Turpin, Peter Hase, Ekdeep Singh Lubana, Erik Jenner, Stephen Casper, Oliver Sourbut, et al. Foundational challenges in assuring alignment and safety of large language models. arXiv preprint arXiv:2404.09932 , 2024. [Azar et al. , 2024] Mohammad Gheshlaghi Azar, Zhao-han Daniel Guo, Bilal Piot, Remi Munos, Mark Rowland, Michal Valko, and Daniele Calandriello. A general theo-retical paradigm to understand learning from human pref-erences. In International Conference on Artificial Intelli-gence and Statistics , pages 4447–4455. PMLR, 2024. [Bai et al. , 2022a] Yuntao Bai, Andy Jones, Kamal Ndousse, Amanda Askell, Anna Chen, Nova DasSarma, Dawn Drain, Stanislav Fort, Deep Ganguli, Tom Henighan, et al. Training a helpful and harmless assistant with reinforce-ment learning from human feedback. arXiv preprint arXiv:2204.05862 , 2022. [Bai et al. , 2022b] Yuntao Bai, Saurav Kadavath, Sandipan Kundu, Amanda Askell, Jackson Kernion, Andy Jones, Anna Chen, Anna Goldie, Azalia Mirhoseini, Cameron McKinnon, et al. Constitutional ai: Harmlessness from ai feedback. arXiv preprint arXiv:2212.08073 , 2022. [Bhardwaj and Poria, 2023] Rishabh Bhardwaj and Sou-janya Poria. Red-teaming large language models using chain of utterances for safety-alignment. arXiv preprint arXiv:2308.09662 , 2023. [Cui et al. , 2023] Ganqu Cui, Lifan Yuan, Ning Ding, Guan-ming Yao, Wei Zhu, Yuan Ni, Guotong Xie, Zhiyuan Liu, and Maosong Sun. Ultrafeedback: Boosting language models with high-quality feedback. arXiv e-prints , pages arXiv–2310, 2023. [Dai et al. , 2024] Josef Dai, Xuehai Pan, Ruiyang Sun, Ji-aming Ji, Xinbo Xu, Mickel Liu, Yizhou Wang, and Yaodong Yang. Safe rlhf: Safe reinforcement learning from human feedback. In The Twelfth International Con-ference on Learning Representations , 2024. [Dong et al. , 2023] Hanze Dong, Wei Xiong, Deepanshu Goyal, Yihan Zhang, Winnie Chow, Rui Pan, Shizhe Diao, Jipeng Zhang, SHUM KaShun, and Tong Zhang. Raft: Reward ranked finetuning for generative foundation model alignment. Transactions on Machine Learning Research ,2023. [Eisenstein et al. , 2023] Jacob Eisenstein, Chirag Nagpal, Alekh Agarwal, Ahmad Beirami, Alex D’Amour, DJ Dvi-jotham, Adam Fisch, Katherine Heller, Stephen Pfohl, Deepak Ramachandran, et al. Helping or herding? re-ward model ensembles mitigate but do not eliminate re-ward hacking. arXiv preprint arXiv:2312.09244 , 2023. [Haarnoja et al. , 2018] Tuomas Haarnoja, Aurick Zhou, Pieter Abbeel, and Sergey Levine. Soft actor-critic: Off-policy maximum entropy deep reinforcement learning with a stochastic actor. In International conference on ma-chine learning , pages 1861–1870. PMLR, 2018. [Ji et al. , 2024a] Jiaming Ji, Boyuan Chen, Hantao Lou, Donghai Hong, Borong Zhang, Xuehai Pan, Tianyi Qiu, Juntao Dai, and Yaodong Yang. Aligner: Efficient align-ment by learning to correct. In The Thirty-eighth An-nual Conference on Neural Information Processing Sys-tems , 2024. [Ji et al. , 2024b] Jiaming Ji, Donghai Hong, Borong Zhang, Boyuan Chen, Josef Dai, Boren Zheng, Tianyi Qiu, Boxun Li, and Yaodong Yang. Pku-saferlhf: Towards multi-level safety alignment for llms with human preference. arXiv preprint arXiv:2406.15513 , 2024. [Ji et al. , 2024c] Jiaming Ji, Mickel Liu, Josef Dai, Xuehai Pan, Chi Zhang, Ce Bian, Boyuan Chen, Ruiyang Sun, Yizhou Wang, and Yaodong Yang. Beavertails: Towards improved safety alignment of llm via a human-preference dataset. Advances in Neural Information Processing Sys-tems , 36, 2024. [Jiang et al. , 2023] Albert Q Jiang, Alexandre Sablayrolles, Arthur Mensch, Chris Bamford, Devendra Singh Chaplot, Diego de las Casas, Florian Bressand, Gianna Lengyel, Guillaume Lample, Lucile Saulnier, et al. Mistral 7b. 
+
+arXiv preprint arXiv:2310.06825 , 2023. Proceedings of the Thirty-Fourth International Joint Conference on Artificial Intelligence (IJCAI-25) 
+
+> 8382
+
+[Kang et al. , 2020] Xiaomian Kang, Yang Zhao, Jiajun Zhang, and Chengqing Zong. Dynamic context selection for document-level neural machine translation via rein-forcement learning. In Proceedings of the 2020 Confer-ence on Empirical Methods in Natural Language Process-ing (EMNLP) , pages 2242–2254, 2020. [Lee et al. , 2023] Harrison Lee, Samrat Phatale, Hassan Mansoor, Thomas Mesnard, Johan Ferret, Kellie Lu, Colton Bishop, Ethan Hall, Victor Carbune, Abhinav Rastogi, et al. Rlaif: Scaling reinforcement learning from human feedback with ai feedback. arXiv preprint arXiv:2309.00267 , 2023. [Li et al. , 2024] Yuhui Li, Fangyun Wei, Jinjing Zhao, Chao Zhang, and Hongyang Zhang. Rain: Your language mod-els can align themselves without finetuning. In The Twelfth International Conference on Learning Representations ,2024. [Liu et al. , 2025] Zhenhua Liu, Lijun Li, Ruizhe Chen, Yux-ian Jiang, Tong Zhu, Zhaochen Su, Wenliang Chen, and Jing Shao. Iterative value function optimization for guided decoding. arXiv preprint arXiv:2503.02368 , 2025. [Nakano et al. , 2021] Reiichiro Nakano, Jacob Hilton, Suchir Balaji, Jeff Wu, Long Ouyang, Christina Kim, Christopher Hesse, Shantanu Jain, Vineet Kosaraju, William Saunders, et al. Webgpt: Browser-assisted question-answering with human feedback. arXiv preprint arXiv:2112.09332 , 2021. [Ouyang et al. , 2022] Long Ouyang, Jeffrey Wu, Xu Jiang, Diogo Almeida, Carroll Wainwright, Pamela Mishkin, Chong Zhang, Sandhini Agarwal, Katarina Slama, Alex Ray, et al. Training language models to follow instruc-tions with human feedback. Advances in neural informa-tion processing systems , 35:27730–27744, 2022. [Perez et al. , 2023] Ethan Perez, Sam Ringer, Kamil˙ eLukoˇ si¯ ut˙ e, Karina Nguyen, Edwin Chen, Scott Heiner, Craig Pettit, Catherine Olsson, Sandipan Kundu, Saurav Kadavath, et al. Discovering language model behaviors with model-written evaluations. In 61st Annual Meeting of the Association for Computational Linguistics, ACL 2023 ,pages 13387–13434. Association for Computational Lin-guistics (ACL), 2023. [Rafailov et al. , 2024a] Rafael Rafailov, Joey Hejna, Ryan Park, and Chelsea Finn. From r to q∗: Your lan-guage model is secretly a q-function. arXiv preprint arXiv:2404.12358 , 2024. [Rafailov et al. , 2024b] Rafael Rafailov, Archit Sharma, Eric Mitchell, Christopher D Manning, Stefano Ermon, and Chelsea Finn. Direct preference optimization: Your lan-guage model is secretly a reward model. Advances in Neu-ral Information Processing Systems , 36, 2024. [Saunders et al. , 2022] William Saunders, Catherine Yeh, Jeff Wu, Steven Bills, Long Ouyang, Jonathan Ward, and Jan Leike. Self-critiquing models for assisting human eval-uators. arXiv preprint arXiv:2206.05802 , 2022. [Stiennon et al. , 2020] Nisan Stiennon, Long Ouyang, Jef-frey Wu, Daniel Ziegler, Ryan Lowe, Chelsea Voss, Alec Radford, Dario Amodei, and Paul F Christiano. Learning to summarize with human feedback. Advances in Neural Information Processing Systems , 33:3008–3021, 2020. [Touvron et al. , 2023] Hugo Touvron, Louis Martin, Kevin Stone, Peter Albert, Amjad Almahairi, Yasmine Babaei, Nikolay Bashlykov, Soumya Batra, Prajjwal Bhargava, Shruti Bhosale, et al. Llama 2: Open foundation and fine-tuned chat models. arXiv preprint arXiv:2307.09288 ,2023. [Wang et al. , 2023a] Chaoqi Wang, Yibo Jiang, Chenghao Yang, Han Liu, and Yuxin Chen. Beyond reverse kl: Gen-eralizing direct preference optimization with diverse diver-gence constraints. arXiv preprint arXiv:2309.16240 , 2023. [Wang et al. , 2023b] Yufei Wang, Wanjun Zhong, Liangyou Li, Fei Mi, Xingshan Zeng, Wenyong Huang, Lifeng Shang, Xin Jiang, and Qun Liu. Aligning large lan-guage models with human: A survey. arXiv preprint arXiv:2307.12966 , 2023. [Wu et al. , 2021] Jeff Wu, Long Ouyang, Daniel M Ziegler, Nisan Stiennon, Ryan Lowe, Jan Leike, and Paul Chris-tiano. Recursively summarizing books with human feed-back. arXiv preprint arXiv:2109.10862 , 2021. [Yuan et al. , 2023] Zheng Yuan, Hongyi Yuan, Chuanqi Tan, Wei Wang, Songfang Huang, and Fei Huang. Rrhf: Rank responses to align language models with human feedback without tears. arXiv preprint arXiv:2304.05302 , 2023. [Zeng et al. , 2024] Yongcheng Zeng, Guoqing Liu, Weiyu Ma, Ning Yang, Haifeng Zhang, and Jun Wang. Token-level direct preference optimization. In Forty-first Interna-tional Conference on Machine Learning , 2024. [Zheng et al. , 2024] Yaowei Zheng, Richong Zhang, Junhao Zhang, Yanhan Ye, Zheyan Luo, Zhangchi Feng, and Yongqiang Ma. Llamafactory: Unified efficient fine-tuning of 100+ language models. In Proceedings of the 62nd Annual Meeting of the Association for Computa-tional Linguistics (Volume 3: System Demonstrations) ,Bangkok, Thailand, 2024. Association for Computational Linguistics. [Zhong et al. , 2024] Han Zhong, Guhao Feng, Wei Xiong, Li Zhao, Di He, Jiang Bian, and Liwei Wang. Dpo meets ppo: Reinforced token optimization for rlhf. arXiv preprint arXiv:2404.18922 , 2024. [Ziegler et al. , 2019] Daniel M Ziegler, Nisan Stiennon, Jef-frey Wu, Tom B Brown, Alec Radford, Dario Amodei, Paul Christiano, and Geoffrey Irving. Fine-tuning lan-guage models from human preferences. arXiv preprint arXiv:1909.08593 , 2019. Proceedings of the Thirty-Fourth International Joint Conference on Artificial Intelligence (IJCAI-25)
