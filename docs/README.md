@@ -6,34 +6,38 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-07-11
-- 运行时间：2026-07-11 20:34:40 UTC
+- 最新运行日期：2026-07-12
+- 运行时间：2026-07-12 20:52:15 UTC
 - 运行状态：成功
-- 本次总论文数：4
+- 本次总论文数：6
 - 精读区：1
-- 速读区：3
+- 速读区：5
 
 ### 今日简报（AI）
-1) 今日精选GNN可解释性评估框架，兼探睡眠分期与病理预测新进展。  
-2) 最值得看：精读提出统一评估标准，速读中轻量CNN-Mamba睡眠分期与病理潜变生成预测值得关注。  
-3) 下步建议优先关注GNN可解释性方法论，再探索小样本医疗数据的轻量建模策略。
-- 详情：[/202607/11/README](/202607/11/README)
+今日6篇论文聚焦AI医学影像：放射学视觉基础模型综述（精读，9.0分）最值得关注，其系统梳理了数据、方法、评估与临床转化全链路；速读中，脑电图基础模型预训练适应方法（NeuroOnline）和基于混合Mamba的少样本脑肿瘤分割（RUFNet）也有亮点。建议下周优先精读该综述，再结合速读中的临床场景方法跟进。
+- 详情：[/202607/12/README](/202607/12/README)
 
 ### 精读区论文标签
-1. [Measuring What Matters: A Unified Evaluation Framework for GNN Explainability](/202607/11/2607.04600v1-measuring-what-matters-a-unified-evaluation-framework-for-gnn-explainability)  
-   标签：评分：8.0/10、query:fbn
-   evidence：图神经网络可解释性评估框架，可用于脑疾病诊断
+1. [Vision Foundation Models in Radiology: A Scoping Review of Data, Methodology, Evaluation and Clinical Translation](/202607/12/2607.07219v1-vision-foundation-models-in-radiology-a-scoping-review-of-data-methodology-evaluation-and-clinical-translation)  
+   标签：评分：9.0/10、query:fbn
+   evidence：涵盖脑MRI的放射学视觉基础模型综述，直接关联神经影像AI医疗
 
 ### 速读区论文标签
-1. [Lightweight ML-Based Automatic Sleep Staging Framework with Constrained CNN and Mamba for Small-Sample EEG Datasets](/202607/11/2607.04934v1-lightweight-ml-based-automatic-sleep-staging-framework-with-constrained-cnn-and-mamba-for-small-sample-eeg-datasets)  
+1. [NeuroOnline: Bridging Pretraining and Online Adaptation for EEG Foundation Models](/202607/12/2607.03925v1-neuroonline-bridging-pretraining-and-online-adaptation-for-eeg-foundation-models)  
    标签：评分：7.0/10、query:fbn
-   evidence：轻量级机器学习用于EEG自动睡眠分期，神经影像AI
-2. [Progression as Latent Drift: Generative Forecasting of Slow-Evolving Pathologies](/202607/11/2607.08270v1-progression-as-latent-drift-generative-forecasting-of-slow-evolving-pathologies)  
+   evidence：EEG基础模型的医疗健康应用，在线适应方法
+2. [RUFNet: Query-Guided Support Mask Refinement and Uncertainty Fusion based on Hybrid Mamba for Few-Shot Brain Tumor Segmentation](/202607/12/2607.05035v1-rufnet-query-guided-support-mask-refinement-and-uncertainty-fusion-based-on-hybrid-mamba-for-few-shot-brain-tumor-segmentation)  
    标签：评分：7.0/10、query:fbn
-   evidence：使用纵向MRI生成预测神经退行性疾病进展，神经影像AI
-3. [Graph-Regularized Deep Learning for EEG-Based Emotion Recognition with Psychologically-Grounded Label Structure](/202607/11/2607.07773v1-graph-regularized-deep-learning-for-eeg-based-emotion-recognition-with-psychologically-grounded-label-structure)  
+   evidence：基于深度学习的脑肿瘤MRI分割属于神经影像AI医疗
+3. [Attention-Based Segmentation of WMHs and Differentiation of Vascular vs. Demyelinating Lesions](/202607/12/2607.08171v1-attention-based-segmentation-of-wmhs-and-differentiation-of-vascular-vs-demyelinating-lesions)  
+   标签：评分：7.0/10、query:fbn
+   evidence：神经影像AI医疗，注意力机制的白质高信号分割
+4. [STST-JEPA: Shallow-Target Spatio-Temporal Joint Embedding Prediction Architecture For EEG Self-Supervised Learning](/202607/12/2607.06629v1-stst-jepa-shallow-target-spatio-temporal-joint-embedding-prediction-architecture-for-eeg-self-supervised-learning)  
    标签：评分：6.0/10、query:fbn
-   evidence：图正则化深度学习用于EEG情感识别，可迁移至fMRI脑网络分析
+   evidence：EEG脑年龄生物标志物，自监督学习方法
+5. [Aligning Clinical Needs and AI Capabilities: A Survey on LLMs for Medical Reasoning](/202607/12/2607.07761v1-aligning-clinical-needs-and-ai-capabilities-a-survey-on-llms-for-medical-reasoning)  
+   标签：评分：6.0/10、query:mlr
+   evidence：关于LLMs在医学推理中的综述，与临床AI和推理对齐
 
 
 <div class="dpr-home-promo-card">
