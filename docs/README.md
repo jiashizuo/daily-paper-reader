@@ -6,38 +6,37 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-07-12
-- 运行时间：2026-07-12 20:52:15 UTC
+- 最新运行日期：2026-07-13
+- 运行时间：2026-07-13 20:16:23 UTC
 - 运行状态：成功
-- 本次总论文数：6
-- 精读区：1
-- 速读区：5
+- 本次总论文数：4
+- 精读区：0
+- 速读区：4
 
 ### 今日简报（AI）
-今日6篇论文聚焦AI医学影像：放射学视觉基础模型综述（精读，9.0分）最值得关注，其系统梳理了数据、方法、评估与临床转化全链路；速读中，脑电图基础模型预训练适应方法（NeuroOnline）和基于混合Mamba的少样本脑肿瘤分割（RUFNet）也有亮点。建议下周优先精读该综述，再结合速读中的临床场景方法跟进。
-- 详情：[/202607/12/README](/202607/12/README)
+今日速读4篇论文，聚焦图神经网络与扩散模型及脑血流数字孪生两大方向。
+
+最值得关注的是《Graph Convolutional Attention》（7.0分），从谱角度统一图去噪与扩散，以及《Generative Diffusion Models of Stochastic Graph Signals》（6.0分）将扩散模型引入图信号生成。
+
+建议普通读者优先精读第一篇，理解图注意力与扩散机制的谱理论联系，这对设计更鲁棒的图网络有启发。
+- 详情：[/202607/13/README](/202607/13/README)
 
 ### 精读区论文标签
-1. [Vision Foundation Models in Radiology: A Scoping Review of Data, Methodology, Evaluation and Clinical Translation](/202607/12/2607.07219v1-vision-foundation-models-in-radiology-a-scoping-review-of-data-methodology-evaluation-and-clinical-translation)  
-   标签：评分：9.0/10、query:fbn
-   evidence：涵盖脑MRI的放射学视觉基础模型综述，直接关联神经影像AI医疗
+- 本次无精读推荐。
 
 ### 速读区论文标签
-1. [NeuroOnline: Bridging Pretraining and Online Adaptation for EEG Foundation Models](/202607/12/2607.03925v1-neuroonline-bridging-pretraining-and-online-adaptation-for-eeg-foundation-models)  
+1. [Graph Convolutional Attention: A Spectral Perspective on Graph Denoising and Diffusion](/202607/13/2607.06546v1-graph-convolutional-attention-a-spectral-perspective-on-graph-denoising-and-diffusion)  
    标签：评分：7.0/10、query:fbn
-   evidence：EEG基础模型的医疗健康应用，在线适应方法
-2. [RUFNet: Query-Guided Support Mask Refinement and Uncertainty Fusion based on Hybrid Mamba for Few-Shot Brain Tumor Segmentation](/202607/12/2607.05035v1-rufnet-query-guided-support-mask-refinement-and-uncertainty-fusion-based-on-hybrid-mamba-for-few-shot-brain-tumor-segmentation)  
-   标签：评分：7.0/10、query:fbn
-   evidence：基于深度学习的脑肿瘤MRI分割属于神经影像AI医疗
-3. [Attention-Based Segmentation of WMHs and Differentiation of Vascular vs. Demyelinating Lesions](/202607/12/2607.08171v1-attention-based-segmentation-of-wmhs-and-differentiation-of-vascular-vs-demyelinating-lesions)  
-   标签：评分：7.0/10、query:fbn
-   evidence：神经影像AI医疗，注意力机制的白质高信号分割
-4. [STST-JEPA: Shallow-Target Spatio-Temporal Joint Embedding Prediction Architecture For EEG Self-Supervised Learning](/202607/12/2607.06629v1-stst-jepa-shallow-target-spatio-temporal-joint-embedding-prediction-architecture-for-eeg-self-supervised-learning)  
+   evidence：提出谱注意力图去噪方法，可迁移至fMRI网络分析
+2. [Generative Diffusion Models of Stochastic Graph Signals](/202607/13/2607.06833v1-generative-diffusion-models-of-stochastic-graph-signals)  
    标签：评分：6.0/10、query:fbn
-   evidence：EEG脑年龄生物标志物，自监督学习方法
-5. [Aligning Clinical Needs and AI Capabilities: A Survey on LLMs for Medical Reasoning](/202607/12/2607.07761v1-aligning-clinical-needs-and-ai-capabilities-a-survey-on-llms-for-medical-reasoning)  
-   标签：评分：6.0/10、query:mlr
-   evidence：关于LLMs在医学推理中的综述，与临床AI和推理对齐
+   evidence：基于GNN的图信号生成扩散模型，可应用于fMRI功能连接
+3. [HemoPIC: A Physics-Informed Cerebral Hemodynamics Digital Twin for Brain Perfusion](/202607/13/2607.08799v1-hemopic-a-physics-informed-cerebral-hemodynamics-digital-twin-for-brain-perfusion)  
+   标签：评分：6.0/10、query:fbn
+   evidence：使用灌注成像的物理信息脑血流动力学数字孪生
+4. [Spatial Neighboring Scattering Transform: A Cross-Channel Amplitude Coupling Measure for EEG Connectivity](/202607/13/2607.08855v1-spatial-neighboring-scattering-transform-a-cross-channel-amplitude-coupling-measure-for-eeg-connectivity)  
+   标签：评分：6.0/10、query:fbn
+   evidence：用于脑功能组织的EEG连接性度量方法
 
 
 <div class="dpr-home-promo-card">
