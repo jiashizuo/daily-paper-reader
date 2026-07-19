@@ -1,0 +1,180 @@
+Title: CORTET: Robust generation of simulation-ready cortical meshes
+
+URL Source: https://arxiv.org/pdf/2607.12157v2
+
+Published Time: Thu, 16 Jul 2026 01:27:23 GMT
+
+Number of Pages: 13
+
+Markdown Content:
+# CORTET: Robust generation of simulation-ready cortical meshes 
+
+Davood Shahsavari 1,3, Irina Grigorescu 1, Jiaxin Xiao 2, Nashira Baena 1, Aakash Saboo 1, Saga N.B. Masui 1, Yourong Guo 1, Vanessa Kyriakopoulou 2, Alena Uus 2, Martin J. Bishop 1, Katherine R. Long 3,4, and Emma C. Robinson 1,2 
+
+> 1
+
+Research Department of Biomedical Computing, School of Biomedical Engineering & Imaging Sciences, King’s College London, UK  
+
+> 2
+
+Research Department of Early Life Imaging, School of Biomedical Engineering & Imaging Sciences, King’s College London, UK  
+
+> 3
+
+Centre for Developmental Neurobiology, Institute of Psychiatry, Psychology & Neuroscience, King’s College London, UK  
+
+> 4
+
+MRC Centre for Neurodevelopmental Disorders, King’s College London, UK 
+
+Abstract. Every human brain folds differently, and such natural vari-ation confounds the search for imaging biomarkers of neurodevelopmen-tal disorders. Physics-based simulation can help determine the causal mechanisms that underpin this variability. Yet every simulation must be initiated from a solid tetrahedral mesh of the brain’s interior, and it is the worst element in that mesh, not the average, that decides whether the simulation runs at all. Building that mesh from fetal MRI currently requires labour-intensive manual intervention. We therefore present CORTET (CORtical TETrahedral meshing): a fully automated pipeline that converts a triangulated cortical surface into a solver-ready tetrahedral mesh whose worst-element quality meets a strict stability tar-get with no manual repair. By benchmarking against a general-purpose tetrahedral mesher on the same input surfaces, we isolate the pipeline’s contribution from that of the input geometry, and we validate quality across a cohort of nearly 200 fetal subjects spanning the folding period. A mesh taken straight from the pipeline sustains a numerically stable morphoelastic folding simulation of a real fetal subject. 
+
+Keywords: tetrahedral mesh generation, cortical folding, mesh quality, finite element method, morphoelastic growth, fetal brain. 
+
+# 1 Introduction 
+
+Over the third trimester the fetal cortex folds, driven by mechanical stress as the cortical grey matter expands faster than the tissue beneath it. When this process goes wrong the consequences are severe and well characterised: malformations of cortical development such as lissencephaly, the absence of folds, and polymicro-gyria, an excess of small ones [30], alongside altered folding in epilepsy, autism, schizophrenia, preterm birth and congenital heart disease [3, 15]. Explaining the arXiv:2607.12157v2 [math-ph] 15 Jul 2026 2 D. Shahsavari et al. 
+
+physics of folding is therefore a route to understanding these conditions. But folding is a large-deformation instability, prone to mesh self-intersection and im-plausible tissue stretching, and whether a simulation of it runs at all is decided by the quality of its starting mesh. Finite-element models have established the mechanical basis of folding: a soft, growing cortex constrained by a stiffer core buckles into folds [2, 33, 34]. The whole-brain model of Tallinen et al. [34], initialised from a 22-week fetal MRI scan, produced folds with realistic shape and wavelength; yet their location and orientation do not match those of the human brain. The picture has since grown richer: growth couples back to the tissue it deforms, with folding stresses reorganising subcortical white-matter fibres, growth rates vary spatially across the cortex [11], and material properties set the fold wavelength [7, 35]. Each refinement makes the model more faithful and more patient-specific, and so raises the same practical demand: to test these mechanisms one must simulate many individual brains from their own imaging. This is now becoming feasible as open longitudinal fetal MRI datasets appear, yet simulations still run on idealised geometries [8] or a single template brain, and the only patient-specific fetal folding pipeline needed manual re-meshing in a third of its cases [1]. A major obstacle to current progress is the question of how to robustly gener-ate simulation-ready tetrahedral meshes from cortical surfaces. General-purpose tetrahedralisers, TetGen [32], Netgen [29], CGAL [14], fail to generate meshes that run mechanical simulations to completion; largely because they generate volumes for which many tetrahedra return near-zero volume. Meshing directly from labelled image volumes [16, 10, 26] inherits voxel staircase artifacts, requir-ing surfaces to be smoothed, erasing the sub-millimetre detail that cortical fold-ing depends on. What is missing is an automated pipeline that takes an individ-ual cortical surface and pushes it through tetrahedralisation and regularises the output in a way that guarantees that the worst element, not merely its average, is good enough to fold, without a person in the loop. 
+
+Contributions. In this paper, we present (1) CORTET (CORtical TETrahedral meshing), a fully automated pipeline that turns an individual cortical surface into a solver-ready tetrahedral mesh with worst-element quality qmax < 0.6 and no manual repair; and (2) perform validation across a cohort of nearly 200 fetal subjects spanning the folding period, inclusive of an ablation study that isolates the contribution of each step of the pipeline; in order to (3) sustain a numerically stable folding simulation of a real fetal subject. 
+
+# 2 Modelling framework 
+
+The mesh a folding simulation needs is dictated by the mechanics it must serve. Cortical folding is modelled as morphoelastic growth: the deformation gradient splits multiplicatively, F = FeFg , into a stress-free tangential growth component 
+
+Fg and an elastic component Fe that generates stress through a neo-Hookean response [25]. Folds set in when the cortex–core stiffness contrast and accu-mulating growth drive a buckling instability, with fold wavelength scaling as CORTET: Automated Cortical Meshing 3
+
+λ ∼ H (μc/μ s)1/3 for cortical thickness H and cortex-to-core shear-modulus ratio μc/μ s [2, 7, 34, 35]. Such models are solved by explicit time integration, which makes mesh qual-ity decisive in two ways. First, each element’s deformation gradient is recovered by inverting its undeformed edge matrix; when a tetrahedron degenerates, its vertices become nearly coplanar, this matrix becomes near-singular, and the resulting Jacobian J = det F can turn non-positive, inverting the element and halting the solver. A single degenerate element is therefore enough to stop a run, so the worst element, not the average, decides whether a mesh is usable. Second, the stable time step is bounded by ∆t crit ≤ ℓmin /c , where ℓmin is the shortest edge and c the elastic wave speed, so one short edge throttles the whole simu-lation. Worst-element quality and edge uniformity are thus the two properties a mesh generator must control. 
+
+# 3 Methods 
+
+3.1 Pipeline overview 
+
+CORTET converts a closed, orientable triangulated cortical surface into an opti-mised tetrahedral volume mesh through six sequential stages, grouped by func-tion: stages 1–2 generate the volume mesh, 3–4 optimise its quality, and 5–6 format the output and control surface fidelity (Fig. 1). Stages 3, 4 and 6 are optional and can be bypassed so the output matches a given target solver. The pipeline is implemented in Python and chains four established tools, each in one role: CGAL [14], a computational-geometry library, builds the tetrahedralisation via its pygalmesh bindings [28]; Gmsh [12] applies global vertex smoothing; and 
+
+meshtool [21] performs worst-element cleaning; with NiBabel [6], meshio [27] and Trimesh [9] handling input and format conversion. We assume surfaces in GIfTI format, which lets us resample meshes and interpolate cortical features with the Connectome Workbench [20]. 
+
+3.2 Volume generation and quality optimisation (Stages 1–4) 
+
+CGAL’s Delaunay refinement fills the surface with a tetrahedral volume. Be-cause it assumes that the interior of the mesh is identified from the surface’s face normals, we first repair inconsistently oriented triangles and export a tem-porary STL. During this process, a single parameter, the cell size h, sets element density. CGAL then applies four optimisation passes: the first two - Optimal Delaunay Triangulation and Lloyd [18] - work to relocate interior vertices so as to regularise element size and shape; the third perturbs the worst-shaped ele-ments; then a final pass removes sliver elements (whose four vertices are almost coplanar) by reweighting vertices in place, which is why it runs last (S1). The refinement replaces every input vertex with a new node set, so per-vertex sur-face fields (thickness, curvature, growth rate) must be transferred to the volume by barycentric interpolation (S2). Two tools then optimise quality in a com-plementary way: Gmsh Relocate3D applies global vertex smoothing to reduce 4 D. Shahsavari et al.             
+
+> GIfTI surface (40,962 vertices)
+> S1 CGAL Delaunay refinement
+> S2 Convert to CARP format
+> Skip Gmsh? bypass
+> S3 Gmsh Relocate3D smoothing ( ×5)
+> Skip meshtool? bypass
+> S4 meshtool quality cleaning (3 passes)
+> S5 BrainGrowth formatting
+> Reproject? no
+> S6 Snap boundary to original surface
+> Tetrahedral mesh, qmax <0.6
+> No
+> No
+> Yes
+> Yes
+> Yes
+> No
+> Mesh generation
+> Quality optimisation
+> Format & fidelity
+
+Fig. 1: The six-stage pipeline from a GIfTI cortical surface to a finite-element-ready tetrahedral mesh. Diamonds (stages 3, 4, 6) are optional bypass gates for matching the output to a target solver. non-uniformity of volume elements (S3), and meshtool removes the worst ele-ments through three passes of progressively tightened quality thresholds (S4). Acting globally then locally, and tightening in stages rather than in one aggres-sive pass, avoids creating new poor elements while fixing others. 
+
+3.3 Solver-ready output (Stages 5–6) 
+
+Stages 1–4 are solver-agnostic; Stage 5 writes the mesh in the target solver’s format. For an explicit growth solver this requires reconstructing a boundary-face list from the tetrahedral connectivity, ordering the surface nodes contiguously so that surface-indexed fields resolve correctly, and matching the solver’s node and sign conventions, none of which are reported by the mesh generator and each of which, if violated, allow simulations to run to completion while demonstrating corrupted mechanics, rather than raising an error (S5). An optional Stage 6 snaps each boundary node onto the nearest point of the input surface when exact overlay with imaging is required, re-checking for inversion afterwards (S6). Because the core stages are solver-agnostic, the mesh can also be exported to Abaqus, FEBio, FEniCS, VTK or Gmsh formats. 
+
+3.4 Data 
+
+We use over 200 white-matter (inner cortical) surfaces derived from individual fetal subjects of the developing Human Connectome Project (dHCP). The sur-faces were generated from T2-weighted MRI acquired on a 3T Philips Achieva CORTET: Automated Cortical Meshing 5
+
+system with a 32-channel cardiac coil (TE = 250 ms, 1 .1 × 1.1 mm in-plane res-olution, 2 .2 mm slice thickness) [22], reconstructed from 2D stacks to a coherent 3D volume, at 0 .5 mm isotropic resolution, using slice-to-volume reconstruc-tion. Cortical surfaces were then produced with CoTAN [19, 13], which takes the reconstructed volumes as input and trains a convolutional U-Net to learn a stationary velocity field that deforms a template mesh to each subject’s inner cortical boundary. 
+
+3.5 Pre-processing 
+
+Following surface fitting, Multimodal Surface Matching (MSM) [4, 24, 23] aligns all individuals to a population-average template [5], allowing a single template mesh topology to be resampled onto each native surface, while enforcing vertex correspondence across subjects for later integration of population priors and cor-tical features. Because MSM performs spherical registration, templates may be defined from sixth-order icospheric tessellations (40 ,962 vertices) that are subse-quently resampled from the sphere onto the cortical anatomy with wb command -surface resample [20]. Prior to meshing, each aligned surface is smoothed using wb command -surface-smoothing to define the stress-free reference configuration the folding simulation requires. The required amount of smoothing is subject-dependent: younger cortices, whose folds are still forming, tolerate more smoothing, whereas older, more folded cortices deflate rapidly and require far less. We therefore set the number of smoothing iterations per subject by gestational age, subject to a limit on cortical-area loss and on surface displacement; we confirm preservation by tracking curvature and area before and after. 
+
+3.6 Evaluation framework and metrics 
+
+Choosing a quality measure. Tetrahedral element quality can be quantified by several established shape measures, the mean-ratio [17], radius-ratio, volume-to-edge and radius-edge metrics [17, 31], none of which is uniquely canonical. Be-cause the objective is not to describe average element shape but to certify that a mesh will not stall an explicit solver, we require a measure that reports the sin-gle worst element and that is consistent with the criterion by which the pipeline itself repairs meshes. We therefore adopt meshtool ’s tet qmetric volume , the measure by which the Stage-4 cleaning identifies and iteratively improves the poorest elements. It is a volume-based per-element score normalised to [0 , 1], on which qe = 0 is a regular (equilateral) tetrahedron and qe → 1 a degenerate, flat element of vanishing volume. For every mesh, we report the full distribution of 
+
+qe, its minimum, maximum, mean ¯ q and standard deviation, but emphasise the worst-element: qmax = max( qe), since a single degenerate element is sufficient to halt the solver. We adopt qmax < 0.6 as the solver-ready criterion, a conservative margin below the q ≈ 0.9 inversion regime observed in practice. 6 D. Shahsavari et al. 
+
+Experiments. We report three experiments. A stage ablation decomposes the op-timisation across the full cohort, isolating each stage’s contribution on identical connectivity (Sec. 4.1). These results are benchmarked against out-of-the-box meshing with a general-purpose tetrahedraliser, TetGen [32], and against the published Tallinen 22-week fetal mesh [34]. A cohort study meshes every subject at the default resolution, testing whether worst-element quality is maintained as the cortex grows and folds (Sec. 4.2). An effect-of-resolution study varies the cell size h on three subjects to characterise the resolution–quality trade-off (Sec. 4.3). 
+
+# 4 Results 
+
+4.1 Pipeline performance across the cohort and stage contributions 
+
+We evaluate the pipeline on N = 194 left-hemisphere subjects spanning gesta-tional weeks 21–38, meshing each at the default resolution ( h = 0 .6 mm) and measuring every element with tet qmetric volume . This yields 2 .0 × 10 8 tetra-hedra per configuration, so each optimisation stage is characterised over the entire element distribution rather than at a single mesh (Table 1, Fig. 2). The result is categorical. CGAL refinement alone attains a good mean el-ement quality (¯ q = 0 .135 ± 0.001), yet every one of the 194 subjects carries elements deep in the degenerate regime: a median of 888 elements per mesh ex-ceed the solver-ready threshold q > 0.6 (range 274–2,449), with a median worst element of qmax = 0 .780. Global Gmsh smoothing improves the distribution but does not resolve it, the median count of threshold-exceeding elements falls to 191 and qmax to 0 .732, yet no mesh becomes compliant. Only after meshtool clean-ing does the tail vanish entirely: across all 2 .0 × 10 8 tetrahedra in the cohort, 
+
+not one element exceeds q = 0 .6, and no subject’s worst element exceeds 0 .561 (median 0 .508, range 0 .462–0 .561). Every subject meets the criterion, without per-subject tuning, despite meshes differing by an order of magnitude in size and cortices ranging from smooth to deeply folded. This exposes why the mean cannot certify a mesh for simulation. Across configurations, mean quality varies by less than 0 .01 (0 .135 → 0.129) while the number of solver-breaking elements falls from 1 .7 × 10 5 to zero. The pooled dis-tributions (Fig. 2) make this concrete: in bulk they are nearly indistinguishable, the full pipeline merely shifting and sharpening the mode; in the tail they di-verge decisively, with CGAL and Gmsh leaving a population of elements beyond the threshold while the full pipeline terminates well before it. The gain is attributable to the pipeline rather than to the input geometry. Run out-of-the-box on the same surfaces, a general-purpose tetrahedraliser (Tet-Gen) leaves a median of 15,955 threshold-exceeding elements per mesh (range 12,095–35,414) and reaches a fully degenerate worst element ( qmax = 1 .000), failing on every subject. For reference, the published 2016 fetal mesh [34], which is known to have sustained morphoelastic folding simulations, retains 15 such elements ( qmax = 0 .811). Our criterion is therefore stricter than the standard met by a mesh that folds in practice, and the pipeline meets it with margin. CORTET: Automated Cortical Meshing 7
+
+Table 1: Mesh quality across the cohort. Mean quality ¯ q is reported as mean 
+
+± s.d. over subjects; worst-element quality qmax and the per-subject count of elements exceeding the solver-ready threshold q > 0.6 are reported as median [min–max]. TetGen is run out-of-the-box on the same input surfaces. The Talli-nen 22-week mesh is a single published reference. Only the full pipeline leaves no element above the threshold, in any subject.                             
+
+> Configuration ¯qqmax Elements q > 0.6TetGen 0.242 ±0.005 0.996 [0.974–1.000] 15,955 [12,095–35,414] Tallinen 22W 0.162 0.811 15 CGAL only 0.135 ±0.001 0.780 [0.746–0.820] 888 [274–2,449] + Gmsh 0.129 ±0.001 0.732 [0.685–0.802] 191 [55–519] Full CORTET 0.129 ±0.000 0.508 [0.462–0.561] 0 [0–0]
+
+4.2 Quality across the cohort and development 
+
+Applied to 194 subjects spanning gestational weeks 21–38 (Fig. 3), the pipeline holds worst-element quality below the qmax < 0.6 target across the entire range (qmax = 0 .46–0 .56), while mean quality stays flat at ¯ q ≈ 0.128–0 .129 and the mesh grows by nearly an order of magnitude, from ∼ 0.3 to ∼ 2.1 million tetra-hedra, as the cortex develops. Quality is therefore independent of brain size and fold complexity: the same default settings yield a solver-ready mesh at every gestational age without per-subject tuning. The developmental series in Fig. 4 shows the corresponding meshes to be anatomically faithful across this period, from the smooth GA-22 cortex to the deeply folded GA-34 cortex, in both hemi-spheres. 
+
+4.3 Effect of resolution 
+
+Varying the cell size h trades mesh size against resolution while leaving quality essentially unchanged (Table 2): the tetrahedron count scales as approximately 
+
+h−3, whereas ¯ q and qmax are stable across the range. The cell size therefore acts as a free density control, allowing the mesh to be refined for accuracy or coarsened for speed without compromising solver-readiness. 
+
+4.4 A pipeline mesh sustains a folding simulation 
+
+Finally, a mesh taken directly from the pipeline was used, without modification, to initialise an explicit morphoelastic growth simulation of a real fetal subject (Fig. 5). The run completed with no element inversion and worst-element quality below target throughout, producing folds of realistic wavelength from an initially smooth cortex; we make no claim that the morphology matches the individual brain. This confirms the meshes are directly usable for large-deformation folding simulation, not merely well-scored by the metric. 8 D. Shahsavari et al. 
+
+Fig. 2: Per-element quality pooled across the cohort. The dotted line marks the solver-ready threshold q = 0 .6. 
+
+# 5 Discussion and conclusion 
+
+We have presented the first fully automated route from an individual cortical surface to a quality-controlled tetrahedral mesh for large-deformation simulation, and shown that a mesh taken straight from it sustains a stable folding run. The design principle is that automation is only trustworthy if the worst element, not the average, is certified: because a single degenerate element halts an explicit solver, a pipeline that leaves such elements is unusable however good its mean quality. Where the only prior patient-specific fetal pipeline required manual re-meshing in a third of cases [1], ours requires none, and its output holds qmax < 0.6across the full period of cortical folding. Producing a mesh that a solver will actually accept, rather than one that merely looks correct, required resolving a set of requirements that mesh gener-ators do not enforce and that fail silently when violated, a run completes and appears plausible while the underlying mechanics are wrong. We encountered and resolved five such requirements in adapting output for an explicit growth solver: the input vertices are discarded and replaced during refinement, so per-vertex fields must be re-interpolated rather than indexed; a boundary-face list must be reconstructed from the volume connectivity; surface nodes must be or-dered ahead of interior nodes for surface-indexed force arrays to resolve; and the per-element node ordering and signed-volume convention must match those the solver assumes. Each is invisible at mesh-generation time and surfaces only as a corrupted simulation. CORTET enforces all of them as part of a solver-ready export, which is what allows a generated mesh to be used without inspection or repair; documenting them is intended to spare others the same debugging. In this the pipeline is complementary to that of Aleny` a et al. [1], who established the CORTET: Automated Cortical Meshing 9
+
+Fig. 3: Cohort mesh quality across gestational age (194 subjects, left hemisphere, 
+
+h = 0 .6 mm), shown as three single-axis panels against gestational age (GA). 
+
+Left: tetrahedron count, which grows from ∼ 0.3 to ∼ 2.1 million as the cortex en-larges and folds. Centre: mean element quality ¯ q, essentially constant at ≈ 0.129 across gestation. Right: worst-element quality qmax , which remains below the 
+
+qmax < 0.6 target (dotted red) for every subject. Quality ( tet qmetric volume ,0 = ideal) is thus maintained independently of mesh size and fold complexity. Table 2: Effect of cell size h on three subjects (left hemisphere, ico-6 input). Element count scales as ∼h−3 while quality stays flat (lower q is better).                                                  
+
+> Subject GA (wk) h(mm) Nodes Tets ¯qqmax
+> sub-CC01204XX08 21.86 0.4 194,632 1,101,843 0.128 0.550 0.6 59,174 326,083 0.129 0.462 0.8 25,722 137,933 0.130 0.458
+> sub-CC00932XX17 28.00 0.4 458,388 2,612,132 0.128 0.522 0.6 139,143 773,954 0.128 0.504 0.8 60,114 326,436 0.129 0.508
+> sub-CC01019XX13 33.86 0.4 955,059 5,419,671 0.128 0.540 0.6 290,248 1,604,834 0.129 0.523 0.8 125,749 677,789 0.129 0.516
+
+scientific value of patient-specific folding simulation, whereas CORTET supplies the meshing infrastructure to scale it. 
+
+Limitations. The pipeline produces a single-region, single-surface mesh, well suited to cortical folding but requiring extension for multi-tissue applications. The qmax < 0.6 target is a strong default rather than an absolute guarantee: it was met across the developmental and resolution experiments reported here, while at the latest gestational ages deep, narrow sulci are the binding constraint on refinement, where reducing the cell size restores the target at the cost of a larger mesh. Validation draws on a single dataset and reconstruction pipeline, and pathological geometries were not specifically tested. 
+
+Outlook. With the meshing bottleneck removed, mechanical parameters can be interpolated onto the volume mesh to drive spatially varying simulations, and 10 D. Shahsavari et al. 
+
+Fig. 4: Developmental mesh series: gestational weeks 21.86, 28.00 and 33.86 (columns); left hemisphere (top), right (bottom). Full pipeline at h = 0 .6 mm, lateral view. A cross-sectional series of three subjects, not one brain over time. 
+
+Fig. 5: A pipeline mesh sustains a stable folding simulation. From a smooth GA-22 cortical surface (left), the explicit morphoelastic growth model runs to a folded state (right) with no element inversion and worst-element quality below target throughout. The folds have realistic wavelength; the resulting morphology is not claimed to match a real brain, and is a simulation result, not the imaged subject. quality-controlled meshing at cohort scale makes population studies of folding mechanics feasible, opening a route to simulation-derived mechanical biomarkers. Scaling subject-specific folding simulations across a cohort is the natural next step toward mechanical digital twins of the developing brain, for which reliable, automated meshing is a prerequisite. 
+
+Acknowledgements. The authors would like to thank the following funding sources: Heart of Racing to K.R.L. and E.R. 
+
+Code availability. The CORTET pipeline is available at https://github.com/ Davoodshahsavari1992/-CORTET-CORtical-TETrahedral-meshing-. 
+
+# References 
+
+> 1. Aleny` a, M., Wang, X., Lef` evre, J., Auzias, G., Fouquet, B., Eixarch, E., Rousseau, F., Camara, O.: Computational pipeline for the generation and validation of
+
+CORTET: Automated Cortical Meshing 11 patient-specific mechanical models of brain development. Brain Multiphysics 3,100,045 (2022). DOI 10.1016/j.brain.2022.100045 2. Bayly, P.V., Okamoto, R.J., Xu, G., Shi, Y., Taber, L.A.: A cortical folding model incorporating stress-dependent growth explains gyral wavelengths and stress pat-terns in the developing brain. Physical Biology 10 (1), 016,005 (2013). DOI 10.1088/1478-3975/10/1/016005 3. Bayly, P.V., Taber, L.A., Kroenke, C.D.: Mechanical forces in cerebral cortical folding: a review of measurements and models. Journal of the Mechanical Behavior of Biomedical Materials 29 , 568–581 (2014). DOI 10.1016/j.jmbbm.2013.02.018 4. Besenczi, R., Guo, Y., Robinson, E.C.: High performance groupwise cortical surface registration with multimodal surface matching. In: International Workshop on Biomedical Image Registration, pp. 321–332. Springer (2024) 5. Bozek, J., Makropoulos, A., Schuh, A., Fitzgibbon, S., Wright, R., Glasser, M.F., Coalson, T.S., O’Muircheartaigh, J., Hutter, J., Price, A.N., et al.: Construction of a neonatal cortical surface atlas using multimodal surface matching in the developing human connectome project. NeuroImage 179 , 11–29 (2018). DOI 10.1016/j.neuroimage.2018.06.018 6. Brett, M., Markiewicz, C.J., et al.: NiBabel. https://nipy.org/nibabel/ (2024) 7. Budday, S., Raybaud, C., Kuhl, E.: A mechanical model predicts morphological abnormalities in the developing human brain. Scientific Reports 4, 5644 (2014). DOI 10.1038/srep05644 8. Darayi, M., Hoffman, M.E., Sayut, J., Wang, S., Demirci, N., Consolini, J., Holland, M.A.: Computational models of cortical folding: A review of common approaches. Journal of Biomechanics 139 , 110,851 (2022). DOI 10.1016/j.jbiomech.2021.110851 9. Dawson-Haggerty, M.: trimesh. https://trimesh.org/ (2024) 10. Fang, Q., Boas, D.A.: Tetrahedral mesh generation from volumetric binary and grayscale images. In: IEEE International Symposium on Biomedical Imaging, pp. 1142–1145 (2009). DOI 10.1109/ISBI.2009.5193259 11. Garcia, K.E., Robinson, E.C., Alexopoulos, D., Dierker, D.L., Glasser, M.F., Coal-son, T.S., Ortinau, C.M., Rueckert, D., Taber, L.A., Van Essen, D.C., Rogers, C.E., Smyser, C.D., Bayly, P.V.: Dynamic patterns of cortical expansion during folding of the preterm human brain. Proceedings of the National Academy of Sciences 
+
+115 (12), 3156–3161 (2018). DOI 10.1073/pnas.1715451115 12. Geuzaine, C., Remacle, J.F.: Gmsh: A 3-D finite element mesh generator with built-in pre- and post-processing facilities. International Journal for Numerical Methods in Engineering 79 (11), 1309–1331 (2009). DOI 10.1002/nme.2579 13. Grigorescu, I., Xiao, J., Guo, Y., Kyriakopoulou, V., Uus, A., Karolis, V., Liang, K., Suliman, M.A., Ma, Q., Rueckert, D., et al.: Sud-cotan: Sulcal depth-guided anatomically consistent fetal cortical surface reconstruction. In: Medical Imaging with Deep Learning (2026) 14. Jamin, C., Alliez, P., Yvinec, M., Boissonnat, J.D.: CGALmesh: A generic frame-work for Delaunay mesh generation. ACM Transactions on Mathematical Software 
+
+41 (4), 23:1–23:24 (2015). DOI 10.1145/2699463 15. Kyriakopoulou, V., Vatansever, D., Elkommos, S., Dawson, S., McGuinness, A., Allsop, J., Molnar, Z., Hajnal, J., Rutherford, M.: Cortical overgrowth in fetuses with isolated ventriculomegaly. Cerebral Cortex 24 (8), 2141–2150 (2014). DOI 10.1093/cercor/bht062 16. Lederman, C., Joshi, A., Dinov, I., Vese, L., Toga, A., Van Horn, J.D.: The gen-eration of tetrahedral mesh models for neuroanatomical MRI. NeuroImage 55 (1), 153–164 (2011). DOI 10.1016/j.neuroimage.2010.11.013 12 D. Shahsavari et al. 17. Liu, A., Joe, B.: Relationship between tetrahedron shape measures. BIT Numerical Mathematics 34 (2), 268–287 (1994). DOI 10.1007/BF01955874 18. Lloyd, S.P.: Least squares quantization in PCM. IEEE Transactions on Information Theory 28 (2), 129–137 (1982). DOI 10.1109/TIT.1982.1056489 19. Ma, Q., Li, L., Kyriakopoulou, V., Hajnal, J.V., Robinson, E.C., Kainz, B., Rueck-ert, D.: Conditional temporal attention networks for neonatal cortical surface reconstruction. In: International Conference on Medical Image Computing and Computer-Assisted Intervention (MICCAI), pp. 312–322. Springer (2023). DOI 10.1007/978-3-031-43901-8 30 20. Marcus, D.S., Harwell, J., Olsen, T., Hodge, M., Glasser, M.F., Prior, F., Jenk-inson, M., Laumann, T., Curtiss, S.W., Van Essen, D.C.: Informatics and data mining tools and strategies for the human connectome project. Frontiers in Neu-roinformatics 5, 4 (2011). DOI 10.3389/fninf.2011.00004 21. Neic, A., Campos, F.O., Prassl, A.J., Plank, G.: meshtool: A mesh manipulation utility. https://bitbucket.org/aneic/meshtool. Accessed 2026 22. Price, A.N., Cordero-Grande, L., Hughes, E., et al.: The developing human connec-tome project (dhcp): fetal acquisition protocol. Proceedings of the International Society for Magnetic Resonance in Medicine (ISMRM) (2019) 23. Robinson, E.C., Garcia, K., Glasser, M.F., Chen, Z., Coalson, T.S., Makropou-los, A., Bozek, J., Wright, R., Schuh, A., Webster, M., et al.: Multimodal surface matching with higher-order smoothness constraints. NeuroImage 167 , 453–465 (2018). DOI 10.1016/j.neuroimage.2017.10.037 24. Robinson, E.C., Jbabdi, S., Glasser, M.F., Andersson, J., Burgess, G.C., Harms, M.P., Smith, S.M., Van Essen, D.C., Jenkinson, M.: Msm: a new flexible framework for multimodal surface matching. NeuroImage 100 , 414–426 (2014). DOI 10.1016/ j.neuroimage.2014.05.069 25. Rodriguez, E.K., Hoger, A., McCulloch, A.D.: Stress-dependent finite growth in soft elastic tissues. Journal of Biomechanics 27 (4), 455–467 (1994). DOI 10.1016/ 0021-9290(94)90021-3 26. Saturnino, G.B., Puonti, O., Nielsen, J.D., et al.: SimNIBS 2.1: A comprehensive pipeline for individualized electric field modelling for transcranial brain stimula-tion. Brain Stimulation 12 (6), 1664 (2019). DOI 10.1016/j.brs.2019.07.015 27. Schl¨ omer, N.: meshio: I/O for mesh files. https://github.com/nschloe/meshio (2024) 28. Schl¨ omer, N.: pygalmesh: Python interface for CGAL’s 3D mesh generation. https: //github.com/meshpro/pygalmesh (2024) 29. Sch¨ oberl, J.: NETGEN an advancing front 2D/3D-mesh generator based on ab-stract rules. Computing and Visualization in Science 1(1), 41–52 (1997). DOI 10.1007/s007910050004 30. Severino, M., Geraldo, A.F., Utz, N., Tortora, D., Pogledic, I., Klonowski, W., Triulzi, F., Arrigoni, F., Mankad, K., Leventer, R.J., et al.: Definitions and clas-sification of malformations of cortical development: practical guidelines. Brain 
+
+143 (10), 2874–2894 (2020). DOI 10.1093/brain/awaa174 31. Shewchuk, J.R.: What is a good linear finite element? Interpolation, condition-ing, anisotropy, and quality measures. Preprint, Department of EECS, University of California, Berkeley (2002). https://people.eecs.berkeley.edu/ ∼jrs/papers/elem. pdf 32. Si, H.: TetGen, a Delaunay-based quality tetrahedral mesh generator. ACM Trans-actions on Mathematical Software 41 (2), 11:1–11:36 (2015). DOI 10.1145/2629697 CORTET: Automated Cortical Meshing 13 33. Tallinen, T., Chung, J.Y., Biggins, J.S., Mahadevan, L.: Gyrification from con-strained cortical expansion. Proceedings of the National Academy of Sciences 
+
+111 (35), 12,667–12,672 (2014). DOI 10.1073/pnas.1406015111 34. Tallinen, T., Chung, J.Y., Rousseau, F., Girard, N., Lef` evre, J., Mahadevan, L.: On the growth and form of cortical convolutions. Nature Physics 12 (6), 588–593 (2016). DOI 10.1038/nphys3632 35. Wang, X., Lef` evre, J., Bohi, A., Harrach, M.A., Dinomais, M., Rousseau, F.: The influence of biophysical parameters in a biomechanical model of cortical folding patterns. Scientific Reports 11 , 7686 (2021). DOI 10.1038/s41598-021-87124-y
