@@ -6,52 +6,47 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-07-21
-- 运行时间：2026-07-21 21:34:43 UTC
+- 最新运行日期：2026-07-22
+- 运行时间：2026-07-22 20:21:54 UTC
 - 运行状态：成功
-- 本次总论文数：10
-- 精读区：3
-- 速读区：7
+- 本次总论文数：8
+- 精读区：0
+- 速读区：8
 
 ### 今日简报（AI）
-1) 今日精读两篇8分高质论文，聚焦脑影像可解释区域分类与动态网络轨迹生成。  
-2) 最值得关注：RegionFM利用基础模型嵌入实现可解释性脑区域分类；TVGL-CFM用条件流匹配建模时变网络轨迹。  
-3) 建议优先精读RegionFM以理解可解释性方法，并关注TVGL-CFM在动态网络预测中的潜力。
-- 详情：[/202607/21/README](/202607/21/README)
+今日速读8篇论文，聚焦医学成像与重建前沿。
+重点关注《Efficient Computing for Medical Image Acquisition and Reconstruction》与《Continuous 3-D Latent Diffusion for Medical Generation and Reconstruction》，覆盖计算效率与生成式方法。
+建议优先阅读上述两篇论文，理解医学成像中高效计算与扩散模型的结合趋势。
+- 详情：[/202607/22/README](/202607/22/README)
 
 ### 精读区论文标签
-1. [RegionFM: Interpretable Region-Based Brain MRI Classification Using Foundation Model Embeddings](/202607/21/2607.16325v1-regionfm-interpretable-region-based-brain-mri-classification-using-foundation-model-embeddings)  
-   标签：评分：8.0/10、query:fbn
-   evidence：使用基础模型嵌入的可解释脑MRI分类
-2. [TVGL-CFM:Generating and Forecasting Time-Varying Trajectories of Dynamic Networks with Conditional Flow Matching](/202607/21/2607.16894v1-tvgl-cfmgenerating-and-forecasting-time-varying-trajectories-of-dynamic-networks-with-conditional-flow-matching)  
-   标签：评分：8.0/10、query:fbn
-   evidence：时变图模型用于动态脑网络建模，结合条件流匹配
-3. [BrainNext: A General-Purpose Self-Supervised Foundation Model for Brain MRI Analysis](/202607/21/2607.17782v1-brainnext-a-general-purpose-self-supervised-foundation-model-for-brain-mri-analysis)  
-   标签：评分：8.0/10、query:fbn
-   evidence：脑MRI通用自监督基础模型，神经影像AI
+- 本次无精读推荐。
 
 ### 速读区论文标签
-1. [Monte Carlo Dropout Uncertainty and Entropy-Thresholded Selective Prediction for Architecture-Agnostic Brain Tumor MRI Triage](/202607/21/2607.16317v1-monte-carlo-dropout-uncertainty-and-entropy-thresholded-selective-prediction-for-architecture-agnostic-brain-tumor-mri-triage)  
+1. [Efficient Computing for Medical Image Acquisition and Reconstruction](/202607/22/2607.13204v1-efficient-computing-for-medical-image-acquisition-and-reconstruction)  
    标签：评分：7.0/10、query:fbn
-   evidence：脑肿瘤MRI分诊中的不确定性估计在AI医疗中的应用
-2. [Exploring Brain Networks Using Noninvasive Electrophysiological Measurements: Methods and Applications](/202607/21/2607.17602v1-exploring-brain-networks-using-noninvasive-electrophysiological-measurements-methods-and-applications)  
+   evidence：医学图像重建中的高效计算
+2. [FM$^2$: Unified Federated Foundation Models for Heterogeneous Multimodal Medical Imaging](/202607/22/2607.13386v1-fm2-unified-federated-foundation-models-for-heterogeneous-multimodal-medical-imaging)  
    标签：评分：7.0/10、query:fbn
-   evidence：EEG/MEG脑网络分析方法与应用
-3. [Towards Enhancing 3D Spatial Reasoning in Medical Multimodal Large Language Models](/202607/21/2607.13860v1-towards-enhancing-3d-spatial-reasoning-in-medical-multimodal-large-language-models)  
+   evidence：神经影像AI医疗，联邦基础模型用于多模态医学影像
+3. [Continuous 3-D Latent Diffusion for Medical Generation and Reconstruction](/202607/22/2607.16491v1-continuous-3-d-latent-diffusion-for-medical-generation-and-reconstruction)  
+   标签：评分：7.0/10、query:fbn
+   evidence：三维医学图像生成用于MRI
+4. [Emergent topological structure in spontaneous brain-organoid activity](/202607/22/2607.16517v1-emergent-topological-structure-in-spontaneous-brain-organoid-activity)  
+   标签：评分：7.0/10、query:fbn
+   evidence：脑类器官活动网络的拓扑数据分析
+5. [BrainPilot: Automating Brain Discovery with Agentic Research](/202607/22/2607.15079v1-brainpilot-automating-brain-discovery-with-agentic-research)  
    标签：评分：6.0/10、query:fbn
-   evidence：3D医学影像人工智能医疗
-4. [Benchmarking MRI Representations for Deep Learning-Based Focal Cortical Dysplasia Segmentation](/202607/21/2607.15605v1-benchmarking-mri-representations-for-deep-learning-based-focal-cortical-dysplasia-segmentation)  
+   evidence：自动化脑科学研究的AI智能体，整合神经影像分析
+6. [Transferable Low-Rank Convolutional Bases for Onboarding Unseen Medical Imaging Modalities](/202607/22/2607.16888v1-transferable-low-rank-convolutional-bases-for-onboarding-unseen-medical-imaging-modalities)  
    标签：评分：6.0/10、query:fbn
-   evidence：深度学习脑疾病MRI分割
-5. [From Diffusion to Reaction-Diffusion: A Dynamical-Systems View of Oversmoothing in Hypergraph Neural Networks](/202607/21/2607.15773v1-from-diffusion-to-reaction-diffusion-a-dynamical-systems-view-of-oversmoothing-in-hypergraph-neural-networks)  
+   evidence：未见医学影像模态的迁移学习
+7. [FSDBN: Foreground-Aware EEG--Visual Alignment via Dynamic Brain Networks](/202607/22/2607.18344v1-fsdbn-foreground-aware-eeg--visual-alignment-via-dynamic-brain-networks)  
    标签：评分：6.0/10、query:fbn
-   evidence：反应扩散框架缓解超图神经网络过平滑，可应用于基于图的脑疾病诊断
-6. [Contextual Semantic Relevance Tracks fMRI BOLD Responses During Naturalistic Speech Comprehension](/202607/21/2607.15856v1-contextual-semantic-relevance-tracks-fmri-bold-responses-during-naturalistic-speech-comprehension)  
+   evidence：动态脑网络和EEG-视觉对齐
+8. [Advancing Multimodal Fusion on Heterogeneous Medical Data with Hybrid Geometry Attention](/202607/22/2607.19086v1-advancing-multimodal-fusion-on-heterogeneous-medical-data-with-hybrid-geometry-attention)  
    标签：评分：6.0/10、query:fbn
-   evidence：自然语言理解中上下文语义相关性预测fMRI BOLD响应
-7. [SAMRI-3D: Adapting SAM2 for 3D MRI Segmentation with Global Volume Tokens](/202607/21/2607.18014v1-samri-3d-adapting-sam2-for-3d-mri-segmentation-with-global-volume-tokens)  
-   标签：评分：6.0/10、query:fbn
-   evidence：将SAM2适应于3D MRI分割，神经影像AI
+   evidence：医学数据多模态融合
 
 
 <div class="dpr-home-promo-card">
