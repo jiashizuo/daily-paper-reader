@@ -1,0 +1,593 @@
+Title: Eddeep: a deep-learning framework for fast eddy-current distortion correction in diffusion MRI
+
+URL Source: https://arxiv.org/pdf/2607.26292v1
+
+Published Time: Thu, 30 Jul 2026 00:18:01 GMT
+
+Number of Pages: 39
+
+Markdown Content:
+# Eddeep: a deep-learning framework for fast eddy-current distortion correction in diffusion MRI 
+
+# Antoine Legouhy 1,2,∗, Ross Callaghan 1,3, Yuchuan Qiao 4, Whitney Stee 5,6,Philippe Peigneux 5,6, Hojjat Azadbakht 3, Hui Zhang 1 
+
+> 1
+
+Hawkes Institute & Department of Computer Science, University College London, London, UK  
+
+> 2
+
+Institut Pasteur, Universit´ e Paris Cit´ e, Unit´ e de Neuroanatomie Appliqu´ ee et Th´ eorique, France  
+
+> 3
+
+AINOSTICS ltd., Manchester, UK  
+
+> 4
+
+Institute of Science and Technology for Brain-Inspired Intelligence, Fudan University, Shanghai, China  
+
+> 5
+
+UR2NF – Neuropsychology and Functional Neuroimaging Research Unit affiliated at CRCN - Centre for Research in Cognition and Neurosciences and UNI - ULB Neuroscience Institute, Universit´ e Libre de Bruxelles (ULB), Brussels, Belgium  
+
+> 6
+
+GIGA - Cyclotron Research Centre - In Vivo Imaging, University of Li` ege (ULi` ege), Li` ege, Belgium 
+
+> ∗
+
+Correspondence: alegouhy@pasteur.fr 
+
+# July 30, 2026 
+
+Keywords: Diffusion MRI, Distortion correction, Eddy-currents, MRI preprocessing, Deep learning 
+
+Abstract: Diffusion MRI (dMRI) relies on diffusion-weighted echo-planar imaging, which is highly susceptible to eddy-current-induced geometric distortions. These distortions vary across diffusion volumes according to gradient strength and direction, causing between-volume misalignment that can bias downstream microstructural analyses. Current state-of-the-art correction methods, such as FSL Eddy, achieve high-quality correction through iterative prediction-correction schemes but are computationally expensive. We propose Ed-deep , a deep-learning framework for fast eddy-current distortion correction in dMRI. Eddeep 
+
+1arXiv:2607.26292v1 [cs.CV] 28 Jul 2026 2 1 INTRODUCTION 
+
+decomposes the problem into two stages. First, a supervised image translation network standardises the appearance of diffusion-weighted and b = 0 images, removing contrast differences that hinder reliable registration. Second, an unsupervised registration network estimates both eddy-current distortion and between-volume head motion parameters un-der a physics-constrained quadratic distortion model, enabling correction in a single forward pass. The method was trained on UK Biobank data and evaluated on both in-domain (UK Biobank) and out-of-domain (Memodyn) datasets. Across a range of complementary met-rics, including between-volume jitter, diffusion kurtosis imaging residuals, signal irregularity, and mutual information, Eddeep achieved correction quality comparable to that of FSL Eddy while substantially reducing inference time. These results demonstrate that deep learning can provide accurate and efficient eddy-current distortion correction without relying on iter-ative optimisation, supporting the development of faster diffusion MRI processing pipelines for large-scale studies and clinical deployment. The code is available at: https://github.com/CIG-UCL/eddeep. 
+
+# 1 Introduction 
+
+In magnetic resonance imaging (MRI), diffusion-weighted imaging (DWI) is a technique designed to indirectly probe the intricate microstructure of biological tissues in vivo, in a non-invasive and non-ionising fashion. The diffusion or random thermal motion of water molecules in biological tissues is hindered and restricted by obstacles such as cell membranes and organelles, resulting in a pattern of diffusion that reflects the local tissue architecture. By applying magnetic field gradients of controlled strength and duration (parameterised by the b-value) and direction (the b-vector), the MRI signal can be sensitised to this pattern of diffusion. Using an appropriate set of b-values and b-vectors, the resulting signals can then be used to infer tissue properties at scales far below the imaging resolution. DWI has applications in both clinical and neuroscience research settings. Clinically, it is central to applications including the early diagnosis of acute ischemic stroke (Fiebach et al., 2002), tumor char-acterisation (Maier et al., 2010), and preoperative surgical planning (Berman, 2009). In neuroscience, diffusion tensor imaging (DTI) (Basser et al., 1994) has been widely used to characterise white matter alterations in neurological and psychiatric disorders (Le Bihan & Johansen-Berg, 2012), while more recent multi-shell acquisitions have enabled biophysical models of tissue microstructure such as NODDI (Kamiya et al., 2020; Kraguljac et al., 2023; Zhang et al., 2012) that address some of the limitations of DTI, moving towards the goal of non-invasive in vivo virtual biopsy (D. C. Alexander et al., 2019). These 3increasingly sophisticated applications demand ever richer acquisitions: while DTI requires as few as six gradient directions at a single b-value, modern multi-shell protocols can necessitate over a hundred volumes spanning multiple b-values and directions. To achieve acceptable scan duration, spin-echo single-shot echo-planar imaging (EPI) sequences are used (Skare & Bammer, 2011; Turner et al., 1990). However, the speed of EPI comes at the cost of a heightened sensitivity to off-resonance effects, which manifest as two distinct families of geometric distortions. The first, susceptibility-induced distortions, arise from spatial inhomogeneities in the static magnetic field caused by differences in magnetic susceptibility between adjacent tissues, most prominently at air-tissue interfaces (Jezzard & Clare, 1999). These distortions depend on the subject’s anatomy and, in the absence of motion, are identical across all volumes of an acquisition. The second, eddy-current-induced distortions, arise from the rapid switching of the diffusion-sensitizing gradients, which produce unwanted magnetic fields that interfere with spatial encoding during readout (Chang & Fitzpatrick, 1992; Jezzard et al., 1998). While susceptibility distortions are common to all EPI sequences, eddy-current distortions are specific to diffusion MRI. Crucially, because the diffusion gradients differ in strength and direction from volume to volume, so do the resulting eddy-current distortions, causing between-volume misalignment that, if left uncorrected, propagates into and biases all downstream modelling and analysis (Haselgrove & Moore, 1996). In this paper, we specifically address the correction of eddy distortions. Several strategies exist to mitigate eddy-current effects at the hardware and acquisition level (Bernstein et al., 2004). Modern MRI systems employ actively shielded gradient coils (Mansfield & Chapman, 1986) and gradient pre-emphasis (Ahn & Cho, 1991), which substantially reduce eddy currents induced in surrounding conductive structures. These measures are largely sufficient for conventional imaging sequences. However, diffusion MRI poses a particular challenge because the diffusion-sensitizing gradients are much stronger than typical imaging gradients, inducing proportionally larger eddy currents that may not be fully compensated by hardware solutions alone, especially for high b-values ( > 2000 s/mm 2). The twice-refocused spin echo sequence (Reese et al., 2003) and bipolar diffusion gradient schemes (A. L. Alexander et al., 1997) can further reduce eddy-current-induced phase errors through gradient waveform design. However this is at the cost of increased echo time and reduced signal-to-noise ratio (SNR), so they are not used in recent large-scale databases such as UK Biobank (Miller et al., 2016) and the Human Connectome Project (Sotiropoulos et al., 2013). As a result, residual distortions of clinically relevant magnitude persist, necessitating correction after data acquisition. Post-acquisition correction is typically formulated as an image registration problem. An initial strategy was to align volumes acquired with non-zero b-values, thus eddy-distorted, with the b = 0 volume which 4 1 INTRODUCTION 
+
+is not. However, the task is non-trivial because correspondences between non-zero b-value and b = 0 
+
+volumes are severely disrupted by volume-specific signal attenuations induced by varying directions and 
+
+b-values. In particular, the outer cerebro-spinal fluid (CSF) is a vanishing boundary beyond very low b-values; very different attenuation patterns appear in areas of anisotropic diffusion such as white matter; and the signal-to-noise ratio (SNR) decreases as the b-value increases (see Fig. 1 for an illustration). For the registration process to produce the desired alignment, thus the correction, the two images to be registered must be deemed sufficiently comparable by the similarity metric chosen. Attempts were made using similarity metrics designed to handle large intensity differences, such as correlation ratio (Bastin, 1999; Haselgrove & Moore, 1996) and mutual information (Mangin et al., 2002; Rohde et al., 2004). But even these do not behave well for high b-values (Andersson & Sotiropoulos, 2016; Bastin, 1999; Rohde et al., 2004). 
+
+Figure 1: Images are incompatible for registration, their intensity patterns are too different to be com-pared. Same subject, different b-values b and gradient direction g. Green arrows: vanishing CSF boundary as b increases, blue arrows: orientation specific attenuations, red underline: signal magnitude decreasing as b increases (despite the same noise level). Given the impracticability of using the b = 0 image as a registration target, a new prediction-correction strategy has emerged (Andersson & Sotiropoulos, 2016). It is an iterative algorithm with each iteration consisting of two steps: first, a prediction step estimates from the data, at the current level of correction, a distortion-free version of each volume; second, a correction step aligns each volume to the distortion-free prediction of itself. By iterating these steps repeatedly, the predictions become progressively more accurate, enabling increasingly more precise distortion correction. In FSL Eddy (Andersson & Sotiropou-los, 2016), arguably the most popular tool for eddy-current distortion correction, the prediction step uses a Gaussian process (Andersson & Sotiropoulos, 2015) to estimate the distortion-free version of each volume from those with similar b-vectors and the same b-value. It is designed for the common multi-shell acquisitions. The most recent version of Tortoise (Irfanoglu et al., 2025) has also adopted this strategy but the predictions are made by fitting a MAP-MRI ( ¨Ozarslan et al., 2013) model to the entire dataset at each iteration. It is designed to support arbitrary b-value and b-vector sampling. While both tools 5achieve good correction, the overall processing is slow. The prediction-correction scheme is iterative and the correction itself is performed using traditional registration for which a new iterative optimisation has to be restarted from scratch for each volume pair. For advanced diffusion MRI, fast preprocessing is not merely an engineering convenience, but a prerequisite for moving from research settings to deployable clinical tools. Deep-learning methods, enabling transformation parameters to be predicted in a single forward pass, have been developed for fast image registration (Balakrishnan et al., 2019; De Vos et al., 2017). In diffusion MRI, these have already been successfully applied to fast correction of susceptibility-induced distortions (Duong et al., 2020; Legouhy et al., 2022) for blip-up/blip-down acquisitions. However, to the best of our knowledge, no deep-learning approach has yet been proposed for eddy-current distortion correction. Unlike for susceptibility distortion correction where images of similar contrast have to be matched (blip-up and blip-down pair), eddy-current distortion correction must operate across diffusion-weighted volumes whose correspondences are disrupted by the large contrast differences. We hypothesise that this obstacle can be addressed by first bringing the images into closer appearance correspondence through deep-learning-based image translation. Such strategies have been explored already in diffusion MRI, for instance for synthesising b = 0 images from T1-weighted images (Schilling et al., 2019). In this paper, we introduce Eddeep , a novel approach for fast eddy-current distortion correction in dMRI that leverages these deep-learning advances. Unlike conventional iterative prediction-correction schemes, 
+
+Eddeep addresses contrast standardisation and geometric distortion correction in a single two-stage pass through two models applied in sequence: 1. An image translation model to restore correspondences between volumes. Regardless of its b-value and gradient direction, each volume is translated to a version with preserved anatomy but a target contrast that does not contain CSF outer boundaries or gradient direction-dependent attenuation patterns. The model is trained in a supervised fashion on previously-corrected data. 2. A registration model to jointly estimate head motion and eddy-distortion parameters between an uncorrected translated DW volume and a distortion-free translated b = 0 volume. Acquisition-physics constraints are incorporated into the estimation to ensure plausible eddy-current distortions in EPI. The model is trained in an unsupervised fashion. 
+
+Eddeep therefore maps each input volume to an undistorted geometry referenced to b = 0 , does not rely on any specific gradient sampling scheme, and performs correction at inference time orders of magnitude faster than traditional optimisation-based methods. A preliminary version of this work was published in Legouhy et al., 2024. Compared with that conference paper, the present article introduces 6 2 MODELLING OF EDDY-CURRENT-INDUCED DISTORTIONS 
+
+more principled model choices, more advanced augmentation schemes, and a substantially extended evaluation, including a comprehensive suite of quantitative metrics and an assessment of generalisation on an out-of-domain dataset. 
+
+# 2 Modelling of eddy-current-induced distortions 
+
+In this section, we describe the physical origin of eddy-current distortions in diffusion MRI, formulate the geometric distortion model and the associated Jacobian intensity modulation, and explain how between-volume head motion is accounted for. Together, these define the constrained transformation that is used for correction. 
+
+# 2.1 Origin of eddy distortions 
+
+The geometric effects of unwanted magnetic fields superimposed on the main field B0 are part of the general theory of EPI distortions (Chang & Fitzpatrick, 1992). In diffusion MRI, these effects arise prominently through eddy currents induced by diffusion-encoding gradients (Jezzard et al., 1998; Jones & Cercignani, 2010). Because diffusion-encoding gradients are time-varying magnetic fields, they induce a response in the conducting surfaces of the scanner hardware in the form of swirling electrical currents, hence the name eddy currents. These currents in turn generate residual magnetic fields that interfere with the spatial encoding during image readout. These effects are usually limited in conventional MRI, where short and relatively weak imaging gradients allow partial compensation between the fields induced during the ramp-up and ramp-down phases. In diffusion MRI, however, because the sequence relies on stronger and longer gradient pulses to achieve the required b-values, eddy distortions can reach an amplitude of several millimeters. 
+
+# 2.2 Eddy distortion model 
+
+The eddy-current-induced distortions are typically approximated by a simplified geometric model, from which a correcting transformation can be estimated. Here we describe the model used in this work and how it is applied in practice. The residual fields caused by eddy currents produce distortions predomi-nantly along the phase-encoding direction (PED), where the bandwidth is low, while their effects along the other directions are negligible (Chang & Fitzpatrick, 1992). Since these residual fields are induced by the diffusion-encoding gradients, the distortion varies with the amplitude and orientation of the applied 2.2 Eddy distortion model 7diffusion encoding. Successive diffusion-weighted volumes are therefore affected differently, leading to between-volume misalignment. The effect is specific to diffusion-weighted images, whereas b = 0 im-ages are unaffected. As a first order approximation, the induced displacement along the PED may be expressed as a linear combination of the spatial coordinates (Jezzard et al., 1998). In this formulation, the distorting effects of the eddy currents can be interpreted according to the direction of the residual field: a residual gradient along the slice direction produces an approximately uniform shift along the PED; a residual gradient along the read direction produces a shear; and a residual gradient along the PED itself produces a stretch or compression of the image (Jones & Cercignani, 2010). However, empirical studies have shown that this linear approximation is not always sufficient and that higher-order terms may be required (Andersson & Sotiropoulos, 2016; Rohde et al., 2004). In practice, a quadratic model has proved to be a good compromise between flexibility and parsimony, and is the model adopted by widely used correction tools such as FSL Eddy (Andersson & Sotiropoulos, 2016) and Tortoise (Irfanoglu et al., 2025; Irfanoglu et al., 2017). Distortions also have consequences on the intensity of the reconstructed image, the geometric changes are accompanied with intensity modulation. Below, we formulate the distortion model used in this work along with the Jacobian intensity modulation technique used to describe and account for these intensity changes. 
+
+2.2.1 Uni-directional quadratic distortion model 
+
+Let x ∈ R3 denote the undistorted spatial coordinates and y = E(x) the coordinates distorted by the eddy-current-induced transformation E. Let p ∈ R3 with ∥p∥ = 1 be the vector defining the PED (e.g. 
+
+p = (0 1 0) ⊤ if the PED is along the second axis). The quadratic distortion model can be written as: 
+
+y = E(x) = x +  x⊤Qx + Lx + t p (1) where Q ∈ R3×3sym , L ∈ R1×3 and t ∈ R. This uni-directional (constrained along the PED) global transformation has 10 degrees of freedom (dof) in 3D (1 for the translation, 3 for the linear terms and 6 for the quadratic terms). As an illustration, Fig. 2 shows the 2D version of this distortion model (which has only 6 dof). 8 2 MODELLING OF EDDY-CURRENT-INDUCED DISTORTIONS translation linear terms quadratic terms overall 
+
+Figure 2: An illustration of the uni-directional quadratic geometric deformation model in 2D. 
+
+2.2.2 Jacobian intensity modulation 
+
+Wherever a transformation T locally compresses space, the signal from a given volume element is con-centrated into a smaller reconstructed volume and the intensity increases; conversely, wherever T locally expands space, the same signal is spread over a larger volume and the intensity decreases. Formally, for I
+
+denoting the ideal undistorted image and I′ the acquired distorted one, following Chang and Fitzpatrick, 1992: 
+
+I′ ◦ T (x) = 1
+
+| det JT (x)| · I(x) (2) where JT (x) denotes the Jacobian matrix of T at x, and det is the determinant. Since the rigid component is volume-preserving, it simplifies to det JT (x) = det JE (R(x)) . Values of | det JT (x)| below 1 correspond to local compression and values above 1 to local stretch. This shows that simple resampling of the distorted image back onto the reference grid is insufficient: the intensity must also be compensated following: I(x) = | det JT (x)| · I′ ◦ T (x).
+
+# 2.3 Accounting for between-volume head motion 
+
+The modelling of eddy-current distortion must take into account head motion. As acquiring a 3-D volume (as a stack of 2-D slices) with EPI takes a few seconds, it is common to consider within-volume head motion as negligible and to only model between-volume head motion. The between-volume head motion can be modelled as a rigid transformation (6 dof in 3D). In the presence of between-volume head motion, the eddy-current distortion must be combined with the rigid transformation of the head to form the complete transformation that the correction aims to undo. A key consideration is the order in which the rigid motion R and the eddy distortion E are composed. While the subject’s head can move freely in physical space, distortions are image reconstruction artifacts that are anchored to the reference frame defined by the imaging gradients (slice-select, phase-encoding and frequency-encoding), as illustrated in Fig. 3. The transformation, T , combining both head motion 9and eddy distortions therefore acts on spatial coordinates x following: 
+
+T (x) = E ◦ R(x) (3) Eddy and rigid transformations are kept separate for interpretability, but their parameters are not fully independent: in particular, the eddy translation t and the rigid-body translation along the PED are geometrically confounded. rigid motion of the object eddy distortion of the frame (object e ff ectively transformed by )(frame fi xed) 
+
+Figure 3: Rigid motion of an object in a fixed reference frame followed by eddy distortion of the whole frame. 
+
+# 3 The Eddeep framework 
+
+We propose a two-stage approach to correct for eddy-current induced distortion and between-volume head motion in which appearance and geometry are decoupled. First, a translator (see Section 3.2) maps any input diffusion-weighted (DW) or b = 0 volume to a standardised appearance, restoring correspondences between volumes. Second, a registration model (see Section 3.3) estimates the eddy-current distortion and head-motion parameters that align each translated DW volume to a translated, undistorted b = 0 
+
+reference, and applies the correction. An overview is shown in Fig. 4. The coupling between the two models (see Section 3.1) and the augmentation strategies used during training (see Section 3.4) are discussed below. 
+
+# 3.1 Coupling 
+
+Since this approach involves two models, we must decide whether they should be trained jointly. Joint end-to-end optimisation would admit a degenerate solution: in the absence of explicit supervision on the translation output, the translator could collapse to mapping all inputs to zero, yielding a trivially perfect similarity score for the registration objective. The translator and registration model are therefore trained sequentially: the translator is trained first, and its weights are then frozen while training the registration 10 3 THE EDDEEP FRAMEWORK 
+
+model. Freezing the translator provides the registration model with a stable input distribution and, by separating the two training stages, each model has a clear and well-defined optimisation objective. translator training registrator training Images Transformation Training Model blocks      
+
+> translator geometry encoder resampler MLP
+> E: eddy : rigid corrected for distortions b=0 volume direction average for distorted DW volume for b-value , gradient direction bg
+> non-distorted translated volume
+> Rtransformation builder loss
+> trainable frozen
+> parameters deformation fi eld
+
+Figure 4: Overview of Eddeep during training. The two models are trained sequentially. Translator 
+
+(top) : each previously-corrected volume ( b = 0 or diffusion-weighted) is passed through a 3D U-Net and mapped to a common target appearance. Registration model (bottom) : with the translator frozen, a translated b = 0 reference and a translated DW volume are fed to a CNN geometry encoder followed by an MLP that regresses eddy distortion and head-motion parameters. These are assembled into the final transformation, which warps the moving volume. 
+
+# 3.2 Image translation model 
+
+The role of the translator is to map any DW or b = 0 image to a standardised appearance that restores between-volume correspondences while preserving geometry. This is necessary because the registration step that follows must compare volumes acquired at different b-values and gradient directions, whose native intensity patterns are otherwise too dissimilar for reliable direct alignment. The architecture and training workflow of the translator are illustrated Fig 4-top. Here we detail the design of the translator, including the choice of target contrast, training methodology and inference usage. 3.2 Image translation model 11 
+
+3.2.1 Training objective 
+
+Training uses paired previously-corrected data so that the learning problem is purely one of contrast mapping, without geometric mismatch between input and target. Let hϕ denote the translator model with weights ϕ. For an input previously-corrected volume ˆVb,g , of b-value b and gradient direction g, and the corresponding subject-specific target ¯Vref , the translator is trained by minimising 
+
+ϕ∗ = arg min 
+
+> ϕ
+
+E( ˆVb,g , ¯Vref ) R hϕ( ˆVb,g ), ¯Vref 
+
+. (4) For R, the reconstruction loss, we use MAE ( L1) rather than MSE ( L2) as in Legouhy et al., 2024. The two differ in how they handle uncertainty (Bishop & Nasrabadi, 2006): MSE minimisation pushes the network toward the mean of all plausible outputs, potentially producing blurry predictions, whereas MAE minimisation pushes it toward the median, which is more robust and can better preserve sharp edges. The same translator is applied to both DW and b = 0 volumes, mapping them to the same target appearance. 
+
+3.2.2 Architecture 
+
+Since the translation must not introduce any spatial shift, a constrained paired supervised approach is pre-ferred to unpaired alternatives such as cycleGAN (Zhu et al., 2017). In the conference version (Legouhy et al., 2024), we used a conditional GAN in a pix2pix (Isola et al., 2017) style. For this task, however, we do not need to generate high-frequency details or photorealism: the precise appearance of the translated image matters less than its geometric fidelity and the absence of hallucination. We therefore simplify the translator to a plain 3D U-Net (Ronneberger et al., 2015) trained with the regression objective above, which also yields more stable training. 
+
+3.2.3 Training and inference usage Training: The translator requires previously-corrected data on both sides of the mapping. As with target construction, the inputs must be previously-corrected so that they share the same geometry as the target, keeping training as a pure contrast-learning problem with no geometric mismatch to confound the loss. 
+
+Inference: The translator is instead applied to distorted volumes, whose translated outputs serve as inputs to the registration model. This mismatch between training and inference is tolerable because eddy distortions, while significant enough to affect downstream modelling and analysis, are small in 12 3 THE EDDEEP FRAMEWORK 
+
+amplitude relative to the variations the U-Net generalises over; spatial augmentation applied during training further closes this gap. 
+
+3.2.4 Translation target 
+
+The choice of the translation target is guided by the following observations: 
+
+• For a given b-value, averaging volumes over gradient directions (assuming approximately uniform sphere sampling) removes orientation-specific signal attenuation, yielding a target with no direction dependency. 
+
+• It is easier to remove structure that is present in the input than to generate structure that is absent: translating from a low b-value (where outer CSF produces a bright boundary) to a higher one (where CSF is attenuated) requires suppression rather than hallucination. 
+
+• At moderately high b-values (typically 700–3000 s/mm ²), the CSF signal is fully attenuated to noise level while tissue SNR remains sufficient to preserve the edges that drive alignment. Our translation target is therefore the image obtained by averaging all diffusion volumes acquired at a moderate b-value bref over all gradient directions. This target is practically built per subject by selecting a bref in the 700–3000 s/mm ² range from the acquisition protocol, correcting the associated volumes with an external tool (e.g. FSL Eddy), averaging them, and applying bias field correction. The translation target is used only during training for supervision. At inference, the translator operates directly on individual diffusion-weighted or b = 0 volumes, without requiring averaging, pre-correction, or uniform gradient sampling. The assumptions underlying target construction apply solely to training and do not constrain model deployment. 
+
+# 3.3 Image registration model 
+
+The role of the registration model is to estimate the geometric transformation that aligns a translated distorted DW volume to a translated undistorted b = 0 reference. It jointly accounts for eddy-current distortion and between-volume head motion. The architecture and training workflow of the registra-tion model are illustrated Fig 4-bottom. Here we detail the design of the registration model, training methodology and inference usage. 3.3 Image registration model 13 
+
+3.3.1 Training objective 
+
+Let fθ denote the registration model with parameters θ. Following recent learning-based registration approaches (Balakrishnan et al., 2019; De Vos et al., 2017), we train fθ to take a pair of images as input and predict the transformation that aligns them in a single forward pass. The training is unsupervised, so no ground-truth transformations are required. The model weights are optimised by maximising an intensity-based similarity criterion S between the reference image and the moving image warped by the predicted transformation. In our setting, the input pair consists of a translated b = 0 reference eV0 and a translated DW volume 
+
+eVb,g of b-value b and gradient direction g, from the same acquisition. The registration model predicts a transformation T = fθ( eV0, eVb,g ) that follows the transformation model introduced in Section 2.2.1: 
+
+T = E ◦ R , where E encodes the unidirectional quadratic eddy distortion (10 dof) and R accounts for between-volume head motion (6 dof). The training objective is therefore: 
+
+θ∗ = arg min 
+
+> θ
+
+E( eV0, eVb,g ) S
+
+ eV0, eVb,g ◦ fθ( eV0, eVb,g )
+
+
+
+, (5) Because the translator equalises contrast across volumes, a very simple similarity measure such as MSE can be used, regardless of the b-value and gradient direction of the moving volume. 
+
+Remark 1. As defined in Section 2.2.1, y = T (x) is the forward geometric mapping from a coordinate x
+
+in the undistorted image to its corresponding location y in the distorted image. Therefore, reconstructing the corrected image bV on the undistorted grid is achieved by backward resampling of the distorted image 
+
+V , following: bV (x) = V (T (x)) . Hence, the quantity to be estimated is the forward transformation T ,not its inverse. 
+
+3.3.2 Architecture 
+
+Since the transformation model is low-dimensional and global (see Section 2.2.1), a parameter-regression approach is more appropriate than a dense deformation decoder. We therefore follow a strategy in the same vein as what is used in De Vos et al., 2017, 2019 for affine registration, replacing the decoder part of the U-Net by fully connected layers (a multilayer perceptron, or MLP) that directly regress transformation parameters. The model is composed of the following blocks: 1. Input: A distorted translated DW volume eVb,g (moving) and a translated b = 0 image eV0 (reference) 14 3 THE EDDEEP FRAMEWORK 
+
+of a same acquisition are concatenated along the channel dimension. 2. Geometry encoder: A CNN encoder extracts features at progressively coarser spatial resolu-tions, capturing local anatomical detail as well as global structural context. No decoder or skip connections are needed, since the task is low-dimensional parameter regression. 3. Dense layers: The flattened encoder output is passed through the MLP, which aggregates infor-mation over the entire volume before regressing the global transformation parameters. The final layer branches into five output heads corresponding to 16 parameters in total: eddy translation (e1), eddy linear ( e2, e 3, e 4), eddy quadratic ( e5, . . . , e 10 ), rigid translation ( r1, r 2, r 3), and rigid rotation ( r4, r 5, r 6). The along-PED translation of the rigid and e1 are confounded (Section 2.3), but separating them here eases recovery of either transformation alone if needed, without affecting the estimation of T .4. Transformation builder: The parameters output by the MLP are assembled into the eddy transformation E and rigid transformation R, following the transformation model defined in Sec-tion 2.2.1. Briefly, the matrix exponential of a skew-symmetric matrix is used to guarantee a proper rotation matrix for any unconstrained parameter values, and the eddy parameters directly build the unidirectional quadratic transformation (see Appendix A for full details). Both transformations are expressed relative to the image centre for better numerical conditioning and so that parameters at zero produce the identity. Following Section 2.3, the composition is ordered as T = E ◦ R.5. Resampler: The overall transformation is used to warp the moving image via backward resampling, in a way that differs between training and inference (see Section 3.3.3). 
+
+3.3.3 Training and inference usage Training: The predicted transformation is applied to the translated DW volume: beV b,g (x) = eVb,g ◦ T (x),which is then compared to the translated reference eV0 using the similarity metric S, following Eq 5. 
+
+Inference: The predicted transformation is instead applied to the original DW volume and, follow-ing Section 2.2.2, Jacobian intensity modulation is used to compensate for signal pile-up and stretch: 
+
+bVb,g (x) = | det JT (x)| · Vb,g ◦ T (x) where det JT (x) is the determinant of the Jacobian of the transfor-mation T at x. This yields a corrected DW volume mapped to the undistorted geometry referenced to 
+
+b = 0 .3.4 Augmentation strategies 15 
+
+# 3.4 Augmentation strategies 
+
+The purpose of augmentation is to broaden the training distribution to improve the generalisability of both models. Contrast augmentations are designed to cover a wider range of acquisition protocols and imaging conditions, while spatial augmentations expose the model to more head orientations and anatomical variability. Although the proposed augmentations are inspired by physical principles, exact realism is not required. The augmentation schemes compatible with the translation and registration models differ, and are detailed below. 
+
+3.4.1 Translator 
+
+• Contrast: – b-value synthesis: Since the data is previously corrected, one can synthesise signal at new effective b-values from a corrected diffusion-weighted volume bVb,g and a b = 0 volume bV0 of the same subject via interpolation or extrapolation under a mono-exponential signal model: 
+
+bVαb,g ≈ exp  α log( bVb,g ) + (1 − α) log( bV0), α ∈ [0 , +∞). (6) For 0 ≤ α ≤ 1 this interpolates between b = 0 and the acquired contrast; for α > 1 it extrapolates to a higher effective diffusion weighting. Although based on a simplistic signal model, this approximation is sufficient for contrast augmentation, at least for moderately high 
+
+b-values, and is inexpensive to compute on the fly in the dataloader. 
+
+– Bias field: A synthetic random bias field B is generated as a smooth low-frequency scalar field (typically through low-resolution random Gaussian noise, upsampled to the image resolution and smoothed with a Gaussian kernel) and applied multiplicatively: bVbias = (1 + B) bV . The result of applying another smooth multiplicative field on top of a pre-existing one remains smooth, effectively simulating a larger or differently shaped inhomogeneity. 
+
+– Noise: Rician noise N is added to the translator input to improve robustness to varying SNR: bVnoise = bV + N . Strictly speaking, adding Rician noise to an already noisy image does not reproduce a lower-SNR Rician distribution, and multi-coil acquisitions lead to more complex noise statistics further disrupted by previous correction. In practice however, this approximation is adequate to introduce useful noise diversity. These are combined in the following way: bVaug = (1 + B) bVαb,g + N . They are applied to the translator input only, while the translation target ¯Vref is kept unchanged. 16 4 EVALUATION 
+
+• Spatial: The same composition of a random global affine transformation and a random diffeo-morphic deformation field is applied to both the input and the translation target. This preserves voxel-wise correspondence and keeps the learning problem purely one of contrast mapping. 
+
+3.4.2 Registration model 
+
+• Contrast: No contrast augmentation is used for the registration model. Its inputs are the trans-lated volumes eV0 and eVb,g , and the role of the translator is precisely to reduce contrast variability across b-values and gradient directions. 
+
+• Spatial: Any spatial augmentation must preserve compatibility with the transformation relating the moving and reference volumes. This strongly restricts the class of admissible augmentations, and the set of safe transformations may be narrower than implied in the conference version Legouhy et al., 2024. In particular, transformations known to be safe include arbitrary translations and rotations about the PED, which may be applied independently to the reference and moving volumes, as well as a common isotropic scaling applied to both images. More general rotations, anisotropic scaling, shear, and deformable transformations would in general produce relative transforms outside the assumed model. 
+
+# 4 Evaluation 
+
+In this section, we evaluate Eddeep in terms of both translation quality and correction quality. We first lay out the experimental design: the datasets used for in-domain and out-of-domain evaluation (Section 4.1.1), the implementation details and evaluated variants of our models (Section 4.1.2), the FSL Eddy baseline (Section 4.1.3), and the masks and notation shared across all metrics (Section 4.1.4). We then assess the translation stage on its own (Section 4.2), before evaluating the full correction framework through a range of complementary quantitative metrics (Section 4.3). Both stages are assessed on in-domain and out-of-domain data, providing an assessment of accuracy, robustness and generalisation. Finally, we compare the processing times of Eddeep and FSL Eddy (Section 4.4). 4.1 Experimental design 17 
+
+# 4.1 Experimental design 
+
+4.1.1 Datasets 
+
+We evaluated the proposed method on two diffusion MRI datasets: UK Biobank, used for in-domain training, validation, and testing, and Memodyn, used exclusively for out-of-domain evaluation. 
+
+• UK Biobank (in-domain): The UK Biobank (UKB) dataset (Alfaro-Almagro et al., 2018; Miller et al., 2016) is a large-scale population cohort acquired on a 3T Siemens Skyra scanner. The multi-shell dMRI protocol consists of 5 b = 0 volumes and 50 gradient directions at each of b = 1000 and 
+
+b = 2000 s/mm ², voxel size is 2×2×2 mm, matrix 104 ×104 , 72 slices, TE = 92 ms, TR = 3600 ms. Both the translator and the registration model were trained exclusively on UKB data, using 80 subjects each. Their training sets partially overlapped, with 40 subjects shared between them. The overlap allows the total training data to be reduced, but is kept partial on purpose: exposing the corrector to subjects unseen by the translator during training ensures it learns to handle imperfect translations, which is representative of inference conditions. Validation used 14 subjects per model (7 shared). The 31 held-out UKB subjects used for in-domain testing have no overlap with either training or validation split. 
+
+• Memodyn (out-of-domain): The Memodyn dataset (Stee et al., 2023) (not yet publicly avail-able) was acquired on a 3T Siemens Magnetom Prisma scanner as part of a study investigating memory learning and consolidation. The multi-shell dMRI protocol consists of 13 b = 0 volumes and diffusion-weighted images at b = 650 , 1000 and 2000 s/mm ² with 15, 30 and 60 gradi-ent directions respectively, voxel size is 2 × 2 × 2 mm, matrix 96 × 96 , 70 slices, TE = 70.2 ms, TR = 4070 ms. Its 50 subjects were entirely unseen during training, constituting the out-of-domain evaluation set. The diffusion encoding parameters and data splits of the two datasets are summarised in Table 1 1. In both cases, eddy-current correction was performed on raw images that had not been previously corrected for susceptibility-induced distortions. For both, the PED is along the antero-posterior direction (AP). The two datasets differ in their level of eddy distortions: UKB data acquired on the older Skyra platform exhibit visually more pronounced distortions than the Prisma-acquired Memodyn data, consistent with differences in gradient performance and eddy-current compensation hardware. This is also reflected in 
+
+> 1The shell illustrations were obtained using: http://www.emmanuelcaruyer.com/q-space-sampling.php.
+
+18 4 EVALUATION train test Memodyn val. UK Biobank Memodyn UK Biobank b-value 40 40 40 40 31 50 31 50 7 7 77Translation Correction 0650 1000 2000 
+
+> 550 50 13 15 30 60 number of directions/volumes a) b)
+
+Table 1: Dataset protocols and splits: a) shell b-values and number of gradient directions/volumes in each dataset; b) dataset split for training and testing the translation and registration models, with partial overlap in the training and validation splits between both models. the translated jitter metric computed on uncorrected images, which is markedly higher for UKB (see Fig. 9). 
+
+4.1.2 Eddeep models Implementation details: 
+
+• Translator: The translator follows a 3D U-Net (Ronneberger et al., 2015) architecture. The en-coder comprises 4 levels with 16, 32, 64 and 128 channels, and the decoder mirrors this structure with 128, 64, 32 and 16 channels. Each level has 2 convolutional blocks with Leaky ReLU activa-tions and 3 × 3 × 3 kernel size. Downsampling is performed by max-pooling (factor 2), upsampling by nearest-neighbour interpolation (factor 2), and skip connections by concatenation. The final layer is a single-channel convolution with no activation. During training, the model is applied independently to both the b = 0 and the DW volume, each mapped to the mean DW image at the target b-value, and the two MAE losses are averaged. Training uses the Adam (Kingma & Ba, 2014) optimiser with learning rate 10 −4 and batch size 4. The selected model is the best according to the validation loss over 300 epochs. For some of the model variants we evaluate, a discriminator is added; these variants will be indicated by the inclusion of ”GAN” in their names. The discriminator is a PatchGAN (Isola et al., 2017) CNN encoder with features (16, 32, 64), MSE loss with weight 10 −2 compared to the generator. Together with the generator, it forms a pix2pix (Isola et al., 2017)-style conditional GAN, similarly to what is used in Legouhy et al., 2024. To construct the training inputs and targets, the data are previously corrected using FSL Eddy (An-dersson & Sotiropoulos, 2016). The reference shell is chosen as bref = 2000 . Because the b-vectors 4.1 Experimental design 19 are uniformly distributed over the sphere in the UKB dataset, averaging the volumes associated with bref cancels direction-dependent attenuation patterns. The resulting mean image is then bias-field corrected using ANTs N4 (Tustison et al., 2010). Input volumes are normalised to [0 , 1] by clipping at the quantile 0.999 of the intensity distribution and dividing by that quantile. 
+
+• Registration model: The registration model takes as input a pair of translated volumes, namely a translated b = 0 reference and a translated DW volume generated by the frozen translator. Its geometry encoder is a 3D CNN with 5 levels, containing 16, 28, 56, 75 and 128 channels. Each level has 2 convolutional blocks with Leaky ReLU activations and 3 × 3 × 3 kernel size. Downsampling is performed by max-pooling (factor 2). The flattened encoder output is passed through to a 2-layer MLP with 128 and 64 nodes, using Leaky ReLU activations. The MLP output is split into 5 parallel branches with no activation: eddy-current quadratic (6 nodes), linear (3 nodes) and translation (1 node) parameters; rigid rotation (3 nodes) and translation (3 nodes) parameters. The resulting transforms are composed and applied to the DW volume via trilinear interpolation, using Voxelmorph’s Balakrishnan et al., 2019 code components, adapted to handle the quadratic distortion model of Section 2.2.1. The training loss is MSE between the corrected translated DW and the translated b = 0 . Training uses the Adam optimiser with learning rate 10 −4 and batch size 4. The selected model is the best according to the validation loss over 200 epochs. The code is available at: https://github.com/CIG-UCL/eddeep. 
+
+Model variants: 
+
+• Translation: We evaluated three variants differing only in the amount of augmentation (both in contrast and spatial) applied during training: trans , with no augmentation; trans+ , with aug-mentation applied with probability 0.5; and trans++ , with augmentation applied with probability 
+
+1. A GAN version of trans+ was also evaluated. 
+
+• Full Eddeep (translation+correction): the Eddeep variants combine translation and registra-tion in sequence. The correction model of eddeep was trained using the frozen translator trans ,whereas the correction model of eddeep+ was trained using the frozen translator trans+ . No augmentation was used during training of the registration model. All Eddeep variants use a quadratic unidirectional transformation model, Jacobian intensity mod-ulation, and trilinear interpolation. 20 4 EVALUATION 
+
+4.1.3 Baseline method: FSL Eddy 
+
+As a baseline, we used FSL Eddy (Andersson & Sotiropoulos, 2016) ( eddy openmp ) from the FSL suite (Jenkinson et al., 2012) (version 6.0.5.2), which is a standard state-of-the-art tool for eddy-current distortion and motion correction in diffusion MRI. For comparability, we used the same correction setting as in Eddeep : a quadratic unidirectional transformation model with Jacobian intensity modulation and trilinear interpolation. Outlier replacement and slice-to-volume motion correction are disabled. 
+
+4.1.4 Common masks and notation 
+
+For the evaluation, we computed a set of common masks to be used for quantification of performance and visualisation. Here, we define these masks and additional notation to be used throughout the experiments. To compute model performance in relevant regions of the image, we utilise a set of brain masks. Xbrain 
+
+denotes the set of voxel locations in the brain mask, obtained with SynthStrip (Hoopes et al., 2022) on the translation target images (i.e., the b = 2000 images averaged over all gradient directions). Xrim 
+
+denotes the set of voxel locations in a rim at the outer edge of the brain, obtained as the difference between a version of the brain mask dilated by 2 iterations and a version eroded by 4 iterations. In addition, to highlight that the image translation does not alter the geometry of the brain, in Fig. 5, we computed a tighter brain mask using SynthSeg (Billot et al., 2023) by merging all non-CSF labels. We denote by I the full 4D acquisition comprising multiple b = 0 and diffusion-weighted 3D volumes, by Iv the volume indexed by v, and by x the voxel location. The translation target is denoted as Iref .For a given shell b, Vb denotes the corresponding set of volume indices. Finally, s0 denotes a scaling factor defined as the average signal within Xbrain in the first uncorrected b = 0 volume; this is used to normalise signal-based metrics and improve comparability across subjects and datasets. 
+
+# 4.2 Quality of the translation 
+
+We first inspect the outputs visually (Section 4.2.1), then quantify them with two complementary mea-sures: voxel-wise intensity agreement (Section 4.2.2) and preservation of local structure (Section 4.2.3). The four translator variants are compared on both datasets. 4.2 Quality of the translation 21 
+
+4.2.1 Visual assessment 
+
+Figure 5 shows representative translation results for volumes acquired with different b-values and b-vectors, on both UK Biobank and Memodyn data, together with the target appearance and the outputs of the different translator variants. All models successfully map the inputs towards a common appearance: they eliminate the outer CSF signal and largely remove the b-vector-dependent attenuation patterns, making volumes from different parts of the acquisition visually much more comparable. At the same time, the geometry is well preserved, as highlighted by the superimposed tight brain mask. There are some differences between models in the image quality: the GAN variant tends to reproduce noise patterns, which is not useful for our registration task, trans appears somewhat blurrier on the out-of-domain examples, trans++ gives more consistent behaviour between in-domain and out-of-domain data, although at the price of a slight overall blur. By eye, trans+ appears to offer the best trade-off between contrast standardisation, sharpness, and robustness. Overall, however, the differences between variants remain relatively modest visually. 
+
+4.2.2 Absolute error 
+
+We computed the voxel-wise absolute error (AE) with respect to the target and summarised it by the mean absolute error (MAE) within the brain mask. This metric provides a direct measure of translation fidelity in the supervised setting: lower values indicate that the translated output is, on average, closer to the target image intensities. Precisely, AE and MAE are defined as: 
+
+AE( I, b ) = mean 
+
+> v∈V b
+
+|Iv − Iref | , MAE( I, b ) = mean 
+
+> x∈X brain
+
+(AE( I, b )( x)) (7) 
+
+Results. Figure 6 shows that all variants achieve low error overall. trans+ performs best both in-domain and out-of-domain. The other variants, including trans+ GAN, give broadly similar results, although trans generalises somewhat more poorly on Memodyn. This is consistent with the visual assessment and supports the benefit of moderate augmentation for robustness. 
+
+4.2.3 Structural similarity 
+
+Structural similarity (SSIM) complements absolute error by assessing the preservation of local image structure rather than only voxel-wise intensity agreement. This is particularly relevant here because the role of the translator is not merely to reproduce the target intensities, but to generate images with the 22 4 EVALUATION original            
+
+> 09700 2400 1400 17200 9000 7000 4100 000000
+
+Figure 5: Translation outputs. Representative examples on both datasets for input volumes acquired with different b-values and b-vectors. The original images are shown together with the translation target and the outputs of the different translator variants. A tight brain mask is overlaid to assess whether the translation preserved the geometry. correct anatomical organisation for downstream registration. Higher values indicate that the translated images remain structurally closer to the target. 
+
+SSIM( I, b ) = mean 
+
+> v∈V b
+
+(SSIM( Iv, I ref )) (8) 
+
+Results. Figure 7 shows that trans+ again gives the best overall performance, both in-domain and out-of-domain. The other variants, including trans+ GAN , perform similarly overall, whereas trans 
+
+generalises slightly less well on Memodyn. These results are consistent with the absolute error analysis and further support the use of moderate augmentation. 4.3 Quality of the correction 23 a) (brain) (brain) 
+
+b) 
+
+Figure 6: Absolute error. a) Boxplots of MAE( I, b ) per b-value for translated data with respect to the target, with various translator variants; lower is better. b) Voxel-wise map AE on a representative subject: the brain mask is outlined in blue. 
+
+# 4.3 Quality of the correction 
+
+No ground-truth eddy distortion is available in real data, so no single metric is sufficient. We therefore report several complementary measures, reflecting different potential symptoms of residual misalignment: its direct geometric signature, through between-volume jitter at the brain rim (Section 4.3.1) and over the whole brain after translation (Section 4.3.2); its propagation into microstructural modelling, through the DKI fractional anisotropy halo and model residuals (Section 4.3.3); the disruption of q-space reg-ularity (Section 4.3.4); and its statistical trace, through pairwise mutual information (Section 4.3.5). Throughout, the Eddeep variants are compared against uncorrected data and the FSL Eddy baseline, on 24 4 EVALUATION (brain) (brain) 
+
+Figure 7: Structural similarity per b-value for translated data with respect to the target, with various translator variants; higher is better. both datasets. 
+
+4.3.1 Jitter across corrected volumes 
+
+For a given shell, the voxel-wise intensity standard deviation across volumes quantifies how signal intensity fluctuates when scrolling through the different gradient directions. Regions with strong anisotropic diffusion, such as white matter tracts, are expected to exhibit high variability even when volumes are perfectly aligned, as the signal should vary with gradient direction. However, isotropic regions should show minimal variation. At the outer edge of the brain in particular, high standard deviation serves as an indicator of geometric jitter, misalignment between volumes. The jitter metric jit is therefore defined for a diffusion-weighted image I and a b-value b as: 
+
+jit map (I, b ) = 1
+
+s0
+
+std 
+
+> v∈V b
+
+(Iv) , jit( I, b ) = mean 
+
+> x∈X rim
+
+(jit map (I, b )( x)) (9) 
+
+Results. Figure 8 shows that the Eddeep variants and FSL Eddy drastically reduce jitter compared with the uncorrected data on both datasets, all reaching overall similar levels. On the in-domain dataset (UK Biobank), Eddeep and Eddeep+ slightly outperform FSL Eddy at non-zero b-values. On the out-of-domain dataset (Memodyn), the results are very even, with FSL Eddy slightly outperforming at b = 0 .
+
+4.3.2 Jitter across translated corrected volumes 
+
+We compute the same jitter metric, but this time on the data translated after correction. After translation, the contrast differences are largely removed, so the remaining variability more directly reflects residual 4.3 Quality of the correction 25 a) 
+
+b) 
+
+Figure 8: Jitter. a) Boxplots of jit( I, b ) per b-value for uncorrected data, FSL Eddy, and Eddeep 
+
+variants; lower is better. b) Voxel-wise map jit map on a representative subject: the brain mask is outlined in blue; the rim region Xrim used to compute the scalar metric is visible at the cortical boundary. geometric misalignment and the metric can be evaluated on the whole brain, not just the rim. With contrast normalised in this way, higher values are expected at higher b-values, which generally induce stronger eddy-current distortions. To isolate registration quality from translation quality, we use an oracle 
+
+translator. It follows the same training strategy as trans+ , but is trained directly on the subjects of the test set. Denoting ˜I the translated version of I, the metric is computed over the full brain mask Xbrain :
+
+ejit map (I, b ) = 1
+
+s0
+
+std 
+
+> v∈V b
+
+ ˜Iv
+
+
+
+, ejit( I, b ) = mean 
+
+> x∈X brain
+
+ ejit map (I, b )( x)
+
+
+
+(10) 
+
+Results. Figure 9 shows that the Eddeep variants and FSL Eddy drastically reduce jitter compared with 26 4 EVALUATION 
+
+the uncorrected data on both datasets. The results are very similar for all evaluated methods. FSL Eddy slightly outperforms the Eddeep models at b = 0 .a) 
+
+b) 
+
+Figure 9: Jitter on translated. a) Boxplots of ejit( I, b ) per b-value for uncorrected data, FSL Eddy, and Eddeep variants; lower is better. b) Voxel-wise map ejit map on a representative subject after oracle translation, showing residual misalignment across the whole brain rather than only at the rim. 
+
+4.3.3 DKI fractional anisotropy halo and model residuals 
+
+When diffusion-weighted volumes are geometrically misaligned, fitting a diffusion model treats signals from slightly different anatomical locations as if they originated from the same voxel. This spatial inconsistency manifests particularly at the brain boundary: the cortical rim shifts its position across volumes, so the signals observed at a given boundary voxel alternate between brain tissue and surrounding 4.3 Quality of the correction 27 CSF or background. When a model is fitted with these signals, the result is an apparent anisotropy signal at the rim that is purely artifactual, the well-known fractional anisotropy (FA) halo (Jones & Cercignani, 2010). We use diffusion kurtosis imaging (DKI) (Jensen et al., 2005) rather than DTI because our protocol includes shells up to b = 2000 , for which the Gaussian diffusion assumption of DTI is no longer appropriate; DKI provides a more accurate model and therefore a more sensitive residual metric. 
+
+FA halo. The mean FA in the rim region provides a direct readout of boundary inconsistency: 
+
+FA halo (I) = mean 
+
+> x∈X rim
+
+(FA( I)( x)) (11) Lower values indicate better-aligned data; well-corrected data should show low, near-CSF FA values at the rim. 
+
+DKI residuals. Beyond the boundary, model residuals over the whole brain provide a complementary measure of data consistency. Misaligned volumes break the smooth spatial structure assumed by any diffusion model, inflating the mean absolute difference between the observed signal and the DKI fit: 
+
+res map (I) = 1
+
+s0
+
+mean  
+
+> v∈V
+
+|Iv − DKI( Iv)| , res( I) = mean 
+
+> x∈X brain
+
+(res map (I)( x)) (12) where DKI( Iv) is the signal predicted by the DKI model fitted to I. Lower residuals indicate data that is more consistent with the smooth diffusion model, i.e. better corrected. 
+
+Results. Figure 10 shows that the Eddeep variants and FSL Eddy both reduce the FA halo and the DKI residuals compared with the uncorrected data on both datasets. For both DKI-based metrics, Eddeep 
+
+and Eddeep+ tend to achieve lower values than FSL Eddy, especially on the in-domain dataset (UK Biobank). Although we matched the correction settings as closely as possible, with both FSL Eddy and the Eddeep variants using Jacobian intensity modulation and trilinear interpolation, these metrics are sensitive to implementation differences beyond residual misalignment. 
+
+4.3.4 Signal regularity 
+
+The diffusion-weighted signal in each voxel is expected to have some regularity in q-space. In particu-lar, for a given b-value, a small angular change in gradient direction should not produce abrupt signal variations. In the presence of between-volume misalignment, however, each diffusion direction samples slightly different tissue locations, breaking this regular angular dependence and leading to irregular signal fluctuations across neighbouring directions. The following metric irreg quantifies this signal irregularity 28 4 EVALUATION 
+
+Figure 10: DKI-based metrics. Left: boxplots of FA halo FA halo for uncorrected data, FSL Eddy, and 
+
+Eddeep variants; lower is better. Right: boxplots of DKI residuals res ; lower is better. Spatial maps of 
+
+res map are shown for a representative subject. with respect to the gradient direction in a non-parametric fashion, without assuming any signal model: 
+
+irreg( I, b ) = 1
+
+s0
+
+mean 
+
+> v∈V b
+
+mean 
+
+> w∈N v
+
+
+
+mean 
+
+> x∈X brain
+
+(|Iv(x) − Iw(x)|)
+
+θ(gv, g w)
+
+ (13) where g are the gradient directions, θ is the angular distance: θ(gv, g w) = arccos( |gv · gw|), and Nv is the set of indices of the k-nearest angular neighbours (according to θ) of gv; we use k = 3 in practice. For b = 0 , where no diffusion gradient is applied, volumes are expected to be identical in q-space, so we set θ = 1 to measure plain signal difference between b = 0 volumes. 
+
+Results. Figure 11 shows that the Eddeep variants and FSL Eddy both reduce signal irregularity com-pared with the uncorrected data on both datasets. On the in-domain dataset (UK Biobank), Eddeep and 
+
+Eddeep+ achieve lower values than FSL Eddy at all b-values. On the out-of-domain dataset (Memodyn), the differences are smaller, with the Eddeep variants again tending to give slightly lower values. 
+
+4.3.5 Mutual information 
+
+As discussed in the introduction (Section 1), mutual information (MI) is not reliable as a registration cost function for eddy distortion correction. Nonetheless, it is informative at evaluation time. MI measures the statistical dependence between pairs of volumes, which is influenced by how well they are spatially 4.3 Quality of the correction 29 a) 
+
+b) 
+
+Figure 11: Signal irregularity metric. a) Boxplots per b-value for uncorrected data, FSL Eddy, and 
+
+Eddeep variants; lower is better. b) Voxel-wise map of angular irregularity on a representative subject, highlighting regions where between-volume misalignment disrupts the expected regularity of the signal in q-space. aligned. We use normalised mutual information (NMI), as defined in Studholme et al., 1999, averaged over all volume pairs for a given shell combination (b1, b 2), which provides a more robust estimate than a single pairwise comparison. 
+
+MI pair (I, b 1, b 2) = mean  
+
+> v1∈V b1, v 2∈V b2
+
+NMI ( Iv1 , I v2 ) (14) NMI lies in [1 , 2] : a value of 1 indicates statistical independence between the two volumes, and 2 indicates perfect correlation; higher is better. 30 5 CONCLUSION AND DISCUSSION 
+
+Results. Figure 12 shows that the Eddeep variants and FSL Eddy both increase pairwise NMI compared with the uncorrected data across all shell combinations and on both datasets. On the in-domain dataset (UK Biobank), Eddeep and Eddeep+ generally achieve the highest values. On the out-of-domain dataset (Memodyn), the corrected methods remain very close overall. b-value pair b-value pair 
+
+Figure 12: Normalised mutual information . Pairwise, per b-value pair for uncorrected data, FSL Eddy, and Eddeep variants; higher is better. 
+
+# 4.4 Processing time 
+
+We compared the wall-clock time required to correct a single acquisition with Eddeep (eddeep+ , infer-ence) and with FSL Eddy ( eddy openmp ) baseline; their configurations are detailed in Sections 4.1.2 and 4.1.3 respectively. Both methods were run on the same Apple M3 MacBook Pro (Mac15,3; 8-core CPU, 10-core GPU, 24 GB unified memory; macOS 14.3, Metal 3). Eddeep inference ran on GPU via TensorFlow 2.16.1 with the tensorflow-metal 1.2.0 plugin, whereas FSL Eddy runs multi-threaded across the CPU cores. Times were averaged over the test subjects of each dataset. 
+
+Results. Results are reported in Table 2. On both datasets, Eddeep corrected a full acquisition in a little over two minutes, against over one hour for FSL Eddy, a more than 30-fold reduction. 
+
+# 5 Conclusion and Discussion 
+
+In this work, we introduced Eddeep , a two-stage deep-learning framework for fast eddy-current distortion correction in diffusion MRI. By combining image translation for contrast standardisation with a registra-31 Eddeep FSL Eddy Dataset n mean std mean std UKB 105 2 min 15 s 3 s 1 h 11 min 26 s 1 min 5 s 
+
+Memodyn 118 2 min 26 s 3 s 1 h 21 min 11 s 1 min 47 s 
+
+Table 2: Processing time . For the eddy-currents distortion correction of one acquisition of n volumes with FSL Eddy and Eddeep (inference) on an Apple M3 MacBook Pro. tion model constrained by the physics of EPI acquisition, Eddeep directly maps each diffusion-weighted volume to an undistorted geometry referenced to b = 0 . Unlike conventional approaches, it does not rely on an iterative prediction-correction scheme, but instead seeks the transformation to the reference space in a single forward pass. At inference time, it also makes no assumption about the sampling of q-space. Across both in-domain and out-of-domain datasets, Eddeep achieved correction quality comparable to FSL Eddy while offering much faster inference. Beyond the models themselves, we also provide task-specific augmentation strategies and an openly available implementation with documentation, which we hope will facilitate adoption and further development. For advanced diffusion MRI to become practical in routine clinical settings, the entire processing pipeline, from raw image acquisition through distortion correction to the estimation of microstructural parameter maps, must operate within a clinically acceptable time frame. Computationally expensive components based on slow iterative optimisation are difficult to reconcile with such streamlined workflows. This mo-tivates the development of machine-learning approaches capable of rapid inference and aligns with the recent support by MRI vendors for the inline deployment of trained neural networks for image manipula-tion tasks. In this context, Eddeep is complementary to existing deep-learning methods for susceptibility distortion correction (Duong et al., 2020; Legouhy et al., 2022) and microstructural parameter estima-tion (Barbieri et al., 2020; Epstein et al., 2024; Golkov et al., 2016; Kerkel¨ a et al., 2026; Sen et al., 2024). More broadly, recent proof-of-concept work has demonstrated the feasibility of inline quantitative MRI (Rot et al., 2026). The present study also has several limitations. First, as no ground-truth eddy distortions are available in real data, evaluation must rely on indirect but complementary metrics, each reflecting only one aspect of correction quality. Second, training the translation model requires previously-corrected data generated with an external tool, which introduces a dependence on an existing correction method to build the training set. In its current form, Eddeep also does not yet provide some advanced features of recent versions of FSL Eddy, such as correction for within-volume motion (Andersson et al., 2017), which can occur during the acquisition of a single volume, and outlier replacement (Andersson et al., 2016), whereby slices with signal strongly inconsistent with the model prediction, typically due to motion-32 5 CONCLUSION AND DISCUSSION 
+
+induced dropout, are identified and replaced. In the present work, however, we deliberately focus on the eddy-current distortion correction component itself. Several directions for future work follow naturally from these limitations. Although the quadratic distor-tion model used here provides a useful compromise between flexibility and parsimony, polynomial terms can grow rapidly away from the image centre and are not necessarily the most faithful representation of the underlying distortion physics. A low-frequency deformation field may provide a more realistic alter-native while preserving regularity. We also plan to investigate the synthesis of diffusion-weighted images from anatomical images (Ren et al., 2021) as a way to obtain undistorted references without external correction, and potentially as a basis for outlier replacement. 
+
+# Data and Code Availability 
+
+The code for Eddeep is available open-source, with documentation and examples, at https://github. com/CIG-UCL/eddeep. 
+
+# Author Contributions 
+
+A.L.: Conceptualisation, Methodology, Validation, Software (lead dev.), Writing (original draft). R.C.: Methodology (through discussion), Writing (review and editing). Y.Q.: Resources, Writing (review). W.S.: Resources, Writing (review). P.P.: Resources, Writing (review). H.A.: Funding acquisition, Project administration, Resources, Writing (review). H.Z.: Funding acquisition, Project administration, Resources, Supervision, Conceptualisation, Writing (review and editing). 
+
+# Funding 
+
+H.A. was supported by UKRI Future Leaders Fellowship MR/W011980/1 – QUANTIMA: Quantitative imaging platform for the diagnosis, subtyping, staging and outcome prognosis in dementia. A.L., R.C., H.A., and H.Z. were supported by Innovate UK grant 10036158 – CLAIR: first-in-class non-REFERENCES 33 invasive test for outcome prediction and stratification in dementia. A.L. and H.Z. were supported by National Institute for Health (1R01MH130362). W.S was supported by the Fonds de la Recherche Scientifique (FRS-FNRS., Aspirant Research Fellow-ship). The study was supported by the FNRS and the Fonds Wetenschappelijk Onderzoek–Vlaanderen (FWO) under the Excellence of Science (EOS) Project (MEMODYN, No. 30446199 to P.P. and H.Z.). This work was supported by the ERC grant (UNFOLD, ERC-2023-SyG n °101118729). Funded by the European Union. Views and opinions expressed are however those of the author(s) only and do not necessarily reflect those of the European Union or the European Research Council Executive Agency. Neither the European Union nor the granting authority can be held responsible for them. For the purpose of open access, the author has applied a CC-BY public copyright licence to any Author Manuscript version arising from this submission. 
+
+# Declaration of Competing Interests 
+
+We declare we do not have conflicts of interest. 
+
+# References 
+
+Ahn, C., & Cho, Z. (1991). Analysis of the eddy-current induced artifacts and the temporal compensation in nuclear magnetic resonance imaging. IEEE transactions on medical imaging , 10 (1), 47–52. Alexander, A. L., Tsuruda, J. S., & Parker, D. L. (1997). Elimination of eddy current artifacts in diffusion-weighted echo-planar images: The use of bipolar gradients. Magnetic Resonance in Medicine ,
+
+38 (6), 1016–1021. https://doi.org/10.1002/mrm.1910380623 Alexander, D. C., Dyrby, T. B., Nilsson, M., & Zhang, H. (2019). Imaging brain microstructure with diffusion mri: Practicality and applications [e3841 NBM-16-0261.R1]. NMR in Biomedicine , 32 (4), e3841. https://doi.org/https://doi.org/10.1002/nbm.3841 Alfaro-Almagro, F., Jenkinson, M., Bangerter, N. K., Andersson, J. L., Griffanti, L., Douaud, G., Sotiropou-los, S. N., Jbabdi, S., Hernandez-Fernandez, M., Vallee, E., Vidaurre, D., Webster, M., McCarthy, P., Rorden, C., Daducci, A., Alexander, D. C., Zhang, H., Dragonu, I., Matthews, P. M., . . . Smith, S. M. (2018). Image processing and quality control for the first 10,000 brain imaging datasets from UK Biobank. NeuroImage , 166 , 400–424. https://doi.org/10.1016/j.neuroimage.2017.10.034 34 REFERENCES 
+
+Andersson, J. L., Graham, M. S., Drobnjak, I., Zhang, H., Filippini, N., & Bastiani, M. (2017). Towards a comprehensive framework for movement and distortion correction of diffusion mr images: Within volume movement. Neuroimage , 152 , 450–466. Andersson, J. L., Graham, M. S., Zsoldos, E., & Sotiropoulos, S. N. (2016). Incorporating outlier detection and replacement into a non-parametric framework for movement and distortion correction of diffusion mr images. Neuroimage , 141 , 556–572. Andersson, J. L., & Sotiropoulos, S. N. (2015). Non-parametric representation and prediction of single-and multi-shell diffusion-weighted mri data using gaussian processes. Neuroimage , 122 , 166–176. Andersson, J. L., & Sotiropoulos, S. N. (2016). An integrated approach to correction for off-resonance effects and subject movement in diffusion mr imaging. Neuroimage , 125 , 1063–1078. Balakrishnan, G., Zhao, A., Sabuncu, M. R., Guttag, J., & Dalca, A. V. (2019). Voxelmorph: A learning framework for deformable medical image registration. IEEE transactions on medical imaging ,
+
+38 (8), 1788–1800. Barbieri, S., Gurney-Champion, O. J., Klaassen, R., & Thoeny, H. C. (2020). Deep learning how to fit an intravoxel incoherent motion model to diffusion-weighted mri. Magnetic Resonance in Medicine ,
+
+83 (1), 312–321. https://doi.org/10.1002/mrm.27910 Basser, P. J., Mattiello, J., & LeBihan, D. (1994). Mr diffusion tensor spectroscopy and imaging. Bio-physical journal , 66 (1), 259–267. Bastin, M. E. (1999). Correction of eddy current-induced artefacts in diffusion tensor imaging using iterative cross-correlation. Magnetic Resonance Imaging , 17 (7), 1011–1024. https://doi.org/10. 1016/S0730-725X(99)00026-0 Berman, J. (2009). Diffusion mr tractography as a tool for surgical planning. Magnetic resonance imaging clinics of North America , 17 (2), 205–214. Bernstein, M. A., King, K. F., & Zhou, X. J. (2004). Handbook of mri pulse sequences . Elsevier. Billot, B., Greve, D. N., Puonti, O., Thielscher, A., Van Leemput, K., Fischl, B., Dalca, A. V., & Iglesias, J. E. (2023). Synthseg: Segmentation of brain MRI scans of any contrast and resolution without retraining. Medical Image Analysis , 86 , 102789. https://doi.org/10.1016/j.media.2023.102789 Bishop, C. M., & Nasrabadi, N. M. (2006). Pattern recognition and machine learning (Vol. 4). Springer. Blanco-Claraco, J. L. (2021). A tutorial on SE (3) transformation parameterizations and on-manifold optimization. arXiv preprint arXiv:2103.15980 . https://arxiv.org/abs/2103.15980 Chang, H., & Fitzpatrick, J. M. (1992). A technique for accurate magnetic resonance imaging in the presence of field inhomogeneities. IEEE transactions on medical imaging , 11 (3), 319–329. De Vos, B. D., Berendsen, F. F., Viergever, M. A., Sokooti, H., Staring, M., & Iˇ sgum, I. (2019). A deep learning framework for unsupervised affine and deformable image registration. Medical image analysis , 52 , 128–143. REFERENCES 35 De Vos, B. D., Berendsen, F. F., Viergever, M. A., Staring, M., & Iˇ sgum, I. (2017). End-to-end unsuper-vised deformable image registration with a convolutional neural network. International Workshop on Deep Learning in Medical Image Analysis , 204–212. Duong, S. T., Phung, S. L., Bouzerdoum, A., & Schira, M. M. (2020). An unsupervised deep learning technique for susceptibility artifact correction in reversed phase-encoding epi images. Magnetic Resonance Imaging , 71 , 1–10. Epstein, S. C., Bray, T. J. P., Hall-Craggs, M., & Zhang, H. (2024). Choice of training label matters: How to best use deep learning for quantitative mri parameter estimation. Machine Learning for Biomedical Imaging , 2, 586–610. https://doi.org/10.59275/j.melba.2024-geb5 Fiebach, J., Schellinger, P., Jansen, O., Meyer, M., Wilde, P., Bender, J., Schramm, P., Juttler, E., Oehler, J., Hartmann, M., et al. (2002). Ct and diffusion-weighted mr imaging in randomized order: Diffusion-weighted imaging results in higher accuracy and lower interrater variability in the diagnosis of hyperacute ischemic stroke. Stroke , 33 (9), 2206–2210. Golkov, V., Dosovitskiy, A., Sperl, J. I., Menzel, M. I., Czisch, M., S¨ amann, P., Brox, T., & Cremers, D. (2016). Q-space deep learning: Twelve-fold shorter and model-free diffusion mri scans. IEEE Transactions on Medical Imaging , 35 (5), 1344–1351. 10.1109/TMI.2016.2551324 Haselgrove, J. C., & Moore, J. R. (1996). Correction for distortion of echo-planar images used to calculate the apparent diffusion coefficient. Magnetic Resonance in Medicine , 36 (6), 960–964. https:// doi.org/10.1002/mrm.1910360620 Hoopes, A., Mora, J. S., Dalca, A. V., Fischl, B., & Hoffmann, M. (2022). Synthstrip: Skull-stripping for any brain image. NeuroImage , 260 , 119474. Irfanoglu, M. O., Nayak, A., Taylor, P., Thai, A., & Pierpaoli, C. (2025). Tortoisev4: Reimagining the nih diffusion mri processing pipeline. Imaging Neuroscience . https://doi.org/10.1162/imag.a.948 Irfanoglu, M. O., Nayak, A., Jenkins, J., & Pierpaoli, C. (2017). Tortoise v3: Improvements and new features of the nih diffusion mri processing pipeline. ISMRM 25th annual meeting .Isola, P., Zhu, J.-Y., Zhou, T., & Efros, A. A. (2017). Image-to-image translation with conditional adver-sarial networks. Proceedings of the IEEE conference on computer vision and pattern recognition ,1125–1134. Jenkinson, M., Beckmann, C. F., Behrens, T. E., Woolrich, M. W., & Smith, S. M. (2012). Fsl. Neu-roimage , 62 (2), 782–790. Jensen, J. H., Helpern, J. A., Ramani, A., Lu, H., & Kaczynski, K. (2005). Diffusional kurtosis imaging: The quantification of non-Gaussian water diffusion by means of magnetic resonance imaging. 
+
+Magnetic Resonance in Medicine , 53 (6), 1432–1440. https://doi.org/10.1002/mrm.20508 Jezzard, P., Barnett, A. S., & Pierpaoli, C. (1998). Characterization of and correction for eddy current artifacts in echo planar diffusion imaging. Magnetic resonance in medicine , 39 (5), 801–812. 36 REFERENCES 
+
+Jezzard, P., & Clare, S. (1999). Sources of distortion in functional mri data. Human brain mapping ,
+
+8 (2-3), 80–85. Jones, D. K., & Cercignani, M. (2010). Twenty-five pitfalls in the analysis of diffusion mri data. NMR in Biomedicine , 23 (7), 803–820. https://doi.org/10.1002/nbm.1543 Kamiya, K., Hori, M., & Aoki, S. (2020). NODDI in clinical research. Journal of Neuroscience Methods ,
+
+346 (August), 108908. https://doi.org/10.1016/j.jneumeth.2020.108908 Kerkel¨ a, L., Legouhy, A., Kraguljac, N., & Zhang, H. (2026). Set deep learning for protocol generalisation in machine-learning-based brain microstructure estimation. ISMRM . https://zenodo.org/records/ 18215491/files/Abstract%20%2301739-7.pdf Kingma, D. P., & Ba, J. (2014). Adam: A method for stochastic optimization. https://arxiv.org/abs/ 1412.6980 Kraguljac, N. V., Guerreri, M., Strickland, M. J., & Zhang, H. (2023). Neurite orientation dispersion and density imaging in psychiatric disorders: A systematic literature review and a technical note. 
+
+Biological Psychiatry Global Open Science , 3 (1), 10–21. Le Bihan, D., & Johansen-Berg, H. (2012). Diffusion mri at 25: Exploring brain tissue structure and function. Neuroimage , 61 (2), 324–341. Legouhy, A., Callaghan, R., Stee, W., Peigneux, P., Azadbakht, H., & Zhang, H. (2024). Eddeep: Fast eddy-current distortion correction for diffusion mri with deep learning. Medical Image Computing and Computer Assisted Intervention – MICCAI 2024 , 152–161. https://doi.org/10.1007/978-3-031-72069-7 15 Legouhy, A., Graham, M., Guerreri, M., Stee, W., Villemonteix, T., Peigneux, P., & Zhang, H. (2022). Correction of susceptibility distortion in epi: A semi-supervised approach with deep learning. 
+
+International Workshop on Computational Diffusion MRI , 38–49. Maier, S. E., Sun, Y., & Mulkern, R. V. (2010). Diffusion imaging of brain tumors. NMR in biomedicine ,
+
+23 (7), 849–864. Mangin, J.-F., Poupon, C., Clark, C., Le Bihan, D., & Bloch, I. (2002). Distortion correction and ro-bust tensor estimation for mr diffusion imaging [Special Issue on Medical Image Computing and Computer-Assisted Intervention - MICCAI 2001]. Medical Image Analysis , 6 (3), 191–198. https: //doi.org/10.1016/S1361-8415(02)00079-8 Mansfield, P., & Chapman, B. (1986). Active magnetic screening of gradient coils in nmr imaging. Journal of Magnetic Resonance (1969) , 66 (3), 573–576. https://doi.org/10.1016/0022-2364(86)90205-2 Miller, K. L., Alfaro-Almagro, F., Bangerter, N. K., Thomas, D. L., Yacoub, E., Xu, J., Bartsch, A. J., Jbabdi, S., Sotiropoulos, S. N., Andersson, J. L., et al. (2016). Multimodal population brain imaging in the uk biobank prospective epidemiological study. Nature neuroscience , 19 (11), 1523– 1536. REFERENCES 37 ¨Ozarslan, E., Koay, C. G., Shepherd, T. M., Komlosh, M. E., ˙Irfano˘ glu, M. O., Pierpaoli, C., & Basser, P. J. (2013). Mean apparent propagator (map) mri: A novel diffusion imaging method for mapping tissue microstructure. NeuroImage , 78 , 16–32. https://doi.org/10.1016/j.neuroimage.2013.04. 016 Reese, T. G., Heid, O., Weisskoff, R. M., & Wedeen, V. J. (2003). Reduction of eddy-current-induced distortion in diffusion mri using a twice-refocused spin echo. Magnetic Resonance in Medicine: An Official Journal of the International Society for Magnetic Resonance in Medicine , 49 (1), 177–182. Ren, M., Kim, H., Dey, N., & Gerig, G. (2021). Q-space conditioned translation networks for directional synthesis of diffusion weighted images from multi-modal structural mri. Rohde, G. K., Barnett, A., Basser, P., Marenco, S., & Pierpaoli, C. (2004). Comprehensive approach for correction of motion and distortion in diffusion-weighted mri. Magnetic Resonance in Medicine: An Official Journal of the International Society for Magnetic Resonance in Medicine , 51 (1), 103– 114. Ronneberger, O., Fischer, P., & Brox, T. (2015). U-net: Convolutional networks for biomedical image segmentation. International Conference on Medical image computing and computer-assisted in-tervention , 234–241. Rot, S., Dragonu, I., Triantafyllou, C., Grech-Sollars, M., Papadaki, A., Mancini, L., Wastling, S., Steeden, J., Thornton, J. S., Yousry, T., Gandini Wheeler-Kingshott, C. A. M., Thomas, D. L., Alexander, D. C., & Zhang, H. (2026). Real-time, inline quantitative mri enabled by scanner-integrated machine learning: A proof of principle with noddi. Magnetic Resonance in Medicine . https://doi. org/10.1002/mrm.70388 Schilling, K. G., Blaber, J., Huo, Y., Newton, A., Hansen, C., Nath, V., Shafer, A. T., Williams, O., Resnick, S. M., Rogers, B., et al. (2019). Synthesized b0 for diffusion distortion correction (synb0-disco). Magnetic resonance imaging , 64 , 62–70. Sen, S., Singh, S., Pye, H., Moore, C. M., Whitaker, H. C., Punwani, S., Atkinson, D., Panagiotaki, E., & Slator, P. J. (2024). Ssverdict: Self-supervised verdict-mri for enhanced prostate tumor characterization. Magnetic Resonance in Medicine , 92 (5), 2181–2192. https://doi.org/10.1002/ mrm.30186 Skare, S., & Bammer, R. (2011). Epi-based pulse sequences for diffusion tensor mri. Diffusion MRI: Theory, Methods, and Applications , 1, 182–202. Sotiropoulos, S. N., Jbabdi, S., Xu, J., Andersson, J. L., Moeller, S., Auerbach, E. J., Glasser, M. F., Hernandez, M., Sapiro, G., Jenkinson, M., et al. (2013). Advances in diffusion mri acquisition and processing in the human connectome project. Neuroimage , 80 , 125–143. 38 A DETAILS ON HOW TO BUILD THE TRANSFORMATIONS FROM THEIR PARAMETERS 
+
+Stee, W., Legouhy, A., Guerreri, M., Villemonteix, T., Zhang, H., & Peigneux, P. (2023). Microstructural dynamics of motor learning and sleep-dependent consolidation: A diffusion imaging study. Iscience ,
+
+26 (12). Studholme, C., Hill, D. L., & Hawkes, D. J. (1999). An overlap invariant entropy measure of 3d medical image alignment. Pattern recognition , 32 (1), 71–86. Turner, R., Le Bihan, D., Maier, J., Vavrek, R., Hedges, L. K., & Pekar, J. (1990). Echo-planar imaging of intravoxel incoherent motion. Radiology , 177 (2), 407–414. Tustison, N. J., Avants, B. B., Cook, P. A., Zheng, Y., Egan, A., Yushkevich, P. A., & Gee, J. C. (2010). N4itk: Improved n3 bias correction. IEEE transactions on medical imaging , 29 (6), 1310–1320. Zhang, H., Schneider, T., Wheeler-Kingshott, C. A., & Alexander, D. C. (2012). NODDI: Practical in vivo neurite orientation dispersion and density imaging of the human brain. NeuroImage , 61 (4), 1000–1016. https://doi.org/10.1016/j.neuroimage.2012.03.072 Zhu, J.-Y., Park, T., Isola, P., & Efros, A. A. (2017). Unpaired image-to-image translation using cycle-consistent adversarial networks. Proceedings of the IEEE international conference on computer vision , 2223–2232. 
+
+# A Details on how to build the transformations from their pa-rameters 
+
+This appendix details how the 16 scalar parameters output by the registration model presented in Sec-tion 3.3.2 are assembled into the transformation E for the eddy distortions and R for the head motion, following the transformation models defined in Section 2.2.1. Let c ∈ R3 denote the image centre; both transformations are expressed relative to c so that they act around the image centre rather than the voxel-grid origin, improving numerical conditioning. Let p ∈ R3 with ∥p∥ = 1 be the vector defining the phase-encoding direction (PED). 
+
+Rigid transformation. The rigid component is parameterised by translation coefficients (r1, r 2, r 3) and rotation coefficients (r4, r 5, r 6). The rotation matrix is obtained via the matrix exponential mapping the Lie algebra so (3) of skew-symmetric matrices to the Lie group SO (3) of rotation matrices (Blanco-Claraco, 2021), which guarantees a valid rotation for any unconstrained network output: 
+
+Rtrans = ( r1 r2 r3)⊤, Rrot = exp 
+
+
+
+0 −r6 r5
+
+r6 0 −r4
+
+−r5 r4 0
+
+ (15) 39 where Rtrans ∈ R3 and Rrot ∈ SO (3) . The centred rigid transformation applied to x is: 
+
+R(x) = Rrot (x − c) + c + Rtrans (16) 
+
+Eddy transformation . The eddy-current component is parameterised by translation coefficient e1, linear coefficients (e2, e 3, e 4), and quadratic coefficients (e5, . . . , e 10 ), directly corresponding to the t, L and Q
+
+terms of the distortion model in Section 2.2.1: 
+
+Etrans = e1, Elin = ( e2 e3 e4), Equad =
+
+
+
+e5 e6 e7
+
+e6 e8 e9
+
+e7 e9 e10 
+
+ (17) where Etrans ∈ R, Elin ∈ R1×3 and Equad ∈ R3×3sym . The eddy transformation applied to x is: 
+
+E(x) = x +  (x − c)⊤Equad (x − c) + Elin (x − c) + Etrans 
+
+ p (18) 
+
+Remark 2. Both transformations are expressed relative to the image centre c, so that a zero rotation does not introduce a spurious translation and the polynomial eddy terms are evaluated over centred coordinates of smaller magnitude, improving numerical conditioning. When all 16 parameters are zero, both R and E reduce to the identity, providing a neutral initialisation from which the network can learn corrections.
