@@ -1,0 +1,532 @@
+Title: ProgFormer: Hierarchical Voxel Diffusion Transformer for Longitudinal Brain MRI Prediction
+
+URL Source: https://arxiv.org/pdf/2607.27537v1
+
+Published Time: Fri, 31 Jul 2026 00:18:54 GMT
+
+Number of Pages: 9
+
+Markdown Content:
+# ProgFormer: Hierarchical Voxel Diffusion Transformer for Longitudinal Brain MRI Prediction 
+
+## Dexuan Ding 1, Yuankai Qi 1∗, Luping Zhou 2, Jian Yang 1, Quan Z. Sheng 1, Ming-Hsuan Yang 3
+
+> 1
+
+Macquarie University 
+
+> 2
+
+University of Sydney 
+
+> 3
+
+University of California Merced yuankai.qi@mq.edu.au 
+
+Abstract 
+
+Predicting future structural MRI of a brain is challenging because longitudinal changes are often subtle and confined to specific anatomical regions, while most subject-specific brain structure remains stable over time. An effective model should therefore preserve global brain structural consistency while remaining sensitive to fine-grained disease progres-sion. Existing latent-space-based methods improve compu-tational efficiency, but suffer from information loss during their compression-reconstruction procedure. In contrast, di-rect voxel-space methods avoid latent reconstruction but com-monly use a unified prediction pathway to model brain struc-ture and progression-related changes. Subtle local changes may therefore be overshadowed by the dominant stable brain structure. To address these challenges, we propose Prog-Former, a hierarchical voxel-space Diffusion Transformer for longitudinal brain MRI prediction. ProgFormer uses a coarse pathway to perform the primary volumetric prediction from 3D patch tokens. This pathway models overall brain struc-ture and longitudinal context. The fine pathway then uses the coarse representations as spatio-temporal grounding for voxel-level refinement within individual patches. The two pathways jointly estimate a velocity field directly in voxel space through conditional flow matching, enabling end-to-end prediction without a separately learned image autoencoder. The predicted future scan is then generated from Gaussian noise by integrat-ing the estimated velocity field over a sequence of Euler steps. Extensive experimental results on three widely used bench-marks, ADNI, AIBL, and OASIS, under both pairwise and trajectory settings demonstrate favourable performance com-pared against several state-of-the-art methods. 
+
+## 1 Introduction 
+
+Predicting an individual’s future brain structural MRI (sMRI) could facilitate the analysis and forecasting of Alzheimer’s disease progression (Jack et al. 2010; Aghajanian et al. 2025). Unlike unconstrained image generation, longitudinal MRI prediction is strongly conditioned on the subject’s observed brain structure: most anatomical structures remain stable across visits, while disease progression manifests as local-ized changes in regions such as the hippocampus, lateral ventricles, and surrounding cortex (Frisoni et al. 2010; Wang et al. 2026). These changes occur at multiple spatial scales, 
+
+> ∗
+
+Corresponding author. (a) Latent –space prediction  (b) Direct volumetric prediction  (c) ProgFormer 
+
+> Dense volumetric
+> prediction
+> (e.g., intensity,
+> residual)
+> Prediction
+> backbone
+> Coarse
+> Pathway
+> Encoder
+> Prediction
+> backbone
+> Decoder
+> Fine
+> Pathway
+> 𝑥 𝑇
+> 𝑥 𝑇 +1
+> Voxel -level
+> refinement
+> Coarse
+> volumetric
+> prediction
+
+Figure 1: Longitudinal brain MRI prediction paradigms. (a) Latent-space methods encode MRI scan before prediction and decode the predicted representation back to voxel space. (b) Direct volumetric methods use a unified backbone to produce a dense prediction, requiring the same backbone to model brain structure and progression-related changes across spatial scales. (c) ProgFormer retains a coarse pathway that performs the primary volumetric prediction at the patch level, serving a role similar to the unified backbone in (b). A fine pathway then uses the coarse patch representations as spatio-temporal grounding for voxel-level refinement. ranging from coherent structural alterations, such as ven-tricular enlargement, to subtle boundary displacements and voxel-level intensity variations associated with hippocampal and cortical atrophy. Accurate prediction should therefore preserve subject-specific brain structure while sensitively re-solving localized progression-related changes at voxel res-olution (Verdi et al. 2024; Dong et al. 2024; Ledig et al. 2018). Existing approaches roughly fall into two groups: latent-space-based or direct voxel-space prediction. As illustrated in Figure 1(a), latent-space methods encode MRI scans into low-dimensional representations, predict the future rep-resentation in latent space, and decode it back to voxel space (Puglisi, Alexander, and Ravì 2024; Jayakumar et al. 2026; Chen et al. 2025). This reduces the dimensionality pro-cessed by the prediction backbone but introduces a separately learned autoencoder. The fidelity of the final voxel-level pre-diction therefore also depends on how well the encoding and arXiv:2607.27537v1 [cs.CV] 30 Jul 2026 𝑥  1 , … , 𝑥  𝑇 
+
+> Observed scans
+> 𝑦 𝜏 Flow state
+> AdaLN -Zero
+> MLP
+> Spatial attention
+> Causal temporal
+> attention
+> 𝛎 coarse
+> AdaLN -Zero
+> MLP
+> Voxel attention
+> Coarse -to -fine
+> attention
+> 𝛎 fine
+
+Coarse Block  Fine Block                              
+
+> Patchify
+> 1×1×1
+> Patchify
+> 𝑝 ×𝑝 ×𝑝
+> Condition Condition Flow time,
+> target age,
+> covariates
+> 3D patch
+> 3D CNN
+> Condition
+> MLP
+> Linear
+> Patch MHSA
+> (within scan)
+> Temporal MHSA
+> (across scans)
+> MLP
+> Scale & Shift
+> Coarse Head
+> Unpatchify
+> Fine Head
+> Voxel
+> Linear
+> Voxel MHSA
+> (within each patch)
+> Coarse -to -fine MHCA
+> (between coarse and voxels)
+> MLP
+> Scale & Shift
+> Linear
+> 𝛎 θ
+> 𝛾 𝑠 ,𝛽 𝑠 ,𝛼 𝑠
+> 𝛾 𝑡 ,𝛽 𝑡 ,𝛼 𝑡
+> 𝛾 out
+> 𝑐 ,𝛽 out
+> 𝑐
+> 𝛾 𝑣 ,𝛽 𝑣 ,𝛼 𝑣
+> 𝛾 𝑓 ,𝛽 𝑓 ,𝛼 𝑓
+> 𝛾 out
+> 𝑓 ,𝛽 out
+> 𝑓
+> 𝛾 𝑐 ,𝛽 𝑐 ,𝛼 𝑐
+> 𝛾 𝑚 ,𝛽 𝑚 ,𝛼 𝑚
+> Concat
+> ×𝐿 𝑓 ×𝐿 𝑐
+
+Input 
+
+(a) ProgFormer Architecture  (b) Hierarchical Block Design 
+
+> 𝛎 coarse
+> 𝛎 fine
+
+Figure 2: Overview of ProgFormer. (a) ProgFormer processes the observed scans and current flow state through a coarse patch pathway and a coarse-guided voxel pathway. The coarse and fine velocities are added to form the predicted velocity νθ . (b) Each Coarse block applies spatial and causal temporal MHSA to patch tokens, while each Fine block applies voxel MHSA and coarse-to-fine MHCA within each patch. Attention             
+
+> Gate
+> Linear
+> Linear
+> Scale & Shift
+> LN
+> 𝑈
+> 𝑈’
+> AdaLN -Gated MHSA/MHCA
+> ƶ𝑈
+> Inference
+> 𝑣 θ
+> ProgFormer
+> Observed scans,
+> initial noise
+> Target age,
+> covariates
+> Euler integration ( 𝐾 steps)
+> Predicted scan
+> 𝐲 𝑘 +1,𝜏 𝑘 +1
+> 𝑀𝐻𝑆𝐴 :
+> 𝐐 ,𝐊 ,𝐕 ←𝐔 ,
+> 𝑀𝐻𝐶𝐴 :
+> 𝐐 ←𝐔 ,𝐊 ,𝐕 ←෡𝐔 .
+
+Figure 3: AdaLN-gated attention and Euler inference. Left: MHSA obtains queries, keys, and values from U, whereas MHCA obtains queries from U and keys and values from 
+
+bU. Conditioning modulates and gates the attention update. Right: Starting from Gaussian noise, ProgFormer predicts a velocity and updates the flow state for K Euler steps. The final state is the predicted future MRI. decoding stages preserve fine structural information. which may be affected by the compression (Varma et al. 2025; Yasinzai, Mito, and Pedersen 2026). Direct volumetric ap-proaches instead predict outputs directly in voxel space. They are able to produce outputs such as a complete follow-up MRI, a voxel-wise intensity residual, or a dense deforma-tion field applied to the observed scan (Yoon et al. 2023; Litrico et al. 2026; Pombo et al. 2023). Despite these dif-ferent formulations, the dense prediction or update is pre-dicted through a unified output pathway. This pathway has to capture subject-specific whole-brain structure while re-solving progression-related changes across different spatial scales. Since most brain structure remains stable between doctor’s visits, full-image targets are dominated by stable content, while residual and deformation targets contain pre-dominantly small voxel-wise updates (Frisoni et al. 2010; Chen et al. 2025). Subtle boundary displacements and inten-sity variations can therefore be difficult to resolve when the same pathway is responsible for both overall brain structure and localised progression-related changes. Recent advances in pixel-space Diffusion Transformers introduce new architectures for modelling images directly without a learned autoencoder. PixelDiT adopts a dual-level design in which a patch-level DiT captures global semantics and a pixel-level DiT refines local details (Yu et al. 2025). JiT follows a different approach, using plain Transformers to predict clean images directly in pixel space (Li and He 2025). DiT-3D and PointDiT further extend Transformer-based gen-erative modeling to 3D point clouds and dense point maps, respectively (Mo et al. 2023; Xu et al. 2026). These studies demonstrate the potential of direct Transformer-based mod-elling beyond latent representations. However, it remains unknown whether the above direct transformer modelling paradigm applies to voxel-space MRI prediction, where the architecture should preserve brain structure while resolv-ing subtle progression-related changes. Unlike the generation settings considered above, longitudinal MRI prediction also requires temporal reasoning over observed scans. In this paper, we introduce ProgFormer , a hierarchical voxel-space diffusion transformer for longitudinal brain MRI prediction. As shown in Figure 1(c), ProgFormer structures voxel-space prediction into a coarse pathway and a fine path-way. The coarse pathway processes 3D patch tokens, using spatial attention within each scan and causal temporal atten-tion across observed scans at corresponding patch locations to model brain structure, patch-scale changes, and longitudi-nal context. The fine pathway applies voxel attention within each 3D patch and uses the corresponding coarse representa-tion as spatio-temporal grounding for voxel-level refinement of local structural details and intensity variations. The two pathways jointly predict a voxel-space velocity field. Starting from Gaussian noise, ProgFormer integrates this field over a sequence of Euler steps and returns the final flow state as the predicted future MRI. (Lipman et al. 2023; Chen et al. 2025). We evaluate ProgFormer under two settings. The pairwise setting requires predicting one future scan given one already observed scan. It covers different starting visits and follow-up intervals. The trajectory setting requires predicting the final scan given a sequence of previous scans. Together, they assess prediction across varying longitudinal intervals and the effectiveness of observed history for a fixed final target. Our main contributions are summarized as follows: 
+
+• We present ProgFormer, an end-to-end hierarchical voxel-space diffusion transformer for longitudinal 3D brain MRI prediction without a separately trained image autoen-coder. 
+
+• We design a new hierarchical voxel-space diffusion paradigm for longitudinal 3D MRI prediction, intro-ducing the first unified architecture to jointly perform global patch-level spatio-temporal reasoning and fine-grained intra-patch voxel modeling for anatomically faith-ful, progression-sensitive forecasting. 
+
+• Extensive experimental results on three widely adopted benchmarks, ADNI, AIBL, and OASIS, demonstrate favourable performance compared against several state-of-the-art methods. 
+
+## 2 Related Work 
+
+Longitudinal brain MRI prediction. Recent methods generate follow-up MRI from baseline scans, clinical vari-ables, or observed scans. BrLP and AG-LDM employ la-tent diffusion with disease-specific priors or anatomical su-pervision, while ∆-LFM learns patient-specific progression trajectories through latent flow matching (Puglisi, Alexan-der, and Ravì 2024; Jayakumar et al. 2026; Chen et al. 2025). TADM-3D directly predicts volumetric progres-sion with temporal regularisation, whereas SADM intro-duces sequence-aware conditioning for longitudinal genera-tion (Litrico et al. 2026; Yoon et al. 2023). Collectively, these methods condition future-image generation using temporal, clinical, or structural information. ProgFormer instead stud-ies how patch-level spatiotemporal modeling and voxel-level refinement can be coupled for direct volumetric prediction. 
+
+Pixel-space Diffusion Transformers. Pixel-space Diffu-sion Transformers generate images without a separately trained autoencoder. PixelDiT combines patch-level model-ing with pixel-level refinement, while JiT demonstrates direct image generation using large-patch Transformers (Yu et al. 2025; Li and He 2025). Related 3D models include DiT-3D, which operates on voxelized point clouds, and PointDiT, which predicts dense point maps directly in pixel space (Mo et al. 2023; Xu et al. 2026). ProgFormer adapts this direction to longitudinal brain MRI by introducing a patch-to-voxel hierarchy with spatial and temporal reasoning over observed scans. 
+
+## 3 Method 
+
+3.1 Task Formulation 
+
+Let T denote the number of observed scans used for a pre-diction, indexed chronologically by i ∈ { 1, . . . , T }. The cor-responding structural MRI, acquisition age, and diagnosis at index i are denoted by x(i) ∈ RD×H×W , a(i), and g(i), where 
+
+D, H, and W denote the depth, height, and width of the scan. Let Ω = {1, . . . , D } × { 1, . . . , H } × { 1, . . . , W } denote its discrete spatial domain. Each coordinate (d, h, w ) ∈ Ω
+
+identifies one voxel, whose intensity in x(i) is denoted by 
+
+x(i) 
+
+> d,h,w
+
+∈ R. Sex is denoted by ξ. The target scan and its acquisition age are denoted by x(T +1) and a(T +1) , respec-tively. We denote the age interval between the last acquisition age of x(T ) and the target age by ∆aT = a(T +1) − a(T ).The observed longitudinal history and covariate vector are defined as 
+
+HT = ( x(i), a (i))Ti=1 , a(1) < · · · < a (T ),
+
+cT = [ a(T ), ∆aT , g (T ), ξ ]. (1) Given HT and cT , the task is to predict x(T +1) at target age 
+
+a(T +1) .
+
+3.2 Preliminaries 
+
+Conditional flow matching. Flow matching learns a con-tinuous velocity field that transports samples from a source distribution to a target distribution (Lipman et al. 2023).In our task, the source is a standard Gaussian distribution, while the target is the conditional data distribution of ground-truth future MRI scans given the observed history, target age, and covariates. Let τ ∈ [0 , 1] denote flow time, which indexes the progress of generation from the source at τ = 0 to the target at τ = 1 .Let yτ denote the flow state at flow time τ . ProgFormer learns the conditional velocity field 
+
+dyτ
+
+dτ = νθ
+
+
+
+yτ , τ | H T , a (T +1) , cT
+
+
+
+, (2) where θ denotes the learnable parameters of ProgFormer. The velocity field specifies the instantaneous change of the flow state along the generative path. Integrating Eq. (2) from 
+
+τ = 0 to τ = 1 transforms a Gaussian noise sample into a predicted future sMRI. During training, y0 is set to ϵ, where ϵ ∼ N (0, I), and let y1 = x(T +1) be the ground-truth target scan. For τ ∼U(0 , 1) , we construct the linear interpolation path 
+
+yτ = (1 − τ )y0 + τ y1. (3) The velocity associated with this path is 
+
+ν∗ = dyτ
+
+dτ = y1 − y0. (4) For each sampled noise-target pair and flow time, ν∗ is the supervision target for the velocity predicted by ProgFormer at 
+
+yτ . The corresponding flow-matching objective is described in Section 3.7. Conditioning. The flow time, target age, and covariate vec-tor are embedded independently and combined by element-wise addition: 
+
+h = Eτ (τ ) + Ea(a(T +1) ) + Ec(cT ), (5) where Eτ , Ea, and Ec are learnable embedding functions whose outputs have the same dimension. The resulting vector 
+
+h is shared across all tokens, allowing the attention and MLP modules to adapt their computations to the current flow time, target age, and covariates. Following DiT (Peebles and Xie 2022), we inject this global conditioning through adaptive layer normalization with zero initialization (AdaLN-Zero). Let r index an attention or MLP module, and let Fr de-note the computation performed by that module. The indexed module can be a layer in either the coarse pathway described in Section 3.4 or the fine pathway described in Section 3.5. For input U, a modulation MLP maps h to a scale γr (h),shift βr (h), and gate αr (h). The scale and shift modify the normalized token features, while the gate controls how much of the transformed features is added to the input: 
+
+AdaLN r (U, h) = (1 + γr (h)) ⊙ LN( U) + βr (h),
+
+U′ = U + αr (h) ⊙ Fr (AdaLN r (U, h)) . (6) The operator LN denotes layer normalization. The gate scales the output of Fr before it is added to the input tokens. 
+
+3.3 Method Overview 
+
+As shown in Figure 2, ProgFormer processes the observed scans together with the flow state at each flow time. The coarse pathway applies spatial and causal temporal attention to 3D patch tokens, producing the primary patch-level velocity and coarse represen-tations that encode whole-brain structure and longitudinal infor-mation. The fine pathway operates on voxel tokens from the flow state and uses the corresponding coarse patch tokens, which encode whole-brain and longitudinal information, to guide voxel-level re-finement. The coarse and fine velocities are added to form the final velocity predicted by ProgFormer. During training, this prediction is supervised by the target velocity defined in Section 3.2. During inference, ProgFormer integrates the predicted velocity field from Gaussian noise over a sequence of Euler steps to generate the future MRI, which we discuss in Section 3.7. 
+
+3.4 Coarse Pathway 
+
+Input and patch embedding. The coarse pathway processes the observed scans together with the current flow state yτ . During training, yτ is constructed using the interpolation path in Eq. (3). During inference, it is the state obtained at the current Euler step, as described in Section 3.7. The observed scans and flow state are combined as: Xτ = [ x(1) , . . . , x(T ), yτ ] ∈ R(T +1) ×D×H×W .
+
+Each input in Xτ is embedded as non-overlapping p × p × p
+
+patch tokens using a 3D convolution with kernel size and stride p.Let N = ( D/p ) × (H/p ) × (W/p ) denote the number of patches per input and let dc denote the coarse-token dimension. The token at patch location n in input i is denoted by Φp(Xτ,i )n ∈ Rdc .Spatial-position and acquisition-age embeddings are added to each patch token: 
+
+zi,n = Φ p(Xτ,i )n + epos  
+
+> n
+
++ eage (a(i)), i ∈ { 1, . . . , T + 1 }.
+
+(7) For i ≤ T , a(i) is the acquisition age of the corresponding observed scan x(i). For i = T + 1 , the target age a(T +1) is assigned to the flow state yτ . Collecting all patch tokens gives Z ∈ R(T +1) ×N ×dc .
+
+Coarse block. As shown in Figure 2(b), each coarse block takes patch tokens Z as input. The spatial MHSA follows the AdaLN-gated structure illustrated in Figure 3 and uses the AdaLN-Zero conditioning described in Section 3.2. Using the subscript s to denote spatial attention, the resulting tokens are 
+
+eZ = Z + αs(h) ⊙ MHSA s (AdaLN s(Z, h)) . (8) The block next applies causal temporal MHSA across the T + 1 inputs at each patch location. At location n,it processes [ez1,n , . . . , ezT,n , ezT +1 ,n ]. Following masked self-attention (Vaswani et al. 2017), we apply a lower-triangular causal mask so that each token can attend only to itself and earlier inputs. Because the flow state occupies the final position, ezT +1 ,n can at-tend to the spatially updated tokens from all observed scans at that location, while the observed-scan tokens cannot attend to the flow state. To support different numbers of observed scans, shorter input sequences are zero-padded to a common length. A padding mask prevents the padded tokens from being used as keys or values in temporal MHSA. The padding and causal masks are combined to form M. The temporal MHSA uses the same AdaLN-gated struc-ture and conditioning mechanism. Using the subscript t to denote temporal attention, the resulting tokens are 
+
+Z = eZ + αt(h) ⊙ MHSA t
+
+
+
+AdaLN t(eZ, h), M
+
+
+
+. (9) Finally, the conditioned multilayer perceptron (MLP) transforms the spatially and temporally updated patch representations. Using the subscript c to denote the coarse MLP, the block output is 
+
+Z′ = Z + αc(h) ⊙ MLP c
+
+ AdaLN c(Z, h) . (10) After Lc coarse blocks, we retain the N output tokens corre-sponding to the flow state yτ and denote them by Zτ ∈ RN ×dc .A final conditioned normalization transforms the retained flow-state tokens Zτ into the coarse representations C used by the coarse prediction head and provided to the fine pathway as spatial and longitudinal context for voxel-level refinement: 
+
+C = AdaLN c 
+
+> out
+
+(Zτ , h) ∈ RN ×dc . (11) 
+
+Coarse prediction head. Let P = p3 denote the number of voxels in each patch. A linear layer maps each row of C to P
+
+velocity values. These values are shaped into p × p × p blocks and placed at their 3D patch locations to form νcoarse ∈ RD×H×W .
+
+3.5 Fine Pathway 
+
+The fine pathway represents the individual voxel intensities of the flow state as tokens and uses the coarse representations as spatial and longitudinal context for voxel-level refinement. 
+
+Voxel embedding. The flow state yτ is divided into N non-overlapping p × p × p patches, each containing P = p3 voxels. Let yτ,n,j ∈ R denote the intensity of voxel j in patch n, where 
+
+n ∈ { 1, . . . , N } and j ∈ { 1, . . . , P }. The coarse representation associated with patch n is projected to the voxel-token dimension: 
+
+bCn = CnWcf + bcf ∈ Rdf , Wcf ∈ Rdc×df . (12) Each voxel intensity is independently mapped to a df -dimensional token using a linear layer, equivalent to a 1×1×1 patch embedding, and combined with its projected coarse representation: 
+
+vn,j = yτ,n,j wv + bv + bCn, wv , bv ∈ Rdf . (13) Collecting the voxel tokens and projected coarse representations gives 
+
+V ∈ RN ×P ×df , bC ∈ RN ×1×df . (14) Fine block. Let V ∈ RN ×P ×df denote the voxel-token enter-ing a fine block. For the first fine block, V is obtained from the voxel embedding in Eq. (14). The voxel MHSA and coarse-to-fine multi-head cross-attention (MHCA) follow the respective AdaLN-gated structures illustrated in Figure 3 and use the AdaLN-Zero condi-tioning described in Section 3.2. Using the subscript v to denote voxel MHSA, the resulting tokens are 
+
+eV = V + αv (h) ⊙ MHSA v (AdaLN v (V, h)) . (15) Coarse-to-fine MHCA then incorporates the coarse representa-tion associated with each patch. For patch n, the voxel tokens pro-vide the queries, while bCn provides the key and value: Qcf n ← eVn
+
+and Kcf n , Vcf n ← bCn. This gives the voxel tokens access to the spatial and longitudinal information encoded by the coarse path-way. Using the subscript m to denote coarse-to-fine MHCA, the resulting coarse-guided voxel tokens are 
+
+V = eV + αm(h) ⊙ MHCA m
+
+
+
+AdaLN m( eV, h), bC
+
+
+
+. (16) The conditioned multilayer perceptron (MLP) subsequently transforms the coarse-guided voxel representations. Using the sub-script f to denote the fine MLP, the block output is 
+
+V′ = V + αf (h) ⊙ MLP f
+
+ AdaLN f (V, h) . (17) The output V′ is used as the input V to the next fine block. After applying Lf fine blocks, the resulting output is denoted by Vout ∈
+
+RN ×P ×df .
+
+Fine prediction head. The fine prediction head applies a final conditioned normalization: 
+
+F = AdaLN f 
+
+> out
+
+(Vout , h) ∈ RN ×P ×df . (18) A linear layer maps each voxel token to one velocity value, produc-ing 
+
+Vfine = FW f + bf ∈ RN ×P , Wf ∈ Rdf ×1. (19) For each patch, its P values are shaped into a p × p × p block and placed at their corresponding voxel locations to form νfine ∈
+
+RD×H×W . The complete predicted velocity is 
+
+νθ = νcoarse + νfine , (20) where the coarse pathway provides the primary voxel-space velocity and the fine pathway provides coarse-guided voxel-level refinement. 
+
+3.6 Sequential and Interleaved Compositions 
+
+We evaluate sequential (ProgFormer-S) and interleaved (ProgFormer-I) compositions. ProgFormer-S completes all coarse blocks before voxel refinement, with the final coarse representations supplied to every fine block. 
+
+Sequential variant (ProgFormer-S). The sequential variant applies all Lc coarse blocks before the Lf fine blocks. Every fine block receives the final coarse features C. Voxel-level refinement therefore begins after patch-level spatial and temporal modeling is complete. 
+
+Interleaved variant (ProgFormer-I). The interleaved vari-ant divides both pathways into Nstage stages. Each stage contains 
+
+Lc/N stage coarse blocks followed by Lf /N stage fine blocks. At stage ℓ, the fine blocks receive the target-state coarse features pro-duced by coarse stage ℓ. Early fine blocks therefore use shallower coarse representations, while later blocks receive progressively re-fined spatial and temporal context. Information flows from coarse Coarse 1 Coarse 2 Coarse 𝐿 𝑐 
+
+Fine 1 Fine 𝐿 𝑓 
+
+Fine 2
+
+𝐙  ...  
+
+> final coarse features 𝐂
+> to every fine block
+
+𝐕  ... 
+
+Coarse [1]  Coarse [2]  Coarse [𝑁 sta ge ]
+
+Fine [1]  Fine [𝑁 sta ge ]Fine [2] 
+
+... 
+
+> stage -wise coarse
+> features to the
+> corresponding fine stage
+
+...  𝐕 out 
+
+Stage  𝑁 stage Stage 2 Stage 1 
+
+(b) Interleaved ( ProgFormer -I) 
+
+(a) Sequential ( ProgFormer -S) 
+
+𝐂 
+
+𝐂  2 𝐂  𝑁 stage 𝐂  1
+
+𝐙 
+
+𝐕 
+
+𝐕 out 
+
+Figure 4: Sequential and interleaved pathway composi-tion. 
+
+to fine without feeding fine features back into subsequent coarse stages. The sequential variant transfers the final coarse representation throughout voxel refinement. The interleaved variant instead dis-tributes coarse-to-fine transfer across network depth. We use the sequential variant as the primary model and compare both compo-sitions experimentally. 
+
+3.7 Training and Inference 
+
+Training objective. Before training, SynthSeg (Billot et al. 2023) is applied to each ground-truth future scan x(T +1) to ob-tain an anatomical label map S(T +1) ∈ R D×H×W , where R is the set of SynthSeg labels. Each voxel q stores the label S(T +1) (q)
+
+of its anatomical region. The label map is used only to construct the loss weights and is not provided to ProgFormer or used during inference. Each label r ∈ R is assigned a predefined weight λr .Progression-relevant regions receive higher weights, while the re-maining tissue and background retain lower weights. The weight of voxel q is w(q) = λS(T +1) (q). Let Ω denote the set of all DHW 
+
+voxels. The weighted flow-matching objective is 
+
+LFM = Ex(T +1) ,ϵ,τ 
+
+"
+
+1
+
+|Ω|
+
+X
+
+> q∈Ω
+
+w(q) ( νθ (q) − ν∗(q)) 2
+
+#
+
+. (21) 
+
+Inference. The inference procedure is shown in the right panel of Figure 3. Generation starts from y0 ∼ N (0, I), while HT ,
+
+a(T +1) , and c remain fixed. For K Euler steps, let ∆τ = 1 /K and 
+
+τk = k∆τ . At step k, ProgFormer predicts 
+
+νk = νθ
+
+
+
+yk , τ k | H T , a (T +1) , cT+1
+
+
+
+, (22) and updates the current flow state as 
+
+yk+1 = yk + ∆ τ ν k . (23) The updated state yk+1 and flow time τk+1 are then used in the next step. After K updates, the final state is returned as the predicted future MRI, bx(T +1) = yK .
+
+## 4 Experiments 
+
+4.1 Experimental Setup 
+
+Datasets. We evaluate ProgFormer on three longitudinal Alzheimer’s disease MRI cohorts: ADNI (Petersen et al. 2010), Table 1: Results comparison against several state-of-the-art methods under two settings. Best results are highlighted in bold ,and second-best results are underlined. SSIM is presented on a 0–100 scale.                                                                                                                                                                                                                                                                                                                                  
+
+> Protocol Input scans ( I)Method ADNI AIBL OASIS PSNR ↑SSIM ↑R-MAE ↓PSNR ↑SSIM ↑R-MAE ↓PSNR ↑SSIM ↑R-MAE ↓
+> Pairwise 1
+> BrLP (Puglisi, Alexander, and Ravì 2024) 25 .89 ±2.33 92 .97 ±1.83 0.280 ±0.163 25 .65 ±2.52 92 .92 ±2.15 0.284 ±0.170 25 .52 ±2.31 92 .99 ±1.57 0.313 ±0.232
+> CounterSynth (Pombo et al. 2023) 26 .19 ±2.64 93 .71 ±1.93 0.234 ±0.117 26 .73 ±3.83 93 .73 ±3.12 0.251 ±0.133 26 .04 ±2.43 93 .68 ±2.08 0.284 ±0.133
+> TADM-3D (Litrico et al. 2026) 25 .79 ±1.35 92 .69 ±2.29 0.311 ±0.187 23 .12 ±1.34 90 .95 ±2.45 0.256 ±0.163 24 .90 ±1.88 93 .35 ±2.22 0.320 ±0.196
+> SADM (Yoon et al. 2023) 24 .60 ±1.79 91 .33 ±2.13 0.441 ±0.302 21 .96 ±1.74 83 .41 ±3.37 0.389 ±0.265 24 .11 ±1.22 90 .05 ±3.13 0.408 ±0.286
+> ProgFormer-S (Ours) 26 .39 ±1.68 93 .56 ±2.12 0.234 ±0.138 26 .95 ±2.52 93 .91 ±2.73 0.245 ±0.125 26 .32 ±1.54 94 .20 ±2.11 0.303 ±0.163
+> ProgFormer-I (Ours) 26 .11 ±1.76 94 .34 ±1.60 0.230 ±0.135 26 .79 ±2.37 92 .42 ±3.87 0.223 ±0.161 25 .36 ±1.58 93 .08 ±2.60 0.281 ±0.157
+> Trajectory
+> 1
+> BrLP (Puglisi, Alexander, and Ravì 2024) 26 .62 ±2.14 93 .94 ±1.92 0.289 ±0.175 25 .94 ±2.21 93 .06 ±2.25 0.359 ±0.167 25 .97 ±2.29 93 .14 ±1.89 0.353 ±0.247
+> CounterSynth (Pombo et al. 2023) 26 .08 ±2.62 95 .80 ±1.92 0.236 ±0.124 26 .79 ±3.89 93 .64 ±3.20 0.334 ±0.192 26 .38 ±2.25 93 .51 ±1.77 0.342 ±0.204
+> TADM-3D (Litrico et al. 2026) 23 .35 ±1.97 92 .78 ±2.24 0.313 ±0.198 23 .53 ±1.37 91 .50 ±2.72 0.355 ±0.221 24 .89 ±1.55 93 .37 ±2.94 0.371 ±0.216
+> TSADM (Yoon et al. 2023) 27 .32 ±2.39 92 .08 ±3.49 0.355 ±0.251 24 .16 ±1.95 85 .22 ±3.24 0.370 ±0.227 25 .21 ±1.47 91 .23 ±3.14 0.370 ±0.244
+> ProgFormer-S (Ours) 27 .90 ±1.63 96 .17 ±2.04 0.192 ±0.118 26 .96 ±2.51 93 .84 ±2.71 0.321 ±0.173 27 .17 ±1.50 93 .45 ±2.48 0.344 ±0.253
+
+AIBL (Ellis et al. 2009), and OASIS (LaMontagne et al. 2019). All T1-weighted scans undergo N4 bias correction (Tustison et al. 2010), skull stripping, affine registration to the MNI152 (Fonov et al. 2011), resampling to 2.25 mm 3, and intensity normalization. Each cohort is split subject-wise into 80% , 5% , and 15% training, validation, and test sets, respectively. 
+
+Metrics. Following prior work (Puglisi, Alexander, and Ravì 2024; Litrico et al. 2026; Yoon et al. 2023; Chen et al. 2025), we report peak signal-to-noise ratio (PSNR) and structural similarity (SSIM) to evaluate image quality. To assess regional structural fi-delity, we report region-level mean absolute error (R-MAE) over clinically relevant structures, including the hippocampus, amyg-dala, lateral ventricles, thalamus, and cerebrospinal fluid. R-MAE averages the absolute differences between the predicted and target volumes of these structures, with lower values indicating greater regional accuracy. 
+
+Comparison methods. We compare ProgFormer with BrLP (Puglisi, Alexander, and Ravì 2024), CounterSynth (Pombo et al. 2023), TADM-3D (Litrico et al. 2026), and SADM (Yoon et al. 2023). All methods use the same preprocessing and input spatial dimensions. In Table 1, I denotes the number of scans provided to each method. For SADM, we evaluate its single-input configu-ration ( I = 1 ) and additionally train and evaluate a multiple-input configuration using all available observed scans ( I = T ) when 
+
+T > 1.
+
+Implementation details. ProgFormer uses Lc = 8 coarse blocks and Lf = 4 fine blocks. The coarse and fine hidden di-mensions are dc = 384 and df = 256 , respectively. We use patch size p = 4 , producing N = 9600 patch tokens and P = 64 voxel tokens per patch, with six attention heads. The interleaved vari-ant uses Nstage = 4 stages. Training uses AdamW with learning rate 10 −4, weight decay 10 −2, batch size 4 per GPU, and gradient clipping at norm 1.0. Inference uses K = 100 Euler steps. All experiments are conducted on 8× NVIDIA A100 80 GB GPUs. 
+
+4.2 Results 
+
+Pairwise prediction. As shown in Table 1, ProgFormer-S achieves the best PSNR on all three cohorts, with 26 .39 on ADNI, 
+
+26 .95 on AIBL, and 26 .32 on OASIS. It outperforms the strongest competing result by 0.20 , 0.22 , and 0.28 , respectively, and also achieves the best SSIM on AIBL and OASIS. These results show that sequential coarse modelling and fine refinement provide con-sistently strong image fidelity across cohorts. ProgFormer-I performs best on regional accuracy, achieving an R-MAE of 0.230 on ADNI, 0.223 on AIBL, and 0.281 on OASIS, 
+
+Table 2: Component ablations of ProgFormer-S on ADNI. Best results are in bold , and second-best results are underlined. SSIM is presented on a 0–100 scale. 
+
+Variant PSNR ↑ SSIM ↑
+
+Pairwise input (I = 1 )w/o Coarse Pathway 7.23 ± 0.19 0.28 ± 0.22 
+
+w/o Fine Pathway 24 .79 ± 1.27 78 .19 ± 11 .01 
+
+w/o Cross-Attn. 24 .79 ± 1.48 91 .42 ± 1.87 
+
+w/o Region Weights 24 .75 ± 1.19 87 .60 ± 1.66 
+
+ProgFormer-S (full) 26 .39 ± 1.68 93 .56 ± 2.12 
+
+Trajectory input (I = T, 1 < T ≤ 4)w/o Coarse Pathway 7.63 ± 0.17 0.32 ± 0.21 
+
+w/o Fine Pathway 26 .49 ± 1.59 83 .79 ± 5.28 
+
+w/o Cross-Attn. 26 .13 ± 1.56 87 .69 ± 1.70 
+
+w/o Region Weights 24 .45 ± 1.13 88 .81 ± 1.40 
+
+ProgFormer-S (full) 27 .90 ± 1.63 96 .17 ± 2.04 
+
+Cross-Attn. denotes coarse-to-fine cross-attention. while also attaining the best SSIM on ADNI. The sequential and interleaved variants thus offer different ad-vantages. ProgFormer-S is more consistent on image-level metrics, whereas ProgFormer-I better preserves regional structure. We use ProgFormer-S as the primary configuration in the remaining exper-iments. 
+
+Trajectory prediction. Pairwise and I = 1 trajectory predic-tion both use a single observed scan, but differ in how observation-target pairs are selected. Their results are consequently similar. The trajectory protocol uses the final visit as the target, providing a con-trolled comparison between systems using only the latest scan and systems using the observed history. Compared with the strongest I = 1 result for each metric, using the observed history improves PSNR by 1.28 on ADNI, 0.17 on AIBL, and 0.79 on OASIS. It improves SSIM by 0.37 on ADNI and 0.20 on AIBL, and reduces R-MAE by 0.044 and 0.013 , re-spectively. On OASIS, the history model has 0.06 lower SSIM and 
+
+0.002 higher R-MAE. The history input consistently benefits image fidelity, while its effect on regional accuracy depends on the cohort. ProgFormer-S also outperforms SADM when both methods use multiple observed scans. Under the same I = T setting, it improves PSNR by 0.58 on ADNI, 2.80 on AIBL, and 1.96 on OASIS, while Age          
+
+> 0.0 0.2 0.4 0.6 0.8 1.0
+> Absolute Error
+> Ground Truth BrLP TADM-3D CounterSynth ProgFormer (Ours)
+> Age 81
+> Baseline
+> Age 85
+> Age 87
+> Age 89
+
+Figure 5: Longitudinal prediction for an ADNI subject. The first column shows the ground-truth follow-up scans. Columns 2–5 show predictions from BrLP, TADM-3D, CounterSynth, and our ProgFormer, respectively. Starting from the observed scan at age 81 , each method predicts the follow-up scans at ages 85 , 87 , and 89 . Each prediction is shown together with its voxel-wise absolute-error map relative to the corresponding ground-truth scan. The brighter color denotes larger error. 
+
+reducing R-MAE by 0.163 , 0.049 , and 0.026 , respectively. These results show the benefit of integrating longitudinal information at the patch level before transferring it to voxel-level refinement. Figure 5 shows sequential predictions from the observed scan at age 81 to ages 85 , 87 , and 89 . For later predictions, the pairwise baselines use their most recent prediction, whereas ProgFormer uses the baseline scan and its earlier predictions. Ground-truth follow-ups are used only for visualization and error calculation. Compared with the accumulating errors of the baselines, ProgFormer preserves the ventricular configuration and cortical outline more consistently, with smaller and more localized errors across the three target ages. 
+
+4.3 Ablation Study 
+
+Table 2 validates the roles of the two pathways and their interac-tion. Removing the coarse pathway causes prediction to collapse, reducing PSNR from 26 .39 to 7.23 under pairwise input and from 
+
+27 .90 to 7.63 under trajectory input. This confirms that patch-level reasoning establishes the global brain structure required for predic-tion. Removing the fine pathway decreases PSNR by 1.60 and 1.41 
+
+dB under pairwise and trajectory inputs, respectively, while SSIM decreases by 15 .37 and 12 .38 points. Removing coarse-to-fine at-tention decreases PSNR by 1.60 dB under pairwise input and 1.77 
+
+dB under trajectory input. The corresponding SSIM reductions are 
+
+2.14 and 8.48 points. The greater reduction under trajectory in-put indicates that transferring coarse features becomes particularly important when they contain information aggregated from several observed scans. Voxel processing is therefore most effective when grounded in the patch-level structural and longitudinal representa-tion. Removing the regional weights decreases PSNR by 1.64 and 3.45 
+
+Figure 6: Coarse-to-fine refinement. The top row shows the baseline scan, ground-truth follow-up, coarse-only predic-tion, and full coarse-to-fine prediction. The bottom row shows the absolute voxel-wise difference between the two predictions in selected brain regions. Brighter colours in-dicate larger modifications introduced by the fine pathway, which are concentrated around hippocampal, ventricular, and cortical boundaries. 
+
+dB and SSIM by 5.96 and 7.36 points under pairwise and trajectory inputs, respectively. The consistent degradation indicates that em-phasizing progression-relevant regions improves overall prediction quality despite stable tissue and background occupying most of the scan. Figure 6 visualizes the voxel-level refinement made by the fine pathway. The coarse-only prediction establishes the overall brain structure, whereas the full prediction more closely reproduces local boundaries in the ground-truth scan. The strongest refinements oc-cur around the hippocampus, lateral ventricles, and cerebral cortex, while more stable regions receive smaller updates. This concentra-tion in progression-relevant regions suggests that the fine pathway primarily captures localized longitudinal changes rather than recon-structing the complete scan. 
+
+## 5 Conclusion 
+
+We propose ProgFormer, an end-to-end hierarchical voxel-space Diffusion Transformer for longitudinal brain MRI prediction. Prog-Former utilizes patch tokens for spatial and longitudinal reasoning and voxel tokens for local refinement, with coarse-to-fine attention providing the coarse representations as spatiotemporal grounding. Across ADNI, AIBL, and OASIS, the sequential variant achieves the highest pairwise PSNR on all three cohorts, while the inter-leaved variant achieves the lowest pairwise regional error. Under trajectory evaluation, the sequential model using the observed his-tory achieves the highest PSNR across all three cohorts and the strongest image and regional performance on ADNI and AIBL. The ablations and visualisations further show that the coarse pathway provides the primary volumetric prediction, while the fine pathway uses the coarse information to recover localised structural details. These results demonstrate hierarchical voxel-space modelling as an effective approach to longitudinal volumetric prediction. 
+
+## Acknowledgement 
+
+This research was supported by the NVIDIA Academic Grant Pro-gram using NVIDIA A100 (80GB) Tensor Core GPUs accessed via the NVIDIA Brev cloud platform. 
+
+## References 
+
+Aghajanian, S.; Mohammadifard, F.; Mohammadi, I.; Rajai Firouz-abadi, S.; Baradaran Bagheri, A.; Moases Ghaffary, E.; and Mir-mosayyeb, O. 2025. Longitudinal structural MRI-based deep learn-ing and radiomics features for predicting Alzheimer’s disease pro-gression. Alzheimer’s Research & Therapy , 17(1): 182. Billot, B.; Greve, D. N.; Puonti, O.; Thielscher, A.; Van Leemput, K.; Fischl, B.; Dalca, A. V.; and Iglesias, J. E. 2023. SynthSeg: Segmentation of brain MRI scans of any contrast and resolution without retraining. Medical Image Analysis , 86: 102789. Chen, H.; Yin, R.; Chen, Y.; Chen, Q.; and Li, C. 2025. Learning Patient-Specific Disease Dynamics with Latent Flow Matching for Longitudinal Imaging Generation. CoRR , abs/2512.09185. Dong, M.; Xie, L.; Das, S. R.; Wang, J.; Wisse, L. E.; deFlores, R.; Wolk, D. A.; and Yushkevich, P. A. 2024. Regional deep atro-phy: Using temporal information to automatically identify regions associated with Alzheimer’s disease progression from longitudinal MRI. Imaging Neuroscience , 2: imag–2–00294. Ellis, K. A.; Bush, A. I.; Darby, D.; De Fazio, D.; Foster, J.; Hud-son, P.; Lautenschlager, N. T.; Lenzo, N.; Martins, R. N.; Maruff, P.; Masters, C.; Milner, A.; Pike, K.; Rowe, C.; Savage, G.; Szoeke, C.; Taddei, K.; Villemagne, V.; Woodward, M.; and Ames, D. 2009. The Australian Imaging, Biomarkers and Lifestyle (AIBL) study of aging: methodology and baseline characteristics of 1112 individ-uals recruited for a longitudinal study of Alzheimer’s disease. Int Psychogeriatr , 21(4): 672–687. Fonov, V.; Evans, A. C.; Botteron, K.; Almli, C. R.; McKinstry, R. C.; and Collins, D. L. 2011. Unbiased average age-appropriate atlases for pediatric studies. NeuroImage , 54(1): 313–327. Frisoni, G. B.; Fox, N. C.; Jack, C. R. J.; Scheltens, P.; and Thomp-son, P. M. 2010. The clinical use of structural MRI in Alzheimer disease. Nat Rev Neurol , 6(2): 67–77. Jack, C. R. J.; Knopman, D. S.; Jagust, W. J.; Shaw, L. M.; Aisen, P. S.; Weiner, M. W.; Petersen, R. C.; and Trojanowski, J. Q. 2010. Hypothetical model of dynamic biomarkers of the Alzheimer’s pathological cascade. Lancet Neurol , 9(1): 119–128. Jayakumar, N.; Deb, S.; Jafrasteh, B.; Zhao, Q.; and Zhang, M. 2026. Generative Modeling of Neurodegenerative Brain Anatomy with 4D Longitudinal Diffusion Model. CoRR , abs/2604.22700. LaMontagne, P. J.; Benzinger, T. L.; Morris, J. C.; Keefe, S.; Hornbeck, R.; Xiong, C.; Grant, E.; Hassenstab, J.; Moulder, K.; Vlassenko, A. G.; Raichle, M. E.; Cruchaga, C.; and Marcus, D. 2019. OASIS-3: Longitudinal Neuroimaging, Clinical, and Cogni-tive Dataset for Normal Aging and Alzheimer Disease. medRxiv .Ledig, C.; Schuh, A.; Guerrero, R.; Heckemann, R. A.; and Rueck-ert, D. 2018. Structural brain imaging in Alzheimer’s disease and mild cognitive impairment: biomarker analysis and shared mor-phometry database. Scientific Reports , 8(1): 11258. Li, T.; and He, K. 2025. Back to Basics: Let Denoising Generative Models Denoise. CoRR , abs/2511.13720. Lipman, Y.; Chen, R. T. Q.; Ben-Hamu, H.; Nickel, M.; and Le, M. 2023. Flow Matching for Generative Modeling. In The Eleventh International Conference on Learning Representations, ICLR 2023, Kigali, Rwanda, May 1-5, 2023 . OpenReview.net. Litrico, M.; Guarnera, F.; Giuffrida, M. V.; Ravì, D.; and Battiato, S. 2026. Temporally-aware diffusion model for brain progression mod-elling with bidirectional temporal regularisation. Comput. Medical Imaging Graph. , 127: 102688. Mo, S.; Xie, E.; Chu, R.; Hong, L.; Nießner, M.; and Li, Z. 2023. DiT-3D: Exploring Plain Diffusion Transformers for 3D Shape Gen-eration. In Oh, A.; Naumann, T.; Globerson, A.; Saenko, K.; Hardt, M.; and Levine, S., eds., Advances in Neural Information Processing Systems 36: Annual Conference on Neural Information Processing Systems 2023, NeurIPS 2023, New Orleans, LA, USA, December 10 - 16, 2023 .Peebles, W.; and Xie, S. 2022. Scalable Diffusion Models with Transformers. CoRR , abs/2212.09748. Petersen, R. C.; Aisen, P. S.; Beckett, L. A.; Donohue, M. C.; Gamst, A. C.; Harvey, D. J.; Jack, C. R. J.; Jagust, W. J.; Shaw, L. M.; Toga, A. W.; Trojanowski, J. Q.; and Weiner, M. W. 2010. Alzheimer’s Disease Neuroimaging Initiative (ADNI): clinical characterization. 
+
+Neurology , 74(3): 201–209. Pombo, G.; Gray, R.; Cardoso, M. J.; Ourselin, S.; Rees, G.; Ash-burner, J.; and Nachev, P. 2023. Equitable modelling of brain imaging by counterfactual augmentation with morphologically con-strained 3D deep generative models. Medical Image Analysis , 84: 102723. Puglisi, L.; Alexander, D. C.; and Ravì, D. 2024. Enhancing Spatiotemporal Disease Progression Models via Latent Diffusion and Prior Knowledge . In proceedings of Medical Image Computing and Computer Assisted Intervention – MICCAI 2024 , volume LNCS 15002. Springer Nature Switzerland. Tustison, N. J.; Avants, B. B.; Cook, P. A.; Zheng, Y.; Egan, A.; Yushkevich, P. A.; and Gee, J. C. 2010. N4ITK: improved N3 bias correction. IEEE Trans Med Imaging , 29(6): 1310–1320. Varma, M.; Kumar, A.; van der Sluijs, R.; Ostmeier, S.; Blanke-meier, L.; Chambon, P. J.; Bluethgen, C.; Prince, J.; Langlotz, C. P.; and Chaudhari, A. 2025. MedVAE: Efficient Automated Interpre-tation of Medical Images with Large-Scale Generalizable Autoen-coders. CoRR , abs/2502.14753. Vaswani, A.; Shazeer, N.; Parmar, N.; Uszkoreit, J.; Jones, L.; Gomez, A. N.; Kaiser, L.; and Polosukhin, I. 2017. Attention Is All You Need. CoRR , abs/1706.03762. Verdi, S.; Rutherford, S.; Fraza, C.; Tosun, D.; Altmann, A.; Raket, L. L.; Schott, J. M.; Marquand, A. F.; Cole, J. H.; and for the Alzheimer’s Disease Neuroimaging Initiative. 2024. Personalizing progressive changes to brain structure in Alzheimer’s disease using normative modeling. Alzheimer’s & Dementia , 20(10): 6998–7012. Wang, Y.; Song, W.; Yang, X.; Meng, W.; Ma, Y.; Wang, A.; Guo, G.; Zhang, Z.; Li, Z.; Han, H.; Wang, S.; and Shi, F. 2026. Alongitudinal analysis of T1-weighted MRI features associated with progression from mild cognitive impairment to Alzheimer’s dis-ease. BMC Medical Imaging , 26(1): 329. Xu, H.; Wu, R.; Henzler, P.; Kalischek, N.; Oechsle, M.; Manhardt, F.; Pollefeys, M.; Geiger, A.; Tombari, F.; and Niemeyer, M. 2026. PointDiT: Pixel-Space Diffusion for Monocular Geometry Estima-tion. arXiv:2607.02515. Yasinzai, M. N.; Mito, R.; and Pedersen, M. 2026. Wavelet-Fusion Diffusion Model for Multimodal Brain MRI Synthesis with Modal-ity and Metadata Conditioning. CoRR , abs/2606.00689. Yoon, J. S.; Zhang, C.; Suk, H.; Guo, J.; and Li, X. 2023. SADM: Sequence-Aware Diffusion Model for Longitudinal Medical Image Generation. In Frangi, A. F.; de Bruijne, M.; Wassermann, D.; and Navab, N., eds., Information Processing in Medical Imaging - 28th International Conference, IPMI 2023, San Carlos de Bariloche, Ar-gentina, June 18-23, 2023, Proceedings , volume 13939 of Lecture Notes in Computer Science , 388–400. Springer. Yu, Y.; Xiong, W.; Nie, W.; Sheng, Y.; Liu, S.; and Luo, J. 2025. Pix-elDiT: Pixel Diffusion Transformers for Image Generation. CoRR ,abs/2511.20645.
