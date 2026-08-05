@@ -1,0 +1,4110 @@
+Title: CoRe-GNN: Multilevel Message passing on Coarsened graphs
+
+URL Source: https://arxiv.org/pdf/2608.02128v1
+
+Published Time: Tue, 04 Aug 2026 02:19:29 GMT
+
+Number of Pages: 26
+
+Markdown Content:
+# CoRe-GNN: Multilevel Message passing on Coarsened graphs 
+
+Antonin Joly CNRS, IRISA, Rennes, FRANCE 
+
+antonin.joly@irisa.fr 
+
+Nicolas Keriven CNRS, IRISA, Rennes, FRANCE 
+
+nicolas.keriven@cnrs.fr 
+
+Aline Roumy INRIA, Rennes, FRANCE 
+
+aline.roumy@inria.fr 
+
+August 4, 2026 
+
+Abstract 
+
+Training Graph Neural Networks on large graphs is challenged by the memory cost of storing all node representations across layers. We show that several existing scalable approaches can be written as structured modifications of the GNN propagation matrix, providing a unified perspective that exposes their respective limitations. In particular, graph coarsening replaces it by a low-rank approximation that enables spectral guarantees but assigns uniform representations to clustered nodes, while Cluster-GCN restricts the propagation matrix to intra-cluster connections that allow efficient batching but sever long-range information. These are complementary failures of the same decomposition of the graph into groups of nodes. To obtain the best of both worlds, we propose CoRe-GNN , which performs both propagations in parallel at each layer: a coarsened inter-cluster term capturing long-range structure, and a local intra-cluster term preserving per-node discriminability. We prove that CoRe-GNN inherits analogous approximation guarantees to those of graph coarsening, and introduce a natural cluster-based batching scheme that scales to graphs with millions of nodes. On node classification benchmarks spanning homophilic, heterophilic, large-scale, and long-range graphs, CoRe-GNN outperforms both graph coarsening and Cluster-GCN baselines. Notably, CoRe-GNN reaches competitive accuracy on long-range 
+
+tasks, while remaining memory-efficient through batching. 
+
+## 1 Introduction 
+
+Graph Neural Networks (GNNs) [ 30 , 20 , 2] have established themselves as the dominant paradigm for learning on graph-structured data. GNNs are deep architectures on graphs that rely on the Message-Passing 
+
+paradigm [ 12 ]: at each layer, the representation H(l) 
+
+> i
+
+∈ Rdl of each node 1 ≤ i ≤ N , is updated by aggregating 
+
+and transforming the representations of its neighbors at the previous layer {H(l−1)  
+
+> j
+
+}j∈N (i), where N (i) is the neighborhood of i. In most examples, this aggregation can be represented as a multiplication of the node representation matrix H(l−1) ∈ RN ×dl−1 by a propagation matrix S ∈ RN ×N related to the graph structure, followed by a learnable linear transformation. This aggregation can be expressed compactly as: starting from initial node features H(0) ∈ RN ×d0 , a GNN with K layers computes 
+
+H(l) = σ
+
+
+
+SH (l−1) θ(l)
+
+, l = 1 , . . . , K, (1) where σ is a pointwise activation function and θ(l) ∈ Rdl−1×dl are learned parameters. Classical choices include S = D−1A (mean aggregation) or the normalized adjacency S = ( D +I)−1/2(A+I)( D +I)−1/2, which corresponds to the classical GCNconv layer [ 20 ]. Note that we do not include skip connections here for later ease of exposition. For the rest of the paper, unless otherwise precised, we set S = ( D + I)−1/2(A + I)( D + I)−1/2
+
+as in [20]. 1arXiv:2608.02128v1 [cs.LG] 3 Aug 2026 Training a GNN (1) on a graph of N nodes requires storing the intermediate representation of each of the 
+
+K layers, a memory cost that grows linearly with the number of nodes N , saturating standard GPU memory for large-scale graphs [ 14 , 13 ]. This memory bottleneck affects not only training but also inference of the network on such graphs. Unlike in most machine learning settings, naive node batching does not decompose the computation in (1) : the representation H(l) 
+
+> i
+
+of node i at layer l depends on the features of its entire l-hop neighborhood. For graphs with low average path length, this neighborhood grows rapidly with depth. As emphasized by [ 37 ], in OGBN-products [ 14 ] the 4-hop neighborhood of one node is in average ≈ 0.6M nodes (25% of the full graph), leading to memory issues on GPU. This scalability bottleneck has motivated two main families of approaches: sampling-based methods, which truncate the l-hop neighborhood to a fixed budget per layer, and compressed-graph methods, which train the GNN on a structurally reduced version of the original graph. In this paper we focus on the latter. 
+
+Compressed-graph methods and their limitations. Compressed-graph methods trains the GNN on a structurally reduced version of the original graph. Among them, graph coarsening [ 25 , 22 , 19 , 7, 5 , 16 , 17 ]maps the original nodes to so-called supernodes , forming a smaller graph that retains some properties of the original graph. While, all these methods train the GNN on the coarsened graph, they may differ in how they perform inference at test time. Some [ 22 , 19 , 5, 7] apply the learned weights directly to the original graph at inference time. However: a) they generally lack guarantees that these weights transfer well to the original structure, and b) some graphs might even be too large for inference. Other works [ 16 , 17 ] evaluate entirely within the coarsened space, ensuring consistency between training and inference, and this is the method that we adopt here. However, a fundamental limitation of this approach is that all nodes mapped to the same supernode share the same prediction, which might be limiting especially in heterophilic situations. In parallel, sparsification approaches restrict S to a sparser version computed once as preprocessing. 
+
+Cluster-GCN [4] takes the converse approach to graph coarsening: rather than collapsing nodes across clusters, it restricts the GNN to intra-cluster connections only, replacing S by a block-diagonal restriction. In addition to saving (some) memory, the main advantage of this approach is to easily allow for batching 
+
+during training, which is normally known to be rather problematic for GNNs: k-hop subgraphs are required around each batched nodes, which can easily be the entire graph. By forming disconnected subgraphs that can be independently loaded, Cluster-GCN solves this problem. However, the main limitation of such an approach is that inter-cluster edges are discarded, severing long-range dependencies. This might be limiting on long-range tasks. 
+
+Contributions. We propose CoRe-GNN (Co arsen and Re store), an architecture that performs in parallel an inter-cluster propagation on the coarsened graph and an intra-cluster propagation on the original node space, coupling the two across layers. The architecture is agnostic to the choice of the coarsening algorithm, which is treated as a tunable hyperparameter. This design addresses simultaneously the accuracy ceiling of graph coarsening and the long-range blindness of Cluster-GCN. First, we provide a unified matrix formulation of compressed-graph GNN training, showing that Cluster-GCN and graph coarsening correspond to complementary structured modifications of the propagation matrix S, clarifying their limitations and motivating CoRe-GNN. Second, we introduce a natural batching scheme that scales CoRe-GNN to graphs with millions of nodes. Third, we prove that CoRe-GNN inherits guarantees over the preservation of smooth signal propagation, with the same structure as those of graph coarsening but with different multiplicative constants that we empirically evaluate. Fourth, we evaluate CoRe-GNN on homophilic, heterophilic, large-scale, and long-range node classification benchmarks, consistently outperforming Cluster-GCN and graph coarsening baselines. An illustrative diagram of the method can be found in Fig. 1. 
+
+Related work. Of course, there are many other classes of methods to handle large graphs. Sampling-based methods address the l-hop explosion by approximating the neighborhood of a node at each layer. GraphSAGE [ 13 ] samples a fixed number of neighbors per layer for each node in a batch. The number of sampled neighbors grows exponentially with the number of layers making deep architectures expensive, and a large body of work has been devoted to mitigating this cost [ 3, 39 , 11 ]. An alternative is to sample entire subgraphs rather than individual neighbors [ 36 , 37 ]. In general, coarsening-based and sampling-based methods differ structurally: while coarsening is performed once before training as a pre-processing , sampling 2H(l)
+
+## +
+
+Sintra H(l) θ(l) σ
+
+σ
+
+Reduce 
+
+P Sinter  
+
+> c
+
+H(l) 
+
+> c
+
+θ(l)
+
+> c
+
+Lift 
+
+Q H(l+1) 
+
+Figure 1: One CoRe-GNN batched layer. H(l) flows through two parallel branches. Top: intra-cluster message passing, where only the active cluster (red) is processed per step while others are handled in separate batches (in the full-batch setting, all clusters are processed simultaneously). Bottom: inter-cluster propagation on the coarsened graph over all n super-nodes at once, reduce ( P ), propagate ( Sinter  
+
+> c
+
+), activate ( σ), lift back ( Q). Both outputs are summed to produce H(l+1) .is generally performed at every step of training, thus requiring to retain access to the original graph. Graph pooling methods [ 35 , 1] are designed for graph-level classification and do not support node-level prediction. Most are differentiable and learned end-to-end, in contrast to the fixed pre-computed partitions used in coarsening-based approaches. Graph U-Net [ 10 ] extends pooling to node classification but its differentiable coarsening is memory-intensive and not designed for scalability. Graph condensation [15 ] creates a small synthetic graph by aligning GNN gradients between the compressed and original graphs. While effective at small reduction ratios, it does not preserve the original topology and evaluation on the full graph at inference remains memory-intensive. Graph summarization encompasses broader compression techniques: VQ-GNN [ 8] compresses node representations via vector quantization, while methods based on overlapping cluster structures [ 9 , 21 ] allow nodes to belong to multiple communities simultaneously. Several works use multi-level aggregation across different graph resolutions [ 38 , 23 ], but rely on complex aggregation schemes that are not batchable and do not target scalability to large graphs. In our work, the two levels of granularity serve a different purpose: resolving the accuracy ceiling of coarsening-only methods while preserving the scalability benefits of the cluster partition. Close to our work, FiT-GNN [ 28 ] and [ 32 ] treat coarsened nodes as auxiliary nodes appended to the original graph, keeping all computations in the original node space. This avoids the dimension change between original and coarsened spaces but does not benefit from the computational advantages of training and inferring within the coarsened space. 
+
+## 2 Compressed-Graph GNNs as Propagation Matrix Modifications 
+
+Several compressed-graph GNN methods can be written as modifications of the standard update (1) , replacing 
+
+S by a structurally modified matrix to reduce memory and computation: 
+
+H(l) = σ
+
+
+
+Scompressed H(l−1) θ(l)
+
+(2) We detail below two such methods, Coarsen-GNN [ 16 , 17 ] and Cluster-GCN [ 4], which operate on comple-mentary modifications of the same partition-based decomposition of S. Note that both Coarsen-GNN and Cluster-GCN refer here to training and evaluating a GNN on, respectively, a coarsened or a clustered version of a graph, computed as a pre-processing with a dedicated algorithm (see Sec. 4), not to using a GNN to 
+
+learn the coarsening or the clustering. 
+
+2.1 Coarsen-GNN 
+
+Graph coarsening [ 25 , 17 ] reduces a graph G with N nodes to a coarsened graph Gc with n < N nodes. The proportion of reduction achieved is measured by the coarsening ratio r = 1 − nN . The mapping from G to 3Gc is obtained by grouping set of nodes in G to form so-called supernodes in Gc. Following [ 17 ], we describe the coarsening through two matrices: a reduction matrix P ∈ Rn×N , which allows going from the original 
+
+N -dimensional space to the coarsened n-dimensional space, and a lifting matrix Q ∈ RN ×n, which allows going back. Perhaps surprisingly, it is more convenient to define the coarsening through the lifting matrix Q,while P will naturally follow [ 17 ]. First, Q must be well-partitioned : it must have exactly one non-zero entry per row, ensuring each original node i belongs to exactly one supernode ℓ, when Qiℓ > 0. Second, the non-zero entries of Q are chosen such that, given some symmetric Laplacian L on G, the coarsened Laplacian Lc = Q⊤LQ is well-defined as a true Laplacian. Examples include the combinatorial Laplacian 
+
+D − A or the self-loop normalized Laplacian [ 17 ] L = ( D + I)−1/2(D − A)( D + I)−1/2, which is related to the propagation matrix S in GCN [ 20 ]. We generally adopt the latter in this paper. There are several possible choices for P [17 ], but the most natural is to set P = Q+, the Moore-Penrose pseudo-inverse of Q. Since Q is well-partitioned, Q+ = ( Q⊤Q)−1Q⊤ has only N non-zero elements, resulting in linear-complexity lifting and reduction operations. In this paper we will always consider that P = Q+.Coarsen-GNN performs the entire propagation directly on the coarsened graph of size n. Considering node representations H(l) 
+
+> c
+
+∈ Rn×d on the coarsened graph, with initial H(0)  
+
+> c
+
+= P H (0) , the propagation is naturally Coarsen-GNN : H(l) 
+
+> c
+
+= σ
+
+
+
+Sc H(l−1)  
+
+> c
+
+θ(l)
+
+(3) where Sc = P SQ ∈ Rn×n is the propagation matrix introduced in [ 16 ], followed by a final lifting by Q. Since 
+
+Q commutes with any pointwise activation σ (Lemma 1) and P Q = In, (3) can equivalently be rewritten as a propagation on the original graph with the matrix ΠSΠ, where Π = QP ∈ RN ×N is the coarsen-lift operator: 
+
+H(l) = σ
+
+
+
+ΠSΠ H(l−1) θ(l)
+
+= Qσ 
+
+
+
+Sc P H (l−1) θ(l)
+
+(4) This shows that Coarsen-GNN fits the general framework (2) with Scompressed = Π SΠ. Of course, in practice, Coarsen-GNN propagates H(l) 
+
+> c
+
+and only maps the final predictions back to the original nodes, but this view is a stepping stone towards our more general architecture. Moreover, it outlines the main limitation of Coarsen-GNN: since Π is constant by block, all nodes within the same supernode receive the same prediction. As most coarsening algorithms merge neighboring nodes, this is particularly limiting on heterophilic graphs where adjacent nodes often carry different labels. 
+
+2.2 Cluster-GCN 
+
+Cluster-GCN [ 4] also operates on a partitioning of the graph, here more classically referred to as clusters (instead of “supernodes”). Rather than projecting the node representations into a smaller space, it restricts the propagation to intra-cluster connections only, that is, it removes all edges between clusters. Denoting 
+
+Sintra the restriction of S to intra-cluster connections, Cluster-GCN replaces S by Sintra at every layer: Cluster-GCN : H(l) = σ
+
+
+
+Sintra H(l−1) θ(l)
+
+(5) In addition to saving memory by discarding some connections, the main advantage of Cluster-GCN is that, since Sintra is block-diagonal with one block per cluster, batching is straightforward: at each training step, we can select a subset B of clusters and loads only the corresponding blocks of Sintra and node representations. However, Cluster-GCN severs all inter-cluster and long-range dependencies, which severely limits its performance on long-range tasks [24]. Figure 2 illustrates the propagation matrices of the different methods. 
+
+Remark 1. Note that the original Cluster-GCN paper [ 4 ] also considers merging several randomly drawn clusters per batch during training, but similar to Coarsen-GNN here we consider that the partitioning is fixed, done as a preprocessing step. 
+
+4GCN   
+
+> S
+> Cluster-GCN
+> Sintra
+> Coarsen-GNN
+> Sc
+> CoRe-GNN (batched)
+> Sintra batch +Sinter
+> c
+
+Figure 2: Propagation matrices for N = 20 nodes across 5 clusters. CoRe-GNN (batched): active clusters (red, violet) use full intra-cluster propagation; inactive clusters use a coarsened proxy (small square). The representation of the graph and its coarsened counterpart can be found in Figure 14. 
+
+## 3 A new architecture CoRe-GNN 
+
+We have seen above that Coarsen-GNN assigns a single representation per supernode, limiting per-node discriminability, while Cluster-GCN discards all inter-cluster connections, severing long-range dependencies. In some sense, these are complementary limitations, which we simultaneously address with the proposed 
+
+CoRe-GNN . It combines both strategies in parallel: it adds intra-cluster connections to Coarsen-GNN, or equivalently, extends Cluster-GCN with coarsened inter-cluster propagation. Denoting Sinter = S − Sintra the inter-cluster part of S and Sinter  
+
+> c
+
+= P S inter Q ∈ Rn×n its coarsened counterpart, CoRe-GNN performs both propagations in parallel at each layer: CoRe-GNN : H(l) = Q σ 
+
+
+
+Sinter  
+
+> c
+
+P H (l−1) θ(l)
+
+> c
+
+
+
++ σ
+
+
+
+Sintra H(l−1) θ(l)
+
+(6) The name CoRe-GNN reflects this two-step structure, where the inter-cluster term co arsens the signal to capture long-range structure, while the intra-cluster term re stores per-node discriminability lost by the coarsening. Unlike Coarsen-GNN which maps back to the original dimension only at the final layer, CoRe-GNN couples the two spaces at every layer via Q and P , maintaining two parallel states H(l) 
+
+> c
+
+and H(l), which directly motivates the batching scheme presented right after. An illustrative diagram is provided in Figure 1. The weight matrices θ(l) and θ(l) 
+
+> c
+
+are independent: they respectively treat close-by intra-connections and long-range coarsened connections. Several design choices including weight sharing are studied in Appendix D. 
+
+Remark 2 (CoRe-GNN strictly generalizes Cluster-GCN and approximates Coarsen-GNN) . Setting θ(l) 
+
+> c
+
+= 0 
+
+in CoRe-GNN recovers Cluster-GCN exactly. The converse direction is more subtle: setting θ(l) = 0 does not recover Coarsen-GNN, as Sinter  
+
+> c
+
+= P S inter Q differs from Sc = P SQ by the term P S intra Q. This term is block-diagonal as shown in Lemma 2. 
+
+3.1 Natural Batching extension 
+
+CoRe-GNN is designed to scale to large graphs where classical GCN runs out of GPU memory. Although the proposed architecture is already lighter than full GCN by replacing S by the sparser combination 
+
+Sintra + QS inter  
+
+> c
+
+P , this alone is not sufficient to handle graphs with millions of nodes. However, akin to Cluster-GCN, CoRe-GNN is amenable to a natural batching strategy, by only selecting some clusters for intra-propagation. The batching scheme maintains two parallel states: H(l) 
+
+> c
+
+for all super-nodes in the coarsened space, and H(l) 
+
+> B
+
+for the batched nodes only , in the original space. At each step, the inter-cluster term runs over all n super-nodes cheaply since n ≪ N , while only the clusters in the current batch B perform the full intra-cluster propagation. For non-batch super-nodes, the intra-cluster term is approximated by a self-loop proxy in the coarsened space, which is equivalent to lifting the super-node to the original space, applying a self-loop node by node, and reducing back. 5Algorithm 1 CoRe-GNN: Batched Forward Pass 
+
+Require: H(0)  
+
+> c
+
+= P H (0) ∈ Rn×d, H(0)  
+
+> B
+
+∈ RNB ×d, PB , Q B (restricted to batch) , Sinter  
+
+> c
+
+, S intra [B] (precomputed) , batch 
+
+B ⊆ [n], weights (θ(l), θ (l) 
+
+> c
+
+)Kl=1  
+
+> 1:
+
+for l = 1 , . . . , K − 1 do  
+
+> 2:
+
+H(l) 
+
+> c
+
+← σ
+
+
+
+Sinter  
+
+> c
+
+H(l−1)  
+
+> c
+
+θ(l)
+
+> c
+
+
+
+// all n super-nodes, coarsened space  
+
+> 3:
+
+H(l) 
+
+> B
+
+← σ
+
+
+
+Sintra [B] H(l−1)  
+
+> B
+
+θ(l)
+
+
+
+// intra-cluster, batch nodes only  
+
+> 4:
+
+H(l) 
+
+> B
+
+← H(l) 
+
+> B
+
++ QB H(l) 
+
+> c
+
+[B] // lift inter-cluster to batch nodes  
+
+> 5:
+
+H(l) 
+
+> c
+
+[B] ← PB H(l) 
+
+> B
+
+// reduce batch nodes back to super-nodes  
+
+> 6:
+
+H(l) 
+
+> c
+
+[ ¯B] ← σ
+
+
+
+H(l−1)  
+
+> c
+
+[ ¯B] θ(l)
+
+
+
++ H(l) 
+
+> c
+
+[ ¯B] // self-loop proxy for non-batch super-nodes  
+
+> 7:
+
+end for  
+
+> 8:
+
+return H(K) 
+
+> B
+
+, H(K)
+
+> c
+
+Algorithm 1 summarizes the batched forward pass. A custom sampler groups clusters until a target node count is reached, ensuring constant-size batches despite variable cluster sizes. The intra-cluster blocks are pre-split at loading time and remain fixed during training, so no graph partitioning or subgraph sampling is performed during training. 
+
+Exact inference. Without batches, standard full-graph inference of CoRe-GNN may be out of memory on very large graphs such as Reddit and OGBN-Products [ 14 ], even without retaining gradients. However, we can derive a non-trivial exact inference procedure that avoids this bottleneck without any approximation, without resorting to the self-loop proxy used during training. For each layer, the inter-cluster term is computed once over all n super-nodes on GPU via Sinter  
+
+> c
+
+, while the intra-cluster term is computed cluster by cluster, loading each block Sintra [B] from CPU to GPU on demand and discarding it immediately after. This strategy is not applicable during training, since backpropagation requires retaining the full computational graph across all layers, which causes out-of-memory crashes on large graphs. Detailed pseudo-codes for exact inference (Appendix E.1), Coarsen-GNN training, CoRe-GNN full batch and batched training are provided in Appendix E. 
+
+3.2 Complexity 
+
+CoRe-GNN replaces the full propagation matrix S by the sparser combination Sintra +QS inter  
+
+> c
+
+P . Classical GCN requires O(KEd + KN d 2) operations per epoch, where K is the number of layers, E = nnz (S) the number of edges, and d the hidden dimension. CoRe-GNN substitutes E by Eintra + Ec, where Eintra = nnz (Sintra ) ≤ E
+
+and Ec = nnz (Sinter  
+
+> c
+
+) ≪ E since Sinter  
+
+> c
+
+∈ Rn×n with n ≪ N . The lifting and reduction operations via P and 
+
+Q, which have only N non-zero elements each, add a negligible O(N ) cost. Whether CoRe-GNN is cheaper than classical GCN depends on the graph structure and the coarsening ratio, as analyzed in Appendix C.2. The batched variant provides a more systematic advantage: memory is reduced to O(K(n + b)d), independent of N , enabling training on graphs that would otherwise exceed GPU memory. A detailed complexity table of all methods is also provided in Appendix C. 
+
+3.3 Propagation guarantees for CoRe-GNN 
+
+In this section, we derive some theoretical guarantees that bound the error between message-passing on the original graph and message-passing in CoRe-GNN. For this, we adapt the results in [ 16 ] for Coarsen-GNN. Note that, to our knowledge, there is no theoretical analysis for Cluster-GCN that we could adapt for CoRe-GNN, and we leave such a complementary approach for future work. In this section L denotes a symmetric Laplacian of the original graph, the propagation matrix is S = IN −L,and Q is such that the coarsened Laplacian Lc = Q⊤LQ is well-defined. Recall that P = Q+ and Π = QP .For a symmetric positive semi-definite matrix L, we define the Mahalanobis semi-norm ∥x∥L = √x⊤Lx and the associated pseudo-operator norm ∥M ∥L = ∥L1/2M L −1/2∥op .6Reminder on Coarsening guarantee. To measure the quality of a coarsening, Loukas [ 25 ] introduced the Restricted Spectral Approximation (RSA) constant, which measures the loss of information from a signal 
+
+x to its coarsened and re-lifted counterpart ˜x = Π x. Since Π is at most of rank n < N , only a subspace R of 
+
+RN can be preserved exactly. 
+
+Definition 1 (Restricted Spectral Approximation constant) . Given a subspace R ⊂ RN , a Laplacian L, a lifting matrix Q and a reduction matrix P , the RSA constant is: 
+
+ϵL,Q,P, R = sup  
+
+> x∈R ,∥x∥L=1
+
+∥x − QP x ∥L (7) Classically, R is spanned by the eigenvectors associated with the smallest eigenvalues of L, corresponding to the smoothest signals on the graph. Then, the authors in [ 16 ] show that, with our choice of propagation matrix Sc = P SQ , one step of message-passing in Coarsen-GNN (3) is provably close to message-passing on the original graph, in terms of the RSA constant ϵL,Q,P, R.
+
+Theorem 1 (Propagation on coarsened graph [ 16 ]) . Under the assumption that Π and S are both ker (L)-preserving and S is R-preserving, for all x ∈ R :
+
+∥Sx − QS cP x ∥L ≤ ϵL,Q,P, R∥x∥L (CS + CΠ) (8) 
+
+where CS := ∥S∥L, CΠ := ∥ΠS∥L, and M is said E-preserving if M x ∈ E for all x ∈ E.
+
+The various assumptions of Theorem 1 are discussed in the original paper [ 16 ]. The RSA constant controls how well the coarsened graph preserves smooth signals, which directly justifies using coarsening algorithms that minimize the RSA [25] rather than other spectral criteria. 
+
+Guarantees for CoRe-GNN. Theorem 1 extends naturally to CoRe-GNN, under the same assumptions but with different constants. The full derivation is in Appendix A.1. 
+
+Theorem 2 (Propagation guarantee for CoRe-GNN) . Under the assumption that Π and Sinter are both 
+
+ker( L)-preserving and Sinter is R-preserving, for all x ∈ R :
+
+∥Sx −  Sintra x + QS inter  
+
+> c
+
+P x ∥L ≤ ϵL,Q,P, R∥x∥L (C′ 
+
+> S
+
++ C′
+
+> Π
+
+) (9) 
+
+where C′ 
+
+> S
+
+:= ∥Sinter ∥L, C′ 
+
+> Π
+
+:= ∥ΠSinter ∥L.
+
+The constants C′ 
+
+> S
+
+and C′ 
+
+> Π
+
+now depend on Sinter rather than S. Comparing the two results, CoRe-GNN has better preservation guarantees than Coarsen-GNN when C′ 
+
+> S
+
++ C′ 
+
+> Π
+
+< C S + CΠ. While there is no guarantee that this is always the case, as these constants involves operator norms, note that if we consider Frobenius norms instead we would easily have ∥Sinter ∥Fro ≤ ∥ S∥Fro , hinting that the constants are indeed improved for CoRe-GNN. A notable difference is that C′ 
+
+> S
+
+= ∥Sinter ∥L depends on the coarsening, while CS = ∥S∥L is fixed by the graph. As the coarsening ratio increases, Sinter becomes sparser and C′ 
+
+> S
+
+is expected to decrease. Figure 3 shows the constants CS , CΠ, C′ 
+
+> S
+
+, C′
+
+> Π
+
+, the full theoretical upper bound, as well as the empirical propagation error averaged over 100 signals sampled from the low-frequency eigenvectors of L, as a function of the coarsening ratio r, on an SBM synthetic graph. We observe that the theoretical bound and the propagation error are consistently lower for CoRe-GNN across all coarsening ratios. On real graphs (see Appendix B), the picture is more nuanced: the constants for CoRe-GNN are not always smaller, but the empirical propagation error generally remains lower, showing that the upper bounds of Theorem 1 and 2 tend to be rather loose on real data. 
+
+## 4 Experimental results 
+
+Setup. CoRe-GNN and its batched variant are designed for node classification on medium to large-scale graphs. All experiments are run on a single NVIDIA A40 GPU for reproducibility, and out-of-memory (OOM) results correspond to the memory limit of this hardware. All results are averaged over 10 runs. 70.0 0.2 0.4 0.6 0.8 1.0                    
+
+> Coarsening ratio r
+> 0.40
+> 0.45
+> 0.50
+> 0.55
+> 0.60
+> 0.65
+> 0.0 0.2 0.4 0.6 0.8 1.0
+> Coarsening ratio r
+> 0.48
+> 0.50
+> 0.52
+> 0.54
+> 0.56
+> 0.58
+> 0.60
+> 0.62
+> 0.64
+> 0.0 0.2 0.4 0.6 0.8 1.0
+> Coarsening ratio r
+> 0.7
+> 0.8
+> 0.9
+> 1.0
+> 1.1
+> 1.2
+> 1.3
+> 0.0 0.2 0.4 0.6 0.8 1.0
+> Coarsening ratio r
+> 0.10
+> 0.15
+> 0.20
+> 0.25
+> 0.30
+> Coarsen-GNN
+> CoRe-GNN
+
+CΠ terms 0.0 0.2 0.4 0.6 0.8 1.0                     
+
+> Coarsening ratio r
+> 0.40
+> 0.45
+> 0.50
+> 0.55
+> 0.60
+> 0.65
+> 0.0 0.2 0.4 0.6 0.8 1.0
+> Coarsening ratio r
+> 0.48
+> 0.50
+> 0.52
+> 0.54
+> 0.56
+> 0.58
+> 0.60
+> 0.62
+> 0.64
+> 0.0 0.2 0.4 0.6 0.8 1.0
+> Coarsening ratio r
+> 0.7
+> 0.8
+> 0.9
+> 1.0
+> 1.1
+> 1.2
+> 1.3
+> 0.0 0.2 0.4 0.6 0.8 1.0
+> Coarsening ratio r
+> 0.10
+> 0.15
+> 0.20
+> 0.25
+> 0.30
+> Coarsen-GNN
+> CoRe-GNN
+
+CS terms 0.0 0.2 0.4 0.6 0.8 1.0                     
+
+> Coarsening ratio r
+> 0.40
+> 0.45
+> 0.50
+> 0.55
+> 0.60
+> 0.65
+> 0.0 0.2 0.4 0.6 0.8 1.0
+> Coarsening ratio r
+> 0.48
+> 0.50
+> 0.52
+> 0.54
+> 0.56
+> 0.58
+> 0.60
+> 0.62
+> 0.64
+> 0.0 0.2 0.4 0.6 0.8 1.0
+> Coarsening ratio r
+> 0.7
+> 0.8
+> 0.9
+> 1.0
+> 1.1
+> 1.2
+> 1.3
+> 0.0 0.2 0.4 0.6 0.8 1.0
+> Coarsening ratio r
+> 0.10
+> 0.15
+> 0.20
+> 0.25
+> 0.30
+> Coarsen-GNN
+> CoRe-GNN
+
+Theoretical bound 0.0 0.2 0.4 0.6 0.8 1.0                     
+
+> Coarsening ratio r
+> 0.40
+> 0.45
+> 0.50
+> 0.55
+> 0.60
+> 0.65
+> 0.0 0.2 0.4 0.6 0.8 1.0
+> Coarsening ratio r
+> 0.48
+> 0.50
+> 0.52
+> 0.54
+> 0.56
+> 0.58
+> 0.60
+> 0.62
+> 0.64
+> 0.0 0.2 0.4 0.6 0.8 1.0
+> Coarsening ratio r
+> 0.7
+> 0.8
+> 0.9
+> 1.0
+> 1.1
+> 1.2
+> 1.3
+> 0.0 0.2 0.4 0.6 0.8 1.0
+> Coarsening ratio r
+> 0.10
+> 0.15
+> 0.20
+> 0.25
+> 0.30
+> Coarsen-GNN
+> CoRe-GNN
+
+mean propagation error 
+
+Figure 3: Comparison of the Coarsen-GNN bound (Theorem 1, blue) and the CoRe-GNN bound (Theorem 2, red) as a function of the coarsening ratio r. From left to right: CΠ, CS terms, full theoretical bound, and Empirical propagation error. SBM parameters are detailed in Appendix B. 
+
+(i) Coarsening algorithms: we consider three possible algorithms to partition the graph into supern-odes/clusters. METIS [18 ] minimizes the normalized cut between clusters and produces balanced partitions with a very efficient implementation. Graclus [ 6] minimizes the ratio cut via a multilevel approach and is applied iteratively to approach the target coarsening ratio. Loukas [ 25 ] is designed to minimize the RSA for the self-loop normalized Laplacian, as implemented in [ 16 , 17 ]. We report results for the best-performing algorithm per dataset and per model . Pseudo-codes and implementation details are provided in Appendix G. The coarsening ratio r is also a tunable hyperparameter, constrained by available GPU memory. In contrast to Coarsen-GNN, increasing r does not systematically reduce the computational cost of CoRe-GNN. While larger values of r reduce the size of the coarsened graph, they also lead to larger clusters, increasing the number of intra-cluster connections and potentially causing memory issues. This reflects a trade-off in r, as further detailed in Appendix C.2. For all reported results, we select the best coarsening ratio r per model and dataset. 
+
+(ii) Models. We evaluate CoRe-GNN and its batched variant CoRe-GNN(b). As CoRe-GNN approximates the full GCN propagation, we compare against full GCN [ 20 ] when memory allows. We also compare against our implementation of Cluster-GCN, which performs only intra-cluster propagation and Coarsen-GNN [ 16 , 17 ], which trains and infers entirely on the coarsened graph. Our goal is to evaluate the effect of the propagation structure rather than to maximize benchmark scores, and we therefore do not include architecture-specific tricks such as residual connections. 
+
+(iii) Hyperparameters. All models are trained with the Adam optimizer for up to 800 epochs with a ReduceLROnPlateau scheduler and a dropout of 0.5. Each model is evaluated over a hyperparameter grid covering hidden dimension, number of layers, learning rate, weight decay, and coarsening ratio where applicable. The grid varies per model and dataset group. Full hyperparameter grids and per-dataset selected values are provided in Appendix H. 0.1 
+
+> 0.3
+> 0.5
+> 0.7
+> 0.9
+> 0.95
+> 0.97
+> 0.99
+> 0.999
+
+Coarsening ratio r
+
+20 
+
+30 
+
+40 
+
+50 
+
+60 
+
+70 
+
+80 
+
+> Test accuracy
+> CoRe-GNN
+> Cluster-GCN
+> Coarsen-GNN
+> 0.1
+> 0.3
+> 0.5
+> 0.7
+
+60.0 
+
+62.5 
+
+65.0 
+
+67.5 
+
+70.0 
+
+72.5 
+
+75.0 
+
+77.5 
+
+> Test accuracy
+> 0.1
+> 0.3
+> 0.5
+> 0.7
+> 0.9
+> 0.95
+> 0.999
+
+Coarsening ratio r
+
+20 
+
+30 
+
+40 
+
+50 
+
+60 
+
+70 
+
+80 
+
+> Test accuracy
+> CoRe-GNN
+> Cluster-GCN
+> Coarsen-GNN
+> 0.1
+> 0.3
+
+60.0 
+
+62.5 
+
+65.0 
+
+67.5 
+
+70.0 
+
+72.5 
+
+75.0 
+
+77.5 
+
+> Test accuracy
+
+Figure 4: Accuracy as a function of the coarsening ratio r on Cora, with fixed hyperparameters ( K = 2 , d = 256 ,lr= 0.01 , wd= 0.0005 , Loukas coarsening algorithm). 
+
+Influence of coarsening ratio. While in the main tables we select the best coarsening ratio for each model, Figure 4 reports accuracy as a function of r on Cora with fixed hyperparameters. At low ratios, clusters are small as there are many super-nodes, and Coarsen-GNN preserves per-node discriminability well, peaking at 
+
+r = 0 .3 (max 81 .53% ). At higher coarsening ratios, accuracy drops as more nodes share the same prediction, although these regimes are precisely those where coarsening is computationally most beneficial. In contrast, Cluster-GCN performs poorly at low ratios, where clusters are too small for effective intra-cluster propagation, and improves as r increases. However, at very high ratios, each cluster approaches the full graph, which removes the benefit of batching and can lead to memory issues. Peak performance is reached at 
+
+r = 0 .999 (81 .17% ). CoRe-GNN’s strong performance across all ratios, with a peak accuracy of 81 .62% at r = 0 .4, suggests that combining both propagation mechanisms mitigates this trade-off. 8Homophilic datasets. We evaluate on the three Planetoid citation networks [ 34 ]: Cora, Citeseer and Pubmed. We restrict to the main connected component of Cora and Citeseer, which may explain small differences with other benchmarks. On Cora and Citeseer, Coarsen-GNN achieves the best mean accuracy, while CoRe-GNN is a close second. Both outperform full GCN, as coarsening preserves low-frequency graph structure that aligns well with homophilic label distributions. On Pubmed, CoRe-GNN ranks first. These datasets are not particularly challenging for coarsening-based methods, as clusters tend to be label-homogeneous. Table 1: Test accuracy ( %, mean ±std). Bold : best. Underline: second best. Planetoid Heterophilic Model Cora CiteSeer PubMed chameleon squirrel Amazon-ratings GCN 81 .58 ± 0.6 72 .40 ± 0.71 79 .11 ± 0.08 62 .68 ± 2.05 46 .56 ± 1.87 47 .61 ± 0.58                                                                         
+
+> Coarsen-GNN 82 .03 ±0.373 .86 ±0.68 78 .94 ±0.258 .03 ±2.23 41 .31 ±1.04 46 .99 ±0.36
+> Cluster-GCN 76 .13 ±1.11 71 .31 ±0.67 78 .19 ±0.358 .57 ±1.70 42 .4±1.29 47 .02 ±0.64
+> CoRE-GNN 81 .67 ±0.64 73 .62 ±0.49 79 .27 ±0.35 60 .68 ±1.99 46 .80 ±1.13 47 .45 ±0.61
+> CoRE-GNN (b) 80 .91 ±0.25 73 .06 ±0.44 79 .26 ±0.31 61 .43 ±0.81 50 .49 ±0.93 45 .48 ±0.23
+
+Heterophilic datasets. We consider Chameleon, Squirrel [ 29 ] and Amazon Ratings [ 27 ]. On these datasets, Coarsen-GNN is limited by its constant-by-block predictions: as most coarsening algorithms merge neighboring nodes, nodes within the same supernode often carry different labels, directly capping accuracy. CoRe-GNN significantly outperforms Coarsen-GNN on all three datasets. As shown in recent benchmarks [ 26 ], heterophilic graphs require long-range information to be classified accurately, which explains why CoRe-GNN also outperforms Cluster-GCN. On Squirrel, full GCN outperforms CoRe-GNN, while CoRe-GNN(b) achieves the best results, suggesting that the batching scheme provides additional regularization on this dataset. 
+
+Large-scale graphs. We report results on ogbn-arxiv [ 14 ], Reddit [ 13 ] and ogbn-products [ 14 ]. On ogbn-arxiv, Coarsen-GNN performs poorly as the graph has weak community structure, while CoRe-GNN and Cluster-GCN are both competitive but do not surpass full GCN. On Reddit and ogbn-products, full GCN and CoRe-GNN without batching are out of memory. CoRe-GNN(b) significantly outperforms both Cluster-GCN and Coarsen-GNN on these datasets, suggesting that the inter-cluster and intra-cluster propagations capture complementary information. Table 2: Test accuracy ( %, mean ±std). Bold : best. Underline: second best. City graphs Large-scale Model paris london ogbn-arxiv Reddit ogbn-products GCN 32 .9 ± 1.98 32 .41 ± 1.19 71 .86 ± 0.26 OOM OOM Coarsen-GNN 35 .97 ± 0.43 35 .76 ± 0.43 61 .36 ± 0.12 89 .87 ± 0.03 70 .75 ± 0.19                                          
+
+> Cluster-GCN 27 .43 ±1.632 .28 ±0.61 70 .22 ±0.31 89 .09 ±0.34 67 .13 ±0.51
+> CoRE-GNN 42 .83 ±1.25 41 .1±0.81 70 .03 ±0.29 OOM OOM CoRE-GNN (b) 44 .35 ±0.45 44 .4±0.57 69 .56 ±0.27 93 .41 ±0.09 74 .45 ±0.27
+
+Long-range tasks. We evaluate on the Paris and London road networks [ 24 ], two recently introduced large graphs specifically designed to measure long-range interactions in graph machine learning. A description of all datasets is provided in Appendix F. These graphs require aggregating information over many hops to correctly classify nodes, making them particularly challenging for local message passing methods. Among the baselines, Coarsen-GNN outperforms both Cluster-GCN and full GCN as its inter-cluster propagation already captures some long-range structure. CoRe-GNN and CoRe-GNN(b) achieve the best accuracy among the architectures considered here, indicating that combining inter- and intra-cluster propagations provides the most effective long-range aggregation in this setting. 95 Conclusion 
+
+CoRe-GNN combines inter-cluster and intra-cluster propagations in parallel at each layer, overcoming the limitations of both graph coarsening and Cluster-GCN. The architecture is agnostic to the choice of coarsening algorithm, admits a natural batching scheme that scales to graphs with millions of nodes, and inherits provable propagation guarantees from graph coarsening. On node classification benchmarks spanning homophilic, heterophilic, large-scale, and long-range graphs, CoRe-GNN consistently outperforms both Coarsen-GNN and Cluster-GCN baselines, and achieves substantial gains over full GCN on long-range tasks on the cities datasets. 
+
+Limitations and outlook. The unified matrix formulation underlying CoRe-GNN applies to GNNs whose forward pass can be expressed through a fixed propagation matrix S, excluding architectures with residual connections or learned propagation matrices such as Graph Attention Networks [ 31 ]. Adapting CoRe-GNN to these settings is a natural direction for future work, alongside using separate optimizers for the two branches and designing residual connections compatible with the two-branch structure. On the theoretical side, a multi-level extension where the coarsened graph is itself coarsened recursively would naturally generalize the architecture. Beyond these extensions, CoRe-GNN (batched) also suggests a natural connection to asynchronous federated learning. The coarsened graph plays the role of a central aggregator that receives local updates from the clusters selected in the current batch. For clusters that have not yet reported back, the central aggregator sends a self-loop proxy in place of their local update. This asynchronous communication pattern suggests that CoRe-GNN could serve as a framework for federated GNN training on large graphs, where not all agents are available at each round. 
+
+## Acknowledgments 
+
+The authors acknowledge the fundings of France 2030, PEPR IA, ANR-23-PEIA-0008 and European Union ERC-2024-STG-101163069 MALAGA. 
+
+## References 
+
+[1] Filippo Maria Bianchi, Daniele Grattarola, and Cesare Alippi. Spectral clustering with graph neural networks for graph pooling. In International conference on machine learning , pages 874–883. PMLR, 2020. [2] Michael M. Bronstein, Joan Bruna, Taco Cohen, and Petar Veličković. Geometric Deep Learning: Grids, Groups, Graphs, Geodesics, and Gauges. arXiv:2104.13478 , 2021. [3] Jie Chen, Tengfei Ma, and Cao Xiao. Fastgcn: fast learning with graph convolutional networks via importance sampling. 
+
+arXiv preprint arXiv:1801.10247 , 2018. [4] Wei-Lin Chiang, Xuanqing Liu, Si Si, Yang Li, Samy Bengio, and Cho-Jui Hsieh. Cluster-gcn: An efficient algorithm for training deep and large graph convolutional networks. In Proceedings of the 25th ACM SIGKDD international conference on knowledge discovery & data mining , pages 257–266, 2019. [5] Ido Cohen and Ronen Talmon. Spectral graph coarsening using inner product preservation and the grassmann manifold. In 
+
+The Thirty-ninth Annual Conference on Neural Information Processing Systems , 2025. [6] Inderjit S Dhillon, Yuqiang Guan, and Brian Kulis. Weighted graph cuts without eigenvectors a multilevel approach. IEEE transactions on pattern analysis and machine intelligence , 29(11):1944–1957, 2007. [7] Charles Dickens, Edward Huang, Aishwarya Reganti, Jiong Zhu, Karthik Subbian, and Danai Koutra. Graph coarsening via convolution matching for scalable graph neural network training. In Companion Proceedings of the ACM on Web Conference , pages 1502–1510, 2024. [8] Mucong Ding, Kezhi Kong, Jingling Li, Chen Zhu, John Dickerson, Furong Huang, and Tom Goldstein. Vq-gnn: A universal framework to scale up graph neural networks using vector quantization. Advances in Neural Information Processing Systems , 34:6733–6746, 2021. [9] Ben Finkelshtein, İsmail İ Ceylan, Michael Bronstein, and Ron Levie. Learning on large graphs using intersecting communities. Advances in Neural Information Processing Systems , 37:57349–57388, 2024. 
+
+10 [10] Hongyang Gao and Shuiwang Ji. Graph u-nets. In international conference on machine learning , pages 2083–2092. PMLR, 2019. [11] Johannes Gasteiger, Chendi Qian, and Stephan Günnemann. Influence-based mini-batching for graph neural networks. In 
+
+Learning on Graphs Conference , pages 9–1. PMLR, 2022. [12] Justin Gilmer, Samuel S Schoenholz, Patrick F Riley, Oriol Vinyals, and George E Dahl. Neural Message Passing for Quantum Chemistry. In International Conference on Machine Learning (ICML) , pages 1–14, 2017. ISBN 978-1-4577-0079-8. [13] Will Hamilton, Zhitao Ying, and Jure Leskovec. Inductive representation learning on large graphs. Advances in neural information processing systems , 30, 2017. [14] Weihua Hu, Matthias Fey, Marinka Zitnik, Yuxiao Dong, Hongyu Ren, Bowen Liu, Michele Catasta, and Jure Leskovec. Open graph benchmark: Datasets for machine learning on graphs. Advances in neural information processing systems , 33: 22118–22133, 2020. [15] Wei Jin, Xianfeng Tang, Haoming Jiang, Zheng Li, Danqing Zhang, Jiliang Tang, and Bing Yin. Condensing graphs via one-step gradient matching. In Proceedings of the 28th ACM SIGKDD Conference on Knowledge Discovery and Data Mining , pages 720–730, 2022. [16] Antonin Joly and Nicolas Keriven. Graph Coarsening with Message-Passing Guarantees. Advances in Neural Information Processing Systems , 37:114902–114927, 2024. [17] Antonin Joly, Nicolas Keriven, and Aline Roumy. Taxonomy of reduction matrices for graph coarsening. Advances in Neural Information Processing Systems , 38:96058–96083, 2026. [18] George Karypis and Vipin Kumar. Metis: A software package for partitioning unstructured graphs, partitioning meshes, and computing fill-reducing orderings of sparse matrices. 1997. [19] Mohit Kataria, Sandeep Kumar, et al. Ugc: Universal graph coarsening. Advances in Neural Information Processing Systems , 37:63057–63081, 2024. [20] Thomas N Kipf and Max Welling. Semi-Supervised Classification with Graph Convolutional Networks. In International Conference on Learning Representations , 2017. [21] Jonathan Kouchly, Ben Finkelshtein, Michael Bronstein, and Ron Levie. Efficient learning on large graphs using a densifying regularity lemma. In International Conference on Learning Representations , volume 2026, pages 5772–5826, 2026. [22] Manoj Kumar, Anurag Sharma, Shashwat Saxena, and Sandeep Kumar. Featured graph coarsening with similarity guarantees. In International Conference on Machine Learning , pages 17953–17975. PMLR, 2023. [23] Guoming Li, Jian Yang, and Yifan Chen. Partition-wise graph filtering: A unified perspective through the lens of graph coarsening. In Proceedings of the 31st ACM SIGKDD Conference on Knowledge Discovery and Data Mining V. 2 , pages 1353–1364, 2025. [24] Huidong Liang, Haitz Sáez de Ocáriz Borde, Baskaran Sripathmanathan, Michael Bronstein, and Xiaowen Dong. Towards quantifying long-range interactions in graph machine learning: a large graph dataset and a measurement. In International Conference on Learning Representations , volume 2026, pages 34655–34688, 2026. [25] Andreas Loukas. Graph reduction with spectral and cut guarantees. Journal of Machine Learning Research , 20(116):1–42, 2019. [26] Yuankai Luo, Lei Shi, and Xiao-Ming Wu. Classic gnns are strong baselines: Reassessing gnns for node classification. 
+
+Advances in Neural Information Processing Systems , 37:97650–97669, 2024. [27] Oleg Platonov, Denis Kuznedelev, Michael Diskin, Artem Babenko, and Liudmila Prokhorenkova. A critical look at the evaluation of gnns under heterophily: Are we really making progress? In The Eleventh International Conference on Learning Representations , 2023. [28] Shubhajit Roy, Hrriday Ruparel, Kishan Ved, and Anirban Dasgupta. Fit-gnn: Faster inference time for gnns that’fit’in memory using coarsening. arXiv preprint arXiv:2410.15001 , 2024. [29] Benedek Rozemberczki, Carl Allen, and Rik Sarkar. Multi-scale attributed node embedding. Journal of Complex Networks ,9(2), 2021. [30] Franco Scarselli, Marco Gori, Ah Chung Tsoi, Markus Hagenbuchner, and Gabriele Monfardini. The graph neural network model. IEEE transactions on neural networks , 20(1):61–80, 2008. [31] Petar Veličković, Guillem Cucurull, Arantxa Casanova, Adriana Romero, Pietro Lio, and Yoshua Bengio. Graph attention networks. arXiv preprint arXiv:1710.10903 , 2017. [32] Carlos Vonessen, Florian Grötschla, and Roger Wattenhofer. Next level message-passing with hierarchical support graphs. 
+
+arXiv preprint arXiv:2406.15852 , 2024. 
+
+11 [33] Felix Wu, Amauri Souza, Tianyi Zhang, Christopher Fifty, Tao Yu, and Kilian Weinberger. Simplifying graph convolutional networks. In International conference on machine learning , pages 6861–6871. PMLR, 2019. [34] Zhilin Yang, William Cohen, and Ruslan Salakhudinov. Revisiting semi-supervised learning with graph embeddings. In 
+
+International conference on machine learning , pages 40–48. PMLR, 2016. [35] Zhitao Ying, Jiaxuan You, Christopher Morris, Xiang Ren, Will Hamilton, and Jure Leskovec. Hierarchical graph representation learning with differentiable pooling. Advances in neural information processing systems , 31, 2018. [36] Hanqing Zeng, Hongkuan Zhou, Ajitesh Srivastava, Rajgopal Kannan, and Viktor Prasanna. Graphsaint: Graph sampling based inductive learning method. arXiv preprint arXiv:1907.04931 , 2019. [37] Hanqing Zeng, Muhan Zhang, Yinglong Xia, Ajitesh Srivastava, Andrey Malevich, Rajgopal Kannan, Viktor Prasanna, Long Jin, and Ren Chen. Decoupling the depth and scope of graph neural networks. Advances in neural information processing systems , 34:19665–19679, 2021. [38] Zhiqiang Zhong, Cheng-Te Li, and Jun Pang. Hierarchical message-passing graph neural networks: Z. zhong et al. Data Mining and Knowledge Discovery , 37(1):381–408, 2023. [39] Difan Zou, Ziniu Hu, Yewen Wang, Song Jiang, Yizhou Sun, and Quanquan Gu. Layer-dependent importance sampling for training deep and large graph convolutional networks. Advances in neural information processing systems , 32, 2019. 
+
+## A Proofs 
+
+A.1 Proof of Theorem 2 
+
+∥Sx − (Sintra x + QS inter  
+
+> c
+
+P x )∥L = ∥(Sintra + Sinter )x − Sintra x − QP S inter QP x ∥L (10) 
+
+= ∥Sinter x − ΠSinter Πx∥L (11) 
+
+≤ ϵL,Q,P, R∥x∥L (C′ 
+
+> S
+
++ C′
+
+> Π
+
+) (12) where the second equality uses QS inter  
+
+> c
+
+P = Π Sinter Π, and the last inequality applies Theorem 1 to Sinter 
+
+in place of S. Note that the assumptions and constants are now stated for Sinter : Π and Sinter must be 
+
+ker (L)-preserving, Sinter must be R-preserving, and the constants C′ 
+
+> S
+
+= ∥Sinter ∥L and C′ 
+
+> Π
+
+= ∥ΠSinter ∥L
+
+depend on Sinter rather than S.
+
+A.2 Proof commutativity of the lifting processes 
+
+Lemma 1 (Commutativity of Q with σ). Let Q ∈ RN ×n be a well-partitioned matrix with non-negative entries, and let σ be a positively homogeneous pointwise activation function, i.e., σ(αx ) = α σ (x) for all 
+
+α > 0. Then for any X ∈ Rn×d:
+
+Q σ (X) = σ(QX )
+
+Proof. Since Q is well-partitioned, for every row i there exists a unique k∗ ∈ [n] such that Qik ∗ > 0 and 
+
+Qij = 0 for all j̸ = k∗. Therefore: 
+
+[Q σ (X)] i =
+
+> n
+
+X
+
+> j=1
+
+Qij σ(Xj ) = Qik ∗ σ(Xk∗ )
+
+and 
+
+[σ(QX )] i = σ
+
+
+
+> n
+
+X
+
+> j=1
+
+Qij Xj
+
+ = σ(Qik ∗ Xk∗ ) = Qik ∗ σ(Xk∗ )
+
+Remark 3. The homogeneity condition σ(αx ) = α σ (x) for α > 0 is satisfied by the identity function (as in SGC [33]) and by ReLU (as in classical GCN [20]), but not by sigmoid or tanh activations. 
+
+12 A.3 Relation between CoRe-GNN and Coarsen-GNN 
+
+We denote by Ck = {i ∈ [N ] : [ Q]ik > 0} the set of original nodes mapped to supernode k, for k = 1 , . . . , n .We first establish the structure of P S intra Q and then show that ΠSintra Π is block-diagonal by cluster. 
+
+Lemma 2 (P S intra Q is diagonal and ΠSintra Π is block-diagonal) . Let Q be a well-partitioned lifting matrix and P = Q+ the moore penrose inverse of this matrix with the same support as Q⊤. Then P S intra Q ∈ Rn×n
+
+is diagonal with entries: 
+
+[P S intra Q]kk = X
+
+> u,v ∈Ck
+
+[P ]ku [Sintra ]uv [Q]vk 
+
+and ΠSintra Π = Q(P S intra Q)P is block-diagonal in RN ×N , with one block per cluster. Proof. For k̸ = l with k, l ∈ [n]:
+
+[P S intra Q]kl =
+
+> N
+
+X
+
+> u,v =1
+
+[P ]ku [Sintra ]uv [Q]vl (13) 
+
+= X
+
+> u∈Ck
+
+X
+
+> v∈Cl
+
+[P ]ku [Sintra ]uv [Q]vl (14) 
+
+= 0 (15) since [Sintra ]uv = 0 for u ∈ Ck, v ∈ Cl with k̸ = l.For i ∈ Ck and j ∈ Cl with k̸ = l:
+
+[Π Sintra Π] ij =
+
+> n
+
+X
+
+> k′=1
+
+[Q]ik ′ [P S intra Q]k′k′ [P ]k′j (16) 
+
+= [ Q]ik [P S intra Q]kk [P ]kj = 0 (17) since [P ]kj = 0 for j / ∈ Ck as P = Q+ has the same support as Q⊤.and, for i, j ∈ Ck, [Π Sintra Π] ij is in general nonzero. Since Sinter  
+
+> c
+
+= P S inter Q = P SQ − P S intra Q, the term P S intra Q is precisely what distinguishes Sc from 
+
+Sinter  
+
+> c
+
+: it acts as a diagonal self-loop correction on the coarsened nodes, absent from CoRe-GNN. By contrast, 
+
+ΠSinter Π has nonzero entries across different clusters, capturing inter-cluster dependencies by blocks. 
+
+## B Analysis of Propagation Bound Constants 
+
+This section provides a deeper analysis of the constants CS , CΠ, C′ 
+
+> S
+
+and C′ 
+
+> Π
+
+appearing in Theorems 1 and 2. For each graph, we plot the four quantities: CS and CΠ terms, full theoretical upper bound, and mean propagation error averaged over 100 smooth signals sampled from the low-frequency subspace of L, all as a function of the coarsening ratio r, comparing Coarsen-GNN (blue) and CoRe-GNN (red). We first analyze four SBM graphs with varying community structure (Section B.1), then four real datasets (Section B.2), before discussing the results(Section B.3). 
+
+B.1 Empirical analysis on SBM graphs 
+
+We analyze the bounds on four synthetic Stochastic Block Model (SBM) graphs, each with 5 communities of 100 nodes. In an SBM, edges are drawn independently with probability pin within communities and pout 
+
+across communities. We vary pin and pout to span a range of spectral connectivities. SBM-1 and SBM-2 are sparse graphs with low pin , while SBM-3 and SBM-4 are denser with higher inter-community connectivity. All graphs are coarsened with the Loukas algorithm. For each graph we show its structure and the four bound quantities as a function of the coarsening ratio r. SBM-2 corresponds to the graph shown in the main paper (Figure 3). 13 Graph structure 0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0.25 
+
+0.30 
+
+0.35 
+
+0.40 
+
+0.45 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0.38 
+
+0.40 
+
+0.42 
+
+0.44 
+
+0.46 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0.5 
+
+0.6 
+
+0.7 
+
+0.8 
+
+0.9 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0.10 
+
+0.15 
+
+0.20 
+
+0.25 
+
+0.30 
+
+Coarsen-GNN 
+
+CoRe-GNN CΠ terms 0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0.25 
+
+0.30 
+
+0.35 
+
+0.40 
+
+0.45 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0.38 
+
+0.40 
+
+0.42 
+
+0.44 
+
+0.46 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0.5 
+
+0.6 
+
+0.7 
+
+0.8 
+
+0.9 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0.10 
+
+0.15 
+
+0.20 
+
+0.25 
+
+0.30 
+
+Coarsen-GNN 
+
+CoRe-GNN CS terms 0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0.25 
+
+0.30 
+
+0.35 
+
+0.40 
+
+0.45 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0.38 
+
+0.40 
+
+0.42 
+
+0.44 
+
+0.46 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0.5 
+
+0.6 
+
+0.7 
+
+0.8 
+
+0.9 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0.10 
+
+0.15 
+
+0.20 
+
+0.25 
+
+0.30 
+
+Coarsen-GNN 
+
+CoRe-GNN Theoretical bound 0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0.25 
+
+0.30 
+
+0.35 
+
+0.40 
+
+0.45 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0.38 
+
+0.40 
+
+0.42 
+
+0.44 
+
+0.46 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0.5 
+
+0.6 
+
+0.7 
+
+0.8 
+
+0.9 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0.10 
+
+0.15 
+
+0.20 
+
+0.25 
+
+0.30 
+
+Coarsen-GNN 
+
+CoRe-GNN propagation error 
+
+Figure 5: SBM-1 ( pin = 0 .08 , pout = 0 .030 )
+
+Graph structure 0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0.40 
+
+0.45 
+
+0.50 
+
+0.55 
+
+0.60 
+
+0.65 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0.48 
+
+0.50 
+
+0.52 
+
+0.54 
+
+0.56 
+
+0.58 
+
+0.60 
+
+0.62 
+
+0.64 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0.7 
+
+0.8 
+
+0.9 
+
+1.0 
+
+1.1 
+
+1.2 
+
+1.3 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0.10 
+
+0.15 
+
+0.20 
+
+0.25 
+
+0.30 
+
+Coarsen-GNN 
+
+CoRe-GNN CΠ terms 0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0.40 
+
+0.45 
+
+0.50 
+
+0.55 
+
+0.60 
+
+0.65 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0.48 
+
+0.50 
+
+0.52 
+
+0.54 
+
+0.56 
+
+0.58 
+
+0.60 
+
+0.62 
+
+0.64 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0.7 
+
+0.8 
+
+0.9 
+
+1.0 
+
+1.1 
+
+1.2 
+
+1.3 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0.10 
+
+0.15 
+
+0.20 
+
+0.25 
+
+0.30 
+
+Coarsen-GNN 
+
+CoRe-GNN CS terms 0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0.40 
+
+0.45 
+
+0.50 
+
+0.55 
+
+0.60 
+
+0.65 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0.48 
+
+0.50 
+
+0.52 
+
+0.54 
+
+0.56 
+
+0.58 
+
+0.60 
+
+0.62 
+
+0.64 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0.7 
+
+0.8 
+
+0.9 
+
+1.0 
+
+1.1 
+
+1.2 
+
+1.3 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0.10 
+
+0.15 
+
+0.20 
+
+0.25 
+
+0.30 
+
+Coarsen-GNN 
+
+CoRe-GNN Theoretical bound 0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0.40 
+
+0.45 
+
+0.50 
+
+0.55 
+
+0.60 
+
+0.65 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0.48 
+
+0.50 
+
+0.52 
+
+0.54 
+
+0.56 
+
+0.58 
+
+0.60 
+
+0.62 
+
+0.64 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0.7 
+
+0.8 
+
+0.9 
+
+1.0 
+
+1.1 
+
+1.2 
+
+1.3 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0.10 
+
+0.15 
+
+0.20 
+
+0.25 
+
+0.30 
+
+Coarsen-GNN 
+
+CoRe-GNN propagation error 
+
+Figure 6: SBM-2 ( pin = 0 .15 , pout = 0 .020 )
+
+Graph structure 0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0.400 
+
+0.425 
+
+0.450 
+
+0.475 
+
+0.500 
+
+0.525 
+
+0.550 
+
+0.575 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0.51 
+
+0.52 
+
+0.53 
+
+0.54 
+
+0.55 
+
+0.56 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0.6 
+
+0.7 
+
+0.8 
+
+0.9 
+
+1.0 
+
+1.1 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0.02 
+
+0.04 
+
+0.06 
+
+0.08 
+
+0.10 
+
+0.12 
+
+Coarsen-GNN 
+
+CoRe-GNN CΠ terms 0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0.400 
+
+0.425 
+
+0.450 
+
+0.475 
+
+0.500 
+
+0.525 
+
+0.550 
+
+0.575 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0.51 
+
+0.52 
+
+0.53 
+
+0.54 
+
+0.55 
+
+0.56 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0.6 
+
+0.7 
+
+0.8 
+
+0.9 
+
+1.0 
+
+1.1 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0.02 
+
+0.04 
+
+0.06 
+
+0.08 
+
+0.10 
+
+0.12 
+
+Coarsen-GNN 
+
+CoRe-GNN CS terms 0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0.400 
+
+0.425 
+
+0.450 
+
+0.475 
+
+0.500 
+
+0.525 
+
+0.550 
+
+0.575 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0.51 
+
+0.52 
+
+0.53 
+
+0.54 
+
+0.55 
+
+0.56 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0.6 
+
+0.7 
+
+0.8 
+
+0.9 
+
+1.0 
+
+1.1 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0.02 
+
+0.04 
+
+0.06 
+
+0.08 
+
+0.10 
+
+0.12 
+
+Coarsen-GNN 
+
+CoRe-GNN Theoretical bound 0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0.400 
+
+0.425 
+
+0.450 
+
+0.475 
+
+0.500 
+
+0.525 
+
+0.550 
+
+0.575 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0.51 
+
+0.52 
+
+0.53 
+
+0.54 
+
+0.55 
+
+0.56 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0.6 
+
+0.7 
+
+0.8 
+
+0.9 
+
+1.0 
+
+1.1 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0.02 
+
+0.04 
+
+0.06 
+
+0.08 
+
+0.10 
+
+0.12 
+
+Coarsen-GNN 
+
+CoRe-GNN propagation error 
+
+Figure 7: SBM-3 ( pin = 0 .70 , pout = 0 .10 )
+
+Graph structure 0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0.14 
+
+0.16 
+
+0.18 
+
+0.20 
+
+0.22 
+
+0.24 
+
+0.26 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0.240 
+
+0.245 
+
+0.250 
+
+0.255 
+
+0.260 
+
+0.265 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0.275 
+
+0.300 
+
+0.325 
+
+0.350 
+
+0.375 
+
+0.400 
+
+0.425 
+
+0.450 
+
+0.475 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0.04 
+
+0.06 
+
+0.08 
+
+0.10 
+
+Coarsen-GNN 
+
+CoRe-GNN CΠ terms 0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0.14 
+
+0.16 
+
+0.18 
+
+0.20 
+
+0.22 
+
+0.24 
+
+0.26 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0.240 
+
+0.245 
+
+0.250 
+
+0.255 
+
+0.260 
+
+0.265 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0.275 
+
+0.300 
+
+0.325 
+
+0.350 
+
+0.375 
+
+0.400 
+
+0.425 
+
+0.450 
+
+0.475 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0.04 
+
+0.06 
+
+0.08 
+
+0.10 
+
+Coarsen-GNN 
+
+CoRe-GNN CS terms 0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0.14 
+
+0.16 
+
+0.18 
+
+0.20 
+
+0.22 
+
+0.24 
+
+0.26 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0.240 
+
+0.245 
+
+0.250 
+
+0.255 
+
+0.260 
+
+0.265 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0.275 
+
+0.300 
+
+0.325 
+
+0.350 
+
+0.375 
+
+0.400 
+
+0.425 
+
+0.450 
+
+0.475 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0.04 
+
+0.06 
+
+0.08 
+
+0.10 
+
+Coarsen-GNN 
+
+CoRe-GNN Theoretical bound 0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0.14 
+
+0.16 
+
+0.18 
+
+0.20 
+
+0.22 
+
+0.24 
+
+0.26 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0.240 
+
+0.245 
+
+0.250 
+
+0.255 
+
+0.260 
+
+0.265 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0.275 
+
+0.300 
+
+0.325 
+
+0.350 
+
+0.375 
+
+0.400 
+
+0.425 
+
+0.450 
+
+0.475 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0.04 
+
+0.06 
+
+0.08 
+
+0.10 
+
+Coarsen-GNN 
+
+CoRe-GNN propagation error 
+
+Figure 8: SBM-4 ( pin = 0 .50 , pout = 0 .20 )
+
+B.2 Empirical analysis on real graphs 
+
+We repeat the same analysis on four real datasets: Cora, Citeseer, Chameleon and Squirrel. 14 0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+1.0 
+
+1.5 
+
+2.0 
+
+2.5 
+
+3.0 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+1.0 
+
+1.5 
+
+2.0 
+
+2.5 
+
+3.0 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0
+
+2
+
+4
+
+6
+
+8
+
+10 
+
+12 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0.2 
+
+0.4 
+
+0.6 
+
+0.8 
+
+Coarsen-GNN 
+
+CoRe-GNN CΠ terms 0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+1.0 
+
+1.5 
+
+2.0 
+
+2.5 
+
+3.0 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+1.0 
+
+1.5 
+
+2.0 
+
+2.5 
+
+3.0 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0
+
+2
+
+4
+
+6
+
+8
+
+10 
+
+12 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0.2 
+
+0.4 
+
+0.6 
+
+0.8 
+
+Coarsen-GNN 
+
+CoRe-GNN CS terms 0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+1.0 
+
+1.5 
+
+2.0 
+
+2.5 
+
+3.0 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+1.0 
+
+1.5 
+
+2.0 
+
+2.5 
+
+3.0 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0
+
+2
+
+4
+
+6
+
+8
+
+10 
+
+12 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0.2 
+
+0.4 
+
+0.6 
+
+0.8 
+
+Coarsen-GNN 
+
+CoRe-GNN Theoretical bound 0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+1.0 
+
+1.5 
+
+2.0 
+
+2.5 
+
+3.0 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+1.0 
+
+1.5 
+
+2.0 
+
+2.5 
+
+3.0 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0
+
+2
+
+4
+
+6
+
+8
+
+10 
+
+12 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0.2 
+
+0.4 
+
+0.6 
+
+0.8 
+
+Coarsen-GNN 
+
+CoRe-GNN mean propagation error 
+
+Figure 9: Cora Dataset 0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+1
+
+2
+
+3
+
+4
+
+5
+
+6
+
+7
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+1
+
+2
+
+3
+
+4
+
+5
+
+6
+
+7
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0
+
+10 
+
+20 
+
+30 
+
+40 
+
+50 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0.0 
+
+0.2 
+
+0.4 
+
+0.6 
+
+0.8 
+
+1.0 
+
+Coarsen-GNN 
+
+CoRe-GNN 
+
+CΠ terms 0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+1
+
+2
+
+3
+
+4
+
+5
+
+6
+
+7
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+1
+
+2
+
+3
+
+4
+
+5
+
+6
+
+7
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0
+
+10 
+
+20 
+
+30 
+
+40 
+
+50 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0.0 
+
+0.2 
+
+0.4 
+
+0.6 
+
+0.8 
+
+1.0 
+
+Coarsen-GNN 
+
+CoRe-GNN CS terms 0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+1
+
+2
+
+3
+
+4
+
+5
+
+6
+
+7
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+1
+
+2
+
+3
+
+4
+
+5
+
+6
+
+7
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0
+
+10 
+
+20 
+
+30 
+
+40 
+
+50 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0.0 
+
+0.2 
+
+0.4 
+
+0.6 
+
+0.8 
+
+1.0 
+
+Coarsen-GNN 
+
+CoRe-GNN Theoretical bound 0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+1
+
+2
+
+3
+
+4
+
+5
+
+6
+
+7
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+1
+
+2
+
+3
+
+4
+
+5
+
+6
+
+7
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0
+
+10 
+
+20 
+
+30 
+
+40 
+
+50 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0.0 
+
+0.2 
+
+0.4 
+
+0.6 
+
+0.8 
+
+1.0 
+
+Coarsen-GNN 
+
+CoRe-GNN mean propagation error 
+
+Figure 10: CiteSeer Dataset 0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+1.00 
+
+1.25 
+
+1.50 
+
+1.75 
+
+2.00 
+
+2.25 
+
+2.50 
+
+2.75 
+
+3.00 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+1.00 
+
+1.25 
+
+1.50 
+
+1.75 
+
+2.00 
+
+2.25 
+
+2.50 
+
+2.75 
+
+3.00 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0
+
+2
+
+4
+
+6
+
+8
+
+10 
+
+12 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0.0 
+
+0.1 
+
+0.2 
+
+0.3 
+
+0.4 
+
+0.5 
+
+0.6 
+
+0.7 
+
+Coarsen-GNN 
+
+CoRe-GNN 
+
+CΠ terms 0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+1.00 
+
+1.25 
+
+1.50 
+
+1.75 
+
+2.00 
+
+2.25 
+
+2.50 
+
+2.75 
+
+3.00 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+1.00 
+
+1.25 
+
+1.50 
+
+1.75 
+
+2.00 
+
+2.25 
+
+2.50 
+
+2.75 
+
+3.00 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0
+
+2
+
+4
+
+6
+
+8
+
+10 
+
+12 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0.0 
+
+0.1 
+
+0.2 
+
+0.3 
+
+0.4 
+
+0.5 
+
+0.6 
+
+0.7 
+
+Coarsen-GNN 
+
+CoRe-GNN CS terms 0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+1.00 
+
+1.25 
+
+1.50 
+
+1.75 
+
+2.00 
+
+2.25 
+
+2.50 
+
+2.75 
+
+3.00 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+1.00 
+
+1.25 
+
+1.50 
+
+1.75 
+
+2.00 
+
+2.25 
+
+2.50 
+
+2.75 
+
+3.00 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0
+
+2
+
+4
+
+6
+
+8
+
+10 
+
+12 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0.0 
+
+0.1 
+
+0.2 
+
+0.3 
+
+0.4 
+
+0.5 
+
+0.6 
+
+0.7 
+
+Coarsen-GNN 
+
+CoRe-GNN Theoretical bound 0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+1.00 
+
+1.25 
+
+1.50 
+
+1.75 
+
+2.00 
+
+2.25 
+
+2.50 
+
+2.75 
+
+3.00 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+1.00 
+
+1.25 
+
+1.50 
+
+1.75 
+
+2.00 
+
+2.25 
+
+2.50 
+
+2.75 
+
+3.00 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0
+
+2
+
+4
+
+6
+
+8
+
+10 
+
+12 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0.0 
+
+0.1 
+
+0.2 
+
+0.3 
+
+0.4 
+
+0.5 
+
+0.6 
+
+0.7 
+
+Coarsen-GNN 
+
+CoRe-GNN mean propagation error 
+
+Figure 11: Chameleon Dataset 0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+1.0 
+
+1.1 
+
+1.2 
+
+1.3 
+
+1.4 
+
+1.5 
+
+1.6 
+
+1.7 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0.95 
+
+1.00 
+
+1.05 
+
+1.10 
+
+1.15 
+
+1.20 
+
+1.25 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0
+
+1
+
+2
+
+3
+
+4
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0.0 
+
+0.1 
+
+0.2 
+
+0.3 
+
+0.4 
+
+0.5 
+
+0.6 
+
+Coarsen-GNN 
+
+CoRe-GNN 
+
+CΠ terms 0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+1.0 
+
+1.1 
+
+1.2 
+
+1.3 
+
+1.4 
+
+1.5 
+
+1.6 
+
+1.7 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0.95 
+
+1.00 
+
+1.05 
+
+1.10 
+
+1.15 
+
+1.20 
+
+1.25 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0
+
+1
+
+2
+
+3
+
+4
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0.0 
+
+0.1 
+
+0.2 
+
+0.3 
+
+0.4 
+
+0.5 
+
+0.6 
+
+Coarsen-GNN 
+
+CoRe-GNN CS terms 0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+1.0 
+
+1.1 
+
+1.2 
+
+1.3 
+
+1.4 
+
+1.5 
+
+1.6 
+
+1.7 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0.95 
+
+1.00 
+
+1.05 
+
+1.10 
+
+1.15 
+
+1.20 
+
+1.25 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0
+
+1
+
+2
+
+3
+
+4
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0.0 
+
+0.1 
+
+0.2 
+
+0.3 
+
+0.4 
+
+0.5 
+
+0.6 
+
+Coarsen-GNN 
+
+CoRe-GNN Theoretical bound 0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+1.0 
+
+1.1 
+
+1.2 
+
+1.3 
+
+1.4 
+
+1.5 
+
+1.6 
+
+1.7 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0.95 
+
+1.00 
+
+1.05 
+
+1.10 
+
+1.15 
+
+1.20 
+
+1.25 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0
+
+1
+
+2
+
+3
+
+4
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Coarsening ratio r
+
+0.0 
+
+0.1 
+
+0.2 
+
+0.3 
+
+0.4 
+
+0.5 
+
+0.6 
+
+Coarsen-GNN 
+
+CoRe-GNN mean propagation error 
+
+Figure 12: Squirrel Dataset 
+
+B.3 Discussion 
+
+Across all graphs and coarsening ratios, the mean propagation error averaged over smooth signals is consistently lower for CoRe-GNN than for Coarsen-GNN, even when the theoretical bound constants are not strictly smaller. This gap between the bound and the true error is expected: the bound is a worst-case quantity while the mean error reflects typical behavior on low-frequency signals, which are precisely the signals preserved by spectral coarsening. Heterophily does not affect this analysis, as we sample signals from the low-frequency subspace of L regardless of the graph’s label structure. 15 C Detailed Complexity Analysis 
+
+This section provides a detailed complexity analysis of all methods considered in this paper. Table 3 summarizes time and memory complexity, and Section C.2 analyzes the regimes in which CoRe-GNN is theoretically cheaper than classical GCN. 
+
+C.1 Complexity table 
+
+Table 3 summarizes the time and memory complexity of each method. We use K for the number of layers, d
+
+for the hidden dimension, N for the number of nodes, E = nnz (S) for the number of edges, n = (1 − r)N for the number of super-nodes at coarsening ratio r, Ec = nnz (Sinter  
+
+> c
+
+) for the number of edges in the coarsened graph, Eintra = nnz (Sintra ) for the number of intra-cluster edges, b for the batch size in nodes and nbatch for the number of batches per epoch. Table 3: Time and memory complexity for different GNN training methods. d denotes the hidden dimension, 
+
+K the number of layers, E = nnz (S) the number of edges, N the number of nodes, n = (1 − r)N the number of super-nodes at coarsening ratio r, Ec = nnz (Sinter  
+
+> c
+
+) the edges in the coarsened graph, Eintra = nnz (Sintra )
+
+the intra-cluster edges, b the batch size in nodes and nbatch the number of batches per epoch. 
+
+Method Time Complexity Memory Complexity 
+
+Classical GCN [20] O(K(Ed + N d 2)) O(KN d + Kd 2)
+
+Coarsen-GNN [16, 17] O(K(Ecd + nd 2) + 2 N d ) O(Knd + N d + Kd 2)
+
+Cluster-GCN [4] O(K(Eintra d + N d 2)) O(Kbd + Kd 2)
+
+CoRe-GNN O(K(( Ec + Eintra )d + ( n + N )d2 + 2 N d )) O(K(n + N )d + Kd 2)
+
+CoRe-GNN (Batched) O(K(nbatch Ecd + Eintra d + ( nbatch n +
+
+N )d2)) 
+
+O(K(n + b)d + Kd 2)
+
+Classical GCN. At each of the K layers, the sparse matrix-vector product SH (l−1) costs O(Ed ) and the linear transformation costs O(N d 2). Storing all intermediate representations for backpropagation requires 
+
+O(KN d ) memory. 
+
+Coarsen-GNN. Training operates entirely in the coarsened space of n nodes and Ec edges, with memory 
+
+O(Knd ). The lifting operation QH (K) 
+
+> c
+
+at the final layer costs O(N d ) due to the sparsity of Q, adding an 
+
+O(N d ) memory term for storing the lifted predictions. 
+
+Cluster-GCN. Only intra-cluster edges are used, replacing E by Eintra ≤ E in the temporal complexity. The memory complexity is O(Kbd ) per batch since only b node representations are stored at any time. 
+
+CoRe-GNN. Each layer performs both the inter-cluster propagation in the coarsened space at cost 
+
+O(Ecd + nd 2) and the intra-cluster propagation at cost O(Eintra d + N d 2), plus two lifting and reduction operations at cost O(N d ) each due to the sparsity of P and Q. Memory stores two sets of representations: 
+
+O(KN d ) for the original space and O(Knd ) for the coarsened space. 
+
+CoRe-GNN batched. The intra-cluster term is computed over the batch of b nodes only, summing to 
+
+O(K(Eintra d + N d 2)) over all batches. The inter-cluster term is recomputed for each of the nbatch batches per epoch, contributing O(Kn batch (Ecd + nd 2)) , where the d2 term accounts for the linear transformation in the coarsened space recomputed at each batch, giving a total time complexity of O(K(nbatch Ecd +
+
+Eintra d + ( nbatch + N )d2)) . The key advantage over all compared architectures is that memory complexity is 
+
+O(K(n + b)d), independent of N , making large-scale training tractable even when the full graph does not fit on GPU. 16 C.2 Efficiency regimes for CoRe-GNN 
+
+CoRe-GNN has a lower theoretical time complexity than classical GCN when: 
+
+Ec + Eintra + 2 N + nd ≤ E (18) Neither Ec nor Eintra admits a closed-form expression as a function of N and r alone, as both depend on the graph structure and the coarsening algorithm. We analyze one tractable case below and then verify the condition empirically on a medium scale sparse graph ogbn-arxiv. 
+
+Dense graphs with balanced partitions. To build intuition in a tractable theoretical setting, we analyze the efficiency condition under two simplifying assumptions: the original graph is dense with E = N 2, and the coarsening produces balanced clusters of equal size N/n = 1 /(1 − r). Under these assumptions, each cluster forms a clique of size N/n , giving Eintra = n · (N/n )2 = N 2/n = N/ (1 − r), and in the worst case the coarsened graph is also complete with Ec = n2 = (1 − r)2N 2. Condition (18) then becomes: 
+
+(1 − r)2N 2 + N
+
+1 − r + 2 N + (1 − r)N d ≤ N 2
+
+For large N with d ≪ N , the dominant terms are (1 − r)2N 2 on the left and N 2 on the right, and the condition reduces to (1 − r)2 ≤ 1, which holds for all r ∈ [0 , 1] . Dense graphs with balanced partitions therefore always satisfy the efficiency condition, regardless of the coarsening ratio, even in the worst case for 
+
+Ec.
+
+Empirical efficiency condition. While the dense case is always favorable, graphs in practice are sparse. Figure 13 plots the left-hand side of condition (18) normalized by E, using the actual values of Ec and 
+
+Eintra computed from METIS coarsening on ogbn-arxiv ( N = 169 ,343 , E = 1 ,166 ,243 ), for d ∈ { 64 , 128 , 256 }.The condition is satisfied for sufficiently large r, but at very high coarsening ratios Eintra grows back as clusters absorb more edges internally and the left-hand side increases again toward the threshold. On this medium-scale sparse graph the gains are moderate, and more pronounced improvements are expected on larger or denser graphs. We also recall that beyond time complexity, CoRe-GNN admits a natural batching scheme that addresses memory scalability independently of this condition. 
+
+## D Ablation Study of CoRe-GNN 
+
+We study four design choices of CoRe-GNN: the normalization of the lifting matrix Q (Table 4), the choice of inter-cluster propagation matrix (Table 5), weight sharing between the two branches (Table 6), and layer normalization (Table 7). All ablations are run with the same hyperparameters as the best results presented in the main manuscript, varying only the factor under study. 
+
+Normalization of the lifting matrix Q. The lifting matrix Q can be defined in two ways. The combinatorial version Q has binary entries, with exactly one non-zero entry of value 1 per row. The normalized version uses Q = ( D + I)−1/2Q(Dc + Ic)1/2, where D and A are the degree matrix and adjacency matrix of G,and Dc, Ac their counterparts on Gc. This normalization is associated with the self-loop normalized Laplacian 
+
+L = ( D + I)−1/2(D − A)( D + I)−1/2, which satisfies L = IN − S. In both cases, P = Q+ is the Moore-Penrose pseudoinverse of the chosen Q, and both verify Lc = Q⊤LQ and Lc = Dc − Ac = Q⊤LQ = Q⊤(D − A)Q.Table 4 shows that the normalized variant performs better on most datasets, with a mean accuracy gain of 
+
++1 .51% , and is used as default throughout the paper. 
+
+Choice of inter-cluster propagation matrix. CoRe-GNN uses Sinter  
+
+> c
+
+= P S inter Q as the inter-cluster propagation matrix, where Sinter = S − Sintra contains only inter-cluster edges. An alternative is to use the full coarsened propagation matrix Sc = P SQ , which additionally includes the intra-cluster term P S intra Q.Table 5 shows that Sinter  
+
+> c
+
+performs better on most datasets, with a mean accuracy gain of +2 .62% . This is consistent with avoiding double-counting the intra-cluster contribution, which is already handled by the 
+
+Sintra branch. 17 0.8 
+
+> 0.85
+> 0.9
+> 0.95
+> 0.96
+> 0.97
+> 0.98
+> 0.99
+> 0.999
+> 0.9999
+
+reduction ratio r
+
+0
+
+1
+
+2
+
+3
+
+4
+
+> Fraction of  E
+
+ogbn-arxiv metis (N=169343, E=2484941)     
+
+> E(reference)
+> Ec/E
+> Eintra /E
+> d= 64
+> d= 128
+> d= 256
+
+Figure 13: Efficiency condition Ec + Eintra + 2 N + nd ≤ E (normalised by E) on ogbn-arxiv with METIS coarsening, for d ∈ { 64 , 128 , 256 }. Shaded area: regime where CoRe-GNN is computationally cheaper than classical GCN. Table 4: Impact of lifting matrix normalization: normalized self-loop (default) vs combinatorial Dataset Q=combinatorial Q=norm (default) Cora 81 .48 ± 0.39 81 .67 ± 0.64 
+
+CiteSeer 68 .28 ± 1.46 73 .62 ± 0.49 
+
+PubMed 79 .56 ± 0.31 79 .27 ± 0.35 
+
+chameleon 59 .87 ± 3.00 60 .68 ± 1.99 
+
+squirrel 46 .08 ± 1.00 46 .80 ± 1.13 
+
+Amazon-ratings 47 .44 ± 0.45 47 .45 ± 0.61 
+
+paris 39 .07 ± 3.21 42 .86 ± 1.67 
+
+Table 5: Impact of propagation matrix: Sinter  
+
+> c
+
+= P S inter Q (default) vs full Sc = P SQ .Dataset Sc = P SQ Sinter  
+
+> c
+
+= P S inter Q (default) Cora 80 .87 ± 0.74 81 .67 ± 0.64 
+
+CiteSeer 68 .58 ± 2.52 73 .62 ± 0.49 
+
+PubMed 78 .65 ± 0.17 79 .27 ± 0.35 
+
+chameleon 60 .94 ± 2.77 60 .68 ± 1.99 
+
+squirrel 43 .54 ± 1.59 46 .80 ± 1.13 
+
+Amazon-ratings 47 .44 ± 0.45 47 .45 ± 0.61 
+
+paris 33 .99 ± 4.62 42 .86 ± 1.67 
+
+Weight sharing. By default, CoRe-GNN uses independent weight matrices θ(l) and θ(l) 
+
+> c
+
+for the intra-cluster and inter-cluster branches respectively. A simpler variant ties the two weights, setting θ(l) = θ(l) 
+
+> c
+
+. Table 6 shows that independent weights perform better on most datasets, with a mean accuracy gain of +2 .30% .This suggests that the two branches benefit from learning distinct transformations, as the intra-cluster and 18 inter-cluster propagations operate on different graph structures and at different scales. Table 6: Impact of weight sharing (SW) between GCN branches Dataset SW=True SW=False (default) Cora 81 .57 ± 0.61 81 .67 ± 0.64 
+
+CiteSeer 70 .94 ± 1.07 73 .62 ± 0.49 
+
+PubMed 80 .41 ± 0.23 79 .27 ± 0.35 
+
+chameleon 58 .16 ± 2.60 60 .68 ± 1.99 
+
+squirrel 42 .92 ± 2.07 46 .80 ± 1.13 
+
+Amazon-ratings 47 .28 ± 0.46 47 .45 ± 0.61 
+
+paris 34 .94 ± 1.90 42 .86 ± 1.67 
+
+Layer normalization. Layer normalization normalizes representations across the feature dimension, independently of the number of nodes. This makes it compatible with our architecture where cluster sizes vary across batches, unlike batch normalization which depends on the number of nodes and would produce inconsistent statistics across batches of different sizes. Table 7 shows that the best choice is dataset-dependent: layer normalization is beneficial on Amazon Ratings and Paris, while the absence of normalization performs better on the remaining datasets. We therefore select the normalization setting per dataset during hyperparameter tuning. Table 7: Impact of layer normalization. Bold = chosen setting. Dataset LN True LN False Cora 76 .07 ± 2.33 81 .67 ± 0.64 
+
+CiteSeer 69 .46 ± 2.75 73 .62 ± 0.49 
+
+PubMed 75 .36 ± 1.48 79 .27 ± 0.35 
+
+chameleon 59 .41 ± 2.41 60 .68 ± 1.99 
+
+squirrel 40 .64 ± 1.30 46 .80 ± 1.13 
+
+Amazon-ratings 47 .45 ± 0.61 41 .66 ± 0.39 
+
+paris 42 .86 ± 1.67 38 .59 ± 1.32 
+
+## E Pseudo code of Proposed methods 
+
+Algorithm 2 describes the training forward pass of Coarsen-GNN, which operates entirely in the coarsened space and maps the final predictions back to the original nodes. 
+
+Algorithm 2 Coarsen-GNN: Training Forward Pass 
+
+Require: H(0) ∈ RN ×d (original node features) , Sc = P SQ (precomputed) , P, Q , weights (θ(l) 
+
+> c
+
+)Kl=1 , train mask on original graph  
+
+> 1:
+
+H(0)  
+
+> c
+
+← P H (0) // reduce to coarsened space  
+
+> 2:
+
+for l = 1 , . . . , K do  
+
+> 3:
+
+H(l) 
+
+> c
+
+← σ
+
+
+
+Sc H(l−1)  
+
+> c
+
+θ(l)
+
+> c
+
+
+
+// propagation in coarsened space  
+
+> 4:
+
+end for  
+
+> 5:
+
+H(K) ← Q H (K) 
+
+> c
+
+// lift predictions to original space  
+
+> 6:
+
+compute loss on H(K)[train_mask ] 
+
+> 7:
+
+backpropagate and update (θ(l) 
+
+> c
+
+)
+
+Algorithm 3 describes the full batch training forward pass of CoRe-GNN, maintaining two parallel states 
+
+H(l) 
+
+> c
+
+and H(l) at each layer. 19 Algorithm 3 CoRe-GNN: Full Batch Training Forward Pass 
+
+Require: H(0) ∈ RN ×d (original node features) , P, Q, S inter  
+
+> c
+
+(precomputed) , Sintra , weights (θ(l), θ (l) 
+
+> c
+
+)Kl=1 , train mask on original graph  
+
+> 1:
+
+H(0)  
+
+> c
+
+← P H (0) // reduce to coarsened space  
+
+> 2:
+
+for l = 1 , . . . , K do  
+
+> 3:
+
+H(l) 
+
+> c
+
+← σ
+
+
+
+Sinter  
+
+> c
+
+H(l−1)  
+
+> c
+
+θ(l)
+
+> c
+
+
+
+// inter-cluster propagation, coarsened space  
+
+> 4:
+
+H(l) ← σ
+
+
+
+Sintra H(l−1) θ(l)
+
+
+
++ Q H (l) 
+
+> c
+
+// intra-cluster + lift inter-cluster  
+
+> 5:
+
+H(l) 
+
+> c
+
+← P H (l) // reduce to coarsened space for next layer  
+
+> 6:
+
+end for  
+
+> 7:
+
+compute loss on H(K)[train_mask ] 
+
+> 8:
+
+backpropagate and update (θ(l), θ (l) 
+
+> c
+
+)
+
+Algorithm 4 describes the batched training forward pass, where only the clusters selected in the current batch perform full intra-cluster propagation while the remaining super-nodes receive a self-loop proxy. 
+
+Algorithm 4 CoRe-GNN: Batched Training Forward Pass (extended) 
+
+Require: H(0) ∈ RN ×d (original node features) , PB , Q B (restricted to batch) , Sinter  
+
+> c
+
+, S intra [B] (precomputed) , batch 
+
+B ⊆ [n], weights (θ(l), θ (l) 
+
+> c
+
+)Kl=1 , train mask on original graph  
+
+> 1:
+
+H(0)  
+
+> c
+
+← P H (0) // reduce full graph to coarsened space  
+
+> 2:
+
+H(0)  
+
+> B
+
+← H(0) [B] // extract batch nodes  
+
+> 3:
+
+for l = 1 , . . . , K do  
+
+> 4:
+
+H(l) 
+
+> c
+
+← σ
+
+
+
+Sinter  
+
+> c
+
+H(l−1)  
+
+> c
+
+θ(l)
+
+> c
+
+
+
+// all n super-nodes, coarsened space  
+
+> 5:
+
+H(l) 
+
+> B
+
+← σ
+
+
+
+Sintra [B] H(l−1)  
+
+> B
+
+θ(l)
+
+
+
+// intra-cluster, batch nodes only  
+
+> 6:
+
+H(l) 
+
+> B
+
+← H(l) 
+
+> B
+
++ QB H(l) 
+
+> c
+
+[B] // lift inter-cluster to batch nodes  
+
+> 7:
+
+H(l) 
+
+> c
+
+[B] ← PB H(l) 
+
+> B
+
+// reduce batch nodes back to super-nodes  
+
+> 8:
+
+H(l) 
+
+> c
+
+[ ¯B] ← σ
+
+
+
+H(l−1)  
+
+> c
+
+[ ¯B] θ(l)
+
+
+
++ H(l) 
+
+> c
+
+[ ¯B] // self-loop proxy for non-batch super-nodes  
+
+> 9:
+
+end for  
+
+> 10:
+
+train_mask B ← train_mask [index_in_original_batch ] // restrict mask to current batch  
+
+> 11:
+
+compute loss on H(K) 
+
+> B
+
+[train_mask B ] 
+
+> 12:
+
+backpropagate and update (θ(l), θ (l) 
+
+> c
+
+)
+
+E.1 Pseudo-code of exact inference 
+
+Unlike training, exact inference introduces no approximation: every cluster is processed exactly, layer by layer. At each layer, Sintra [B] is loaded batch by batch from CPU to GPU on demand, while H(l) is written back to CPU after each layer to free GPU memory. This strategy is not applicable during training since backpropagation requires retaining the full computational graph across all layers, which is precisely why the self-loop proxy of Algorithm 1 is needed at training time. 
+
+## F Datasets 
+
+We restrict Cora and Citeseer to their principal connected component (PCC) as coarsening algorithms tend to process small connected components first, leading to poor results at low coarsening ratios. This makes direct comparison with other benchmarks more difficult as the training and evaluation sets differ. The characteristics of these datasets and their PCC are reported in Table 8. Details for all datasets are in Table 9. 
+
+Homophilic datasets. Cora, Citeseer and Pubmed [ 34 ] are citation networks where nodes are papers and edges are citations. Labels correspond to research topics and are strongly homophilic. 20 Algorithm 5 CoRe-GNN: Exact Layer-by-Layer Inference 
+
+Require: H(0) ∈ RN ×d (on GPU) , P, Q, S inter  
+
+> c
+
+(on GPU) , Sintra [B] (pre-split by cluster, on CPU) , weights 
+
+(θ(l), θ (l) 
+
+> c
+
+)Kl=1  
+
+> 1:
+
+for l = 1 , . . . , K do  
+
+> 2:
+
+H(l) 
+
+> c
+
+← σ
+
+
+
+Sinter  
+
+> c
+
+P H (l−1) θ(l)
+
+> c
+
+
+
+// inter-cluster, fully on GPU  
+
+> 3:
+
+initialize H(l) ← QH (l) 
+
+> c
+
+// lift to original space, on GPU  
+
+> 4:
+
+for each cluster batch B do  
+
+> 5:
+
+load Sintra [B] from CPU to GPU  
+
+> 6:
+
+H(l)[B] ← H(l)[B] + σ
+
+
+
+Sintra [B] H(l−1) [B] θ(l)
+
+
+
+// intra-cluster batch, on GPU  
+
+> 7:
+
+discard Sintra [B] from GPU  
+
+> 8:
+
+end for  
+
+> 9:
+
+discard H(l−1)  
+
+> 10:
+
+end for  
+
+> 11:
+
+return H(K)
+
+Heterophilic datasets. Chameleon and Squirrel [ 29 ] are Wikipedia page networks. Amazon Ratings [ 27 ]is a co-purchase network where nodes are products. These datasets exhibit low homophily, making them challenging for local message passing methods. 
+
+Long-range datasets. Paris and London [ 24 ] are road networks specifically designed to measure long-range interactions in graph machine learning. 
+
+Large-scale datasets. ogbn-arxiv, Reddit [13] and ogbn-products [14] are large graphs with hundreds of thousands to millions of nodes, used to evaluate scalability. Table 8: Characteristics of Cora and CiteSeer Datasets and their principal connected components 
+
+Dataset # Nodes # Edges # Train Nodes # Val Nodes # Test Nodes 
+
+Cora 2,708 10,556 140 500 1,000 Cora PCC 2,485 10,138 122 459 915 Citeseer 3,327 9,104 120 500 1,000 Citeseer PCC 2,120 7,358 80 328 663 
+
+## G Coarsening Algorithms 
+
+We briefly describe the three coarsening algorithms used in this work. Among them, only METIS enforces 
+
+balanced partitions by construction, while Graclus and Loukas do not impose cluster size constraints. Due to its higher computational cost, Loukas does not scale to very large graphs and was therefore not evaluated on ogbn-products. 
+
+METIS. [ 18 ] partitions the graph into n balanced clusters minimizing the normalized cut. Since METIS takes a target number of nodes as input rather than a ratio, we compute n = ⌊(1 − r)N ⌋ from the desired coarsening ratio r.
+
+Graclus. [6] applies a multilevel clustering based on the ratio cut. Since Graclus does not directly accept a target coarsening ratio, we apply it iteratively until n ≤ (1 − r)N . The achieved ratio is therefore approximate, which makes this algorithm better suited to large graphs where small deviations in the number of super-nodes are acceptable. 21 Table 9: Dataset statistics. 
+
+Dataset # Nodes # Edges # Features # Classes Type 
+
+Cora (PCC) 2,485 10,138 1,433 7 Homophilic CiteSeer (PCC) 2,120 7,358 3,703 6 Homophilic Pubmed 19,717 88,648 500 3 Homophilic Chameleon 2,277 36,101 2,325 5 Heterophilic Squirrel 5,201 217,073 2,089 5 Heterophilic Amazon Ratings 24,492 93,050 300 5 Heterophilic Reddit 232,965 114,615,892 602 41 Large scale ogbn-arxiv 169,343 1,166,243 128 40 Large scale ogbn-products 2,449,029 61,859,140 100 47 Large scale Paris 114,127 182,511 37 10 Long range London 568,795 756,502 37 10 Long range 
+
+G.1 Adaptation of Loukas Algorithm 
+
+The Loukas algorithm [ 25 ] constructs a coarsened graph by minimizing the RSA constant, ensuring that smooth signals on the original graph are well preserved after coarsening. Algorithm 6 presents our adaptation of the Loukas coarsening algorithm. The algorithm iteratively selects contraction sets, merges the corresponding nodes, and updates the graph structure. Our main modification replaces the combinatorial Laplacian by any 
+
+∆-Laplacian L = ∆ L∆ [17 ], and removes the diagonal of Ac at each iteration, which empirically yields lower RSA values. 
+
+Algorithm 6 Loukas Algorithm (adapted) 
+
+Require: Adjacency matrix A, Laplacian L, coarsening ratio r, preserved space R, max nodes per step ne 
+
+> 1:
+
+nobj ← ⌊ N (1 − r)⌋ 
+
+> 2:
+
+compute B0 ← V V ⊤L−1/2 with V an orthonormal basis of R 
+
+> 3:
+
+Q ← IN 
+
+> 4:
+
+while n ≥ nobj do  
+
+> 5:
+
+generate candidate contraction sets  
+
+> 6:
+
+for each contraction set C do  
+
+> 7:
+
+compute cost( C, B l−1, L l−1) = ∥ΠC Bl−1(B⊤ 
+
+> l−1Ll−1Bl−1)−1/2∥LC
+> |C|− 1
+> 8:
+
+end for  
+
+> 9:
+
+sort contraction sets by increasing cost  
+
+> 10:
+
+select non-overlapping sets until min( n − nobj , n e) nodes are merged  
+
+> 11:
+
+compute binary lifting matrix Ql from selected contraction sets  
+
+> 12:
+
+Ql ← Normalize Ql according to the laplacian (i.e if L = ∆ L∆ then Q = ∆ −1
+
+> l−1
+
+Ql∆l) 
+
+> 13:
+
+Q ← Q · Ql 
+
+> 14:
+
+Pl ← Moore-Penrose (Ql) 
+
+> 15:
+
+Bl ← PlBl−1 
+
+> 16:
+
+Al ← Q ⊤ 
+
+> l
+
+Al−1Ql − diag( Q⊤ 
+
+> l
+
+Al−1Ql1n) 
+
+> 17:
+
+Ll ← Q⊤ 
+
+> l
+
+Ll−1Ql 
+
+> 18:
+
+end while  
+
+> 19:
+
+P ← (Q⊤Q)−1Q⊤ return Ac, Q, P 
+
+Candidate contraction sets. Contraction sets can be defined either as pairs of adjacent nodes (edge-based) or as full node neighborhoods. As neighborhoods tend to be large in our graphs, the neighborhood variant proves impractical at low coarsening ratios. We therefore use edge-based contraction sets and control the greedy behavior via ne.22 Coarsening Hyperparameters of this paper By default in this paper, L is the self loop normalized laplacian L = ( D + I)−1/2(D − A)( D + I)−1/2 such that S = IN − L. The preserved space is the first K
+
+eigenvectors of L with K = 100 . ne the number of edges contracted at each step is defined as 10% of the original graph. 
+
+## H Hyperparameters 
+
+H.1 Presentation of hyperparameters 
+
+All experiments use the Adam optimizer with a ReduceLROnPlateau scheduler, trained for up to 800 epochs with dropout fixed at 0.5 on a single NVIDIA A40 GPU. The hyperparameter grid covers the coarsening algorithm (METIS, Graclus, Loukas), coarsening ratio r, hidden dimension, network depth K, learning rate, weight decay, and layer normalization. Due to computational constraints, the full grid search was run over 3 seeds, while the final results reported in the main paper are averaged over 10 seeds. 
+
+H.2 Chosen hyperparameters for main results 
+
+We report below the hyperparameters selected per dataset and per model for the results presented in the main paper. Table 10: Best Hyperparameters CoRE-GNN Dataset Coarsened graph lr wd hidden layers LN Cora loukas r 0.5 0.01 0.001 256 2 FCiteSeer loukas r 0.9 0.01 0 256 2 FPubMed metis nclusters 500 0.01 0.001 128 2 Fchameleon loukas r 0.9 0.01 0.001 512 2 Fsquirrel loukas r 0.3 0.01 0.0005 512 2 FAmazon-ratings metis nclusters 50 0.001 0.001 512 2 Tparis loukas r 0.95 0.01 0 512 5 Tlondon graclus r 0.9 0.01 0 512 5 Togbn-arxiv graclus r 0.999 0.001 0.0001 512 3 TTable 11: Best Hyperparameters CoRE-GNN (b) Dataset Coarsened graph lr wd hidden layers LN batch Cora loukas r 0.5 0.001 0.0005 512 2 F 5000 CiteSeer loukas r 0.9 0.001 0 512 3 F 5000 PubMed metis nclusters 500 0.001 0.0005 512 2 F 5000 chameleon loukas r 0.9 0.0001 0 512 2 T 5000 squirrel loukas r 0.3 0.0001 0.0005 256 2 T 5000 Amazon-ratings loukas r 0.5 0.001 0 256 2 F 5000 paris loukas r 0.9 0.001 0.0005 256 5 T 5000 london graclus r 0.9 0.001 0 256 5 T 5000 ogbn-arxiv metis nclusters 100 0.001 0.0005 512 3 T 5000 Reddit loukas r 0.999 0.001 0 256 4 T 5000 ogbn-products metis nclusters 1500 0.0001 0 256 3 T 5100 
+
+H.3 Hyperparameter grids 
+
+Table 15 reports the full hyperparameter grid explored during the search phase. 23 Table 12: Best Hyperparameters Coarsen-GNN Dataset Coarsened graph lr wd hidden layers LN Cora loukas r 0.3 0.01 0.001 512 2 FCiteSeer loukas r 0.7 0.01 0.001 512 2 FPubMed graclus r 0.5 0.001 0.001 512 2 Fchameleon loukas r 0.3 0.01 0.001 256 2 Fsquirrel loukas r 0.3 0.01 0.001 256 2 FAmazon-ratings loukas r 0.3 0.001 0.001 512 2 Tparis loukas r 0.9 0.01 0 512 4 Tlondon graclus r 0.95 0.01 0 512 6 Togbn-arxiv graclus r 0.9 0.01 0 512 2 TReddit loukas r 0.9 0.01 0 256 2 Fogbn-products metis nclusters 1500 0.01 0 128 3 FTable 13: Best Hyperparameters Cluster-GCN Dataset Coarsened graph lr wd hidden layers LN batch Cora loukas r 0.9 0.001 0.0005 512 3 T 5000 CiteSeer graclus r 0.95 0.0001 0.0005 512 3 F 5000 PubMed metis nclusters 50 0.001 0.0005 256 2 F 5000 chameleon graclus r 0.95 0.0001 0.0005 512 2 T 5000 squirrel loukas r 0.95 0.0001 0.0005 256 2 T 5000 Amazon-ratings metis nclusters 100 0.0001 0.0005 512 2 T 5000 paris loukas r 0.999 0.001 0 512 6 F 5000 london graclus r 0.99 0.001 0 256 6 T 5000 ogbn-arxiv graclus r 0.999 0.001 0 512 3 T 5000 Reddit loukas r 0.95 0.001 0 512 2 F 5000 ogbn-products metis nclusters 1500 0.001 0 256 3 T 5000 Table 14: Best Hyperparameters GCN Dataset lr wd hidden layers LN Cora 0.001 0.0005 512 4 FCiteSeer 0.001 0.0005 512 6 FPubMed 0.001 0.0005 512 2 Fchameleon 0.01 0.0005 256 2 Fsquirrel 0.01 0.0005 64 2 FAmazon-ratings 0.01 0.0001 512 2 Fparis 0.01 0 256 6 Tlondon 0.01 0 256 6 Togbn-arxiv 0.001 0.0001 512 3 T
+
+## I Graph structure underlying Figure 2 
+
+Figure 14 shows the original graph G and its coarsened counterpart Gc corresponding to the partition illustrated in Figure 2. 24 Figure 14: Illustration of the coarsening on the same 5-cluster partition as Figure 2. Left: original graph (N = 20 nodes). Right: coarsened graph. 25 Table 15: Hyperparameter search grids on 3 independent runs 
+
+(a) CoRE-GNN 
+
+Hyperparameter Values 
+
+Coarsening 
+
+Algorithm Metis, Graclus, Loukas Reduction ratio r {0.3, 0.5, 0.7, 0.9, 0.95} Metis nc {50, 100, 200, 500, 1000} ‡
+
+Training 
+
+Learning rate {10 −2, 10 −3, 10 −4}Weight decay {0, 10 −4, 5×10 −4, 10 −3}Dropout 0.5 No. layers {2, 3, 4} ∗
+
+Hidden dim. {64, 128, 256, 512} Epochs 800 Layer norm {yes, no} #
+
+(b) Cluster-GCN 
+
+Hyperparameter Values 
+
+Coarsening 
+
+Algorithm Metis, Graclus, Loukas Reduction ratio r {0.3, 0.95, 0.99, 0.999} Metis nc {50, 100, 1500} ‡
+
+Training 
+
+Learning rate {10 −3, 10 −4}Weight decay {0, 5×10 −4}Dropout 0.5 No. layers {2, 3, 4, 6} Hidden dim. {256, 512} Epochs 800 Layer norm {yes, no} Node batch size 5 000 (large only) 
+
+(c) CoRE-GNN batched 
+
+Hyperparameter Small / Medium ogbn-arxiv / Reddit ogbn-products City 
+
+Coarsening 
+
+Algorithm Metis, Graclus, Loukas, Metis, Graclus, Loukas Metis, Graclus Metis, Graclus, Loukas Reduction ratio r {0.3, 0.5, 0.7, 0.9} {0.9, 0.95, 0.99, 0.999} 0.999 {0.9, 0.95, 0.99, 0.999} Metis nc {50,500} {100, 500, 1500} {500, 1500} {100, 500, 1000, 1500} 
+
+Training 
+
+Learning rate {10 −3, 10 −4} {10 −3, 10 −4} 10 −4 10 −3
+
+Weight decay {0, 5×10 −4} 5×10 −4 0 5×10 −4
+
+Dropout 0.5 0.5 0.5 0.5 No. layers {2, 3} {3, 4} 3 {2,. . . ,24} ∗
+
+Hidden dim. {256, 512} {256, 512} 256 256 Epochs 800 800 800 800 Layer norm {yes, no} yes yes yes Node batch size 500 5 000 5 100 5 000 
+
+(d) Coarsen-GNN 
+
+Hyperparameter Values 
+
+Coarsening 
+
+Algorithm Metis, Graclus, Loukas Reduction ratio r {0.3, 0.5, 0.7, 0.9, 0.95} Metis nc {50, 100, 200, 500, 1000,1500} ‡
+
+Training 
+
+Learning rate {10 −2, 10 −3}Weight decay {0, 5×10 −4, 10 −3}Dropout 0.5 No. layers {2, 3, 4, 6} Hidden dim. {256, 512} Epochs 800 Layer norm {yes, no} 
+
+(e) GCN 
+
+Hyperparameter Values Learning rate {10 −2, 10 −3}Weight decay {0, 10 −4, 5×10 −4}Dropout 0.5 No. layers {2, 3, 4, 5, 6} ∗
+
+Hidden dim. {64, 128, 256, 512} Epochs 800 Layer norm {yes, no}  
+
+> ‡
+
+nc = number of Metis communities, Graclus and Loukas use reduction ratio r directly.  
+
+> #
+
+LN choice is dataset-dependent: LN =False for Cora/CiteSeer/PubMed/chameleon/squirrel; LN =True for Amazon-ratings, and all large graphs.  
+
+> ∗
+
+Cities: CoRE-GNN and GCN tested up to 24 layers. 
+
+26

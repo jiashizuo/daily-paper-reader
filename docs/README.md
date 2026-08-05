@@ -6,38 +6,47 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-08-04
-- 运行时间：2026-08-04 21:44:01 UTC
+- 最新运行日期：2026-08-05
+- 运行时间：2026-08-05 21:23:10 UTC
 - 运行状态：成功
-- 本次总论文数：6
+- 本次总论文数：9
 - 精读区：4
-- 速读区：2
+- 速读区：5
 
 ### 今日简报（AI）
-今日精读4篇、速读2篇，聚焦脑肿瘤分型与神经回路推断两大高分方向。最值得关注两篇8分工作：LLM用于神经回路功能推断，以及三模态融合的脑肿瘤亚型分类。建议普通读者优先精读这两篇高分论文，理解多模态融合与LLM在脑科学中的应用边界。
-- 详情：[/202608/04/README](/202608/04/README)
+今日共读9篇论文，精读4篇、速读5篇，聚焦脑影像分析与图学习前沿。最值得关注的两大方向：持续同调方法拓展人脑结构连接组可控子空间，以及CRIL-U-Net提升局灶性皮层发育不良的MRI分割精度。建议优先精读这两篇高分工作，并搭配速读图神经网络与EEG生物标记论文，快速把握方法互补性。
+- 详情：[/202608/05/README](/202608/05/README)
 
 ### 精读区论文标签
-1. [Neural Circuit Function Inference with LLMs](/202608/04/2608.00059v1-neural-circuit-function-inference-with-llms)  
+1. [Persistent homology broadens the controllable subspace in human structural connectomes](/202608/05/2608.03181v1-persistent-homology-broadens-the-controllable-subspace-in-human-structural-connectomes)  
+   标签：评分：9.0/10、query:fbn
+   evidence：人类结构连接组、持续同调、网络控制
+2. [CRIL-U-Net: Compact Ratio-Interaction Learning for Focal Cortical Dysplasia Segmentation from T1w and FLAIR MRI](/202608/05/2608.03185v1-cril-u-net-compact-ratio-interaction-learning-for-focal-cortical-dysplasia-segmentation-from-t1w-and-flair-mri)  
+   标签：评分：9.0/10、query:fbn
+   evidence：面向脑MRI分割与癫痫诊断的深度学习
+3. [NeuroMosaic: Anatomically Grounded Multimodal Large Language Modeling for Molecularly Aware Glioma Reasoning from 3D MRI and Clinical Narratives](/202608/05/2608.03187v1-neuromosaic-anatomically-grounded-multimodal-large-language-modeling-for-molecularly-aware-glioma-reasoning-from-3d-mri-and-clinical-narratives)  
+   标签：评分：9.0/10、query:fbn
+   evidence：面向脑MRI和临床叙述的医疗大语言模型，直接匹配神经影像AI医疗需求
+4. [Towards Reliable and Reproducible Fetal Brain Biometry: A Deep Learning Approach Using MRI](/202608/05/2608.03724v1-towards-reliable-and-reproducible-fetal-brain-biometry-a-deep-learning-approach-using-mri)  
    标签：评分：8.0/10、query:fbn
-   evidence：利用大语言模型结合连接组数据推断神经环路功能，直接属于脑连接组分析
-2. [DS@GT ARC at MEDIQA-CORE-Task-1 2026: Trimodal Model Fusion with Task-Specific Gates for Brain Tumor Subtype Classification](/202608/04/2608.00086v1-dsgt-arc-at-mediqa-core-task-1-2026-trimodal-model-fusion-with-task-specific-gates-for-brain-tumor-subtype-classification)  
-   标签：评分：8.0/10、query:fbn
-   evidence：结合MRI、病理与影像报告的脑肿瘤分型，属于神经影像AI医疗应用
-3. [NeuroWorld: A Latent Brain World Model for Stimulus-Conditioned Human Brain Dynamics](/202608/04/2608.01773v1-neuroworld-a-latent-brain-world-model-for-stimulus-conditioned-human-brain-dynamics)  
-   标签：评分：8.0/10、query:fbn
-   evidence：基于fMRI的潜在脑世界模型与因果动态预测
-4. [Protocol generalisation for brain tissue microstructure estimation via hypernetwork-controlled geometric deep learning](/202608/04/2608.02053v1-protocol-generalisation-for-brain-tissue-microstructure-estimation-via-hypernetwork-controlled-geometric-deep-learning)  
-   标签：评分：8.0/10、query:fbn
-   evidence：基于球面卷积网络和超网络的扩散MRI脑组织微观结构估计，属于神经影像AI医疗
+   evidence：胎儿脑MRI深度学习测量，契合神经影像AI医疗方向
 
 ### 速读区论文标签
-1. [Beyond Random Partitioning: Unsupervised Spatio-Temporal Stratification for Cohort Balancing in Longitudinal Medical Imaging](/202608/04/2608.00073v1-beyond-random-partitioning-unsupervised-spatio-temporal-stratification-for-cohort-balancing-in-longitudinal-medical-imaging)  
+1. [Deep Learning CNN and Recurrence Analysis for Alpha Gamma EEG Biomarkers in Fragile X Syndrome](/202608/05/2608.00835v1-deep-learning-cnn-and-recurrence-analysis-for-alpha-gamma-eeg-biomarkers-in-fragile-x-syndrome)  
    标签：评分：6.0/10、query:fbn
-   evidence：纵向医学影像中可靠数据集划分的方法，支持稳健的神经影像AI
-2. [Mechanistic bridges from receptors to whole-brain dynamics: mean-field reductions, validity domains, and computational trade-offs](/202608/04/2608.00306v1-mechanistic-bridges-from-receptors-to-whole-brain-dynamics-mean-field-reductions-validity-domains-and-computational-trade-offs)  
+   evidence：深度学习EEG生物标志物、脆性X综合征
+2. [Nonlinear Laplacians Improve Signed-Directed Graph Learning](/202608/05/2608.00836v1-nonlinear-laplacians-improve-signed-directed-graph-learning)  
    标签：评分：6.0/10、query:fbn
-   evidence：机制性全脑建模与平均场约化，与fMRI功能连接建模有方法学关联。
+   evidence：面向符号有向图的非线性拉普拉斯算子，可迁移至脑有效连接建模
+3. [CoRe-GNN: Multilevel Message passing on Coarsened graphs](/202608/05/2608.02128v1-core-gnn-multilevel-message-passing-on-coarsened-graphs)  
+   标签：评分：6.0/10、query:fbn
+   evidence：粗化图上的多级消息传递可扩展方法，可迁移到脑连接组GNN学习
+4. [Detecting high-frequency brain disorder signals using dynamic mode decomposition from EEG](/202608/05/2608.02804v1-detecting-high-frequency-brain-disorder-signals-using-dynamic-mode-decomposition-from-eeg)  
+   标签：评分：6.0/10、query:fbn
+   evidence：EEG脑疾病检测；神经影像AI医疗
+5. [Learning and Clustering on Temporal Graphs: Principles, Primitives, and Pooling](/202608/05/2608.03696v1-learning-and-clustering-on-temporal-graphs-principles-primitives-and-pooling)  
+   标签：评分：6.0/10、query:fbn
+   evidence：时序图聚类与池化方法可迁移至动态功能连接分析
 
 
 <div class="dpr-home-promo-card">
