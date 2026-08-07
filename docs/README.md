@@ -7,37 +7,31 @@
 
 ## 每次日报
 - 最新运行日期：2026-08-07
-- 运行时间：2026-08-07 01:47:50 UTC
+- 运行时间：2026-08-07 20:57:42 UTC
 - 运行状态：成功
-- 本次总论文数：6
-- 精读区：3
-- 速读区：3
+- 本次总论文数：4
+- 精读区：2
+- 速读区：2
 
 ### 今日简报（AI）
-今日共整理6篇论文，重点精读脑动力学建模与医学视觉语言模型安全评估两大方向。最值得关注的是：脑网络宏观模型需兼顾计算效率与生物学有效性，而视觉语言模型在脑MRI与诊断任务中虽表现自信却存在可靠性隐患。建议优先关注多模态医学模型的鲁棒性验证，后续可聚焦EEG长时程监测与MRI生成技术。
+今日精读2篇、速读2篇，聚焦脑网络动力学与EEG解码方法。最值得看的是《Mechanistic bridges》的均值场约化框架，以及《STEAM》的分层预训练混合专家模型。建议普通读者优先关注这两篇中关于计算权衡与跨时空对齐的设计思路。
 - 详情：[/202608/07/README](/202608/07/README)
 
 ### 精读区论文标签
 1. [Mechanistic bridges from receptors to whole-brain dynamics: mean-field reductions, validity domains, and computational trade-offs](/202608/07/2608.00306v2-mechanistic-bridges-from-receptors-to-whole-brain-dynamics-mean-field-reductions-validity-domains-and-computational-trade-offs)  
    标签：评分：8.0/10、query:fbn
-   evidence：脑连接组；全脑动力学建模与平均场约化
-2. [Confident but Unreliable: A Behavioral Safety Audit of Vision-Language Models on Brain MRI](/202608/07/2608.02790v1-confident-but-unreliable-a-behavioral-safety-audit-of-vision-language-models-on-brain-mri)  
+   evidence：通过连接组耦合节点建模全脑动力学
+2. [STEAM: A Spatio-TEmporal Alignment Mixture-of-Experts Model with Hierarchical Pre-training for EEG Decoding](/202608/07/2608.02070v2-steam-a-spatio-temporal-alignment-mixture-of-experts-model-with-hierarchical-pre-training-for-eeg-decoding)  
    标签：评分：8.0/10、query:fbn
-   evidence：脑MRI视觉语言模型安全审计，神经影像AI医疗
-3. [Predicting Brain Morphometry with MT-GNN: Mesh Evolution in Continuous Time with Graph-Based Metric Tensor Embeddings](/202608/07/2608.05132v1-predicting-brain-morphometry-with-mt-gnn-mesh-evolution-in-continuous-time-with-graph-based-metric-tensor-embeddings)  
-   标签：评分：8.0/10、query:fbn
-   evidence：神经影像AI，图神经网络预测脑形态测量
+   evidence：面向EEG解码的分层预训练混合专家模型，属于神经影像AI健康医疗应用。
 
 ### 速读区论文标签
-1. [VoxStruct3D: Structure-Leading Flow Matching for Voxel-Space 3D MRI Synthesis](/202608/07/2608.04557v1-voxstruct3d-structure-leading-flow-matching-for-voxel-space-3d-mri-synthesis)  
-   标签：评分：7.0/10、query:fbn
-   evidence：神经影像AI医疗；基于流匹配的三维MRI合成
-2. [Evaluating the Diagnostic Robustness of Vision-Language Models Under Visual and Textual Perturbations](/202608/07/2608.04885v1-evaluating-the-diagnostic-robustness-of-vision-language-models-under-visual-and-textual-perturbations)  
-   标签：评分：7.0/10、query:fbn
-   evidence：脑MRI诊断VLM鲁棒性，神经影像AI医疗
-3. [S-CEReBrO: Breaking the Memory Barrier in Continuous EEG Monitoring](/202608/07/2607.27913v1-s-cerebro-breaking-the-memory-barrier-in-continuous-eeg-monitoring)  
+1. [STEAM:ASpatio-TEmporal Alignment Mixture-of-Experts Model with Hierarchical Pre-training for EEG Decoding](/202608/07/2608.02070v1-steamaspatio-temporal-alignment-mixture-of-experts-model-with-hierarchical-pre-training-for-eeg-decoding)  
    标签：评分：6.0/10、query:fbn
-   evidence：连续EEG监测的注意力内存优化，神经影像AI医疗
+   evidence：面向脑机接口与疾病诊断的EEG解码基础模型
+2. [Benchmarking Sheaf Neural Networks for Inductive Tasks](/202608/07/2608.02558v1-benchmarking-sheaf-neural-networks-for-inductive-tasks)  
+   标签：评分：6.0/10、query:fbn
+   evidence：系统评测Sheaf图神经网络，可迁移至功能连接图建模
 
 
 <div class="dpr-home-promo-card">
