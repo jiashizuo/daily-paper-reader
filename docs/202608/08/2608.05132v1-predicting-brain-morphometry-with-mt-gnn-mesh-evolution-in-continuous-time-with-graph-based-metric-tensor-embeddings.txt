@@ -1,0 +1,526 @@
+Title: Predicting Brain Morphometry with MT-GNN: Mesh Evolution in Continuous Time with Graph-Based Metric Tensor Embeddings
+
+URL Source: https://arxiv.org/pdf/2608.05132v1
+
+Published Time: Thu, 06 Aug 2026 01:20:18 GMT
+
+Number of Pages: 17
+
+Markdown Content:
+# Predicting Brain Morphometry with MT-GNN: Mesh Evolution in Continuous Time with Graph-Based Metric Tensor Embeddings 
+
+Hao Ding 1, Daniel Semchin 1, Paul M. Thompson 2 and Boris Gutman 1 
+
+> 1
+
+Illinois Institute of Technology 
+
+hding9@hawk.illinoistech.edu  
+
+> 2
+
+University of Southern California 
+
+Abstract. Predicting how a subcortical structure’s shape will evolve from a few prior scans could support prognosis and clinical-trial en-richment. Existing longitudinal mesh predictors either extrapolate shape trajectories via high-dimensional embeddings or regress vertex deforma-tions directly. We instead predict the surface’s intrinsic geometry in con-tinuous time: a single per-structure graph network predicts the future per-vertex first fundamental form (metric tensor) for an arbitrary causal multiple-visit history and an arbitrary prediction horizon, conditioned on a Fourier encoding of the lead time. The predicted metric is decoded into a surface by a differentiable As-Rigid-As-Possible solver, and the model is trained end-to-end on the rigid-aligned vertex error. Training through the reconstruction keeps the decoded prediction a valid surface and consistently improves it. On 14 subcortical structures from the ADNI dataset, the proposed mesh evolution model (MT-GNN) predicts best among the evaluated methods at every horizon ( −2.29% mean vertex er-ror vs. the temporal mean, p=6 .1×10 −5, beating it on 14/14 structures), ahead of geodesic shape regression (DCM, −0.19% ) and a mesh trans-former (TransforMesh, −0.45% ; p=1 .2×10 −4), with the lead widening as the horizon grows. 
+
+Keywords: Longitudinal shape prediction · Metric tensor · Differen-tiable reconstruction · Realizability · Continuous time · ADNI. 
+
+## 1 Introduction 
+
+Subcortical structures such as the hippocampus and amygdala atrophy mea-surably as neurodegeneration progresses, and the shape of that atrophy carries information beyond volume alone. Predicting how a structure’s surface will look one to several years ahead, from a short series of prior scans, could sharpen prognosis and enrich clinical trials with the subjects most likely to progress. The difficulty is that the true per-visit shape change is small: after rigid alignment it sits near the reproducibility floor of the segmentation and surfacing pipeline. A predictor that simply averages the observed visits reproduces a denoised “cur-rent” shape instead of predicting change. This temporal mean is therefore a deceptively strong baseline that is difficult to beat. arXiv:2608.05132v1 [cs.CV] 5 Aug 2026 2 H. Ding et al. 
+
+Existing longitudinal mesh predictors take one of two routes, and both strug-gle against this baseline. The first regresses a trajectory in a shape space and extrapolates it forward, e.g. by geodesic or hierarchical Riemannian regression on registered meshes [17]; this extrinsic extrapolation overshoots at long horizons. The second learns to deform vertices directly with a deep network [14], which can spend capacity modeling visit noise rather than the small longitudinal signal. Both predict shape in extrinsic, ambient-space coordinates. We instead predict an intrinsic descriptor: in our fixed-topology, registered setting, the surface’s first fundamental form (metric tensor) is an underused, rigid-frame-invariant summary of shape [7]. Predicting the metric, however, brings its own difficulty: supervising it directly in metric space underperforms, for a reason specific to metric fields that we return to below. Our method, MT-GNN, combines two components. The first is continuous-time intrinsic-metric prediction. A single lead-time-conditioned graph network predicts the future first fundamental form from a causal multi-visit prefix at a continuously parameterized lead time. The prediction is built in three stages: a log-Euclidean mean of the input visits (the base metric), a shift of that mean along a learned population-displacement direction (the base shift), and a per-vertex subject residual that corrects for individual deviation. An as-rigid-as-possible (ARAP) reconstruction then decodes the predicted metric into a surface. The second is reconstruction-constrained training. A freely predicted metric field need not be realizable by any embedded mesh. Our decoder, however, reads the field only through the edge lengths it induces, and the ARAP solve returns the embedded mesh that best fits those lengths. We therefore supervise the decoded surface rather than the metric itself, unlike a direct intrinsic loss on the metric field (Ebin [3] or affine-invariant). Because the reconstruction cannot match lengths that no realizable surface admits, the vertex loss discourages such predictions. We read this as a soft, empirical realizability constraint, not an exact projection onto the realizable-metric manifold, and it consistently improves on a metric-space loss ( −2.26% vs. −1.78% mean vertex error on the test set, §4). Our contributions can be summarized as follows: 1. MT-GNN, a single continuous-time predictor of the intrinsic metric tensor whose prediction decomposes as log-Euclidean mean base → learned base shift → per-vertex subject residual, decoded through a differentiable ARAP solve, from a causal multi-visit prefix at a continuously parameterized lead time (Fig. 1; §3). 2. Across 14 subcortical structures, MT-GNN improves on the temporal mean on all 14 and on both learned baselines, DCM [17] and TransforMesh [14], at every horizon, with the lead widening as the horizon grows; paired per-subject t-tests and per-term ablations support the comparison (§4). 3. A design insight: a freely predicted metric field is generally not surface-realizable, and training through the differentiable reconstruction (rather than with a metric-space loss on the metric) acts as a soft realizability con-straint and consistently improves accuracy (§4.4). Predicting Subcortical Surfaces via the Metric Tensor 3⊕  
+
+> 𝑔
+> 𝛾 ( ∆ 𝑡 )
+> 𝐷 𝑝 𝑜 𝑝 ( ∆ 𝑡 )
+> Prefix Visits 𝑚
+> Linear
+> Linear
+> MeshConv
+> MeshConv
+> …
+> MT-GNN
+> ^𝑔
+> Prediction of
+> ^𝑋
+> ARAP solve
+> ^ℓ
+
+Fig. 1. MT-GNN pipeline. From an m-visit causal prefix, the per-vertex input met-ric g, a Fourier time embedding γ(∆t ) of the lead time, and the population-displacement term Dpop (∆t ) feed a mesh graph network (alternating Linear and MeshConv layers) that predicts a per-vertex log-metric residual. Combined ( ⊕) with the log-Euclidean base metric and the base shift β D pop (∆t ) (skip connections), this yields the predicted first fundamental form ˆg, whose target edge lengths ˆℓ are decoded into the forecast surface bX by a differentiable As-Rigid-As-Possible (ARAP) solve. 
+
+## 2 Related Work 
+
+A long line of work models anatomical change as a trajectory in a shape space and regresses it from longitudinal observations. Geodesic and hierarchical Rie-mannian regression fit a smooth path on a manifold of shapes and extrapolate it; the differential-coordinates formulation of Türkseven et al. [17] is a representa-tive predictor and our primary trajectory baseline (DCM). These methods excel when change is large and approximately geodesic, but their extrinsic extrap-olation overshoots once the assumed trajectory outruns the true, decelerating change, an effect we observe at long horizons. We instead predict an intrinsic descriptor of the target surface, referenced to a Riemannian mean of the inputs plus a population trend rather than an extrapolated per-subject velocity. On fixed-topology meshes, spiral and graph convolutions provide the efficient local operators our predictor builds on [6], while graph-network simulators roll out mesh dynamics [12]. For longitudinal anatomy, TransforMesh [14] applies a transformer over registered hippocampus meshes and is our learned-deformation baseline. A complementary family predicts a per-element intrinsic quantity and integrates it: Neural Jacobian Fields (NJF) [1] predict per-element deforma-tion Jacobians. We share NJF’s “predict-a-field-then-solve” philosophy, but the contrast is one of representation: NJF predicts extrinsic deformation Jacobians and reconstructs vertices through a Poisson solver, which itself enforces integra-bility; we predict the intrinsic metric tensor, where we find direct supervision using a tensor-native affine-invariant loss fails. This motivates reconstruction-constrained training. For temporal conditioning we use Fourier features [16] of the lead time, in the spirit of transformer positional encodings [18]; this condi-4 H. Ding et al. 
+
+tions the model directly on the horizon rather than integrating a latent trajectory ODE [13]. Representing a closed genus-zero surface by its first and second fundamen-tal forms underlies intrinsic shape comparison [7]; a freely-predicted metric field, however, need not be exactly realizable by any embedded surface. Recovering ver-tices from intrinsic data is classical: gradient-domain / Poisson editing [19] and As-Rigid-As-Possible (ARAP) modeling [15], which we adopt as a differentiable decoder. Because the metric is a field of symmetric-positive-definite matrices, we process it with established SPD geometry. We use log-Euclidean coordinates [2] for the base tensor field and the individual subject residual and a log-Cholesky parameterization [10] to keep redictions SPD. We compare the ARAP objective with a loss based on the affine-invariant metric [11], a loss intrinsic to metric tensor fields but with no realizability enforcement. 
+
+## 3 Method 
+
+3.1 Problem Formulation 
+
+For a given structure, all subjects’ scans share the same registered [8], fixed-topology genus-zero triangle mesh M = ( V, F), where V is the vertex set with 
+
+N = |V| vertices, F is the set of triangular faces, and E is the induced edge set. The subjects also share one spherical parameterization, which assigns each vertex 
+
+i a fixed tangent frame. The faces F fix the connectivity that the cotangent Laplacian uses later in the reconstruction of §3.4. A visit of a subject is an embedding of M. It gives the vertex positions X ∈ RN ×3 and the induced per-vertex intrinsic geometry: the first fundamental form (metric tensor) gi ∈ SPD(2) 
+
+and the mean curvature Hi ∈ R. Both are expressed in the fixed tangent frame. A subject contributes a longitudinal sequence of visits at ages (in months) 
+
+t1 < t 2 < . . . . Given an arbitrary causal m-visit prefix P =  X(k), g (k), H (k)mk=1 
+
+at times t1 < t 2 < · · · < t m and a lead time ∆t > 0, the task is to predict the surface Xτ at the future age τ = tm + ∆t . We predict Fθ : ( P, ∆t ) 7 → bX for arbitrary prefixes and arbitrary ∆t .
+
+Evaluation metric. We score a prediction bX against the ground-truth Xτ by the rigid motion-invariant mean vertex error (MVE), 
+
+MVE( bX, Xτ ) = 1
+
+N
+
+> N
+
+X
+
+> i=1
+
+R⋆ bxi + t⋆ − xτi 2,
+
+(R⋆, t⋆) = arg min  
+
+> R∈SO (3) ,t∈R3
+> N
+
+X
+
+> i=1
+
+R bxi + t − xτi
+
+> 22
+
+,
+
+(1) where bxi, xτi ∈ R3 are the i-th vertices of bX, Xτ , and (R⋆, t⋆) is the least-squares rigid Procrustes (Kabsch) alignment: rotation only ( SO (3) , no reflection) plus translation, no scale. We use the same measure of prediction quality during training and evaluation. Predicting Subcortical Surfaces via the Metric Tensor 5
+
+3.2 Surface and Metric Representation 
+
+The metric tensor is a field of 2 × 2 symmetric-positive-definite matrices, and we process it in the log-domain of SPD(2) . The matrix logarithm Log sends SPD(2) 
+
+to the real symmetric matrices Sym(2) . Because Sym(2) is diffeomorphic to R3,we use this for an unconstrained parameterization: any predicted ℓ ∈ R3 maps to a valid metric Exp ℓ ∈ SPD(2) [2, 10]. 
+
+Base metric. We use the log-Euclidean mean of the prefix metric tensors, 
+
+Ki = 1
+
+> mm
+
+X
+
+> k=1
+
+Log g(k) 
+
+> i
+
+∈ R3, ¯gi = Exp Ki, (2) a closed-form, swelling-free SPD mean as a practical surrogate for the affine-invariant Karcher mean [11]. 
+
+Temporal-mean surface. The reconstruction (§3.4) needs an initial embed-ding. We rigidly align the later prefix visits to the first and average, 
+
+s0 
+
+> i
+
+= 1
+
+> m
+
+
+
+x(1)  
+
+> i
+
++
+
+> m
+
+X
+
+> k=2
+
+ Rk x(k) 
+
+> i
+
++ tk
+
+
+
+,
+
+(Rk, tk) = arg min  
+
+> R∈SO (3) ,t∈R3
+
+X
+
+> i
+
+∥R x (k) 
+
+> i
+
++ t − x(1)  
+
+> i
+
+∥22,
+
+(3) where s0 
+
+> i
+
+is the i-th vertex of the temporal-mean surface S0, which is exactly the temporal mean used as the reference baseline in §4. 
+
+Population displacement. One signal that the subject’s own history cannot provide is how the population changes on average at a given lead time. We call this the population displacement. From the training set we estimate, for each horizon ∆t , the mean log-domain change of the future-visit metric gτ relative to the base K,
+
+Di(∆t ) = mean   
+
+> P:lead =∆t
+
+ Log gτi − Ki
+
+ ∈ R3, (4) computed once and frozen (no test-time leakage; D depends only on training targets). 
+
+Time encoding and per-vertex features. We encode the lead time with a Fourier feature map γ, in the spirit of positional encodings [16, 18]. For a fixed set of frequencies {ωk},
+
+γ(∆t ) =   sin( ωk ∆t ), cos( ωk ∆t ) 
+
+> k
+
+. (5) The per-vertex input feature ϕi concatenates the base metric, the m prefix log-metrics, the time encoding γ(∆t ) (shared across vertices), and the population displacement, 
+
+ϕi =  Ki, {Log g(k) 
+
+> i
+
+}mk=1 , γ (∆t ), D i(∆t ) . (6) 6 H. Ding et al. 
+
+3.3 Metric Prediction 
+
+A graph network fθ [6] over adjacency of M maps the per-vertex features Φ =
+
+{ϕi} to a per-vertex log-metric subject residual ri = fθ (Φ)i ∈ R3. In our setting, 
+
+fθ has four mesh graph-convolution layers, with cotangent normalization of the graph. The predicted metric is the sum of three interpretable terms, 
+
+Log ˆ gi = Ki
+
+|{z} 
+
+> base metric
+
++ β D i(∆t )
+
+| {z }
+
+> base shift
+
++ ri
+
+|{z} 
+
+> subject residual
+
+, (7) where β ∈ R is a learnable base-shift scalar. The final layer of fθ is zero-initialized, and training begins exactly at the base metric + base shift, with the network only learning per-vertex deviations. We deliberately do not extrap-olate a per-subject temporal slope: at this noise level the individual slope is not a reliable direction (§4.4), and the only extrapolation is along the population trend D(∆t ). The Exp map keeps ˆgi ∈ SPD(2) by construction. 
+
+3.4 Differentiable Reconstruction 
+
+We decode the predicted metric into a surface with a robust As-Rigid-As-Possible (ARAP) local–global solver [15]. Each edge (i, j ) ∈ E has a fixed tangent-plane offset eij from the spherical parameterization; the predicted metric sets its target squared length by symmetrizing over the two endpoints, 
+
+ˆℓ 2 
+
+> ij
+
+= 12
+
+ e⊤ 
+
+> ij
+
+ˆgi eij + e⊤ 
+
+> ij
+
+ˆgj eij 
+
+. (8) Given target edge lengths, ARAP seeks vertex positions whose edge geometry is as-rigid-as-possible consistent with ˆℓ,
+
+bX = arg min 
+
+> X
+
+X
+
+> i
+
+X 
+
+> j∈N (i)
+
+wij (xi − xj ) − Ri ˆℓij ˆuij 
+
+> 22
+
+, (9) Here N (i) is the one-ring neighborhood of vertex i, wij are cotangent weights, 
+
+Ri ∈ SO (3) are per-vertex rotations, and ˆuij is the unit rest-edge direction taken from the temporal-mean surface S0. Only the target length ˆℓij depends on the predicted metric ˆg; optimizing Eq. (9) with respect to ˆg is a straightforward application of the chain rule. We solve Eq. (9) by the standard local–global alternation initialized at the temporal-mean surface S0: a local step fixes X
+
+and updates each Ri by a small SVD, and a global step fixes {Ri} and solves the linear system (L + λI) X = b({Ri}), where L is the cotangent Laplacian and λ > 0 is a small regularizer that keeps the system positive-definite (the Laplacian alone is singular on a global translation). Because L depends only on the fixed connectivity, its Cholesky factor is precomputed once and shared across all iterations and all samples. We unroll a fixed number of 15 iterations, making 
+
+bX = ARAP( S0, ˆg) differentiable end-to-end in ˆg. This is the gradient-domain principle of Poisson surface editing [19], specialized to an intrinsic edge-length target. Predicting Subcortical Surfaces via the Metric Tensor 7
+
+3.5 Training Objective 
+
+The predictor is trained by minimizing the rigid-aligned vertex error Eq. (1) of the reconstructed surface, backpropagated through the unrolled solver. Over a training set of prefix–target pairs {P} we minimize 
+
+L(θ, β ) = 
+
+P 
+
+> P
+
+wP MVE  ARAP( S0, ˆg), Xτ P 
+
+> P
+
+wP
+
++ η 1
+
+N
+
+X
+
+> i
+
+∥ri∥22, (10) where ˆg depends on (θ, β ) through Eq. (7), η weights a small subject-residual regularizer, and wP = wsubj · w∆t balances per-subject contributions and the (heavily skewed) horizon distribution. Because the loss is computed on the re-constructed vertices rather than on ˆg directly, it shapes ˆg only through the surface it reconstructs using Eq. (9), which is always a valid embedded mesh. This is a soft realizability constraint: approximate and reconstruction-defined, not an exact Gauss–Codazzi projection. 
+
+3.6 Metric Tensor plus Mean Curvature Variant (MT-GNN+H) 
+
+To test whether mean curvature H adds anything once g is predicted, MT-GNN+H reuses the graph backbone of Eq. (7) and attaches a second zero-initialized head. Beside the log-metric residual ri, an H-head predicts a bounded mean-curvature residual on the prefix-mean curvature ¯Hi = 1
+
+> m
+
+Pmk=1 H(k) 
+
+> i
+
+,
+
+ˆHi = ¯Hi + tanh( hi) κ σ H , (11) where hi is the head output, σH is the curvature scale over the training set, and 
+
+κ bounds the step; the zero initialization starts prediction at ¯Hi, mirroring how the metric starts at the base metric. The predicted metric and curvature are decoded jointly. We keep the differ-entiable ARAP objective of Eq. (9) and add one curvature term to its global step. The discrete mean-curvature identity defines the cotangent Laplacian of the vertex positions as LX = c with per-vertex rows ci = 2 Ai ˆHi ni (twice the vertex area times mean curvature along the surface normal). Enforcing it softly, the global step becomes 
+
+ L + λI + μ L⊤L bX = b({Ri}) + μ L⊤c, (12) where μ ≥ 0 weights the curvature term. The normals ni and areas Ai are frozen at the temporal-mean surface S0, which makes c is a fixed right-hand side rather than a moving target; this keeps the combined optimization stable and its Cholesky factor precomputable, and leaves the result differentiable in 
+
+ˆH. The remaining aspects of the problem, including the features, the training objective Eq. (10), and validation-only selection are unchanged; MT-GNN+H differs from MT-GNN by the curvature head alone, and μ = 0 recovers the 
+
+g-only prediction through the same solver. 8 H. Ding et al. 
+
+## 4 Experiments 
+
+4.1 Data, Protocol, and Baselines 
+
+We use longitudinal T1 MRI from ADNI [9] processed with FreeSurfer 8 (v8.0.0) [4], taking the 14 subcortical structures (left/right thalamus, caudate, putamen, pallidum, hippocampus, amygdala, accumbens). Each visit gives a registered [8], fixed-topology genus-zero mesh with per-vertex metric and curvature; a per-sample outlier flag based on Mean Absolute Distance and the persistence error removes segmentation and surfacing failures. From the quality-controlled cohort we build causal pairs : arbitrary causal three-visit prefixes paired with a future target at lead time ∆t ∈ { 12 , 24 , 36 , 48 } months. We use a subject-disjoint split (train 405 / val 86 / test 86) and report all results below on the test set. Errors are in the ≈ 0.5–0.9 mm range; we report them as percentage change relative to the temporal mean, a subject-internal rigidly-aligned average of the input visits, which is strong because per-visit change is near the noise floor. We train MT-GNN per structure with Adam (learning rate 10 −3, batch 16 , gradient-norm clip 
+
+1.0), a cosine schedule over 150 epochs, and a graph network of hidden width 
+
+128 .We compare against two learned baselines. The first, DCM, is the geodesic/hierarchical Riemannian regressor [17], adopted to continuous lead times by extrapolating a population-level velocity; the second, TransforMesh (TfM), is the mesh transformer [14] retrofitted with Fourier-time conditioning and temporal-mean-referenced. Both baselines are adapted to the arbitrary-prefix / arbitrary-horizon protocol and evaluated on the identical causal test pairs, metric, and temporal-mean reference as our own MT-GNN. 
+
+4.2 Main Results 
+
+Table 1 and Fig. 2 report mean MVE (mm) at each horizon. MT-GNN and its mean curvature variant MT-GNN+H have the two best horizon-averaged errors (mean −2.29% and −2.48% ), ahead of MT-GNN w/o base-shift ( −1.97% ), TransforMesh ( −0.45% ), and DCM ( −0.19% ). MT-GNN is lower than all three at every horizon and its lead over the temporal mean grows with horizon; MT-GNN+H is lowest at ∆t =12 , 24 , 48 but slips just behind the no-shift ablation at 
+
+∆t =36 . Both beat the temporal mean on all structures (Table 2), significantly so in 12 /14 (MT-GNN) and 14 /14 (MT-GNN+H) by paired t-tests across subjects after Bonferroni correction over the five methods × 14 structures ( p < 0.05 /70 ). Against the learned baselines (Table 3), MT-GNN and MT-GNN+H significantly outperform TransforMesh in 11 –12 /14 structures and DCM in 8–9/14 .Figure 3 shows the same comparison in absolute terms. All methods sit within a narrow band ( ≈ 0.05 mm) near the FreeSurfer 8 reproducibility floor, confirm-ing that the per-visit change is small; MT-GNN’s gap to the temporal mean, though sub-milimetre, widens with horizon. Predicting Subcortical Surfaces via the Metric Tensor 912 24 36 48 Forecast horizon t (months) 
+
+3.0 
+
+2.5 
+
+2.0 
+
+1.5 
+
+1.0 
+
+0.5 
+
+0.0 0.5 1.0 Mean MVE vs temporal mean (%)  better temporal mean 
+
+> MT-GNN MT-GNN+H MT-GNN w/o base-shift TransforMesh DCM
+
+Fig. 2. Accuracy vs. horizon (14 structures). Mean MVE relative to the temporal mean (%, lower is better; y-axis inverted) at each lead time ∆t . MT-GNN and MT-GNN+H are the top two lowest-error curves, with MT-GNN improving monotonically and its lead over the temporal mean widening with ∆t , while DCM rises above the temporal mean at ∆t =36 ; the MT-GNN+H gain over MT-GNN is small and significant per structure in only 4/14 structures (Table 3). 12 24 36 48 Forecast horizon t (months) 
+
+0.61 0.62 0.63 0.64 0.65 Mean MVE (mm) 
+
+> Temporal mean MT-GNN MT-GNN+H MT-GNN w/o base-shift TransforMesh DCM
+
+Fig. 3. Absolute accuracy vs. horizon (14 structures). Mean MVE in millimetres at each horizon. Errors lie in a narrow band near the segmentation/surfacing repro-ducibility floor; MT-GNN and MT-GNN+H are the lowest-error curves and separate further from the temporal mean as the horizon grows, with a small gap between them. 10 H. Ding et al.                                            
+
+> Table 1. Mean vertex error (MVE) in mm on the test dataset at each horizon (per-structure median over pairs, averaged over the 14 structures), the horizon-averaged mean, and % change vs. the temporal mean (negative is better). Method ∆t 12 ∆t 24 ∆t 36 ∆t 48 Mean ∆%
+> Temporal mean (ref.) 0.6184 0.6203 0.6355 0.6522 0.6316 —DCM [17] 0.6137 0.6170 0.6407 0.6504 0.6304 −0.19
+> TransforMesh [14] 0.6170 0.6160 0.6345 0.6476 0.6288 −0.45
+> MT-GNN w/o base-shift 0.6090 0.6090 0.6196 0.6390 0.6191 −1.97
+> MT-GNN 0.6070 0.6071 0.6193 0.6352 0.6171 −2.29
+> MT-GNN+H 0.6052 0.6051 0.6207 0.6328 0.6160 −2.48
+
+4.3 Per-Structure Results 
+
+Table 2 breaks the results down by structure. On 11 of the 14 structures, the best of the five methods is MT-GNN or MT-GNN+H. The three exceptions do not reach statistical significance on left caudate, where TransforMesh is best, and left and right accumbens, where the no-shift ablation edges ahead. The largest improvement is on the hippocampus (right hippocampus −5.38% ), with strong gains also on the amygdala (left amygdala −3.58% ); both are structures whose atrophy is comparatively stereotyped, matching the horizon trend of §4.2. DCM is the one method whose aggregate changes sign between the two tables ( −0.19% 
+
+in Table 1, +0 .11% here): its gains are concentrated on high-error structures such as the hippocampus, which dominate Table 1’s millimetre-pooled ratio but count as single equal-weighted entries in this table’s across-structure mean of per-structure percentages. Figure 4 maps the per-vertex error difference (MT-GNN − baseline), aver-aged over all test pairs, for the seven left structures against TransforMesh and DCM at the near and far horizons; blue marks vertices where MT-GNN is closer to the ground-truth surface. At ∆t =12 the advantage is small and diffuse, in line with the near-floor errors of Fig. 3; by ∆t =48 it is larger and spatially concen-trated, and broadest against DCM whose extrapolation overshoots, echoing the widening lead of Fig. 2 and Table 1. Figure 5 illustrates one example subject per structure. On the caudate, MT-GNN avoids the saturated error that DCM and TransforMesh leave along the tail; on the smoother putamen the three run close, with MT-GNN leaving the fewest hot spots; on the hippocampus, MT-GNN suppresses the error at the head that both baselines incur, and it attains the lowest MVE in every row. 
+
+4.4 Ablations 
+
+Table 4 isolates each design choice. The metric-space Ebin loss is the area-weighted metric on the space of Riemannian metrics, with the affine-invariant SPD distance as its pointwise ingredient [3, 11]. Training the identical model with this loss on ˆg instead of the MVE-through-ARAP objective drops the result from Predicting Subcortical Surfaces via the Metric Tensor 11 
+
+Table 2. Per-structure results. MVE % vs. the temporal mean (negative is better), for each structure averaged over all test pairs across all horizons ∆t ∈ { 12 , 24 , 36 , 48 }
+
+months. because short horizons are more numerous, this pooled average weights them more heavily. The Mean row is an unweighted across-structure mean of the per-structure percentages, which differs from the pooled aggregate of Table 1 (see text). Structure MT-GNN MT-GNN+H MT-GNN w/o base-shift TransforMesh DCM L-Thal −3.29 −3.61 −3.21 −1.59 +0 .56 
+
+L-Caud −0.69 −2.02 −0.26 −2.26 −2.18 
+
+L-Put −1.98 −1.30 −0.66 −0.39 +1 .34 
+
+L-Pall −1.86 −2.21 −1.52 −0.18 −0.60 
+
+L-Hipp −2.22 −2.95 −1.82 −0.23 −0.40 
+
+L-Amyg −3.58 −3.46 −3.18 −2.98 +0 .43 
+
+L-Accu −3.90 −3.27 −3.91 +0 .60 −0.02 
+
+R-Thal −2.67 −2.57 −2.20 −1.25 −1.75 
+
+R-Caud −0.48 −0.17 −0.04 +0 .75 +0 .81 
+
+R-Put −1.91 −1.98 −0.29 +0 .37 +0 .73 
+
+R-Pall −0.73 −0.76 −0.29 +0 .12 +2 .39 
+
+R-Hipp −5.38 −5.05 −4.92 −1.91 −3.39 
+
+R-Amyg −1.17 −2.33 −1.68 +1 .72 +3 .04 
+
+R-Accu −1.87 −1.76 −1.96 +0 .92 +0 .53 
+
+Mean −2.26 −2.39 −1.85 −0.45 +0 .11 
+
+Table 3. Per-structure paired significance. Paired t-test across subjects (one MVE per subject per structure, aggregated over that subject’s test pairs). Each cell gives the better method ( G=MT-GNN, H=MT-GNN+H, D=DCM, T=TransforMesh) and the 
+
+p-value; ∗ marks significance after Bonferroni correction ( p < 0.05 /70 ≈ 7.1 × 10 −4, for 
+
+5 comparisons × 14 structures). Structure MT-GNN vs +H MT-GNN vs DCM MT-GNN vs TfM +H vs DCM +H vs TfM L-Thal H 6.1e −5∗ G 2.5e −3 G 1.5e −4∗ H 4.4e −5∗ H 2.4e −7∗
+
+L-Caud H 6.8e −6∗ D 1.8e −2 T 4.7e −2 D 4.5e −1 T 9.1e −1
+
+L-Put H 2.8e −5∗ G 5.1e −2 G 1.1e −8∗ H 2.5e −3 H 2.4e −13 ∗
+
+L-Pall H 3.1e −5∗ G 1.1e −8∗ G 1.7e −7∗ H 1.6e −10 ∗ H 4.7e −11 ∗
+
+L-Hipp G 4.9e −1 G 7.1e −10 ∗ G 1.6e −15 ∗ H 8.8e −9∗ H 4.4e −16 ∗
+
+L-Amyg H 7.2e −3 G 7.9e −8∗ G 9.1e −9∗ H 7.5e −10 ∗ H 3.4e −9∗
+
+L-Accu H 3.9e −2 G 3.2e −5∗ G 3.3e −9∗ H 7.9e −6∗ H 7.4e −9∗
+
+R-Thal H 6.6e −1 G 2.4e −3 G 2.0e −22 ∗ H 1.7e −3 H 8.5e −17 ∗
+
+R-Caud H 2.9e −3 D 9.0e −1 G 2.1e −1 H 5.6e −1 H 1.7e −3
+
+R-Put H 6.2e −1 G 3.3e −1 G 1.0e −3 H 3.2e −1 H 2.3e −6∗
+
+R-Pall H 1.5e −3 G 2.6e −5∗ G 3.9e −4∗ H 4.9e −9∗ H 1.7e −8∗
+
+R-Hipp G 1.9e −1 G 4.5e −6∗ G 4.1e −8∗ H 3.1e −6∗ H 7.2e −8∗
+
+R-Amyg H 1.0e −1 G 2.7e −4∗ G 1.2e −7∗ H 1.9e −4∗ H 1.5e −12 ∗
+
+R-Accu H 2.5e −2 G 5.2e −11 ∗ G 9.0e −11 ∗ H 2.2e −12 ∗ H 3.4e −12 ∗12 H. Ding et al. vs TfM L-Thal L-Caud L-Put L-Pall L-Hipp L-Amyg L-Accu           
+
+> vs DCM vs TfM vs DCM
+> 0.100 0.075 0.050 0.025 0.000 0.025 0.050 0.075 0.100
+> MT-GNN error baseline error (mm) (blue = MT-GNN better)
+> t = 12 t = 48
+
+Fig. 4. Per-structure error difference, averaged over the test set. Per-vertex MT-GNN error − baseline error (mm) against TransforMesh and DCM at ∆t =12 
+
+and 48 , for the seven left structures (blue = MT-GNN lower error, i.e. better). The advantage is small at the near horizon and grows and localizes by the far horizon, most against DCM. 
+
+−2.26% to −1.78% : supervising through the reconstruction is consistently better, because the metric-space distance is only loosely correlated with reconstructed vertex error. The gain is modest rather than dramatic, and both objectives still beat the temporal mean—in this architecture the log-Euclidean base already supplies a near-realizable metric, so the soft realizability constraint refines the prediction rather than rescuing it from collapse. Adding the base shift improves the result from −1.85% (MT-GNN w/o base-shift) to −2.26% (MT-GNN) (better on 11 /14 structures; patient-level paired 
+
+t-test p=4 .0 × 10 −3), with the largest gains on low-signal structures (e.g. right putamen −0.29% → − 1.91% ). The log-Euclidean base beats a Euclidean (arith-metic) mean of the input metrics ( −2.26% vs. −1.80% ), and a slope-shrinkage Predicting Subcortical Surfaces via the Metric Tensor 13 R-Caud 116_S_4453                     
+
+> SC 12 mo 24 mo
+> 0.92 mm
+> MT-GNN
+> 1.04 mm
+> DCM
+> 0.98 mm
+> TfM
+> target 72 mo
+> Ground truth
+> R-Put 036_S_4538
+> SC 12 mo 24 mo
+> 0.58 mm 0.64 mm 0.61 mm target 72 mo
+> R-Hipp 109_S_4499
+> SC 12 mo 24 mo
+> 0.66 mm 0.72 mm 0.71 mm target 48 mo
+> 0.0 0.2 0.4 0.6 0.8 1.0 1.2 1.4
+> per-vertex distance to ground truth (mm)
+> Input prefix visits Reconstructed prediction colored by per-vertex error to ground truth
+
+Fig. 5. Qualitative forecasts on test subjects. For the right caudate, putamen and hippocampus (rows), the left block shows the three-visit causal input prefix (screen-ing, 12 and 24 months; shaded) and the right block the forecasts of MT-GNN, DCM and TransforMesh at the target visit ( ∆t =48 for caudate and putamen, ∆t =24 for hippocampus) and the ground truth. Each prediction is rigidly aligned to the ground truth and colored by per-vertex distance to it; the value below each panel is the mean vertex error (MVE). 
+
+sweep is monotonically worse the more the per-subject slope is extrapolated, supporting the mean-based design. Adding a learned mean curvature head (MT-GNN+H) lowers the horizon-averaged mean error and is lower at three of the four horizons (Table 1; at ∆t =36 
+
+it is marginally worse than MT-GNN), but the improvement over MT-GNN is small (mean −0.13 percentage points) and reaches per-structure significance in only 4/14 structures (Table 3), while never being significantly worse. Given this marginal, mostly-localized gain we retain the simpler g-only MT-GNN as the primary model and report MT-GNN+H as a variant. 
+
+## 5 Discussion and Limitations 
+
+Per-visit subcortical change lies near the noise floor. The leading failure mode is thus amplifying noise rather than underfitting. The trajectory extrapolation of DCM overshoots at long horizons, and direct deformation models can spend ca-pacity on visit noise. MT-GNN sidesteps both. It predicts a small intrinsic resid-ual on a geometry-aware mean, together with a population trend, and it trains 14 H. Ding et al.                                   
+
+> Table 4. Ablations , single-setting on the causal test pairs (MVE ∆%vs. the temporal mean, as mean ±SD across the 14 structures; each row changes one component of the full model). Every variant still beats the temporal mean; training through the reconstruction, the base shift, and the log-Euclidean base each help. Bold marks the retained model. Axis Variant ∆%
+> Training loss Ebin −1.78 ±1.22
+> MVE −2.26 ±1.39
+> Base shift no shift −1.85 ±1.51
+> MT-GNN −2.26 ±1.39
+> Mean geometry Euclidean base −1.80 ±1.64
+> Log-Euclidean base −2.26 ±1.39
+> Curvature head MT-GNN+H −2.39 ±1.25
+> MT-GNN −2.26 ±1.39
+
+against the same reconstruction-constrained objective on which it is judged. The small size of the curvature gain has a sharper geometric root than model capacity. We set that root out next. The predicted metric ˆg fixes the edge lengths ˆℓ through Eq. (8). Once those lengths are set, the surfaces that bear the metric on our fixed connectivity make up the isometric-realization set of a triangulated genus-zero mesh. For a generic mesh this set is zero-dimensional . The bar-and-joint framework is isostatic, since the free-vertex count 3|V| − |E| equals the six degrees of freedom of a rigid mo-tion, and a generic framework is infinitesimally rigid [5]. No continuous bending is therefore possible. What remains is only a finite number of branches, set apart by finite deformations rather than by a continuum. An example of such a branch pair, sharing ˆg but with opposite-sign H, is a planar cut with either a depression or a cap. In classical surface theory, mean curvature chooses among these branches and fixes the normal orientation that ˆg leaves open. Adding H
+
+fixes both principal curvatures, and hence the surface up to a rigid motion. Our decoder settles that choice from the start. The ARAP solver begins at the temporal-mean surface S0 and takes its rest directions from that same surface, following §3.4. It thus falls into the one branch that holds S0, and it converges to that branch’s own solution, which is locally unique and infinitesimally rigid. The branch and the orientation are just the knowledge that H would supply, and the starting surface has already fixed them. Mean curvature can therefore only sharpen the extrinsic shape within the chosen branch. This is a second-order correction, and near the reproducibility floor it stays small. Such is the pattern we see. H helps only weakly and locally, reaching significance in four of the four-teen structures, as Table 3 shows. The same argument shows when a curvature term should weigh more. It should weigh more at long horizons, and under large, stereotyped atrophy, where the change leaves the linear neighborhood of S0 and Predicting Subcortical Surfaces via the Metric Tensor 15 
+
+the branch is no longer easy to choose. This fits the somewhat larger effect of the curvature head on the hippocampus and amygdala. 
+
+Limitations. We read realizability as an account of the gap between the metric-space and the reconstruction objectives. It is not a theorem about exact projec-tion. The ARAP solver is a robust local–global method, not a Gauss–Codazzi enforcement. The gap stays small, since the log-Euclidean base is already near-realizable, and we make no strong claim beyond this. The long-horizon experi-ments have few validation samples at the 36 - and 48 -month horizons. We there-fore lead with the mean and with the well-powered 12 - and 24 -month horizons, and we treat single long-horizon per-structure cells as noisy. The load-bearing test is the paired per-structure t-test across subjects, given in Table 3. Our supervision sits on a 12 -month grid, although the model runs continuously in 
+
+∆t . Off-grid validation is left for further work. Finally, we train one model per structure rather than a single multi-structure model. 
+
+## 6 Conclusion 
+
+We presented MT-GNN, a continuous-time model of the future intrinsic first fundamental form, for an arbitrary causal history and an arbitrary horizon. The prediction combines a log-Euclidean mean base, a learned base shift, and a per-vertex subject residual. A differentiable ARAP solver then decodes it into a surface. We tested the model on fourteen ADNI structures, with a subject-disjoint held-out split and a shared metric and temporal-mean reference. MT-GNN and its curvature variant MT-GNN+H are the two lowest-error predictors at every horizon. Their mean vertex error falls 2.29% and 2.48% below the temporal mean, and they beat it on all fourteen structures. Both stand ahead of geodesic regression and a mesh transformer, and their lead widens as the horizon grows. One finding backs this design. Training through the reconstruction can only ever decode to a valid embedded mesh, and it consistently beats a metric-space loss on the metric tensors. Adding mean curvature brings only a small gain, which reaches significance in four of the fourteen structures. The reason is geometric. Once the metric is fixed, the surfaces that bear it form a zero-dimensional set of separate branches [5]. Starting the reconstruction at the temporal mean therefore chooses the branch and the orientation that curvature would otherwise give, and leaves it a second-order refinement. We thus keep the metric alone as our main model. Further work spans a unified multi-structure cortical and subcortical model, off-grid horizon validation, and clinical progression endpoints. 
+
+## 7 Acknowledgments 
+
+This work was supported by NIH grant R01 MH131806. Data collection and sharing for this project was funded by the Alzheimer’s Disease Neuroimaging Initiative (ADNI) (National Institutes of Health Grant U01 AG024904) and DOD ADNI (Department of Defense award number W81XWH-12-2-0012). 16 H. Ding et al. 
+
+## References 
+
+1. Aigerman, N., Gupta, K., Kim, V.G., Chaudhuri, S., Saito, J., Groueix, T.: Neural Jacobian fields: Learning intrinsic mappings of arbitrary meshes. ACM Transactions on Graphics (Proc. SIGGRAPH) 41 (4) (2022). https://doi.org/10.1145/3528223.3530141 2. Arsigny, V., Fillard, P., Pennec, X., Ayache, N.: Log-Euclidean metrics for fast and simple calculus on diffusion tensors. Magnetic Resonance in Medicine 56 (2), 411–421 (2006). https://doi.org/10.1002/mrm.20965 3. Ebin, D.G.: The manifold of Riemannian metrics. In: Global Analysis (Proc. Sym-pos. Pure Math., Vol. XV, Berkeley, Calif., 1968), pp. 11–40. American Mathemat-ical Society, Providence, RI (1970) 4. Fischl, B.: FreeSurfer. NeuroImage 62 (2), 774–781 (2012). https://doi.org/10.1016/j.neuroimage.2012.01.021 5. Gluck, H.: Almost all simply connected closed surfaces are rigid. In: Ge-ometric Topology (Proc. Conf., Park City, Utah, 1974), Lecture Notes in Mathematics, vol. 438, pp. 225–239. Springer, Berlin, Heidelberg (1975). https://doi.org/10.1007/BFb0066118 6. Gong, S., Chen, L., Bronstein, M., Zafeiriou, S.: SpiralNet++: A fast and highly efficient mesh convolution operator. In: IEEE/CVF International Confer-ence on Computer Vision Workshops (ICCVW). pp. 4141–4148. IEEE (2019). https://doi.org/10.1109/ICCVW.2019.00509 7. Gutman, B.A., Fletcher, P.T., Cardoso, M.J., Fleishman, G.M., Lorenzi, M., Thompson, P.M., Ourselin, S.: A Riemannian framework for intrinsic compari-son of closed genus-zero shapes. In: Information Processing in Medical Imaging (IPMI 2015). Lecture Notes in Computer Science, vol. 9123, pp. 205–218. Springer (2015). https://doi.org/10.1007/978-3-319-19992-4_16 8. Gutman, B.A., Madsen, S.K., Toga, A.W., Thompson, P.M.: A Family of Fast Spherical Registration Algorithms for Cortical Shapes, Lecture Notes in Computer Science, vol. 8159, book section 24, pp. 246–257. Springer International Publish-ing (2013). https://doi.org/10.1007/978-3-319-02126-3_24, http://dx.doi.org/ 10.1007/978-3-319-02126-3_24 
+
+9. Jack Jr., C.R., Bernstein, M.A., Fox, N.C., Thompson, P., Alexander, G., Harvey, D., Borowski, B., Britson, P.J., Whitwell, J.L., Ward, C., et al.: The Alzheimer’s disease neuroimaging initiative (ADNI): MRI methods. Journal of Magnetic Res-onance Imaging 27 (4), 685–691 (2008). https://doi.org/10.1002/jmri.21049 10. Lin, Z.: Riemannian geometry of symmetric positive definite matrices via Cholesky decomposition. SIAM Journal on Matrix Analysis and Applications 40 (4), 1353– 1370 (2019). https://doi.org/10.1137/18M1221084 11. Pennec, X., Fillard, P., Ayache, N.: A Riemannian framework for tensor computing. International Journal of Computer Vision 66 (1), 41–66 (2006). https://doi.org/10.1007/s11263-005-3222-z 12. Pfaff, T., Fortunato, M., Sanchez-Gonzalez, A., Battaglia, P.W.: Learning mesh-based simulation with graph networks. In: International Conference on Learning Representations (ICLR) (2021) 13. Rubanova, Y., Chen, R.T.Q., Duvenaud, D.: Latent ODEs for irregularly-sampled time series. In: Advances in Neural Information Processing Systems (NeurIPS). vol. 32 (2019) 14. Sarasua, I., Pölsterl, S., Wachinger, C.: TransforMesh: A transformer network for longitudinal modeling of anatomical meshes. In: Machine Learning in Medi-cal Imaging (MLMI 2021, held with MICCAI 2021). Lecture Notes in Computer Predicting Subcortical Surfaces via the Metric Tensor 17 Science, vol. 12966, pp. 209–218. Springer (2021). https://doi.org/10.1007/978-3-030-87589-3_22 15. Sorkine, O., Alexa, M.: As-rigid-as-possible surface modeling. In: Proceedings of the Eurographics Symposium on Geometry Processing (SGP). pp. 109–116. Euro-graphics Association (2007). https://doi.org/10.2312/SGP/SGP07/109-116 16. Tancik, M., Srinivasan, P.P., Mildenhall, B., Fridovich-Keil, S., Raghavan, N., Sing-hal, U., Ramamoorthi, R., Barron, J.T., Ng, R.: Fourier features let networks learn high frequency functions in low dimensional domains. In: Advances in Neural In-formation Processing Systems (NeurIPS). vol. 33, pp. 7537–7547 (2020) 17. Türkseven, D., Rekik, I., von Tycowicz, C., Hanik, M.: Predicting shape develop-ment: A Riemannian method. In: Shape in Medical Imaging (ShapeMI 2023, held with MICCAI 2023). Lecture Notes in Computer Science, vol. 14350, pp. 211–222. Springer (2023). https://doi.org/10.1007/978-3-031-46914-5_17 18. Vaswani, A., Shazeer, N., Parmar, N., Uszkoreit, J., Jones, L., Gomez, A.N., Kaiser, Ł., Polosukhin, I.: Attention is all you need. In: Advances in Neural Information Processing Systems (NeurIPS). vol. 30 (2017) 19. Yu, Y., Zhou, K., Xu, D., Shi, X., Bao, H., Guo, B., Shum, H.Y.: Mesh editing with Poisson-based gradient field manipulation. ACM Transactions on Graphics (Proc. SIGGRAPH) 23 (3), 644–651 (2004). https://doi.org/10.1145/1015706.1015774

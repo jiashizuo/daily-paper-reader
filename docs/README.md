@@ -6,32 +6,32 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-08-07
-- 运行时间：2026-08-07 20:57:42 UTC
+- 最新运行日期：2026-08-08
+- 运行时间：2026-08-08 20:17:58 UTC
 - 运行状态：成功
 - 本次总论文数：4
-- 精读区：2
-- 速读区：2
+- 精读区：3
+- 速读区：1
 
 ### 今日简报（AI）
-今日精读2篇、速读2篇，聚焦脑网络动力学与EEG解码方法。最值得看的是《Mechanistic bridges》的均值场约化框架，以及《STEAM》的分层预训练混合专家模型。建议普通读者优先关注这两篇中关于计算权衡与跨时空对齐的设计思路。
-- 详情：[/202608/07/README](/202608/07/README)
+今日精读4篇医学影像AI论文，聚焦视觉语言模型安全性与MRI合成两大方向。最值得关注的是《Confident but Unreliable》揭示脑MRI视觉语言模型存在“自信但不可靠”的安全隐患，以及《VoxStruct3D》提出结构引导的3D MRI合成新方法。下一步建议在关注AI医学应用时，务必要留意模型的可信度验证而非仅看表面精度。
+- 详情：[/202608/08/README](/202608/08/README)
 
 ### 精读区论文标签
-1. [Mechanistic bridges from receptors to whole-brain dynamics: mean-field reductions, validity domains, and computational trade-offs](/202608/07/2608.00306v2-mechanistic-bridges-from-receptors-to-whole-brain-dynamics-mean-field-reductions-validity-domains-and-computational-trade-offs)  
+1. [Confident but Unreliable: A Behavioral Safety Audit of Vision-Language Models on Brain MRI](/202608/08/2608.02790v1-confident-but-unreliable-a-behavioral-safety-audit-of-vision-language-models-on-brain-mri)  
    标签：评分：8.0/10、query:fbn
-   evidence：通过连接组耦合节点建模全脑动力学
-2. [STEAM: A Spatio-TEmporal Alignment Mixture-of-Experts Model with Hierarchical Pre-training for EEG Decoding](/202608/07/2608.02070v2-steam-a-spatio-temporal-alignment-mixture-of-experts-model-with-hierarchical-pre-training-for-eeg-decoding)  
+   evidence：脑MRI上视觉语言模型的行为安全审计
+2. [VoxStruct3D: Structure-Leading Flow Matching for Voxel-Space 3D MRI Synthesis](/202608/08/2608.04557v1-voxstruct3d-structure-leading-flow-matching-for-voxel-space-3d-mri-synthesis)  
    标签：评分：8.0/10、query:fbn
-   evidence：面向EEG解码的分层预训练混合专家模型，属于神经影像AI健康医疗应用。
+   evidence：体素空间流匹配实现高保真三维MRI生成；属于神经影像AI医疗方法。
+3. [Predicting Brain Morphometry with MT-GNN: Mesh Evolution in Continuous Time with Graph-Based Metric Tensor Embeddings](/202608/08/2608.05132v1-predicting-brain-morphometry-with-mt-gnn-mesh-evolution-in-continuous-time-with-graph-based-metric-tensor-embeddings)  
+   标签：评分：8.0/10、query:fbn
+   evidence：基于GNN的脑形态测量预测，支持预后与临床试验富集
 
 ### 速读区论文标签
-1. [STEAM:ASpatio-TEmporal Alignment Mixture-of-Experts Model with Hierarchical Pre-training for EEG Decoding](/202608/07/2608.02070v1-steamaspatio-temporal-alignment-mixture-of-experts-model-with-hierarchical-pre-training-for-eeg-decoding)  
+1. [SecondOpinion: Anatomy-Aware Gated Reasoning for Efficient Medical Image Analysis](/202608/08/2608.01808v1-secondopinion-anatomy-aware-gated-reasoning-for-efficient-medical-image-analysis)  
    标签：评分：6.0/10、query:fbn
-   evidence：面向脑机接口与疾病诊断的EEG解码基础模型
-2. [Benchmarking Sheaf Neural Networks for Inductive Tasks](/202608/07/2608.02558v1-benchmarking-sheaf-neural-networks-for-inductive-tasks)  
-   标签：评分：6.0/10、query:fbn
-   evidence：系统评测Sheaf图神经网络，可迁移至功能连接图建模
+   evidence：门控双流医学图像分析推理；可复用于神经影像AI的高效方法。
 
 
 <div class="dpr-home-promo-card">
