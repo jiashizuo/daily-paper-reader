@@ -1,0 +1,321 @@
+Title: Spatial Masked-Set Learning for Sparse Multi-Shell Diffusion MRI Signal Synthesis
+
+URL Source: https://arxiv.org/pdf/2608.06958v1
+
+Published Time: Mon, 10 Aug 2026 00:38:59 GMT
+
+Number of Pages: 13
+
+Markdown Content:
+# Spatial Masked-Set Learning for Sparse Multi-Shell Diffusion MRI Signal Synthesis 
+
+Yousef Sadegheih 1[0009 −0003 −1766 −5519] , Pratibha Kumari 1,2[0000 −0003 −3681 −3700] , and Dorit Merhof 1,3[0000 −0002 −1672 −2185]  
+
+> 1
+
+Faculty of Informatics and Data Science, University of Regensburg, Regensburg, 93053, Germany  
+
+> 2
+
+Department of Data Science and Engineering, IISER Bhopal, India  
+
+> 3
+
+Fraunhofer Institute for Digital Medicine MEVIS, Bremen, Germany 
+
+dorit.merhof@ur.de 
+
+Abstract. Dense multi-shell diffusion MRI provides rich q-space infor-mation but requires long acquisition times. We propose a spatial masked-set framework for sparse multi-shell diffusion MRI signal synthesis. The model treats observed measurements as an unordered set, uses a local 
+
+3 × 3 × 3 neighborhood for spatial context, and predicts radial-order-6 SHORE coefficients for the center voxel. The coefficients can then be decoded analytically to synthesize signals at arbitrary q-space lo-cations. Training combines shell-wise gradient dropping, dense signal supervision, and rotation-consistent SHORE targets so that sparse in-put signals remain aligned with their coefficient supervision under aug-mentation. We evaluate on held-out HCP100 white-matter voxels by retaining limited subsets of measured diffusion-weighted signals from the reference acquisition. The proposed method achieves lower signal NMSE than both analytical q-space models and a state-of-the-art con-tinuous dMRI signal synthesis model designed for arbitrary input and output q-space sampling. In the b = 1000 setting with 10 input gra-dients, it achieves 2.70% NMSE, a 22 .4% relative reduction over this continuous model. Fractional anisotropy on reconstructed b = 1000 sig-nals provides a complementary tensor-derived endpoint, with analyt-ical models remaining competitive for FA despite higher dense-signal NMSE across the evaluated q-space. The implementation is available on https://github.com/xmindflow/SHOREPred. 
+
+Keywords: Diffusion MRI · Sparse q-space reconstruction · Diffusion signal synthesis · SHORE coefficients · Masked set learning 
+
+## 1 Introduction 
+
+Diffusion magnetic resonance imaging (dMRI) characterizes tissue microstruc-ture by measuring signal attenuation across gradient directions and b-values. Dense multi-shell acquisitions support rich q-space modeling but increase scan time, motion sensitivity, and the burden of large studies and clinical protocols arXiv:2608.06958v1 [eess.IV] 7 Aug 2026 2 Y. Sadegheih et al. 
+
+[20,9]. Sparse reconstruction therefore aims to recover dense diffusion informa-tion from fewer measurements without committing to a single fixed acquisition design. Learning-based methods have progressed from predicting diffusion-derived quantities or missing shells [5,11,4] to encoder-decoder, residual, attention, and shell-specific synthesis models [8,1]. Many such methods still assume a fixed number and ordering of input measurements or a specific source-target shell configuration. Implicit neural representations (INRs) and related continuous models provide a natural way to represent signals over coordinates [14,6,22,21], but existing dMRI synthesis settings often focus on a particular shell, a spe-cific source-to-target mapping, or a fixed output sampling pattern, which can require separate models or retraining for different acquisition scenarios. DIS-CUS addresses arbitrary input and output q-space samplings with geometric deep learning [2]. Analytical q-space models such as Simple Harmonic Oscillator based Reconstruction and Estimation (SHORE) and Mean Apparent Propagator MRI (MAP-MRI) also synthesize signals at arbitrary q-space locations through continuous bases [16,17,13], but their fits become unstable when very few angu-lar and radial samples are observed. We study a complementary route for this low-gradient regime: predicting a continuous SHORE representation from arbi-trary observed multi-shell measurements, while using local spatial context and dense signal supervision to stabilize sparse signal synthesis. We propose a spatial masked-set framework for this setting. The model re-ceives sparse diffusion measurements from a local 3 × 3 × 3 neighborhood, rep-resents each observation by normalized q-space coordinates, b-value, and signal intensity, and predicts radial-order-6 SHORE coefficients for the center voxel. SHORE coefficients act as a compact bridge between arbitrary sparse inputs and continuous dense signal synthesis: once predicted, they are decoded with the SHORE basis at arbitrary q-space locations. Spatial context is injected before mask-aware permutation-invariant pooling over the observed measurements, so the network can use local coherence without requiring a fixed q-space ordering. Training uses sparse inputs with dense supervision. Shell-wise gradient drop-ping simulates reduced protocols, while the model is supervised in SHORE-coefficient space and through reconstruction of the full diffusion signal. To keep augmentation physically consistent, rotation-consistent SHORE targets are re-computed after random gradient rotations before coefficient standardization. Our contributions are: ❶ masked-set SHORE coefficient prediction for arbitrary sparse multi-shell inputs; ❷ a compact spatial architecture using 3 × 3 × 3 con-text before q-space pooling; ❸ sparse-input, dense-output training with rotation-consistent SHORE augmentation and supervision; and ❹ an evaluation on the 100-subject Human Connectome Project subset (HCP100) showing lower sig-nal NMSE than a state-of-the-art continuous dMRI reconstruction model and analytical q-space models across the evaluated sparse single- and multi-shell signal-generation settings. Multi-Shell dMRI Signal Synthesis 3
+
+## 2 Method 
+
+2.1 Problem Formulation and SHORE Representation 
+
+Let vc be the center voxel and let P(vc) be its local 3 × 3 × 3 neighborhood. The full acquisition contains G diffusion encodings with b-values bg and unit gradient directions gg = ( gx,g , g y,g , g z,g )⊤. Sparse acquisition is represented by a mask m ∈ { 0, 1}G, with observed set O = {g : mg = 1 }. For each voxel 
+
+u ∈ P (vc) and encoding g, we use the descriptor 
+
+xu,g =
+
+q 
+
+˜bg gx,g ,
+
+q
+
+˜bg gy,g ,
+
+q
+
+˜bg gz,g , ˜bg , s u,g 
+
+⊤
+
+, ˜bg = bg /b max , (1) where su,g is normalized by the mean b = 0 signal. The first three entries encode normalized q-space position, the fourth preserves shell information, and the fifth is the measured signal. The input is therefore the masked set X = {xu,g : u ∈P(vc), g = 1 , . . . , G } together with m.The network predicts center-voxel SHORE coefficients instead of signal inten-sities tied to a prescribed output gradient table. For radial order 6, the coefficient vector cvc ∈ R50 defines a continuous signal through s(Q) = Φ(Q)cvc , where 
+
+Φ(Q) is the SHORE basis evaluated at query q-space locations Q [16,13]. This makes the prediction independent of a particular output gradient table: once coefficients are estimated, signals can be synthesized analytically at arbitrary directions and b-values. spatial neighborhood around center voxel   
+
+> Per-measurement Encoder  Projector Projector Relative positional encoder Attention Projector η
+> Average Pool Max Pool
+> Concat
+> Spatial Contextualization Invariant Aggregation
+> Denormalize
+
+Fig. 1: Overview of the spatial masked-set SHORE predictor. Per-encoding fea-tures from a 3 × 3 × 3 neighborhood are spatially contextualized, pooled over the observed q-space set, and mapped to 50 standardized SHORE coefficients, which are denormalized and decoded with the SHORE basis to synthesize dense diffusion signals. 4 Y. Sadegheih et al. 
+
+2.2 Spatial Masked-Set Network 
+
+Fig. 1 summarizes the proposed network. The design follows two constraints imposed by sparse dMRI: the observed gradients may vary across acquisitions, and their input order is arbitrary. The model is therefore permutation-invariant over observed q-space samples while still using their physical coordinates through Eq. (1), following the set-function principle of shared encoding and symmetric pooling [23,12]. Unobserved measurements are excluded by the mask during encoding, spatial attention, and q-space pooling, so gradient dropping is treated as missing measurements rather than as zero-valued signal entries. Each descriptor is encoded by a shared MLP ϕ as hu,g = ϕ(xu,g ) ∈ RH with 
+
+H = 160 . The encoder has hidden widths 80 and 160 with layer normalization, GELU activations, and dropout. Before pooling over q-space, the center feature for each observed encoding is refined using neighboring voxels measured at the same encoding. For each non-center neighbor n, let rn be its voxel-grid offset from the center, ¯rn the component-wise offset normalized by the half-window ra-dius, and pn = [ rn; ¯ rn; |rn|; ∥rn∥22] ∈ R10 the relative-position descriptor. Spatial attention is en,g = w⊤ tanh( Wq hc,g + Wkhn,g + Wppn),αn,g = softmax n∈N valid  
+
+> c,g
+
+(en,g ),
+
+¯hg = hc,g + η ⊙ X 
+
+> n∈N valid
+> c,g
+
+αn,g hn,g .
+
+(2) Here N valid  
+
+> c,g
+
+contains neighbors for which measurement g is available, the atten-tion dimension is 80, and the learnable context scale η ∈ RH is initialized to 
+
+10 −3. This residual scaling lets training start from the center-voxel signal and learn how much local anatomical context to use. The contextualized center features are aggregated only over observed mea-surements using mask-aware mean-max pooling, 
+
+z =
+
+|O| −1 X
+
+> g∈O
+
+¯hg ; max 
+
+> g∈O
+
+¯hg
+
+ , ˆcstd = ρ(z), (3) where the maximum is element-wise. Mean pooling captures the overall sparse q-space trend, max pooling preserves salient directional evidence, and the pre-diction head ρ maps the 2H pooled representation through hidden widths 320 and 160 to the 50 standardized SHORE coefficients. 
+
+2.3 Sparse Input, Dense Supervision, and SHORE Normalization 
+
+Training simulates reduced acquisitions by applying shell-wise masks to the full diffusion signal. For each selected shell, a fixed number of directions is retained from antipodal subsets to preserve approximate angular coverage; the remain-ing measurements are hidden from the model. The target remains dense: pre-dicted coefficients are supervised both as SHORE coefficients and through recon-struction of the full diffusion signal. This sparse-input, dense-output objective Multi-Shell dMRI Signal Synthesis 5
+
+matches the intended inference setting, where only sparse measurements are acquired but a dense continuous q-space representation is desired. SHORE coefficients are indexed by radial order n, angular degree l, and an-gular order m. Coefficients with the same (n, l ) form a rotational block Bn,l =
+
+{cn,l,m : m = −l, . . . , l }. We normalize these blocks in a way that respects this structure. The rotationally invariant l = 0 coefficient for each n is centered and scaled using training-set statistics μn, 0 and an, 0. For l > 0, a spatial rota-tion does not simply permute angular coefficients; it applies a linear transform within the m = −l, . . . , l components of each (n, l ) block. We therefore avoid component-wise centering, which would introduce orientation-dependent offsets into a subspace that should rotate as a block. Instead, each block is normal-ized only by a shared root-mean-square scale, preserving the relative angular geometry while balancing coefficient magnitudes numerically: 
+
+an,l = max 
+
+vuut 1
+
+N (2 l + 1) 
+
+> N
+
+X
+
+> i=1
+> l
+
+X
+
+> m=−l
+
+
+
+c(i)
+
+> n,l,m
+
+2
+
+, ϵ 
+
+ , l > 0. (4) Here ϵ > 0 defines the minimum scale for each block, preventing division by zero during normalization. Standardization is therefore cstd  
+
+> n, 0,0
+
+= ( cn, 0,0 − μn, 0)/a n, 0
+
+for l = 0 , and cstd  
+
+> n,l,m
+
+= cn,l,m /a n,l for l > 0. All statistics are computed on the training set and fixed for validation and testing. The coefficient loss is computed in standardized space, Lcoeff = C−1∥ˆcstd −
+
+cstd ∥22. For signal supervision, predictions are denormalized back to SHORE coefficient scale, decoded as ˆs = Φˆc, and compared with the full normalized signal using Lsignal = G−1∥ˆs − s∥22. The total objective is 
+
+L = λcLcoeff + λsLsignal , λc = 1 , λs = 10 . (5) The stronger signal-domain weight encourages accurate dense reconstruction while the coefficient term keeps the learned representation close to the SHORE target space. 
+
+2.4 Rotation-Consistent SHORE Supervision 
+
+Because q-space coordinates are explicit inputs, training only on one gradient-table orientation can encourage orientation-specific shortcuts. We therefore ap-ply random rotations during training. For R ∈ SO (3) , gradients are transformed as g′ 
+
+> g
+
+= Rgg ; b-values and signal intensities are unchanged, but the descriptor in Eq. (1) is recomputed with the rotated directions. The SHORE target must rotate with the input geometry. Reusing the original coefficient vector would be inconsistent because SHORE coefficients are basis-dependent. Let Φ and c be the original SHORE basis and coefficient vector, and let sref = Φc be the reference dense signal. After rotating the gradient table, we construct the rotated basis Φ′ and solve 
+
+c′ = arg min 
+
+> u∈RC
+
+∥Φ′u − sref ∥22,
+
+
+
+Φ′⊤ Φ′
+
+c′ = Φ′⊤ sref . (6) 6 Y. Sadegheih et al. 
+
+In practice, we solve these normal equations with a Cholesky factorization of 
+
+Φ′⊤ Φ′. The rotated coefficients are then standardized with the blockwise SHORE normalization defined in Sec. 2.3. This keeps the augmented input and supervi-sion target in the same rotated acquisition geometry while preserving a stable coefficient distribution. The procedure is important for l > 0 blocks, where rota-tions linearly transform angular orders within each (n, l ) block; it is exactly this coupling that motivates the shared block scaling used for SHORE normalization. 
+
+## 3 Experiments 
+
+3.1 Dataset and Preprocessing 
+
+We evaluate on the HCP100 subset of the Human Connectome Project [20,19]. Each subject has three nonzero shells at approximately b = 1000 , 2000 , and 
+
+3000 s /mm 2, with 90 diffusion-weighted measurements per shell and 18 b = 0 
+
+volumes. The acquisition uses a pulsed-gradient spin-echo sequence with ∆ ≈
+
+43 .1 ms and δ ≈ 10 .6 ms , which are needed by analytical q-space models such as SHORE and MAP-MRI. Subjects are split at the subject level into 80 training, 10 validation, and 10 test subjects. Training and evaluation are performed in white matter masks obtained with FSL [7]. We focus on white matter because sparse angular reconstruction is most relevant where diffusion has strong directional structure and multi-shell q-space information is expected to matter. Including gray matter, CSF, or partial-volume tissue would add many low-angular-contrast voxels and could obscure differences between reconstruction methods. Signals are normalized voxel-wise by the mean 
+
+b = 0 signal, sg = Sg /S 0, to reduce global intensity differences across voxels and subjects. Ground-truth SHORE coefficients are fitted voxel-wise from the full reference acquisition using radial order 6 and the Diffusion Imaging in Python (DIPY) SHORE implementation [3,16]. The resulting 50-dimensional coefficient vectors provide dense supervision targets, and precomputed SHORE basis matrices de-code predicted coefficients back to diffusion signals. 
+
+3.2 Sparse Sampling Protocol 
+
+Sparse acquisitions are simulated by masking diffusion measurements shell-wise. For each included shell, we retain k ∈ { 5, 10 , 15 , 20 , 25 , 30 , 40 , 50 } directions and hide the rest. In multi-shell settings with S shells, this gives kS observed diffusion-weighted measurements. Retained directions are selected from antipo-dal groups with approximately balanced angular coverage, and the same sparse masks are used for all methods to ensure a matched comparison across ex-tremely sparse and moderately sparse regimes. The proposed model is trained once and evaluated across all shell combinations and sampling budgets without configuration-specific retraining. Multi-Shell dMRI Signal Synthesis 7
+
+3.3 Comparison Methods 
+
+We compare against DISCUS, a recent geometric deep learning method for con-tinuous dMRI reconstruction with arbitrary input and output samplings [2]. We trained DISCUS from its public source code using the hyperparameter settings provided by the authors in the code release and paper. We also evaluate analyt-ical SHORE and MAP-MRI models using DIPY [3]. SHORE uses radial order 6 to match our target representation [16]; MAP-MRI uses radial order 4, follow-ing the Sparse Reconstruction Challenge setting [17,15]. Analytical models are fitted only from the sparse observed measurements and then evaluated on the full reference signal. 
+
+3.4 Evaluation Metrics 
+
+Signal fidelity is measured by patient-macro normalized mean squared error (NMSE). Let T be the test subjects, Ωp the white matter voxels for subject 
+
+p, and G the dense evaluation gradient table. We compute 
+
+NMSE = 1
+
+|T | 
+
+X
+
+> p∈T
+
+1
+
+|Ωp|
+
+X
+
+> v∈Ωp
+
+P 
+
+> g∈G
+
+(ˆ sp,v,g − sp,v,g )2
+
+P 
+
+> g∈G
+
+s2 
+
+> p,v,g
+
++ ε , (7) where ε prevents division by zero. This averages voxel errors within each subject and then averages subjects equally, rather than pooling all test voxels. To assess whether synthesized b = 1000 signals preserve tensor-derived information, we also report patient-macro fractional anisotropy error, 
+
+MSE FA = 1
+
+|T | 
+
+X
+
+> p∈T
+
+1
+
+|Ωp|
+
+X
+
+> v∈Ωp
+
+( cFA p,v − FA p,v )2. (8) The reference and reconstructed FA values are obtained by fitting diffusion ten-sors to the corresponding b = 1000 signals using the same gradient table. NMSE and MSE FA are reported as percentages. 
+
+3.5 Implementation Details 
+
+The model is implemented in PyTorch 2.5.0 [18]; SHORE, MAP-MRI, and ten-sor fitting use DIPY 1.9.0 [3]. Training uses Adam [10] with learning rate 10 −3,weight decay 10 −4, a polynomial learning-rate scheduler with power 0.9, and batch size 512. The final model is trained for 250,000 optimization steps on 1 NVIDIA A100 GPU with 40 GB VRAM, requiring approximately 10 GPU-hours. The loss weights are λc = 1 and λs = 10 , and random rotation augmentation is applied to training samples with probability 0.25. The final network contains ap-proximately 0.23 million trainable parameters, comparable to the approximately 0.25 million trainable parameters of DISCUS. 8 Y. Sadegheih et al. 
+
+Table 1: Dense multi-shell reconstruction from sparse b = 1000 inputs on the HCP100 test set. The gradient count denotes the number of observed b = 1000 
+
+directions; signal NMSE is computed on the reconstructed b = 1000 , b = 2000 ,and b = 3000 signals with 90 directions per shell, while MSE FA is computed from FA maps fitted to the reconstructed b = 1000 shell. Both metrics are reported as mean (standard deviation) in percentages; blue and red indicate the best and second-best means for each sampling budget.                                                       
+
+> # input directions DISCUS [2] SHORE [16] MAP [17] Ours MSE FA ↓NMSE ↓MSE FA ↓NMSE ↓MSE FA ↓NMSE ↓MSE FA ↓NMSE ↓
+> 52.15 (0.043) 4.81 (0.011) 1.56 (0.081) 12.70 (0.768) 3.19 (0.153) 7.29 (0.214) 1.80 (0.042) 4.08 (0.004) 10 0.83 (0.038) 3.48 (0.022) 0.66 (0.069) 10.80 (0.701) 1.05 (0.051) 5.34 (0.215) 0.41 (0.028) 2.70 (0.003) 15 0.61 (0.076) 3.18 (0.035) 0.41 (0.046) 10.38 (0.647) 0.54 (0.036) 4.89 (0.221) 0.27 (0.013) 2.49 (0.002) 20 0.50 (0.087) 3.05 (0.037) 0.29 (0.035) 10.11 (0.663) 0.34 (0.033) 4.68 (0.199) 0.22 (0.010) 2.40 (0.003) 25 0.43 (0.083) 2.97 (0.045) 0.22 (0.028) 9.97 (0.655) 0.25 (0.028) 4.57 (0.197) 0.17 (0.010) 2.34 (0.003) 30 0.39 (0.076) 2.94 (0.040) 0.17 (0.021) 9.82 (0.630) 0.21 (0.022) 4.51 (0.186) 0.17 (0.011) 2.31 (0.003) 40 0.36 (0.063) 2.92 (0.040) 0.11 (0.013) 9.65 (0.603) 0.18 (0.015) 4.41 (0.182) 0.15 (0.015) 2.27 (0.004) 50 0.36 (0.043) 2.93 (0.039) 0.07 (0.008) 9.54 (0.600) 0.20 (0.011) 4.36 (0.174) 0.14 (0.015) 2.24 (0.005)
+
+## 4 Results and Discussion 
+
+Table 1 and Fig. 2 evaluate the same question at different input sparsity patterns: how well each method recovers the dense multi-shell q-space signal when only a small masked subset is observed. The clearest advantage of the proposed method is in signal NMSE, especially at low gradient counts where analytical basis fitting is underconstrained and the ability to use arbitrary sparse measurements is most important. For the b = 1000 -only sparse-input protocol, the proposed method gives the lowest dense-signal NMSE at every sampling budget in Table 1. In the most sparse setting, it reduces NMSE by 15 .2% relative to DISCUS, 44 .0% relative to MAP-MRI, and 67 .9% relative to SHORE. The comparison with DISCUS remains favorable as more gradients are retained, with relative NMSE reductions of 22 .4% at 10 gradients and 23 .5% at 50 gradients. These relative improvements should be interpreted as signal-domain gains under the simulated sparse HCP100 protocol, not as a general claim about all downstream diffusion metrics. The FA results provide a narrower tensor-derived view of the reconstruction. They test whether the reconstructed b = 1000 shell preserves anisotropy after diffusion-tensor fitting, whereas signal NMSE evaluates the dense multi-shell sig-nal itself. This explains why the rankings are not identical: the proposed method is best for FA in the intermediate sparse regimes and ties SHORE at 30 retained gradients, while SHORE remains strongest at the sparsest and densest settings. Thus, analytical q-space fitting can preserve a dominant tensor summary well even when its dense multi-shell signal NMSE is substantially worse. The multi-shell NMSE curves in Fig. 2 are consistent with this signal-domain interpretation. In the low-gradient regime, the proposed method is the strongest method across the plotted shell combinations, with particularly visible separa-tion for higher b-values and multi-shell inputs. DISCUS is usually the closest Multi-Shell dMRI Signal Synthesis 9
+
+learning-based comparison method, while SHORE and MAP-MRI improve as more measurements are retained but remain more sensitive to extreme spar-sity. At larger sampling budgets, several curves approach each other and ties or near-ties become more common, which is expected because the reconstruction problem becomes less underdetermined and analytical models receive enough measurements for more stable fitting. Overall, the results support the intended operating point of the method: sparse multi-shell signal synthesis from limited q-space samples in white matter. Under this protocol, masked-set processing with local spatial context improves dense signal reconstruction over DISCUS and the analytical q-space models, while the FA results show that method rankings can change for specific tensor-derived summaries. 
+
+Fig. 2: Signal NMSE comparison across sparse single-shell and multi-shell input settings. Each panel specifies the shells available as sparse input; an x-axis value of k means that k directions are retained from each included shell using antipodal sampling. NMSE is computed on dense reconstruction of the b = 1000 , b = 2000 ,and b = 3000 signals with 90 directions per shell. The y-axis is shown on a logarithmic scale. Lower values indicate better reconstruction. 
+
+## 5 Ablation Studies 
+
+Table 2 separates model design from sparse-input training. The full-observation setting uses all 270 diffusion-weighted measurements as input and reconstructs the full signal, isolating architecture without sparsity-induced information loss. The sparse setting tests whether gradient dropping during training is needed for 10 Y. Sadegheih et al. 
+
+Table 2: Ablation study. NMSE is reported in percent; lower is better. Full observation uses all 270 diffusion-weighted measurements, while sparse input uses b = 1000 with 10 retained gradients.            
+
+> Setting Variant NMSE (%) ↓
+> Full observation Fixed-order MLP 2.25 MLP with shuffled gradient order 7.32 Basic Deep Set 2.15 Basic Deep Set + rotation augmentation 2.07 Spatial masked-set model + rotation augmentation 1.90
+> Sparse input Without gradient dropping during training 6.65 With gradient dropping during training 2.70
+
+the challenging b = 1000 case with 10 retained gradients. We compare against fixed-order multilayer perceptron (MLP) variants to test sensitivity to arbitrary gradient ordering. The fixed-order MLP performs reasonably only when the gradient order is fixed (2.25% NMSE), but degrades to 7.32% when the input order is shuffled. This confirms that it learns position-specific dependencies rather than an un-ordered q-space representation, which is unsuitable for arbitrary sparse proto-cols. A basic Deep Set model reduces NMSE to 2.15%, and rotation augmentation further improves it to 2.07%, an approximately 4% relative reduction, suggest-ing that exposure to additional q-space orientations and corresponding SHORE coefficient values is beneficial. Adding local spatial context on top of rotation augmentation gives the best full-observation result, 1.90% NMSE, an 8.2% rel-ative reduction over the augmented Deep Set and 15.6% over the fixed-order MLP. The trained spatial model also learned a non-negligible residual context scale: the mean absolute learned η was 0.51 after initialization at 10 −3. Together with the NMSE improvement, this suggests that the neighbor-context pathway was used rather than suppressed during training. Sparse-input training is equally important. Without gradient dropping dur-ing training, the model reaches 6.65% NMSE when tested with only 10 b = 1000 
+
+gradients. Training with gradient dropping reduces this to 2.70%, a 59.4% rela-tive error reduction. Thus, the final performance comes from the combination of order-invariant q-space processing, rotation-consistent supervision, learned spa-tial context, and explicit exposure to missing-gradient patterns. 
+
+## 6 Limitations and Future Work 
+
+This study is limited to HCP100 white matter voxels and retrospective sparse masks derived from dense acquisitions. This design isolates sparse q-space recon-struction in anisotropic tissue, but it does not establish whole-brain performance or robustness under prospectively acquired sparse protocols, where motion, noise, Multi-Shell dMRI Signal Synthesis 11 
+
+scanner differences, and protocol-specific artifacts may differ. The target repre-sentation is also fixed to radial-order-6 SHORE, which provides compact ana-lytic decoding but may limit expressiveness in more complex diffusion settings. Finally, we evaluate signal NMSE and FA error; future work should test down-stream orientation estimation, tractography, and microstructural modeling, and should assess generalization across datasets, scanners, and acquisition protocols. 
+
+## 7 Conclusion 
+
+We presented a compact spatial masked-set model for sparse multi-shell dMRI signal synthesis. A single trained model handles all evaluated sparse shell combi-nations and sampling budgets using local 3 × 3 × 3 context, predicts radial-order-6 SHORE coefficients, and decodes them at arbitrary q-space query locations without retraining for each input mask or output gradient table. On HCP100 white matter, it improves signal NMSE over a state-of-the-art continuous dMRI reconstruction model and analytical q-space models in low-gradient regimes, while remaining competitive for FA reconstruction. The ablations show that permutation-invariant set processing, rotation-consistent supervision, learned spatial context, and sparse-input training each contribute to the final model. These results support spatial masked-set SHORE prediction as an effective mod-eling strategy for sparse dMRI reconstruction under the evaluated protocol.    
+
+> Acknowledgments. This work was supported by the German Research Foundation (Deutsche Forschungsgemeinschaft, DFG) under the grant no. 417063796. Further, the authors gratefully acknowledge the computational and data resources provided by the Leibniz Supercomputing Center (www.lrz.de).
+> Ethics Statement. This study uses publicly available, de-identified Human Connec-tome Project data; no new human subject data were collected for this work.
+> Disclosure of Interests. The authors have no competing interests to declare that are relevant to the content of this article.
+
+## References     
+
+> 1. Dugan, R., Carmichael, O.: Multi-shell dmri estimation from single-shell data via deep learning. In: International Workshop on Machine Learning in Clinical Neu-roimaging. pp. 14–22. Springer (2023) 2. Ewert, C., Kügler, D., Stirnberg, R., Koch, A., Yendiki, A., Reuter, M.: Geometric deep learning for diffusion mri signal reconstruction with continuous samplings (discus). Imaging Neuroscience 2(2024). https://doi.org/10.1162/imag_a_00121 3. Garyfallidis, E., Brett, M., Amirbekian, B., Rokem, A., Van Der Walt, S., De-scoteaux, M., Nimmo-Smith, I., Contributors, D.: Dipy, a library for the analysis of diffusion mri data. Frontiers in neuroinformatics 8,8 (2014)
+
+12 Y. Sadegheih et al. 4. Gibbons, E.K., Hodgson, K.K., Chaudhari, A.S., Richards, L.G., Majersik, J.J., Adluru, G., DiBella, E.V.: Simultaneous noddi and gfa parameter map genera-tion from subsampled q-space imaging using deep learning. Magnetic resonance in medicine 81 (4), 2399–2411 (2019) 5. Golkov, V., Dosovitskiy, A., Sperl, J.I., Menzel, M.I., Czisch, M., Sämann, P., Brox, T., Cremers, D.: Q-space deep learning: twelve-fold shorter and model-free diffusion mri scans. IEEE transactions on medical imaging 35 (5), 1344–1351 (2016) 6. Hendriks, T., Vilanova, A., Chamberland, M.: Neural spherical harmonics for struc-turally coherent continuous representation of diffusion mri signal. In: International Workshop on Computational Diffusion MRI. pp. 1–12. Springer (2023) 7. Jenkinson, M., Beckmann, C.F., Behrens, T.E., Woolrich, M.W., Smith, S.M.: Fsl. Neuroimage 62 (2), 782–790 (2012) 8. Jha, R.R., Nigam, A., Bhavsar, A., Pathak, S.K., Schneider, W., Rathish, K.: Multi-shell d-mri reconstruction via residual learning utilizing encoder-decoder net-work with attention (msr-net). In: 2020 42nd Annual International Conference of the IEEE Engineering in Medicine & Biology Society (EMBC). pp. 1709–1713. IEEE (2020) 9. Karimi, D., Warfield, S.K.: Diffusion mri with machine learning. Imaging Neuro-science 2, imag–2 (2024) 10. Kingma, D.P., Ba, J.: Adam: A method for stochastic optimization. arXiv preprint arXiv:1412.6980 (2014) 11. Koppers, S., Haarburger, C., Merhof, D.: Diffusion mri signal augmentation: from single shell to multi shell with deep learning. In: International Conference on Med-ical Image Computing and Computer-Assisted Intervention. pp. 61–70. Springer (2016) 12. Lee, J., Lee, Y., Kim, J., Kosiorek, A., Choi, S., Teh, Y.W.: Set transformer: A framework for attention-based permutation-invariant neural networks. In: Interna-tional conference on machine learning. pp. 3744–3753. PMLR (2019) 13. Merlet, S.L., Deriche, R.: Continuous diffusion signal, eap and odf estimation via compressive sensing in diffusion mri. Medical image analysis 17 (5), 556–572 (2013) 14. Molaei, A., Aminimehr, A., Tavakoli, A., Kazerouni, A., Azad, B., Azad, R., Mer-hof, D.: Implicit neural representation in medical imaging: A comparative survey. In: Proceedings of the IEEE/CVF International Conference on Computer Vision. pp. 2381–2391 (2023) 15. Ning, L., Laun, F., Gur, Y., DiBella, E.V., Deslauriers-Gauthier, S., Megherbi, T., Ghosh, A., Zucchelli, M., Menegaz, G., Fick, R., et al.: Sparse reconstruction challenge for diffusion mri: Validation on a physical phantom to determine which acquisition scheme and analysis method to use? Medical image analysis 26 (1), 316–331 (2015) 16. Ozarslan, E., Koay, C., Shepherd, T.M., Blackband, S.J., Basser, P.J.: Simple har-monic oscillator based reconstruction and estimation for three-dimensional q-space mri. In: Proc. Intl. Soc. Mag. Reson. Med. vol. 17, p. 1396 (2009) 17. Özarslan, E., Koay, C.G., Shepherd, T.M., Komlosh, M.E., İrfanoğlu, M.O., Pier-paoli, C., Basser, P.J.: Mean apparent propagator (map) mri: a novel diffusion imaging method for mapping tissue microstructure. NeuroImage 78 , 16–32 (2013) 18. Paszke, A., Gross, S., Massa, F., Lerer, A., Bradbury, J., Chanan, G., Killeen, T., Lin, Z., Gimelshein, N., Antiga, L., et al.: Pytorch: An imperative style, high-performance deep learning library. Advances in neural information processing sys-tems 32 (2019) Multi-Shell dMRI Signal Synthesis 13 19. Sotiropoulos, S.N., Jbabdi, S., Xu, J., Andersson, J.L., Moeller, S., Auerbach, E.J., Glasser, M.F., Hernandez, M., Sapiro, G., Jenkinson, M., et al.: Advances in diffu-sion mri acquisition and processing in the human connectome project. Neuroimage 
+
+80 , 125–143 (2013) 20. Van Essen, D.C., Smith, S.M., Barch, D.M., Behrens, T.E., Yacoub, E., Ugurbil, K., Consortium, W.M.H., et al.: The wu-minn human connectome project: an overview. Neuroimage 80 , 62–79 (2013) 21. Wu, R., Cheng, J., Li, C., Zou, J., Fan, W., Guo, H., Liang, Y., Wang, S.: Spatial-angular representation learning for high-fidelity continuous super-resolution in dif-fusion mri (2025) 22. Wu, R., Cheng, J., Li, C., Zou, J., Yang, J., Fan, W., Liang, Y., Wang, S.: Csr-dmri: Continuous super-resolution of diffusion mri with anatomical structure-assisted implicit neural representation learning. In: International Workshop on Machine Learning in Medical Imaging. pp. 114–123. Springer (2024) 23. Zaheer, M., Kottur, S., Ravanbakhsh, S., Poczos, B., Salakhutdinov, R.R., Smola, A.J.: Deep sets. Advances in neural information processing systems 30 (2017)

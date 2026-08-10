@@ -6,40 +6,40 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-08-09
-- 运行时间：2026-08-09 20:13:21 UTC
+- 最新运行日期：2026-08-10
+- 运行时间：2026-08-10 20:41:27 UTC
 - 运行状态：成功
 - 本次总论文数：6
 - 精读区：4
 - 速读区：2
 
 ### 今日简报（AI）
-今日聚焦医学影像AI，精读高分论文并速读多模态预训练工作。
-最值得看：视觉语言模型精细分割胶质瘤亚区（9.0），以及EEG-fNIRS手写解码新方法（8.0）。
-建议下一步结合多模态MAE预训练与生成式模型，探索3D分割的实际落地。
-- 详情：[/202608/09/README](/202608/09/README)
+今日6篇推荐，精读聚焦大脑皮层重建与儿科头痛fMRI分类。
+最值得看两篇9分工作：随机皮层自重建的跨域迁移，以及基础模型用于儿童头痛rs-fMRI分类。
+普通读者建议从这两篇精读入手，再扫读MAE预训练与双曲图嵌入拓展视野。
+- 详情：[/202608/10/README](/202608/10/README)
 
 ### 精读区论文标签
-1. [Text-Guided Refinement of Multi-sequence Glioma Subregion Segmentation with a Vision-Language Foundation Model](/202608/09/2608.05389v1-text-guided-refinement-of-multi-sequence-glioma-subregion-segmentation-with-a-vision-language-foundation-model)  
+1. [International Transfer of Stochastic Cortical Self-Reconstruction](/202608/10/2608.07092v1-international-transfer-of-stochastic-cortical-self-reconstruction)  
    标签：评分：9.0/10、query:fbn
-   evidence：神经影像AI医疗，文本引导的脑胶质瘤MRI分割
-2. [Frequency-Decorrelated Temporal Ensembles for EEG--fNIRS Imagined-Handwriting Decoding](/202608/09/2608.03176v1-frequency-decorrelated-temporal-ensembles-for-eeg--fnirs-imagined-handwriting-decoding)  
+   evidence：基于皮层厚度映射与跨人群迁移的阿尔茨海默病神经影像AI分析
+2. [A foundation-model approach to pediatric headache classification from rs-fMRI](/202608/10/2608.07287v1-a-foundation-model-approach-to-pediatric-headache-classification-from-rs-fmri)  
+   标签：评分：9.0/10、query:fbn
+   evidence：基于静息态fMRI的深度学习进行儿童头痛分类
+3. [FedDOSE: Federated Learning Framework Decomposing Site Effects for Modeling Brain Dynamic Functional Connectivity](/202608/10/2608.07393v1-feddose-federated-learning-framework-decomposing-site-effects-for-modeling-brain-dynamic-functional-connectivity)  
+   标签：评分：9.0/10、query:fbn
+   evidence：联邦深度学习用于fMRI动态功能连接建模
+4. [Spatial Masked-Set Learning for Sparse Multi-Shell Diffusion MRI Signal Synthesis](/202608/10/2608.06958v1-spatial-masked-set-learning-for-sparse-multi-shell-diffusion-mri-signal-synthesis)  
    标签：评分：8.0/10、query:fbn
-   evidence：直接将深度学习用于EEG-fNIRS神经影像进行想象手写解码，与神经影像AI直接相关。
-3. [BrainBench: Benchmarking Large Language Models for Comprehensive EEG Understanding](/202608/09/2608.04156v1-brainbench-benchmarking-large-language-models-for-comprehensive-eeg-understanding)  
-   标签：评分：8.0/10、query:fbn
-   evidence：面向大语言模型综合EEG理解的神经影像基准
-4. [Evaluating the Diagnostic Robustness of Vision-Language Models Under Visual and Textual Perturbations](/202608/09/2608.04885v1-evaluating-the-diagnostic-robustness-of-vision-language-models-under-visual-and-textual-perturbations)  
-   标签：评分：8.0/10、query:fbn
-   evidence：在脑MRI数据上评估VLM在扰动下的诊断鲁棒性，与神经影像AI医疗需求匹配
+   evidence：面向稀疏多壳弥散MRI信号合成的深度学习方法
 
 ### 速读区论文标签
-1. [Curia-MAE: Multi-Modal Multi-Anatomy MAE Pre-Training for 3D Medical Image Segmentation](/202608/09/2608.05844v1-curia-mae-multi-modal-multi-anatomy-mae-pre-training-for-3d-medical-image-segmentation)  
+1. [Curia-MAE: Multi-Modal Multi-Anatomy MAE Pre-Training for 3D Medical Image Segmentation](/202608/10/2608.05844v2-curia-mae-multi-modal-multi-anatomy-mae-pre-training-for-3d-medical-image-segmentation)  
    标签：评分：7.0/10、query:fbn
-   evidence：面向三维CT/MRI分割的MAE预训练，可直接应用于神经影像。
-2. [Generative AI and Foundation Models in Medical Image](/202608/09/2608.01686v1-generative-ai-and-foundation-models-in-medical-image)  
+   evidence：基于CT和MRI预训练的可迁移3D医学图像分割基础模型，可用于神经影像任务
+2. [Hyperbolic Graph Embedders for Link Prediction and Topology Reconstruction](/202608/10/2608.07029v1-hyperbolic-graph-embedders-for-link-prediction-and-topology-reconstruction)  
    标签：评分：6.0/10、query:fbn
-   evidence：生成式AI与基础模型在医学图像分析中的应用综述
+   evidence：双曲图嵌入方法基准，可用于脑连接组拓扑重建
 
 
 <div class="dpr-home-promo-card">
