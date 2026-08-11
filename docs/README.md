@@ -6,40 +6,50 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-08-10
-- 运行时间：2026-08-10 20:41:27 UTC
+- 最新运行日期：2026-08-11
+- 运行时间：2026-08-11 20:19:13 UTC
 - 运行状态：成功
-- 本次总论文数：6
-- 精读区：4
-- 速读区：2
+- 本次总论文数：10
+- 精读区：6
+- 速读区：4
 
 ### 今日简报（AI）
-今日6篇推荐，精读聚焦大脑皮层重建与儿科头痛fMRI分类。
-最值得看两篇9分工作：随机皮层自重建的跨域迁移，以及基础模型用于儿童头痛rs-fMRI分类。
-普通读者建议从这两篇精读入手，再扫读MAE预训练与双曲图嵌入拓展视野。
-- 详情：[/202608/10/README](/202608/10/README)
+今日推荐10篇论文，其中6篇精读、4篇速读，聚焦医学影像与图神经网络前沿方向。最值得关注的是9.0分的脑MRI持续可扩展基础模型，以及8.0分的阿尔茨海默病进展半参数多状态建模。建议优先精读这两篇，并结合7.0分的MRI伪影鲁棒性研究，深入理解医学基础模型的可靠性与应用价值。
+- 详情：[/202608/11/README](/202608/11/README)
 
 ### 精读区论文标签
-1. [International Transfer of Stochastic Cortical Self-Reconstruction](/202608/10/2608.07092v1-international-transfer-of-stochastic-cortical-self-reconstruction)  
+1. [A continually expandable foundation model for brain MRI](/202608/11/2608.08319v1-a-continually-expandable-foundation-model-for-brain-mri)  
    标签：评分：9.0/10、query:fbn
-   evidence：基于皮层厚度映射与跨人群迁移的阿尔茨海默病神经影像AI分析
-2. [A foundation-model approach to pediatric headache classification from rs-fMRI](/202608/10/2608.07287v1-a-foundation-model-approach-to-pediatric-headache-classification-from-rs-fmri)  
-   标签：评分：9.0/10、query:fbn
-   evidence：基于静息态fMRI的深度学习进行儿童头痛分类
-3. [FedDOSE: Federated Learning Framework Decomposing Site Effects for Modeling Brain Dynamic Functional Connectivity](/202608/10/2608.07393v1-feddose-federated-learning-framework-decomposing-site-effects-for-modeling-brain-dynamic-functional-connectivity)  
-   标签：评分：9.0/10、query:fbn
-   evidence：联邦深度学习用于fMRI动态功能连接建模
-4. [Spatial Masked-Set Learning for Sparse Multi-Shell Diffusion MRI Signal Synthesis](/202608/10/2608.06958v1-spatial-masked-set-learning-for-sparse-multi-shell-diffusion-mri-signal-synthesis)  
+   evidence：脑MRI基础模型，大规模预训练，直接面向神经影像AI医疗
+2. [Semiparametric Functional Multistate Modeling of Alzheimer's Disease Progression with Imaging Biomarkers](/202608/11/2608.06734v1-semiparametric-functional-multistate-modeling-of-alzheimers-disease-progression-with-imaging-biomarkers)  
    标签：评分：8.0/10、query:fbn
-   evidence：面向稀疏多壳弥散MRI信号合成的深度学习方法
+   evidence：基于影像生物标志物的阿尔茨海默病进展统计建模
+3. [$\texttt{DisMorph}$: learning to disentangle technical distortions from true biological change](/202608/11/2608.08173v1-textttdismorph-learning-to-disentangle-technical-distortions-from-true-biological-change)  
+   标签：评分：8.0/10、query:fbn
+   evidence：纵向MRI配准用于神经影像AI医疗，解耦技术畸变与生物学变化
+4. [Anatomically Consistent Cross-Contrast Super-Resolution of Anisotropic Brain T2w MRI](/202608/11/2608.08401v1-anatomically-consistent-cross-contrast-super-resolution-of-anisotropic-brain-t2w-mri)  
+   标签：评分：8.0/10、query:fbn
+   evidence：脑T2w MRI跨对比度超分辨率，神经影像AI医疗
+5. [Parcel2Progression: An Anatomy-aware Longitudinal Framework for Alzheimer's Disease Diagnosis](/202608/11/2608.08753v1-parcel2progression-an-anatomy-aware-longitudinal-framework-for-alzheimers-disease-diagnosis)  
+   标签：评分：8.0/10、query:fbn
+   evidence：基于结构MRI的阿尔茨海默病诊断纵向Transformer，属于神经影像AI医疗
+6. [Decoding Phenotypes: A Framework for Fusing Genomic Language Models and Neuroimaging](/202608/11/2608.08926v1-decoding-phenotypes-a-framework-for-fusing-genomic-language-models-and-neuroimaging)  
+   标签：评分：8.0/10、query:fbn
+   evidence：融合基因组语言模型与神经影像进行多模态疾病诊断
 
 ### 速读区论文标签
-1. [Curia-MAE: Multi-Modal Multi-Anatomy MAE Pre-Training for 3D Medical Image Segmentation](/202608/10/2608.05844v2-curia-mae-multi-modal-multi-anatomy-mae-pre-training-for-3d-medical-image-segmentation)  
+1. [Do 3D Medical Foundation Models See Through MRI Artifacts? A Controlled Study of Representation Robustness](/202608/11/2608.06613v1-do-3d-medical-foundation-models-see-through-mri-artifacts-a-controlled-study-of-representation-robustness)  
    标签：评分：7.0/10、query:fbn
-   evidence：基于CT和MRI预训练的可迁移3D医学图像分割基础模型，可用于神经影像任务
-2. [Hyperbolic Graph Embedders for Link Prediction and Topology Reconstruction](/202608/10/2608.07029v1-hyperbolic-graph-embedders-for-link-prediction-and-topology-reconstruction)  
+   evidence：针对3D医学基础模型在MRI伪影下表征鲁棒性的受控评测，属于神经影像AI医疗
+2. [SheafIQ: Sheaf-Theoretic Information Quantification of Vector Fields on Geometric Graphs](/202608/11/2608.08728v1-sheafiq-sheaf-theoretic-information-quantification-of-vector-fields-on-geometric-graphs)  
+   标签：评分：7.0/10、query:fbn
+   evidence：用层论量化功能脑网络等几何图上向量场局部交互的组织方式，可支撑fMRI功能连接分析
+3. [Neural Message Passing on Structural Interaction Graphs for Fully-Inductive Graph Neural Networks](/202608/11/2608.08567v1-neural-message-passing-on-structural-interaction-graphs-for-fully-inductive-graph-neural-networks)  
    标签：评分：6.0/10、query:fbn
-   evidence：双曲图嵌入方法基准，可用于脑连接组拓扑重建
+   evidence：面向全归纳图神经网络的消息传递方法，可迁移到脑功能连接建模
+4. [Graph Analysis of Neuronal-Culture Connectivity Derived from a Reservoir-Computing Model](/202608/11/2608.09773v1-graph-analysis-of-neuronal-culture-connectivity-derived-from-a-reservoir-computing-model)  
+   标签：评分：6.0/10、query:fbn
+   evidence：从神经活动提取连接矩阵并进行图论分析
 
 
 <div class="dpr-home-promo-card">
