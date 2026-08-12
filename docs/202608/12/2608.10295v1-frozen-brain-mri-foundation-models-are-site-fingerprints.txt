@@ -1,0 +1,367 @@
+Title: Frozen Brain-MRI Foundation Models Are Site Fingerprints
+
+URL Source: https://arxiv.org/pdf/2608.10295v1
+
+Published Time: Wed, 12 Aug 2026 00:20:52 GMT
+
+Number of Pages: 15
+
+Markdown Content:
+# Frozen Brain-MRI Foundation Models Are Site Fingerprints 
+
+Saman Rahbar University of British Columbia, Vancouver, Canada 
+
+info@srahbar.com 
+
+Abstract. Frozen foundation-model (FM) embeddings are increasingly used as off-the-shelf brain-MRI representations, on the assumption that they capture anatomy. We audit what they actually encode and find that acquisition site is a large, intrinsic component of the representation. Across two independent cohorts (ABIDE-I, ABIDE-II), three frozen 3-D encoders (brain-pretrained, CT-pretrained, and randomly initialized), and every network depth, site is linearly decodable at roughly 0 .9 balanced accuracy at deep layers, exceeding the decodability of every clinical or demographic variable (sex, age, autism diagnosis) at every layer. The effect is intrinsic rather than learned: a randomly initialized encoder is already a ∼0.9 site classifier on both cohorts and across three architecture families (Swin, ViT, ResNet), and site is decodable at ∼0.95 directly from the raw downsampled image with no encoder, so the fingerprint reflects low-level image statistics that any encoder preserves rather than a product of pretraining. Residualizing measured population covariates leaves site decodability essentially unchanged, indicating an acquisition- rather than population-driven effect. A nonlinear probe matches the linear one, so the fingerprint is fully linearly accessible. The site subspace is removable post hoc by iterative null-space projection or ComBat (site decodability 0 .94 → 0.07 /0.00), and is a site-attribution concern for shared or federated embeddings; but for dense segmentation this removal is not free, because site and anatomy occupy an entangled linear subspace (a matched-rank random-direction projection is Dice-neutral, whereas removing the site subspace is destructive). We recommend site-audited use of frozen brain-MRI FMs and release an open audit toolkit. 
+
+Keywords: foundation models, brain MRI, scanner and site effects, harmonization, confounds, representation analysis, ABIDE 
+
+# 1 Introduction 
+
+# M ulti-site pooling is now standard prac-tice in neuroimaging: aggregating scans across scanners and centers is often the only way to reach the sample sizes modern analyses demand. But sites differ in scanner vendor and field strength, in pulse-sequence and protocol settings, and in reconstructed resolution. These differences introduce systematic, non-biological variation that is decodable from the images themselves and from task-trained deep features, and that can bias or confound downstream multi-site analyses (Glocker et al., 2019). A large harmonization literature has grown up to remove these effects from derived mea-surements ; the most widely used tool, ComBat, ap-plies an empirical-Bayes location/scale correction to extracted features (Johnson et al., 2007; Fortin et al., 2018). A newer practice sidesteps hand-engineered fea-tures altogether. Foundation models (FMs) pre-trained by self-supervision on large MRI/CT cor-pora are increasingly deployed as frozen encoders: practitioners attach a lightweight head to the FM’s embedding and treat that embedding as an anatomy-bearing summary of the scan (Bommasani et al., 2021; Tang et al., 2022; Cox et al., 2024). This is attractive in brain MRI, where labels are scarce and pretraining corpora are large. It also raises a ques-tion that the harmonization literature has not asked of these models: how much of a frozen brain-FM embedding is anatomy, and how much is acquisition site? If site is written deeply into the representation that everyone reuses, then site is silently entering every downstream analysis built on top of it. And unlike a hand-engineered feature, an off-the-shelf embedding is rarely audited for it. We answer three questions empirically. (1) How decodable is acquisition site, relative to clinical and demographic signal, across network depth and across models? (2) Does site encoding arise from pretrain-ing, or is it intrinsic to the architecture? (3) Can 1arXiv:2608.10295v1 [cs.CV] 10 Aug 2026 FROZEN SwinUNETR ENCODER + TRAINED DECODER frozen encoder trained decoder                                    
+
+> T1w MRI
+> frozen
+> 48 ch 96 192 384
+> bottleneck 768 trained
+> 48 96 192 384 skip connection
+> Intervention
+> project out site subspace (INLP/ComBat)
+> segmentation
+> removal is Dice-neutral site ⊗anatomy entangled
+> AUDIT —probe each frozen stage GAP →probe
+> linear &MLP acquisition site ~0.9
+> clinical (sex/age/dx)
+> site ≫clinical
+> 2–6× (ABIDE-I), 1.6–3× (ABIDE-II); holds for arandom-init encoder
+
+Figure 1: Architecture and experiments. We study a frozen SwinUNETR encoder (teal, hierarchical Swin stages, 48 → 768 channels) with a trained decoder (amber) and skip connections. Audit: we global-average-pool each frozen stage and probe it (linear and MLP) for acquisition site versus clinical targets; site is far more decodable (site ≫ clinical: 2–6 × on ABIDE-I, 1 .6–3 × on ABIDE-II, and equally for a random-initialized encoder). Intervention: we project the site subspace out of the bottleneck feature field (INLP/ComBat) before decoding; this is task-dependent for global readouts, and for segmentation is Dice-neutral when confined to the bottleneck but destructive when applied at all scales, because site and anatomy are linearly entangled. “Site” denotes the bundle of scanner, protocol, and population that distinguishes acquisition sites. the site component be removed post hoc, and at what cost? Our contributions are: • a site-vs-clinical decodability audit of frozen brain-MRI FM embeddings, showing that site is decodable at ∼0.9 and exceeds every clinical vari-able at every layer, replicated on two independent cohorts and across five network depths (the mul-tiplicative margin, 2–6 × / 1 .6–3 ×, is cohort- and resolution-dependent; the stable quantity is the 
+
+∼0.9 absolute); • the finding that this is intrinsic : a randomly initialized encoder is already a ∼0.9 site classi-fier on both cohorts and across three architecture families (Swin, ViT, ResNet), and site is even decodable from the raw downsampled image, so the fingerprint is low-level image statistics rather than a product of pretraining (which, for the Swin-UNETR checkpoints audited, does not strengthen it); • evidence that the fingerprint is acquisition-driven , not population: it survives residualizing the measured population covariates; and • a mitigation analysis: the site subspace is re-movable by null-space projection or ComBat, but removing it trades off against anatomical fidelity in dense segmentation (a matched-rank random-direction control shows the effect is site-specific). We release the audit code and analysis to support reproduction. 
+
+# 2 Related work 
+
+Our study sits at the intersection of four literatures: the long-standing neuroimaging work on scanner and site effects, the harmonization methods devel-oped to remove them, the broader machine-learning literature on confounds and shortcut features, and the probing methodology used to ask what a learned representation encodes. We review each in turn and then state our position relative to them. 22.1 Site and scanner effects in neuroimag-ing 
+
+That multi-site neuroimaging data carry systematic, non-biological variation is not in dispute. Differ-ences in scanner vendor and field strength, in pulse-sequence and protocol parameters, and in recon-struction and post-processing all leave measurable traces in the acquired image, and these traces prop-agate into derived measurements such as cortical thickness and diffusion metrics (Fortin et al., 2018; Pomponio et al., 2020). Glocker et al. (2019) showed that site is recoverable from features extracted by task-trained deep networks and that pooling across sites without correction can bias downstream analy-sis. The most direct precedent for the present work is Wachinger et al. (2021), who pooled 35 ,320 brain MRI scans from 17 studies and ran a “Name That Dataset” experiment: scans could be assigned to their originating dataset at 71 .5% accuracy. They further modelled confounders as latent variables and, in a finding that bears directly on ours, ob-served that harmonization “can easily remove rel-evant subject-specific information”, an early state-ment of the entanglement we characterize quan-titatively in Section 4.1 and in our segmentation intervention. A recurring difficulty in this literature is that “site” confounds acquisition with population: sites differ in scanner and in who they scan. Yamashita et al. (2019) addressed this directly with a traveling-subject design, decomposing site differences into a biological sampling bias and an engineering measure-ment bias, and found the two to be of comparable magnitude to the psychiatric-disorder effects under study. Their design remains the cleanest available test of the acquisition-versus-population question, and we return to it in our Limitations, since ABIDE offers no traveling subjects and we can only residu-alize measured covariates. 
+
+2.2 Harmonization 
+
+The dominant response to site effects has been to correct the derived measurements. ComBat, an empirical-Bayes location/scale model imported from microarray batch correction (Johnson et al., 2007), was adapted to neuroimaging features by Fortin et al. (2018) and has since been extended in several directions: to nonlinear lifespan trends (Pomponio et al., 2020), and to site effects in the covariance 
+
+rather than only the mean and variance (Chen et al., 2022). Chen et al. (2022) make a point that matters here. Correcting mean and variance alone can leave a representation from which site is still recoverable, which is precisely the regime a linear probe detects. A parallel line replaces the post-hoc statistical correction with a learned invariance. Dinsdale et al. (2021) train with an iterative domain-adaptation scheme that actively unlearns scanner information while preserving task performance, and Moyer et al. (2020) learn a scanner-invariant encoding via a vari-ational autoencoder with an information-theoretic invariance objective. Both families differ from our setting in an impor-tant way: they either operate on hand-engineered derived measurements, or they assume access to training so that invariance can be built in. The frozen-encoder practice we audit permits neither. The embedding is fixed, the pretraining is done, and the practitioner typically has only a lightweight head. This motivates our focus on a training-free, test-time 
+
+removal and on characterizing what it costs. 
+
+2.3 Confounds, shortcuts, and demo-graphic decodability 
+
+Outside neuroimaging, a substantial literature docu-ments models exploiting features that are predictive but not the intended signal. Geirhos et al. (2020) give the general framing as shortcut learning. In medical imaging specifically, Gichoya et al. (2022) showed that deep networks recover self-reported pa-tient race from radiographs, CT, and mammography at AUC 0 .81–0 .99; that this ability is not explained by plausible confounders (body-mass index AUC 0.55, disease distribution 0 .61, breast density 0 .61); and that it survives aggressive image corruption, cropping, and low-pass filtering. The argumenta-tive structure of that result is the one we adopt: establish that an attribute is decodable, show that measured covariates do not account for it, and show that it persists under degradation of the input. Our raw-voxel control, site decodable at ∼0.95 from a 12 3
+
+downsampling with no encoder at all, is the analogue of their corruption experiments. Seyyed-Kalantari et al. (2021) document why such encodings matter clinically, showing selective underdiagnosis of under-served populations by chest-radiograph classifiers. 
+
+2.4 Probing representations 
+
+Linear probes are the standard instrument for asking what a representation encodes (Alain and Bengio, 2016). Their interpretation requires care: Hewitt and Liang (2019) show with control tasks that a suf-ficiently expressive probe can achieve high accuracy 3on random labels, so probe accuracy alone conflates properties of the representation with capacity of the probe. We mitigate this in three ways. We use chance-corrected balanced accuracy, we report a matched nonlinear (MLP) probe that does not 
+
+exceed the linear one, and we compare against a raw-voxel baseline that bounds how much of the decodability is attributable to the encoder at all. For removal, we use iterative null-space projection, or INLP (Ravfogel et al., 2020), which repeatedly fits a linear classifier for the attribute and projects out its direction. INLP is attractive here because it is training-free at the encoder, operates directly on a frozen embedding, and yields an explicit subspace whose rank we can control, which in turn lets us con-struct the matched-rank random-direction control that separates “removing the site subspace” from “removing directions of that rank.” 
+
+2.5 Random-weight networks 
+
+Untrained convolutional networks extract surpris-ingly useful features because architecture alone im-poses structure on the input (Saxe et al., 2011). This observation motivates our central control. If a ran-domly initialized encoder were a poor site classifier, the fingerprint would be attributable to pretraining; because it is not, the fingerprint must be attributed to the architecture acting on site-dependent image statistics. 
+
+2.6 Foundation models in medical imag-ing 
+
+Self-supervised 3-D encoders pretrained on large MRI/CT corpora are now routinely deployed as frozen feature extractors (Bommasani et al., 2021; Tang et al., 2022; Cox et al., 2024), usually built on SwinUNETR-family backbones (Hatamizadeh et al., 2022). Reviews of the area emphasize generalist capability and label efficiency (Moor et al., 2023), while also flagging open questions about robustness and evaluation (Zhang and Metaxas, 2024). What this literature has largely not done is audit the frozen embedding itself for acquisition confounds. The representation is treated as anatomy-bearing and reused as such. For the segmentation analysis we use SynthSeg (Billot et al., 2023) to produce silver labels, chosen because it is contrast- and resolution-robust by design and therefore not itself the confound under study. 
+
+2.7 Our position 
+
+Relative to the above, our contribution is audit-and-govern rather than method development. We quantify what a frozen brain-MRI foundation-model embedding leaks about acquisition site; we add the random-initialization and raw-voxel controls that prior site-effect work lacks, which together relocate the effect from pretraining to low-level image statis-tics; we give a depth-resolved map across five scales and two independent cohorts; and we characterize a training-free mitigation together with the anatomi-cal cost it incurs on a dense task. 
+
+# 3 Methods 
+
+3.1 Data and preprocessing 
+
+We use T1-weighted MRI from ABIDE-I (546 sub-jects, 6 sites) and ABIDE-II (989 subjects, 15 sites), two independent multi-scanner cohorts (Di Martino et al., 2014, 2017). Both are distributed openly by the ABIDE initiative; we read T1w volumes di-rectly from the FCP-INDI public S3 mirror and take metadata (site, sex, age, autism diagnosis) from the cohort phenotypic tables ( Phenotypic_V1_0b.csv 
+
+for ABIDE-I, the composite phenotypic table for ABIDE-II). We describe the two cohorts as independent in a specific and checkable sense: they share no acqui-sition site. The ABIDE-I sites used here are CAL-TECH, NYU, PITT, UM_1, USM and YALE, and the matched 6-way ABIDE-II subset used through-out is BNI_1, EMC_1, ETHZ_1, GU_1, IP_1 and IU_1. The two sets are disjoint, so every ABIDE-II result is a replication on scanners and centres that contributed nothing to the ABIDE-I result. This matters because the wider ABIDE-I and ABIDE-II collections do overlap at several centres, so cohort-level independence cannot be assumed from the dataset names alone. Preprocessing is deliberately minimal, so that the audit reflects the images as a practitioner would feed them to a frozen encoder rather than the output of an elaborate normalization pipeline. Using MONAI transforms, each volume is loaded, reoriented to RAS, resampled to 1 .7 mm isotropic with bilinear interpolation, intensity-scaled to [0 , 1], and cropped or padded to 96 3. No skull stripping, bias-field correction, or spatial registration to a template is applied. For the higher-resolution ablation reported in the Limitations we set the spacing to 1 .0 mm and the cube to 160 3 and otherwise leave the pipeline unchanged. Subjects are excluded if age is missing 4or non-finite, if sex is not coded as 1/2, if the volume fails to load, or if the resulting embedding contains non-finite values. Throughout, “site” denotes the acquisition-site label, which bundles scanner hardware, acquisition protocol, and the site’s subject population; we use “site fingerprint” as shorthand and return in Sec-tion 4.1 and the Limitations to how much of decod-able site is acquisition versus population. For the segmentation analysis we generate silver labels with SynthSeg (Billot et al., 2023), which is contrast- and site-robust by design, so the labels are not them-selves the confound under study. 
+
+3.2 Frozen encoders and embedding ex-traction 
+
+We audit three frozen encoders from the Swi-nUNETR family (Hatamizadeh et al., 2022), all instantiated identically (in_channels = 1, 
+
+out_channels = 14, feature_size = 48) and dif-fering only in weights: (i) brain-pretrained , self-supervised on ∼41k UK Biobank scans (Cox et al., 2024); (ii) CT-pretrained , the publicly released MONAI self-supervised SwinUNETR (Tang et al., 2022); and (iii) random-init , the same architecture with random weights at a fixed seed. In all cases we use only the hierarchical swinViT 
+
+encoder as a feature extractor. Weights are cast to fp32, the module is placed in evaluation mode, and all parameters have gradients disabled; the encoder is never updated anywhere in this paper. For each of the five Swin stages (channel dimen-sions 48 /96 /192 /384 /768, denoted L0– L4) we take a global-average-pooled (GAP) embedding over the spatial axes, yielding one vector per subject per layer. 
+
+3.3 Probes and decodability 
+
+Embeddings are z-scored per feature before probing. For categorical targets (site, sex, autism diagnosis) we fit multinomial logistic regression ( C = 1 .0) on a stratified 70 /30 train/test split and report chance-corrected balanced accuracy 
+
+d = max 
+
+> (
+
+0, bAcc − 1/K 
+
+1 − 1/K 
+
+> )
+
+, (1) for K classes, so that d = 0 is chance and d = 1 is perfect decoding. Note the clamp at zero in Eq. (1): below-chance probes are reported as 0 rather than as negative values. For age we fit ridge regression (α = 1 .0) on a 70 /30 split and report R2, likewise clamped at zero. To test whether the encoding is nonlinear, every probe is repeated with a one-hidden-layer MLP (64 units, α = 10 −3, at most 300 iterations) under an identical split protocol. Reporting both lets us treat the linear number as a floor: if the MLP does not exceed it, the attribute is linearly accessible rather than hidden in nonlinear structure. We summarize each embedding by the site-dominance ratio dsite /(max j dclinical ,j + ϵ) with ϵ =10 −3 guarding against a vanishing denominator, where the maximum runs over sex, age R2, and diagnosis. Because the targets differ in cardinality and intrinsic difficulty, we read this ratio as indica-tive rather than as an exact effect size, and we note in Section 4.1 that the paper’s central intrin-sic claims are within-target (site-only) comparisons that do not depend on it. 
+
+3.4 Statistical protocol 
+
+Every reported decodability is the mean over 50 repeated stratified holdouts with distinct random seeds; intervals are the 5th–95th percentiles of that distribution and are therefore 90% intervals over data splits. A cell is skipped if fewer than two classes are present or the rarest class has fewer than four members. For the random-versus-pretrained comparison we additionally run a paired test over 200 matched holdouts, reporting a one-sided sign test and a two-one-sided-tests (TOST) equivalence check at a margin of 0 .05. These p-values quantify variance over holdout splits, not over checkpoints. 
+
+3.5 Removing the site subspace 
+
+We remove the linearly decodable site subspace two ways, both training-free at the encoder and applied at test time to frozen features. 
+
+INLP. Iterative null-space projection (Ravfogel et al., 2020) repeatedly fits a multinomial logistic site classifier ( C = 1 .0), takes an orthonormal ba-sis U of its weight directions via SVD (retaining singular values > 10 −8), and applies I − U U ⊤ to the embeddings. We sweep the iteration count over 
+
+{1, 2, 4, 8, 12 } and compose the per-step projections. Iterating matters because site is redundantly en-coded across many directions, so removing a single low-rank regression subspace is insufficient. We addi-tionally project out the normalized ridge-regression age direction at each step. 
+
+ComBat. As a comparator we apply ComBat (Johnson et al., 2007; Fortin et al., 2018), an 5empirical-Bayes location/scale correction, to the embeddings with age and the downstream target preserved as covariates. 
+
+Matched-rank control. To establish that any effect is specific to the site subspace rather than a generic consequence of reducing rank, we project out the same number of random orthonormal directions per scale and repeat the evaluation. 
+
+3.6 Evaluation of downstream readouts 
+
+For global readouts we measure leave-one-site-out (LOSO) balanced accuracy before and after removal: the head is trained on all but one site and tested on the held-out site, requiring at least eight training and four test subjects per fold, and scores are aver-aged over folds. Significance is assessed three ways on the per-fold deltas, using a one-sided sign test, a Wilcoxon signed-rank test where enough folds exist, and a 300-replicate subject-level bootstrap giving a 90% interval on the mean delta. For the dense task we attach a SwinUNETR de-coder to the frozen encoder and train only the de-coder on SynthSeg silver labels; the encoder is never updated. At test time we project the site subspace out of the bottleneck feature field per voxel, mid-forward, and re-decode. We report LOSO cross-site Dice before and after, together with a variant that projects at all five scales and the matched-rank random-direction control described above. 
+
+3.7 Controls 
+
+Three controls isolate the source of the fingerprint. The cross-architecture control extracts per-layer GAP embeddings from random-initialized non-Swin encoders, a plain ViT and a 3-D ResNet, under the identical probe protocol. The seed-stability con-trol rebuilds random-init encoders at three weight-initialization seeds (0/1/2) per architecture, caching each preprocessed volume once and applying every seeded encoder to it so that n seeds cost one pass over the data. The raw-voxel control probes site directly from the 12 3 downsampled image with no encoder in the loop, bounding how much decodabil-ity is attributable to the encoder at all. Finally, to separate acquisition from population we residu-alize embeddings against the measured population covariates (age, sex, diagnosis) and re-measure site decodability. 
+
+Cohort subsampling. The main decodability matrix (Tables 1–2) uses the full matched cohort. The architecture and seed controls (Tables 3–4) in-stead cap the number of subjects per site at 60 to keep the multi-encoder sweep tractable, giving 
+
+n=331 usable ABIDE-I subjects after load failures. Absolute decodabilities therefore differ slightly be-tween the main matrix and the control tables; the comparisons of interest are within-table. 
+
+3.8 Implementation 
+
+All analysis is CPU-only except encoder feature extraction. Probes use scikit-learn; encoders use MONAI/PyTorch. Every analysis script ships a synthetic self-test that runs without data, model, or GPU, and all loaders raise on missing data or check-points rather than silently substituting defaults, so that no reported number can originate from fabri-cated inputs. 
+
+# 4 Results 
+
+4.1 Site is a large component of the rep-resentation 
+
+On ABIDE-I, across all three encoders and all five layers, linear site decodability ranges from 0.68 to 0 .96, with 90% intervals within ±0.03 to 
+
+±0.05, while the best clinical/demographic decod-ability is at most ∼0.41. The site-dominance ra-tio is 2–6 × (Figure 2, Table 1). Site decodabil-ity rises with depth ( L0 ≈ 0.70 → L4 ≈ 0.95), monotonically for the brain-pretrained and random-init encoders and near-monotonically for the CT-pretrained one (which plateaus after L3). A non-linear MLP probe matches the linear probe (dif-ference < 0.02 at every cell), so the fingerprint is fully linearly accessible rather than hidden nonlin-ear structure. We chance-correct balanced accuracy, (bAcc − 1/K )/(1 − 1/K ), precisely so that decod-abilities are comparable across targets with different class counts; even so, the cross-target site-versus-clinical comparison is best read as indicative rather than exact, since the targets differ in cardinality and difficulty. The paper’s central intrinsic find-ings, random ≈ pretrained and site decodable from raw voxels, are within-target (site-only) comparisons that do not rely on it. 
+
+Cross-cohort replication. On the independent 15-site ABIDE-II cohort, in a matched 6-way comparison with the same repeated-holdout inter-vals, deep-layer site decodability is 0 .79–0 .88 (at 
+
+L4: brain-pretrained 0 .87 [0 .81 , 0.93], CT-pretrained 0.79 [0 .69 , 0.87], random 0 .88 [0 .82 , 0.93]), and the 6MLP probe again matches the linear one, repro-ducing the ∼0.9 fingerprint with intervals. Clinical decodability is higher than on ABIDE-I (peaking around 0 .5 mid-network) but stays below site, so the site-dominance ratio is smaller yet consistent, 
+
+∼1.6–3 ×. The robust cross-cohort claim is thus that site is a large component of the representation, more decodable than clinical signal on both cohorts, by a cohort-dependent margin (2–6 × on ABIDE-I, 1.6–3 × on ABIDE-II). 
+
+Acquisition versus population. Because site bundles acquisition with the site’s subject popula-tion, we test how much of the decodability is popu-lation by residualizing the embeddings against the measured population covariates (age, sex, diagnosis) and re-measuring. Deep-layer site decodability is essentially unchanged (95–99 .8% retained: brain-pretrained 0 .94 → 0.94, CT-pretrained 0 .91 → 0.90, random 0 .98 → 0.93; this experiment uses a single held-out split rather than the 50-repeated-holdout mean reported elsewhere, so the random-init raw value differs slightly from Table 1 and Section 4.2), so the measured population variables explain almost none of it: the decodable signal is acquisition-driven rather than a reflection of measured population composition (unmeasured population factors are discussed in the Limitations). 
+
+4.2 The fingerprint is intrinsic, not learned 
+
+On ABIDE-I the randomly initialized encoder reaches site decodability 0 .956 [0 .92 , 0.99] at L4: at least as high as the brain-pretrained (0 .948) and CT-pretrained (0 .926) encoders, and the highest of the three. The same ordering holds on ABIDE-II (6-way L4: random 0 .88, brain-pretrained 0 .87, CT-pretrained 0 .79). We therefore make the directional claim that the fingerprint is already present with-out pretraining: an untrained network is a ∼0.9site classifier on both cohorts (Figure 3), so site separability is a property of the architecture act-ing on site-dependent image statistics rather than something pretraining must induce. A paired com-parison over 200 matched holdouts confirms this beyond the overlapping intervals: the random en-coder is non-inferior to both pretrained encoders (random −pretrained mean difference +0 .007 and +0 .018; one-sided paired sign test p < 10 −17 ), and the encoders are statistically equivalent within a margin of 0 .05 (two one-sided tests, p < 10 −50 ). These small p-values quantify variance over hold-out splits, not over checkpoints: the comparison is between two specific pretrained SwinUNETR check-points and their random-init counterpart, so the supported claim is that for these checkpoints pre-training is not required for the fingerprint and does not strengthen it, rather than a population-level statement over all possible pretrained models. The effect also generalizes beyond the SwinUNETR ar-chitecture: a random-initialized plain ViT and a random-initialized 3-D ResNet reach high deep-layer site decodability as well ( ∼0.90 and ∼0.96; Table 3), so the intrinsic site fingerprint is shared across three architecture families (hierarchical Swin transformer, non-hierarchical ViT, and pure CNN) rather than being an artifact of one design. The effect is also stable across the random weight-initialization seed: over three independent seeds per architecture, deep-layer ( L4) site decodability is 0 .973 ± 0.006 (Swin), 0.916 ± 0.030 (ViT), and 0 .987 ± 0.019 (ResNet) (Table 4), an across-seed spread no larger than the across-holdout intervals, so the fingerprint is a prop-erty of the architecture and not of one lucky initial-ization. Indeed the fingerprint precedes the network entirely: site is decodable at 0 .95 balanced accuracy from the heavily downsampled raw voxels (12 3, no encoder), whereas clinical decodability from raw voxels is weak (sex 0 .33, age R2 0.07). Any encoder, trained or random, therefore merely preserves a site signal that is already present as low-level statistics in the acquired image. 
+
+4.3 Where site and clinical information concentrate with depth 
+
+On ABIDE-I, age R2 peaks mid-network ( L2 ≈ 0.28– 0.37) and falls to ∼0 at the L4 bottleneck, and sex/diagnosis are weak throughout, so the layer conventionally frozen for transfer is the least infor-mative for clinical readouts. On ABIDE-II, whose demographics carry more signal, clinical decodabil-ity is higher and also peaks mid-network ( L1– L2). The depth profile of site itself differs between co-horts: on ABIDE-I it rises with depth and is highest at the bottleneck, whereas on ABIDE-II it saturates early and is flat or mildly declining from L2 onward (most visibly for the CT-pretrained encoder, which peaks at L1). What is common to both cohorts is not a monotone depth trend but the ordering: site exceeds the best clinical decodability at every layer, while clinical signal, where present, concentrates mid-network (Figure 4). 7L0 L1 L2 L3 L4 Brain-pretrained CT-pretrained Random-init             
+
+> 0.71 0.82 0.90 0.95 0.95 0.73 0.91 0.92 0.94 0.93 0.68 0.84 0.92 0.95 0.96
+
+ABIDE-I — Acquisition site 
+
+L0 L1 L2 L3 L4             
+
+> 0.28 0.37 0.41 0.24 0.25 0.26 0.37 0.39 0.16 0.19 0.28 0.36 0.40 0.30 0.28
+
+ABIDE-I — Best clinical (sex/age/ASD) 
+
+L0 L1 L2 L3 L4 Brain-pretrained CT-pretrained Random-init             
+
+> 0.65 0.80 0.88 0.87 0.87 0.65 0.90 0.86 0.81 0.79 0.66 0.88 0.90 0.88 0.88
+
+ABIDE-II — Acquisition site 
+
+L0 L1 L2 L3 L4             
+
+> 0.21 0.49 0.55 0.49 0.38 0.21 0.52 0.53 0.39 0.25 0.25 0.50 0.49 0.49 0.44
+
+ABIDE-II — Best clinical (sex/age/ASD) 
+
+0.0 0.2 0.4 0.6 0.8 1.0 Decodability (chance-corrected) Figure 2: Site is decodable everywhere; clinical signal is weak (ABIDE-I) and only rivals site (ABIDE-II). Chance-corrected decodability by encoder (rows) and depth (columns), for acquisition site and the best clinical/demographic target. ABIDE-I ABIDE-II 0.0 0.2 0.4 0.6 0.8 1.0 Deep-layer site decodability (L3 –L4 mean; bars = 90% interval)   
+
+> 0.95 0.87 0.93 0.80 0.95 0.88
+> ≈0.9
+> Brain-pretrained CT-pretrained Random-init
+
+Figure 3: Intrinsic, not learned. Deep-layer ( L3– L4 mean) site decodability. A randomly initialized encoder is already a 
+
+∼0.9 site classifier on both cohorts, match-ing the pretrained encoders. Error bars are 90% intervals. L0 48d L1 96d L2 192d L3 384d L4 768d Encoder depth (Swin scale) 0.0 0.2 0.4 0.6 0.8 1.0 Decodability (mean over 3 encoders; band = min –max) 
+
+> ABIDE-I
+> Acquisition site Best clinical
+> L0 48d L1 96d L2 192d L3 384d L4 768d Encoder depth (Swin scale)
+> site clinical
+> ABIDE-II
+
+Figure 4: Depth. Site decodability (mean over three en-coders; band = min–max) exceeds the best clinical decod-ability at every layer, by a cohort-dependent margin; clinical signal, where present, peaks mid-network. 
+
+4.4 The result is not an artifact of input resolution 
+
+A natural objection to site dominance is that it could be an artifact of the input resolution. At 1 .7 mm and 96 3 the images may simply lack the detail needed to express fine anatomical structure, which would suppress clinical decodability and inflate the ratio. If so, the headline claim would dissolve at higher resolution. We test this directly by repeating the entire audit at 1 .0 mm and 160 3, holding every other element of the protocol fixed: the same three en-coders, the same five layers, the same 50 repeated stratified holdouts, the same chance correction, and the same linear and MLP probes (Table 5). Resolution changes very little. Deep-layer ( L3– 
+
+L4) site decodability is 0 .93–0 .95 at 1 .0 mm against 0.93–0 .96 at 1 .7 mm. The best clinical decodability rises only marginally, from a peak of 0 .41 to a peak 8of 0 .43. The site-dominance ratio is correspondingly preserved, 2 .0–5 .6× against 2 .2–5 .9×, and site ex-ceeds the best clinical target at every layer of every encoder, with a minimum ratio of 2 .0. Quadrupling the voxel count therefore does not recover the clin-ical signal that would be needed to overturn site dominance. Two secondary observations follow from the same table. The nonlinear probe again matches the linear one, with MLP minus linear at most 0 .03 across all fifteen cells, so the fingerprint stays fully linearly accessible at higher resolution. And the intrinsic result survives the resolution change: the randomly initialized encoder reaches 0 .95 at both L3 and L4, matching the brain-pretrained (0 .95/0 .95) and CT-pretrained (0 .93/0 .95) encoders, so the extra detail confers no advantage on pretraining that it did not already lack at 96 3.
+
+4.5 Leakage and post-hoc mitigation 
+
+Frozen embeddings shared across sites expose their acquisition origin at ∼0.9–0 .96 balanced accuracy, a site-attribution (not individual re-identification) leakage concern for federated or shared-embedding pipelines, where site provenance is often assumed hidden. We report this as a decodability concern, meaning site is recoverable from the shared em-bedding, and do not demonstrate a realized attack against a deployed system. INLP and ComBat both remove it (bottleneck site decodability 0 .94 → 0.066 and → 0.000 respectively). For a global readout, which mitigation is preferable is task-dependent :INLP edges ComBat when the target is separable from site (sex, LOSO balanced accuracy 0 .626 vs. 0.616; raw 0 .580), while covariate-preserving Com-Bat is better when the target is itself site-confounded (autism diagnosis). The 0 .626 vs. 0 .616 gap is within holdout noise; neither mitigation yields a statisti-cally significant cross-site gain on these embeddings, because the pooled representation encodes the clin-ical targets weakly to begin with, consistent with Section 4.1. We therefore present mitigation as 
+
+feasible and low-cost for global readouts , not as a demonstrated accuracy improvement. 
+
+4.6 The mitigation is not free for dense segmentation 
+
+Projecting the site subspace out of the frozen fea-tures mid-forward is Dice-neutral at the bottleneck (mean ∆ ≈ 2×10 −5) but destructive across all scales (mean cross-site Dice 0 .84 → 0.18, ∆ = −0.66). A matched-rank control settles the mechanism: pro-jecting out the same number of random orthonormal directions per scale is Dice-neutral (0 .84 → 0.83, ∆ = −0.01), so the collapse is specific to the site subspace, not a generic consequence of removing directions of that rank. Site and anatomy therefore occupy an entangled linear subspace in the spatial features: the directions that encode site also carry anatomy. Which structures survive the projection is itself informative (Table 6, Figure 5). Large periph-eral tissue classes are comparatively spared: cere-bral white matter falls only from 0 .892 to 0 .788 (∆ = −0.103) and cerebral cortex from 0 .830 to 0.651 (∆ = −0.179). Small, deep, subcortical struc-tures are effectively erased: thalamus falls from 0.884 to 0 .040 and putamen from 0 .885 to 0 .031 (∆ = −0.844 and −0.854), with hippocampus, pal-lidum, amygdala and accumbens all reduced to Dice below 0 .01. The gap between the best- and worst-affected structure is a factor of roughly eight in ∆. Entanglement is therefore not a diffuse property of the feature field but is concentrated in the di-rections that resolve small deep structures, which are also the structures whose appearance depends most on acquisition contrast and effective resolu-tion. This sharpens the claim: removing site does not degrade anatomy evenly, it preferentially de-stroys exactly the structures a subcortical analysis would care about. A decoder trained on as few as two sites already segments held-out sites at ∼0.87 Dice, so the frozen features are site-robust for dense tasks even though their pooled form is a site fingerprint. This Dice is measured against SynthSeg silver labels, which are themselves designed to be contrast- and site-robust, so the number partly reflects the label generator and should be read as evidence that skip-connected dense decoding tolerates the fingerprint rather than as an absolute accuracy. The confound is thus con-sequential for pooled/global readouts, not for skip-connected dense prediction. 
+
+# 5 Discussion 
+
+Frozen brain-MRI FM embeddings encode the acqui-sition site as a large, intrinsic component. On both cohorts it is more decodable than the clinical signal the embeddings carry (2–6 × on ABIDE-I, 1 .6–3 ×
+
+on ABIDE-II), and it is present even in untrained networks. 95.1 Why the intrinsic result matters most 
+
+The most consequential finding is not that site is decodable, which prior work would already predict (Glocker et al., 2019; Wachinger et al., 2021), but 
+
+where the decodability comes from . Three observa-tions pin it down. A randomly initialized encoder is already a ∼0.9 site classifier on both cohorts. The effect reproduces across three architecture families (hierarchical Swin transformer, non-hierarchical ViT, pure CNN), so it is not an artifact of one design. And site remains decodable at ∼0.95 from a 12 3
+
+downsampled volume with no encoder in the loop at all. Together these say the fingerprint is not some-thing pretraining installs; it is a property of the acquired image that essentially any architecture pre-serves. This is a different causal story from the one usually told about representation confounds, and it changes the remedy. If site encoding were learned, curating pretraining data or adding an invariance objective during pretraining would address it. Be-cause it is inherited from low-level image statistics, no amount of pretraining hygiene will remove it. Invariance has to be imposed explicitly, either down-stream of the frozen encoder or by changing what reaches the encoder in the first place. This mirrors the trajectory of Gichoya et al. (2022) in a different modality: an attribute survives corrup-tion of the input, resists explanation by measured covariates, and therefore cannot be dismissed as an artifact of any particular model or training set. 
+
+5.2 Implications for practice 
+
+We draw four concrete recommendations. 
+
+Do not treat a bottleneck embedding as anatomy. On ABIDE-I, age R2 peaks mid-network and falls to ∼0 at the L4 bottleneck, while site decodability is highest there. The layer most commonly frozen and reused for transfer is, in our audit, simultaneously the most site-saturated and the least clinically informative. Practitioners se-lecting a layer should not assume depth implies anatomical abstraction. 
+
+Audit before you pool. A site probe is cheap, just a logistic regression on pooled embeddings, and should be reported as routinely as a demographic table. We suggest reporting chance-corrected site decodability alongside the target metric, together with a random-init or raw-input baseline so that readers can tell how much is attributable to the model. 
+
+Scrub before you share. Because site is recover-able at ∼0.9–0 .96 from shared embeddings, releasing or federating frozen representations discloses acqui-sition provenance that contributors may assume is hidden. We stress this is site attribution , not individual re-identification, and we characterize de-codability rather than demonstrate an attack on a deployed system. INLP or covariate-preserving ComBat reduces bottleneck site decodability from 0.94 to 0 .066 and 0 .000 respectively, at negligible cost for global readouts. 
+
+Match the mitigation to the head. Removal is not uniformly safe. Projecting the site subspace out at the bottleneck is Dice-neutral, but doing so at all scales collapses cross-site Dice from 0 .84 to 0.18. The matched-rank random-direction control (0 .84 → 0.83) establishes that this is specific to the site subspace and not a generic consequence of removing directions of that rank. Site and anatomy occupy an entangled linear subspace in the spatial features, so a harmonization step that is harmless for a pooled classifier can be destructive for a dense predictor. 
+
+5.3 A design goal for brain-MRI founda-tion models 
+
+The intrinsic result changes what pretraining can be expected to deliver. Pretraining does not con-fer site invariance, and on the two SwinUNETR checkpoints we audit it does not even strengthen the fingerprint relative to random initialization. If site-invariant medical foundation models are wanted, invariance must be an explicit objective, through adversarial unlearning (Dinsdale et al., 2021), information-theoretic invariance (Moyer et al., 2020), or acquisition-randomized training of the kind that makes SynthSeg contrast-robust (Billot et al., 2023), rather than an emergent benefit of scale. The one component in our pipeline that is robust by construction is the label generator, and it is robust because contrast and resolution were randomized during its training. There is a more optimistic reading as well. Skip-connected dense decoding tolerates the fingerprint: a decoder trained on as few as two sites segments held-out sites at ∼0.87 Dice. The confound is con-sequential for pooled/global readouts, not for ar-chitectures that retain spatial detail through skip connections. Whether the fingerprint matters is 10 therefore a question about the downstream head, not about the encoder alone. 
+
+5.4 Limitations 
+
+Linear probes lower-bound decodability. A matched nonlinear MLP does not exceed them here, but other nonlinear structure may exist. Probe accuracy also conflates representation content with probe capacity in general (Hewitt and Liang, 2019); we mitigate but do not eliminate this through chance correction, the matched MLP, and the raw-voxel baseline. The two pretrained encoders we audit are both SwinUNETR, so cross-encoder claims about pre-training are within that family; the intrinsic 
+
+(random-init) result, however, is shown across three architecture families (Table 3), and a broader survey of pretrained checkpoints is left to future work. The paired statistics we report quantify variance over holdout splits, not over checkpoints. The site-dominance ratio depends on its denomi-nator, which raises the question of whether it is an artifact of the input resolution we chose. We tested this explicitly rather than assuming it: repeating the full audit at 1 .0 mm / 160 3 leaves deep-layer site decodability at 0 .93–0 .95 (against 0 .93–0 .96 at 1.7 mm), moves the clinical peak only from 0 .41 to 0.43, and preserves the ratio at 2 .0–5 .6× (against 2.2–5 .9×), with site exceeding clinical at every layer of every encoder (Section 4.4, Table 5). The finding is therefore resolution-robust in the strong sense: higher resolution does not recover the clinical signal that would be required to overturn site dominance. The most serious caveat is that “site” bundles scanner, acquisition protocol, and population : be-cause ABIDE sites differ in age and cohort com-position, decodable site could in principle encode population rather than acquisition. Residualizing the measured population covariates (age, sex, diag-nosis) leaves site decodability essentially unchanged (Section 4.1), indicating the bulk is acquisition; but unmeasured population factors (e.g., head mo-tion, unrecorded demographics) remain a caveat. A traveling-subject design (Yamashita et al., 2019), which separates sampling bias from measurement bias by scanning the same individuals across sites, would be the definitive test and is not available in ABIDE. We accordingly describe the finding as a 
+
+site fingerprint rather than a scanner one, since site is the label we decode. The intrinsic result is measured over three weight-initialization seeds per architecture (Table 4); the across-seed spread is small, but a larger seed sweep is left to future work. ABIDE-II decodabilities are reported on a matched 6-way subset, both cohorts are autism-focused and therefore not representative of clinical neuroimaging broadly, and the segmenta-tion analysis is bounded by the quality of SynthSeg silver labels. 
+
+# Author Contributions 
+
+S.R. conceived the study, designed and implemented the methods, performed the experiments and statis-tical analysis, and wrote the manuscript. 
+
+Acknowledgments 
+
+This work used computational resources provided by the Digital Research Alliance of Canada. No specific external grant funding was received for this study. The author thanks Dr. Sidney Fels (Univer-sity of British Columbia) for his support and for access to the computing resources on which this work was carried out. Use of computational writing tools. An LLM was used to polish and copy-edit author-written prose, to assist with L ATEX format-ting and template compliance, and to help identify and organise related literature; all cited references were subsequently verified by the author against the primary sources. All study design, experiments, analyses, numerical results, and scientific claims are the author’s own. The LLM was not used for unsupervised, de novo generation of manuscript con-tent, and the author takes full responsibility for the accuracy of all content herein. 
+
+Ethical Standards 
+
+This study analysed only previously collected, publicly available, de-identified human MRI data (ABIDE-I and ABIDE-II). These datasets were ac-quired and shared by the original consortia under their respective institutional review board approvals and data-use agreements. No new human-subjects data were collected, and no additional ethics ap-proval was required for this secondary analysis of open, de-identified data. The leakage characterised here is at the level of site attribution (identifying the acquisition site of a scan), not individual re-identification. 
+
+Conflicts of Interest 
+
+The author declares no competing interests. 
+
+Data and Code Availability 
+
+11 Both cohorts are openly available: ABIDE-I and ABIDE-II can be obtained through the ABIDE initiative ( http://fcon_1000.projects.nitrc .org/indi/abide/ ), with phenotypic tables dis-tributed by the same source. The encoder check-points are the publicly released brain-pretrained (BrainSegFounder) and CT-pretrained SwinUNETR weights; the random baseline uses fixed initiali-sation seeds. All analysis code is available at 
+
+https://github.com/saman-rahbar/scanner-fingerprints . This covers the decodability ma-trix, the INLP/ComBat comparison, the segmenta-tion intervention, the multi-architecture and multi-seed controls, and the raw-voxel and population-adjustment baselines, each with a synthetic self-test. 
+
+# References 
+
+Guillaume Alain and Yoshua Bengio. Understanding intermediate layers using linear classifier probes. 
+
+arXiv preprint arXiv:1610.01644 , 2016. Benjamin Billot, Douglas N. Greve, Oula Puonti, Axel Thielscher, Koen Van Leemput, Bruce Fis-chl, Adrian V. Dalca, and Juan Eugenio Iglesias. SynthSeg: Segmentation of brain MRI scans of any contrast and resolution without retraining. 
+
+Medical Image Analysis , 86:102789, 2023. doi: 10.1016/j.media.2023.102789. Rishi Bommasani, Drew A. Hudson, Ehsan Adeli, Russ Altman, et al. On the opportunities and risks of foundation models. arXiv preprint arXiv:2108.07258 , 2021. Andrew A. Chen, Joanne C. Beer, Nicholas J. Tusti-son, Philip A. Cook, Russell T. Shinohara, and Haochang Shou. Mitigating site effects in covari-ance for machine learning in neuroimaging data. 
+
+Human Brain Mapping , 43(4):1179–1195, 2022. doi: 10.1002/hbm.25688. Joseph Cox, Peng Liu, Skylar E. Stolte, Yunchao Yang, Kang Liu, Kyle B. See, Huiwen Ju, and Ruogu Fang. BrainSegFounder: Towards 3D foundation models for neuroimage segmentation. 
+
+Medical Image Analysis , 97:103301, 2024. doi: 10.1016/j.media.2024.103301. Adriana Di Martino, Chao-Gan Yan, Qingyang Li, Erin Denio, Francisco X. Castellanos, Kaat Alaerts, Jeffrey S. Anderson, Michal Assaf, Su-san Y. Bookheimer, Mirella Dapretto, et al. The autism brain imaging data exchange: towards a large-scale evaluation of the intrinsic brain archi-tecture in autism. Molecular Psychiatry , 19(6): 659–667, 2014. doi: 10.1038/mp.2013.78. Adriana Di Martino, David O’Connor, Bosi Chen, Kaat Alaerts, Jeffrey S. Anderson, Michal Assaf, Joshua H. Balsters, Leslie Baxter, Anita Beggiato, Sylvie Bernaerts, et al. Enhancing studies of the connectome in autism using the autism brain imaging data exchange II. Scientific Data , 4: 170010, 2017. doi: 10.1038/sdata.2017.10. Nicola K. Dinsdale, Mark Jenkinson, and Ana I. L. Namburete. Deep learning-based unlearning of dataset bias for MRI harmonisation and confound removal. NeuroImage , 228:117689, 2021. doi: 10.1016/j.neuroimage.2020.117689. Jean-Philippe Fortin, Nicholas Cullen, Yvette I. She-line, Warren D. Taylor, Irem Aselcioglu, Philip A. Cook, Phil Adams, Crystal Cooper, Maurizio Fava, Patrick J. McGrath, et al. Harmonization of cortical thickness measurements across scanners and sites. NeuroImage , 167:104–120, 2018. doi: 10.1016/j.neuroimage.2017.11.024. Robert Geirhos, Jörn-Henrik Jacobsen, Claudio Michaelis, Richard Zemel, Wieland Brendel, Matthias Bethge, and Felix A. Wichmann. Short-cut learning in deep neural networks. Nature Machine Intelligence , 2(11):665–673, 2020. doi: 10.1038/s42256-020-00257-z. Judy Wawira Gichoya, Imon Banerjee, Ananth Reddy Bhimireddy, John L. Burns, Leo Anthony Celi, Li-Ching Chen, Ramon Correa, Natalie Dullerud, Marzyeh Ghassemi, Shih-Cheng Huang, et al. AI recognition of patient race in medical imaging: a modelling study. The Lancet Digital Health , 4(6):e406–e414, 2022. doi: 10.1016/S2589-7500(22)00063-2. Ben Glocker, Robert Robinson, Daniel C. Castro, Qi Dou, and Ender Konukoglu. Machine learn-ing with multi-site imaging data: An empiri-cal study on the impact of scanner effects. In 
+
+Medical Imaging meets NeurIPS Workshop , 2019. arXiv:1910.04597. Ali Hatamizadeh, Vishwesh Nath, Yucheng Tang, Dong Yang, Holger R. Roth, and Daguang Xu. Swin UNETR: Swin transformers for semantic segmentation of brain tumors in MRI images. In International MICCAI Brainlesion Workshop (BrainLes) , pages 272–284. Springer, 2022. doi: 10.1007/978-3-031-08999-2_22. 12 John Hewitt and Percy Liang. Designing and inter-preting probes with control tasks. In Proceedings of the 2019 Conference on Empirical Methods in Natural Language Processing (EMNLP) , pages 2733–2743, 2019. doi: 10.18653/v1/D19-1275. W. Evan Johnson, Cheng Li, and Ariel Rabinovic. Adjusting batch effects in microarray expression data using empirical Bayes methods. Biostatistics ,8(1):118–127, 2007. doi: 10.1093/biostatistics/kx j037. Michael Moor, Oishi Banerjee, Zahra Shakeri Hos-sein Abad, Harlan M. Krumholz, Jure Leskovec, Eric J. Topol, and Pranav Rajpurkar. Founda-tion models for generalist medical artificial intel-ligence. Nature , 616(7956):259–265, 2023. doi: 10.1038/s41586-023-05881-4. Daniel Moyer, Greg Ver Steeg, Chantal M. W. Tax, and Paul M. Thompson. Scanner invariant repre-sentations for diffusion MRI harmonization. Mag-netic Resonance in Medicine , 84(4):2174–2189, 2020. doi: 10.1002/mrm.28243. Raymond Pomponio, Guray Erus, Mohamad Habes, Jimit Doshi, Dhivya Srinivasan, Elizabeth Mamourian, Vishnu Bashyam, Ilya M. Nasral-lah, Theodore D. Satterthwaite, Yong Fan, et al. Harmonization of large MRI datasets for the anal-ysis of brain imaging patterns throughout the lifespan. NeuroImage , 208:116450, 2020. doi: 10.1016/j.neuroimage.2019.116450. Shauli Ravfogel, Yanai Elazar, Hila Gonen, Michael Twiton, and Yoav Goldberg. Null it out: Guard-ing protected attributes by iterative nullspace projection. In Proceedings of the 58th Annual Meeting of the Association for Computational Linguistics (ACL) , pages 7237–7256, 2020. doi: 10.18653/v1/2020.acl-main.647. Andrew M. Saxe, Pang Wei Koh, Zhenghao Chen, Maneesh Bhand, Bipin Suresh, and Andrew Y. Ng. On random weights and unsupervised feature learning. In Proceedings of the 28th International Conference on Machine Learning (ICML) , pages 1089–1096, 2011. Laleh Seyyed-Kalantari, Haoran Zhang, Matthew B. A. McDermott, Irene Y. Chen, and Marzyeh Ghassemi. Underdiagnosis bias of artificial intelli-gence algorithms applied to chest radiographs in under-served patient populations. Nature Medicine , 27(12):2176–2182, 2021. doi: 10.1038/ s41591-021-01595-0. Yucheng Tang, Dong Yang, Wenqi Li, Holger R. Roth, Bennett Landman, Daguang Xu, Vishwesh Nath, and Ali Hatamizadeh. Self-supervised pre-training of Swin transformers for 3D medical im-age analysis. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , pages 20730–20740, 2022. Christian Wachinger, Anna Rieckmann, and Sebas-tian Pölsterl. Detect and correct bias in multi-site neuroimaging datasets. Medical Image Analysis ,67:101879, 2021. doi: 10.1016/j.media.2020.101 879. Ayumu Yamashita, Noriaki Yahata, Takashi Ita-hashi, Giuseppe Lisi, Takashi Yamada, Naho Ichikawa, Masahiro Takamura, Yujiro Yoshihara, Akira Kunimatsu, Naohiro Okada, et al. Har-monization of resting-state functional MRI data across multiple imaging sites via the separation of site differences into sampling bias and measure-ment bias. PLoS Biology , 17(4):e3000042, 2019. doi: 10.1371/journal.pbio.3000042. Shaoting Zhang and Dimitris Metaxas. On the chal-lenges and perspectives of foundation models for medical image analysis. Medical Image Analysis ,91:102996, 2024. doi: 10.1016/j.media.2023.102 996. 13 Table 1: ABIDE-I site decodability (linear, chance-corrected) and best clinical decodability, by en-coder and depth. Nonlinear (MLP) site decodability matches the linear value to within 0 .02 at every cell.                                       
+
+> Encoder L0L1L2L3L4Brain-pretrained site 0.71 0.83 0.90 0.95 0.95 clinical 0.28 0.37 0.41 0.24 0.25 CT-pretrained site 0.73 0.91 0.92 0.94 0.93 clinical 0.26 0.37 0.39 0.16 0.19 Random-init site 0.68 0.85 0.92 0.95 0.96 clinical 0.28 0.37 0.40 0.30 0.28
+
+Table 2: ABIDE-II site and best-clinical decodabil-ity, matched 6-way, repeated-holdout means. Non-linear (MLP) site decodability matches the linear value to within 0 .03 at every cell.                                       
+
+> Encoder L0L1L2L3L4Brain-pretrained site 0.65 0.80 0.88 0.87 0.87 clinical 0.21 0.49 0.55 0.49 0.38 CT-pretrained site 0.65 0.90 0.86 0.81 0.79 clinical 0.21 0.52 0.53 0.39 0.25 Random-init site 0.66 0.88 0.90 0.88 0.88 clinical 0.25 0.50 0.49 0.49 0.44
+
+# A Full decodability tables 
+
+Tables 1 and 2 report the full per-model, per-layer site and best-clinical decodabilities for ABIDE-I and (matched 6-way) ABIDE-II. Tables 3 and 4 report the architecture and weight-initialization-seed con-trols for the intrinsic result, and Table 5 reports the 1 .0 mm resolution ablation. Table 6 and Fig-ure 5 give the per-region breakdown underlying the all-scale segmentation result of Section 4.6. 
+
+# B Implementation settings 
+
+Table 7 collects every preprocessing, probe, and removal setting needed to reproduce the reported numbers. All values correspond to the defaults in the released code; scripts are configured by environ-ment variable, and each script documents its own in its module docstring. Table 3: Site decodability of random-initialized en-coders across three architecture families (ABIDE-I, by depth): SwinUNETR (hierarchical transformer), ViT (non-hierarchical transformer), and ResNet (pure CNN). The intrinsic fingerprint is not spe-cific to SwinUNETR: a plain ViT and a 3-D ResNet also reach ∼0.9–0 .98. 
+
+Random-init encoder L0 L1 L2 L3 L4SwinUNETR 0.68 0.85 0.92 0.95 0.96 ViT 0.91 0.90 0.91 0.90 0.93 ResNet 0.95 0.95 0.98 0.95 0.96 
+
+Table 4: Seed stability of the intrinsic finger-print. Deep-layer ( L4) site decodability of random-initialized encoders over three independent weight-initialization seeds (0/1/2) per architecture (ABIDE-I, n=331). The across-seed standard deviation is small, so the fingerprint is a property of the archi-tecture rather than of a single initialization. 
+
+Encoder seed 0 seed 1 seed 2 mean ± sd SwinUNETR 0.977 0.965 0.977 0.973 ± 0.006 ViT 0.932 0.942 0.875 0.916 ± 0.030 ResNet 0.960 1.000 1.000 0.987 ± 0.019 
+
+Table 5: Resolution ablation (ABIDE-I, 1 .0 mm / 160 3, n=546). Chance-corrected decodability by en-coder and depth, computed with the identical proto-col used for Table 1 (50 repeated stratified holdouts, 70 /30 splits). “ratio” is the site-dominance ratio, site divided by the best clinical target. 90% inter-vals span ±0.03 to ±0.07 and are given in full in the released results file. Compared with 1 .7 mm / 96 3
+
+(Table 1), deep-layer site decodability moves from 0.93–0 .96 to 0 .93–0 .95, the clinical peak from 0 .41 to 0 .43, and the ratio from 2 .2–5 .9× to 2 .0–5 .6×.                                                                    
+
+> Encoder L0L1L2L3L4Brain-pretrained site 0.63 0.81 0.88 0.95 0.95 MLP 0.64 0.81 0.90 0.95 0.95 clinical 0.27 0.37 0.36 0.33 0.25 ratio 2.3 2.2 2.4 2.9 3.8 CT-pretrained site 0.68 0.88 0.90 0.93 0.95 MLP 0.68 0.89 0.92 0.94 0.96 clinical 0.26 0.39 0.41 0.23 0.17 ratio 2.6 2.3 2.2 4.0 5.6 Random-init site 0.63 0.83 0.91 0.95 0.95 MLP 0.63 0.86 0.92 0.95 0.95 clinical 0.26 0.41 0.43 0.40 0.24 ratio 2.4 2.0 2.1 2.4 4.0
+
+14 Table 6: Per-region Dice for the all-scale site-subspace projection (mean over 4 held-out sites; decoder trained on 2 sites). Cortex and white matter are comparatively spared; every subcortical struc-ture and the brainstem collapse toward 0. 
+
+Region Before After ∆Cerebral WM 0.892 0.788 −0.103 Cerebral cortex 0.830 0.651 −0.179 Cerebellum cortex 0.865 0.373 −0.492 Lateral ventricle 0.847 0.124 −0.723 Cerebellum WM 0.829 0.099 −0.730 Accumbens 0.738 0.004 −0.734 Brainstem 0.923 0.155 −0.768 Caudate 0.868 0.094 −0.774 Amygdala 0.814 0.007 −0.807 Pallidum 0.808 0.001 −0.808 Hippocampus 0.832 0.004 −0.828 Thalamus 0.884 0.040 −0.844 Putamen 0.885 0.031 −0.854 0.0 0.2 0.4 0.6 0.8 1.0 Dice  
+
+> Putamen Thalamus Hippocampus Pallidum Amygdala Caudate Brainstem Accumbens Cerebellum WM Lateral ventricle Cerebellum cortex Cerebral cortex Cerebral WM
+> Cortex and white matter are relatively spared; subcortical structures collapse under all-scale site-subspace removal
+> Before (bottleneck-only) After (all-scale projection)
+
+Figure 5: The all-scale collapse is not uni-form. Per-region Dice before and after all-scale site-subspace projection, sorted by ∆. Cortex and white matter lose Dice modestly; every subcorti-cal structure and the brainstem collapse toward 0, indicating the site subspace is disproportionately entangled with the smaller, deeper structures rather than uniformly with anatomy. Table 7: Implementation settings. Probe splits are stratified for categorical targets. Decodability and 
+
+R2 are clamped at zero (Eq. (1)). 
+
+Setting Value 
+
+Preprocessing 
+
+Orientation RAS Spacing 1.7 mm iso (bilinear) Input size 96 3 (pad/crop) Intensity scaled to [0 , 1] Hi-res ablation 1.0 mm, 160 3
+
+Encoder 
+
+Architecture SwinUNETR swinViT 
+
+Feature size 48 Stage dims ( L0– L4) 48/96/192/384/768 Pooling global average (spatial) Precision / mode fp32, eval, no grad 
+
+Probes 
+
+Split 70 /30, stratified Repeats 50 Interval 5th–95th pct (90%) Logistic probe C = 1 .0Ridge probe (age) α = 1 .0MLP probe 1 layer, 64 units MLP regularization α = 10 −3, ≤ 300 iters Min. class count 4
+
+Removal 
+
+INLP iterations sweep {1, 2, 4, 8, 12 }
+
+INLP classifier logistic, C = 1 .0SVD rank tolerance 10 −8
+
+ComBat covariates age + target Matched-rank control random orthonormal 
+
+Evaluation 
+
+Cross-site protocol leave-one-site-out Min. fold sizes 8 train / 4 test Bootstrap 300 replicates Paired holdouts 200 TOST margin 0.05 
+
+Controls 
+
+Seeds 0/1/2 Subjects per site (controls) 60 ( n=331) Raw-voxel baseline 12 3, no encoder 
+
+15

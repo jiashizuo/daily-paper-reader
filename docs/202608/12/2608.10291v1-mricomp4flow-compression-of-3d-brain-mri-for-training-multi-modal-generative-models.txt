@@ -1,0 +1,238 @@
+Title: MRIComp4Flow: Compression of 3D Brain MRI for Training Multi-Modal Generative Models
+
+URL Source: https://arxiv.org/pdf/2608.10291v1
+
+Published Time: Wed, 12 Aug 2026 00:20:32 GMT
+
+Number of Pages: 11
+
+Markdown Content:
+# MRIComp4Flow: Compression of 3D Brain MRI for Training Multi-Modal Generative Models 
+
+Lisa K. Fischer 1*, Mykhailo Riabets 1*, Daniel Rueckert 4,5, Benedikt Wiestler 2,3, Anke Meyer-Baese 6,7, and Sandeep Nagar 2,3,7 
+
+> 1
+
+Technical University of Munich (TUM), Germany  
+
+> 2
+
+Munich Center for Machine Learning (MCML)  
+
+> 3
+
+AI for Image-Guided Diagnosis and Therapy, TUM, Germany  
+
+> 4
+
+Chair for AI in Healthcare and Medicine, TUM and TUM University Hospital, Munich, Germany  
+
+> 5
+
+Imperial College London  
+
+> 6
+
+Florida State University  
+
+> 7
+
+Institute for Advanced Study, TUM (TUM-IAS), Germany * equal contribution 
+
+{lisa.k.fischer, mykhailo.riabets, sandeep.nagar}@tum.de 
+
+Abstract. Large-scale multi-modal MRI datasets impose substantial storage and I/O costs, limiting the training of 3D generative models on commodity infrastructure. While lossy compression is known to preserve accuracy for discriminative segmentation networks, its effect on gener-ative models, which must learn the full data distribution rather than a decision boundary, is unexplored. We study whether standard image codecs can effectively compress semantically rich brain tumor MRI while preserving the fidelity required to train and deploy a 3D MRI generative model. Each 3D volume is compressed with JPEG2000 or a near-lossless JPEG-LS pipeline. Next, a Wavelet Flow Matching model, conditioned on BraTS image sequences (T1n, T1c, T2, T2f), is trained on compressed data, and the resulting models are evaluated on the validation set. At a 20:1 compression ratio, synthesis quality is statistically equivalent to a model trained on uncompressed data within a pre-specified margin (∆PSNR < 1 dB, ∆SSIM < 0.02 ; paired TOST p = [[ p]] ): mean PSNR is 27.3 dB vs. 27.0 dB and mean SSIM is 0.95 vs. 0.96 across modalities. Our results indicate that JPEG2000 compression is a practical step toward scalable 3D MRI generative modeling without degrading synthesis qual-ity. The code is available at https://github.com/lisafis/MRIComp4Flow. 
+
+Keywords: 3D MRI compression · generative models · flow matching · multi-modal synthesis · BraTS 
+
+## 1 Introduction 
+
+Multi-modal brain MRI is central to tumor segmentation, treatment planning, and longitudinal monitoring [2,6,9,21]. Public benchmarks such as BraTS 2024 [5,10,16] provide co-registered non-enhanced T1-weighted (T1n), contrast-enhanced arXiv:2608.10291v1 [cs.CV] 10 Aug 2026 2 L. K. Fischer, and M. Riabets et al. 
+
+T1-weighted (T1c), T2-weighted (T2w), and FLAIR (T2f) volumes. Training 3D generative models on these data requires repeated random access to full volumes during optimization, making storage bandwidth and disk capacity first-order bottlenecks [11,17]. For instance, reducing a 1 TB raw NIfTI dataset by a factor of 20 allows the entire corpus to fit on a local NVMe drive, drastically acceler-ating data loading during training (See Table 1). Recent Diffusion [8] and Flow-based [15,18] generative models achieve high-quality cross-modality translation but typically assume lossless NIfTI archives. Kurmukov et al. [13] show that discriminative 3D segmentation networks tolerate JPEG2000 compression up to 20:1 on BraTS MRI with no loss of accuracy, raising the question of whether deep generative models, which must learn the full data distribution rather than a decision boundary, inherit the same robustness. We ask a practical question: how far can 3D MRI be compressed before generative model training and inference quality degrade? Answering this would enable larger cohorts, faster data transfer, and cheaper archival while retaining the anatomical and contrast information that generative models exploit. We propose MRIComp4Flow , a pipeline that compresses BraTS volumes using widely supported codecs, reconstructs 3D tensors on the fly during train-ing, and trains a unified Wavelet Flow Matching (WFM) [18] model on the compressed corpus. We compare models trained on uncompressed NIfTI data against models trained on JPEG2000 (ratios 2:1–400:1) and near-lossless JPEG-LS ( NEAR levels 1–255) across all four modalities. The contributions of this paper can be summarized as: 1. Compression pipeline: A slice-wise JPEG2000/JPEG-LS pipeline and com-pressed data loader for 3D MRI, compatible with WFM training. 2. Generative robustness: The first characterization, to our knowledge, of how generative synthesis quality varies with input compression, showing that WFM tolerates JPEG2000 up to 20:1 and thereby extending prior discrimi-native model findings [13] to generative models. 3. Comprehensive evaluation: Quantitative and qualitative synthesis results across nine JPEG2000 ratios and seven JPEG-LS levels, downstream tumor segmentation with a state-of-the-art BraTS2025 [12] algorithm, and abla-tions on the number of sampling steps and the contribution of the informed prior. 
+
+## 2 Related Work 
+
+Medical image compression: JPEG2000 and JPEG-LS are established standards in radiological workflows [4,7,19]. JPEG2000 [4] offers embedded rate control via compression ratios and is used in DICOM storage profiles; JPEG-LS [19] provides efficient near-lossless coding through a maximum pixel error ( NEAR ) pa-rameter. Prior work on MRI compression [13] has focused on diagnostic fidelity rather than downstream machine learning tasks. In this paper, we therefore ex-plicitly measure the impact of compression through generative synthesis quality, Title Suppressed Due to Excessive Length 3BraTS 3D NIfTI  
+
+> (T1n, T1c, T2w, T2f)
+> Axial slice
+> (uint16)
+> JPEG2000
+> or JPEG-LS
+> Compressed
+> archive ( r)
+> Stage I: Offline Compression
+> Decode
+> (.jp2 / .jls)
+> Stack &
+> normalize
+> 3D Haar
+> DWT
+> WFM
+> (unified)
+> IDWT
+> (reconstruct)
+> Synthesized
+> 3D MRI
+> Conditioning
+> modalities C
+> Informed prior
+> (mean in wavelet space)
+> Stage II: WFM Synthesis & Reconstruction
+> 1-step flow matching at inference
+
+Fig. 1. Overview of our proposed MRIComp4Flow pipeline. 
+
+which is sensitive to fine anatomical detail and inter-modality contrast poten-tially affected by compression. 
+
+Multi-modal MRI synthesis: Conditional generative models, including GANs, diffusion models, and flow-matching methods, synthesize missing MRI contrasts from available sequences [8,14,20]. Wavelet Flow Matching (WFM) [18] learns a velocity field in Haar wavelet space from an informed prior (the mean of observed modalities) to the target contrast, enabling accurate synthesis with a single 82M-parameter network for all four BraTS modalities. We adopt WFM as our generative backbone because it is state-of-the-art in terms of speed and quality on BraTS 2024, enabling us to isolate the effect of input compression. 
+
+Learning from compressed data: Training on compressed images is common in natural-image domains but remains underexplored for 3D medical volume syn-thesis [13]. Our work bridges lossy archival formats and 3D generative modeling by evaluating whether codec-induced errors survive wavelet-domain flow match-ing or are absorbed during normalization and augmentation. 
+
+## 3 Method 
+
+MRIComp4Flow comprises three stages: compression, synthesis, and reconstruc-tion (Fig. 1). First, raw BraTS NIfTI volumes are compressed offline into per-slice archives. Next, for training a generative model, slices are decoded, stacked into 3D volumes, intensity-normalized, and fed to WFM in Haar wavelet space. Finally, during inference, the model synthesizes missing modalities. 
+
+3.1 3D MRI Compression 
+
+Given a patient directory with co-registered modalities 
+
+{Vm}m∈M , M = {t1n , t1c , t2w , t2f },4 L. K. Fischer, and M. Riabets et al. 
+
+each volume Vm ∈ RH×W ×D is processed independently. Before compression, voxel intensities are transformed to [0 , ∞), cast to uint16, and segmentation masks are excluded from lossy coding. Each axial slice is then encoded either with JPEG2000 (9/7 irreversible transform, glymur ) [4] at ratios r ∈ [2 , 400] ,skipping empty background slices, or with near-lossless JPEG-LS ( NEAR error; 
+
+NEAR=0 is visually lossless for 16-bit data). The ratio r is the codec’s nominal 
+
+per-slice target; the realized whole-dataset reduction is smaller because empty background slices are skipped and container overhead is added. For example, the nominal 20:1 JPEG2000 setting compresses the BraTS training set from 
+
+40 .37 GB to 3.13 GB, a 12 .9× reduction (Table 1). The compressed loader decodes all .jp2 (or .jls ) slices, and inserts each slice at its axial index into a 182 × 218 × 182 buffer. Volumes are clipped to the 0.1st - 99.9th intensity percentiles, min–max normalized to [0 , 1] , spatially padded to 240 × 240 × 160 and center-cropped, then trimmed to 224 × 224 × 160 
+
+to match the WFM input geometry. 
+
+3.2 Wavelet Flow Matching (WFM) Backbone 
+
+We used the WFM as a generative model baseline that operates in the 3D Haar wavelet space. Let DWT( ·) denote the 3D discrete wavelet transform produc-ing eight subbands concatenated along the channel dimension. Then, for target modality y conditioned on the modality set C, the informed prior is defined as the mean of the available modalities in wavelet space: 
+
+xsource = 1
+
+|C| 
+
+X
+
+> c∈C
+
+DWT( xc). (1) 
+
+Forward process and objective: Following conditional flow matching, noisy states interpolate between source and target with a σ-schedule peaking at t = 0 .5:
+
+xt = (1 − t) xsource + t x target + σ(t) ϵ, σ(t) = σmax 
+
+pt(1 − t). (2) A U-Net fθ predicts the constant velocity v = xtarget − xsource by minimizing 
+
+L = Et,ϵ 
+
+h
+
+∥fθ (˜ xt, c, t, y ) − (xtarget − xsource )∥2i
+
+, (3) where c stacks conditioning wavelet coefficients and y is a class label over the four modalities. At inference, one Euler step from t = 0 to t = 1 followed by 
+
+IDWT( ·), i.e., inverse DWT( ·) operation, yields the synthesized volume. 
+
+## 4 Experiments 
+
+Dataset Details: We use the BraTS2024 Glioma (GLI) cohort with four co-registered MRI modalities per case. All experiments use BraTS 2024 Glioma cohort ( 1,621 /188 train/val), comprising four co-registered 182 ×218 ×182 modal-ities (T1n, T1c, T2w, T2f) at 1 mm isotropic resolution [1,5,10]. Evaluation uses a validation set; for each case and each target modality, the model receives three remaining modalities as conditioning and synthesizes the held-out contrast. Title Suppressed Due to Excessive Length 5                                     
+
+> Table 1. Storage of BraTS 2024 train set under both codecs; uncompressed size is 40.37 GB. Size in GB with a reduction factor relative to uncompressed ( ×). Setting ( r/ NEAR) JPEG2000 JPEG-LS 1–7.04 (5.7×)210 .66 (3.8×)6.24 (6.5×)59.44 (4.3×)5.03 (8.0×)10 5.78 (7.0×)4.12 (9.8×)20 3.13 (12 .9×)3.25 (12 .4×)50 1.31 (30 .8×)2.24 (18 .0×)100 0.68 (59 .4×)–200 0.35 (115 .3×)1.13 (35 .7×)400 0.21 (192 .2×)–
+
+Implementation and Training Details: For training, all models share an identical configuration: an ∼82 M parameter WavUNet (unified 4-class conditioning, 3D Haar wavelets) trained with Adam (lr 10 −5), batch size 4, and σmax = 0 .5.We train 18 unified WFM models with the same hyperparameters, including a Baseline (uncompressed) model using the original BraTS NIfTI training data. Compressed: JPEG2000 at 20:1, reconstructed on-the-fly. Compressed JPEG-LS with near=20, reconstructed on-the-fly. Additional experiments at ratios 1 (JPEG-LS only), 2, 5, 10, 50, 100 (JPEG2000 only), 200, 255 (JPEG-LS only), 400 (JPEG2000 only) follow the same protocol. 
+
+4.1 Results 
+
+Synthesized volumes are saved as NIfTI and compared against the uncom-pressed ground-truth references. We report PSNR, SSIM (3D, skimage ), after per-volume min–max normalization to [0 , 1] . Timing is measured for each sub-ject across all four synthesized modalities. Unless noted otherwise, we report per-subject means across the 188 validation cases with 95% confidence intervals; baseline-vs-Comp-20 differences are assessed with a paired Wilcoxon signed-rank test and a two-one-sided-tests (TOST) equivalence test at the margins above. 
+
+Reconstruction fidelity of compressed inputs: We first quantify how faithfully each codec reconstructs the input slices before any synthesis (Table 2). JPEG2000 is effectively lossless at low ratios ( ∞ dB PSNR, SSIM = 1 .0000 at r ∈ { 2, 5})and degrades gracefully, still retaining 38 .05 dB / 0.9741 SSIM at 20:1. JPEG-LS loses fidelity faster as NEAR grows, dropping from 54 .45 dB at NEAR =1 to 24 .70 dB at NEAR =50; notably, JPEG2000 at the aggressive 100:1 setting ( 25 .70 dB) is comparable to JPEG-LS at NEAR =50. 
+
+Synthesis Quality: Table 3 reports per-modality synthesis quality across all JPEG2000 ratios. The key result is that input compression does not degrade synthesis at practical ratios: quality is maintained at 20:1 and, by PSNR/SSIM, remains close to baseline up to 100:1 (T1n 27 .66 dB, T2w 25 .95 dB), degrading 6 L. K. Fischer, and M. Riabets et al.                                                                                                                    
+
+> Table 2. Fidelity of the reconstructed compressed slices for JPEG2000 (ratio r) and JPEG-LS ( NEAR ). ∞denotes near-lossless reconstruction. Setting JPEG2000 JPEG-LS PSNR (dB) SSIM PSNR (dB) SSIM 1––54 .45 0.9954
+> 2∞1.0000 50 .04 0.9920
+> 5∞1.0000 43 .24 0.9785
+> 10 46 .30 0.9960 37 .78 0.9494
+> 20 38 .05 0.9741 32 .47 0.9066
+> 50 30 .64 0.8905 24 .70 0.7318
+> 100 25 .70 0.7711 ––
+> Table 3. JPEG2000: PSNR and SSIM across compression ratios and MRI modalities. Ratio 0 is the uncompressed baseline; the best per column is bolded. Ratio PSNR SSIM T1c T1n T2f T2w T1c T1n T2f T2w 026 .73 28 .39 25 .18 27 .65 0.932 0.983 0.956 0.967
+> 228 .26 28 .26 26 .24 28 .24 0.942 0.964 0.932 0.951
+> 527 .62 29 .40 25 .27 27 .12 0.938 0.964 0.924 0.947
+> 10 27 .95 29 .29 25 .54 28 .12 0.941 0.965 0.925 0.948
+> 20 26 .81 29 .18 26 .16 27 .17 0.935 0.986 0.928 0.948
+> 50 27 .56 28 .71 25 .02 27 .05 0.948 0.985 0.958 0.961
+> 100 27 .10 27 .66 24 .70 25 .95 0.944 0.982 0.954 0.952
+> 200 23 .25 24 .65 23 .07 22 .63 0.879 0.968 0.937 0.902
+> 400 19 .30 20 .94 21 .29 17 .18 0.852 0.829 0.814 0.750
+
+markedly only at the extreme 200:1 and 400:1 settings (T1n 24 .65 /20 .94 dB, T2w 22 .63 /17 .18 dB). Near-lossless JPEG-LS preserves synthesis quality across most NEAR levels. Significant degradation only happens at very severe compression levels (Ta-ble 4). This confirms that JPEG-LS retains the fidelity required for multi-modal generative training even though, as shown above, its raw-slice reconstruction error grows faster than JPEG2000’s. Concurrent work on frozen foundation-VAE reconstructions [3] of 3D body CT reports the same phenomenon, where compact, noise-suppressed representations preserve or improve generative down-stream tasks. 
+
+Qualitative evaluation: Near-lossless JPEG-LS preserves fine anatomical struc-ture and contrast boundaries across all four modalities, while JPEG2000 main-tains structural integrity up to 20:1 and only exhibits visible smoothing and edge-ringing at 50:1–100:1 (Fig. 2). Fig. 3 contrasts the best- and worst-case validation subjects by PSNR: the 20:1 model preserves macroscopic tumor anatomy and contrast boundaries, with residual differences confined to subtle high-frequency texture, in the same regime that most affects fine-grained downstream tasks. Title Suppressed Due to Excessive Length 7
+
+Fig. 2. WFM outputs are compared against the original images and a model trained on uncompressed data (Baseline). JPEG-LS (top): Near-lossless compression preserves fine anatomical structures, textures, and contrast boundaries across all four modalities. JPEG 2000 (bottom): While structural integrity is maintained at moderate ratios (up to 20:1), aggressive lossy compression settings (50:1, 100:1) introduce visible smoothing, blurring of high-frequency textures, and characteristic wavelet edge-ringing artifacts. Rows: top to bottom, T1c, T1n, T2f, and T2w modalities (Zoom for a good view). 
+
+Fig. 3. Qualitative comparison of MRI synthesis for best (left) and worst (right) case based on PSNR. From left to right: Uncompressed ground truth, baseline WFM synthe-sis (trained on lossless data), and Comp-20 synthesis (trained on 20:1 JPEG2000 com-pressed data). The Comp-20 model successfully preserves macroscopic tumor anatomy and contrast boundaries. However, subtle high-frequency texture smoothing is visible, consistent with the variance observed in fine-grained downstream segmentation tasks. 8 L. K. Fischer, and M. Riabets et al. 
+
+Table 4. JPEG-LS compression: PSNR and SSIM across compression ratios and MRI modalities. The synthesis quality remains highly robust across all contrasts, demon-strating that near-lossless JPEG-LS preserves the fidelity required for multi-modal generative modeling; the best per column is bolded. PSNR SSIM NEAR level T1c T1n T2f T2w T1c T1n T2f T2w 
+
+0 26 .73 28 .39 25 .18 27 .65 0.932 0.983 0.956 0.967 
+
+1 27 .21 28 .89 25 .49 27 .57 0.938 0.986 0 .961 0.963 2 25 .56 28 .35 24 .97 25 .79 0.912 0.983 0.954 0.947 5 26 .69 28 .84 25 .38 27 .64 0.926 0.986 0.960 0.965 10 27 .29 28 .90 25 .08 26 .93 0.944 0.986 0.955 0.958 20 24 .28 27 .99 25 .36 26 .95 0.859 0.982 0.960 0.955 50 27 .52 28 .31 25 .17 27 .50 0.945 0.984 0.959 0.965 200 25 .99 26 .44 20 .93 24 .28 0 .9267 0 .9764 0 .8471 0 .9273 255 25 .54 25 .96 23 .24 24 .39 0 .9160 0 .9388 0 .8923 0 .9133 
+
+Inference speed: Compression leaves inference throughput unchanged: both base-line and compressed models synthesize all four modalities in a single step at 
+
+∼0.35 –0.37 s per volume ( 4 × 188 modality outputs in ∼265 –278 s total), since the codec acts only on stored data and not on the sampling path. 
+
+Table 5. Downstream task on the BraTS24 validation set using a state-of-the-art BraTS2025 algorithm, applied to volumes synthesized from compressed data. The met-rics report agreement against pseudo-ground-truth masks from uncompressed NIfTI images; HD95 is averaged across cases with a defined value. Setting Dice ( ↑) HD95 (mm) ( ↓)WT TC WT TC JPEG2000 2:1 0.814 0 .238 5 .85 22 .84 
+
+JPEG2000 50:1 0.777 0 .194 7 .72 24 .44 
+
+JPEG-LS NEAR =1 0.802 0 .203 5 .85 23 .32 
+
+JPEG-LS NEAR =20 0.780 0 .185 7 .85 26 .97 
+
+Downstream task: To probe whether synthesis from compressed images preserves clinically relevant structures, namely brain tumors, we performed whole-tumor segmentation using the winning solution from the BraTS2025 segmentation chal-lenge [12]. We compared the resulting segmentations against masks derived from uncompressed inputs (Table 5). We observe that whole-tumor delineation is in-deed well preserved (Dice 0.814 , 95th percentile Hausdorff distance 5.85 mm), whereas the smaller Tumor Core ( 0.238 ) region shows lower agreement and high variance. This gradient-robust macrostructure, fragile fine substructure, is con-sistent with the high-frequency smoothing observed qualitatively and marks the main limitation of compressed-data synthesis. These metrics quantify agreement between segmentations from compressed-data synthesis and uncompressed in-puts; they isolate the compression effect but do not measure absolute accuracy Title Suppressed Due to Excessive Length 9
+
+against expert BraTS annotations. The low Tumor-Core agreement ( 0.238 ) in-dicates that small, high-frequency substructures are the primary casualty of aggressive compression, which we flag as the main clinical limitation. 
+
+## 5 Discussion & Conclusion 
+
+We presented MRIComp4Flow, a pipeline for compressing 3D BraTS MRI using JPEG2000 and JPEG-LS, and for training a unified Wavelet Flow Matching synthesizer on the decompressed data. Across eight JPEG2000 ratios and six JPEG-LS levels, multi-modal synthesis quality remains comparable to training on lossless NIfTI up to 20:1 (a 12 .9× storage reduction) with unchanged sub-second inference; by PSNR/SSIM it holds up to 100:1 and collapses only at 200:1–400:1, while visible wavelet artifacts emerge earlier, at 50:1–100:1. Notably, at several intermediate ratios, we observe synthesis and downstream metrics that exceed the uncompressed baseline, suggesting that mild lossy compression can act as a beneficial denoising regularizer, an effect recently reported for frozen foundation-VAE reconstructions of 3D body CT [3], and a promising avenue for deliberate exploitation. Building on this, a natural next step is to train generative models directly on the compressed latent representations rather than on decoded volumes, coupling storage efficiency with representation reuse. 
+
+Acknowledgments. S.N. and A.MB. are supported by a TUM-IAS Fellowship. Funded by the Technical University of Munich – Institute for Advanced Study (TUM-IAS), Germany. 
+
+Dataset: Data used in this publication were obtained as part of the Brain Tumor Segmentation (BraTS) Challenge project through Synapse ID: syn53708249 8.
+
+## References 
+
+1. Bakas, S., Baid, U., Rudie, J.D., Aboian, M., Anazodo, U., Calabrese, E., Conte, G.M., Fathi Kazerooni, A., Adewole, M., Alafif, M., Aljabar, P., Baig, S., Bergquist, T., Buchner, J.A., Correia de Verdier, M., Diaz-Pinto, A., Durrer, A., Ezhov, I., Foltyn-Dumitru, M., Gagnon, L., Hamamci, A., Hu, Q., Iglesias, J.E., Jiang, Z., Kofler, F., LaBella, D., Li, H.B., Linardos, A., Linguraru, M.G., Maleki, N., Moawad, A.W., Möller, H.E., Pati, S., Piraud, M., Rosier, M., Saluja, R., Schmick, A., Shirokikh, B., Steinbauer, F., Tahon, N.H., Wang, G., Wiestler, B., Zhang, J.: The Brain Tumor Segmentation (BraTS) Cluster of Challenges (BraTS + Beyond-BraTS). Zenodo. https://doi.org/10.5281/zenodo.10978907 (2024) 2. Balakrishnan, G., Zhao, A., Sabuncu, M.R., Guttag, J., Dalca, A.V.: VoxelMorph: A Learning Framework for Deformable Medical Image Registration. IEEE Trans-actions on Medical Imaging 38 (8), 1788–1800 (2019). https://doi.org/10.1109/ TMI.2019.2897538 
+
+3. Chen, Q., Ding, S., Gu, Y., Liu, N., Bian, J., Yuille, A., Zhou, Z., Fu, J.: Foundation VAEs for 3D CT Reconstruction, Augmentation, and Generation. arXiv preprint arXiv:2605.30893 (2026).  
+
+> 8
+
+https://www.synapse.org/Synapse:syn53708249 10 L. K. Fischer, and M. Riabets et al. 4. Christopoulos, C., Skodras, A., Ebrahimi, T.: The JPEG2000 Still Image Coding System: An Overview. IEEE Transactions on Consumer Electronics 46 (4), 1103– 1127 (2000). https://doi.org/10.1109/30.920468 
+
+5. Correia de Verdier, M., Saluja, R., Gagnon, L., LaBella, D., Baid, U., Tahon, N.H., Foltyn-Dumitru, M., Zhang, J., Alafif, M., Baig, S., Pati, S., Linardos, A., Adewole, M., Jiang, Z., Li, H.B., Conte, G.M., Calabrese, E., Maleki, N., Moawad, A.W., Anazodo, U., Fathi Kazerooni, A., Linguraru, M.G., Iglesias, J.E., Ezhov, I., Kofler, F., Piraud, M., Menze, B., Wiestler, B., Bakas, S.: The 2024 Brain Tumor Segmentation (BraTS) Challenge: Glioma Segmentation on Post-treatment MRI. arXiv:2405.18368 (2024). 6. Danese, D., Lombardi, A., Attimonelli, M., Fasano, G., Di Noia, T.: FlowLet: Conditional 3D Brain MRI Synthesis using Wavelet Flow Matching. arXiv preprint arXiv:2601.05212 (2026). 7. Ebrahimi, F., Chamik, M., Winkler, S.: JPEG vs. JPEG 2000: An Objective Com-parison of Image Encoding Quality. In: Rogowitz, B.E., Pappas, T.N. (eds.) Ap-plications of Digital Image Processing XXVII. Proceedings of SPIE, vol. 5558, pp. 300–308. SPIE (2004). https://doi.org/10.1117/12.560907 
+
+8. Friedrich, P., Wolleb, J., Bieder, F., Durrer, A., Cattin, P.C.: WDM: 3D Wavelet Diffusion Models for High-Resolution Medical Image Synthesis. In: Deep Generative Models. DGM4MICCAI 2024. Lecture Notes in Computer Sci-ence, vol. 15320, pp. 11–21. Springer, Cham (2024). https://doi.org/10.1007/ 978-3-031-72744-3_2 
+
+9. Isensee, F., Jaeger, P.F., Kohl, S.A.A., Petersen, J., Maier-Hein, K.H.: nnU-Net: A Self-configuring Method for Deep Learning-Based Biomedical Image Seg-mentation. Nature Methods 18 (2), 203–211 (2021). https://doi.org/10.1038/ s41592-020-01008-z 
+
+10. Karargyris, A., Umeton, R., Sheller, M.J., Aristizabal, A., George, J., Wuest, A., Pati, S., Baid, U., Chennubhotla, C., Ferrante, E., Edwards, B., Sharma, A., Bakas, S.: Federated Benchmarking of Medical Artificial Intelligence with Med-Perf. Nature Machine Intelligence 5(8), 799–810 (2023). https://doi.org/10. 1038/s42256-023-00652-2 
+
+11. Khader, F., Müller-Franzes, G., Tayebi Arasteh, S., Han, T., Haarburger, C., Schulze-Hagen, M., Schad, P., Engelhardt, S., Baeßler, B., Foersch, S., Stegmaier, J., Kuhl, C., Nebelung, S., Kather, J.N., Truhn, D.: Denoising Diffusion Probabilis-tic Models for 3D Medical Image Generation. Scientific Reports 13 , 7303 (2023). 
+
+https://doi.org/10.1038/s41598-023-34341-2 
+
+12. Kofler, F., Rosier, M., Astaraki, M., Baid, U., Möller, H., Buchner, J.A., Steinbauer, F., Oswald, E., de la Rosa, E., Ezhov, I., von See, C., Kirschke, J., Schmick, A., Pati, S., Linardos, A., Pitarch, C., Adap, S., Rudie, J., Correia de Verdier, M., Saluja, R., Calabrese, E., LaBella, D., Aboian, M., Moawad, A.W., Maleki, N., Anazodo, U., Adewole, M., Linguraru, M.G., Fathi Kazerooni, A., Jiang, Z., Conte, G.M., Li, H., Iglesias, J.E., Bakas, S., Wiestler, B., Piraud, M., Menze, B.: BraTS Orchestrator: Democratizing and Disseminating State-of-the-Art Brain Tumor Image Analysis. (2025). 13. Kurmukov, A., Zavolovich, B., Dalechina, A., Proskurov, V., Shirokikh, B.: The Effect of Lossy Compression on 3D Medical Images Segmentation with Deep Learn-ing. (2024) 14. Li, H.B., Conte, G.M., Hu, Q., Anwar, S.M., Kofler, F., Ezhov, I., Koen, V.L., Piraud, M., Diaz, M., Cole, B., Calabrese, E., Linardos, A., Rudie, J.D., Jiang, Title Suppressed Due to Excessive Length 11 Z., Baid, U., Bakas, S.: The Brain Tumor Segmentation (BraTS) Challenge 2023: Brain MR Image Synthesis for Tumor Segmentation (BraSyn). (2023) 15. Lipman, Y., Chen, R.T.Q., Ben-Hamu, H., Nickel, M., Le, M.: Flow Matching for Generative Modeling. In: International Conference on Learning Representations (ICLR). arXiv:2210.02747 (2023). 16. Menze, B.H., Jakab, A., Bauer, S., Kalpathy-Cramer, J., et al.: The Multimodal Brain Tumor Image Segmentation Benchmark (BRATS). IEEE Transactions on Medical Imaging 34 (10), 1993–2024 (2015). https://doi.org/10.1109/TMI.2014. 2377694 
+
+17. Ryoo, J., Jung, Y., Khaliq, M.A., Zhang, W., Han, J., Lee, B.K.: Performance Analysis and Optimization of 3D Generative Diffusion Models across GPU Archi-tectures. arXiv:2606.19365 (2026). 18. Tur, Y., Stojkovic, M., Bagci, U.: WFM: 3D Wavelet Flow Matching for Ultrafast Multi-Modal MRI Synthesis. In: Proceedings of the 9th International Conference on Medical Imaging with Deep Learning (MIDL). Proceedings of Machine Learning Research, vol. 315, pp. 3779–3796 (2026). 19. Weinberger, M.J., Seroussi, G., Sapiro, G.: The LOCO-I Lossless Image Compres-sion Algorithm: Principles and Standardization into JPEG-LS. IEEE Transactions on Image Processing 9(8), 1309–1324 (2000). 20. Wyatt, J., Leach, A., Schmon, S.M., Willcocks, C.G.: AnoDDPM: Anomaly De-tection with Denoising Diffusion Probabilistic Models Using Simplex Noise. In: Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recog-nition Workshops (CVPRW), pp. 650–656 (2022). 21. Zimmer, L., Weidner, J., Balcerak, M., Kofler, F., Krupa, M., Ezhov, I., Cepeda, S., Zhang, R., Lowengrub, J., Menze, B., Wiestler, B.: PREDICT-GBM: A Multi-Center Platform to Advance Personalized Glioblastoma Radiotherapy Planning. arXiv:2509.13360v2 (2025).

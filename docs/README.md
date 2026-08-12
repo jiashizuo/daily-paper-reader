@@ -6,50 +6,47 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-08-11
-- 运行时间：2026-08-11 20:19:13 UTC
+- 最新运行日期：2026-08-12
+- 运行时间：2026-08-12 19:52:39 UTC
 - 运行状态：成功
-- 本次总论文数：10
-- 精读区：6
-- 速读区：4
+- 本次总论文数：9
+- 精读区：1
+- 速读区：8
 
 ### 今日简报（AI）
-今日推荐10篇论文，其中6篇精读、4篇速读，聚焦医学影像与图神经网络前沿方向。最值得关注的是9.0分的脑MRI持续可扩展基础模型，以及8.0分的阿尔茨海默病进展半参数多状态建模。建议优先精读这两篇，并结合7.0分的MRI伪影鲁棒性研究，深入理解医学基础模型的可靠性与应用价值。
-- 详情：[/202608/11/README](/202608/11/README)
+今日从9篇医学影像AI论文中精选1篇精读与3篇速读，聚焦脑MRI与诊断推理。最值得关注的是精读论文揭示脑MRI基础模型存在“站点指纹”风险，即模型可能依赖采集站点信息而非真实解剖特征，另有运动伪影自监督学习值得一看。建议后续关注模型跨中心泛化能力，并留意多中心验证数据以评估实际可靠性。
+- 详情：[/202608/12/README](/202608/12/README)
 
 ### 精读区论文标签
-1. [A continually expandable foundation model for brain MRI](/202608/11/2608.08319v1-a-continually-expandable-foundation-model-for-brain-mri)  
+1. [Frozen Brain-MRI Foundation Models Are Site Fingerprints](/202608/12/2608.10295v1-frozen-brain-mri-foundation-models-are-site-fingerprints)  
    标签：评分：9.0/10、query:fbn
-   evidence：脑MRI基础模型，大规模预训练，直接面向神经影像AI医疗
-2. [Semiparametric Functional Multistate Modeling of Alzheimer's Disease Progression with Imaging Biomarkers](/202608/11/2608.06734v1-semiparametric-functional-multistate-modeling-of-alzheimers-disease-progression-with-imaging-biomarkers)  
-   标签：评分：8.0/10、query:fbn
-   evidence：基于影像生物标志物的阿尔茨海默病进展统计建模
-3. [$\texttt{DisMorph}$: learning to disentangle technical distortions from true biological change](/202608/11/2608.08173v1-textttdismorph-learning-to-disentangle-technical-distortions-from-true-biological-change)  
-   标签：评分：8.0/10、query:fbn
-   evidence：纵向MRI配准用于神经影像AI医疗，解耦技术畸变与生物学变化
-4. [Anatomically Consistent Cross-Contrast Super-Resolution of Anisotropic Brain T2w MRI](/202608/11/2608.08401v1-anatomically-consistent-cross-contrast-super-resolution-of-anisotropic-brain-t2w-mri)  
-   标签：评分：8.0/10、query:fbn
-   evidence：脑T2w MRI跨对比度超分辨率，神经影像AI医疗
-5. [Parcel2Progression: An Anatomy-aware Longitudinal Framework for Alzheimer's Disease Diagnosis](/202608/11/2608.08753v1-parcel2progression-an-anatomy-aware-longitudinal-framework-for-alzheimers-disease-diagnosis)  
-   标签：评分：8.0/10、query:fbn
-   evidence：基于结构MRI的阿尔茨海默病诊断纵向Transformer，属于神经影像AI医疗
-6. [Decoding Phenotypes: A Framework for Fusing Genomic Language Models and Neuroimaging](/202608/11/2608.08926v1-decoding-phenotypes-a-framework-for-fusing-genomic-language-models-and-neuroimaging)  
-   标签：评分：8.0/10、query:fbn
-   evidence：融合基因组语言模型与神经影像进行多模态疾病诊断
+   evidence：脑MRI基础模型编码站点指纹
 
 ### 速读区论文标签
-1. [Do 3D Medical Foundation Models See Through MRI Artifacts? A Controlled Study of Representation Robustness](/202608/11/2608.06613v1-do-3d-medical-foundation-models-see-through-mri-artifacts-a-controlled-study-of-representation-robustness)  
+1. [Deep probabilistic logic programming for diagnostic reasoning from incomplete information: A case study in stroke detection](/202608/12/2608.08561v1-deep-probabilistic-logic-programming-for-diagnostic-reasoning-from-incomplete-information-a-case-study-in-stroke-detection)  
    标签：评分：7.0/10、query:fbn
-   evidence：针对3D医学基础模型在MRI伪影下表征鲁棒性的受控评测，属于神经影像AI医疗
-2. [SheafIQ: Sheaf-Theoretic Information Quantification of Vector Fields on Geometric Graphs](/202608/11/2608.08728v1-sheafiq-sheaf-theoretic-information-quantification-of-vector-fields-on-geometric-graphs)  
+   evidence：面向卒中检测的神经符号诊断推理，涉及患者影像
+2. [Motion Artifact-Aware Self-Supervised Representation Learning for 3D Brain MRI Motion Artifact Reduction](/202608/12/2608.10170v1-motion-artifact-aware-self-supervised-representation-learning-for-3d-brain-mri-motion-artifact-reduction)  
    标签：评分：7.0/10、query:fbn
-   evidence：用层论量化功能脑网络等几何图上向量场局部交互的组织方式，可支撑fMRI功能连接分析
-3. [Neural Message Passing on Structural Interaction Graphs for Fully-Inductive Graph Neural Networks](/202608/11/2608.08567v1-neural-message-passing-on-structural-interaction-graphs-for-fully-inductive-graph-neural-networks)  
+   evidence：利用自监督深度学习方法进行三维脑MRI运动伪影去除，属于神经影像AI医疗
+3. [OTLesMix: Wasserstein Barycenter and Optimal Transport Map for Synthetic Lesion Generation with Diverse Shapes and Locations](/202608/12/2608.06264v1-otlesmix-wasserstein-barycenter-and-optimal-transport-map-for-synthetic-lesion-generation-with-diverse-shapes-and-locations)  
    标签：评分：6.0/10、query:fbn
-   evidence：面向全归纳图神经网络的消息传递方法，可迁移到脑功能连接建模
-4. [Graph Analysis of Neuronal-Culture Connectivity Derived from a Reservoir-Computing Model](/202608/11/2608.09773v1-graph-analysis-of-neuronal-culture-connectivity-derived-from-a-reservoir-computing-model)  
+   evidence：基于最优传输的医学影像合成病灶生成，可用于神经影像数据增强
+4. [H2AL: Hyperbolic Hierarchy-aware Aggregative Learning for Registration-based Few-shot Medical Image Segmentation](/202608/12/2608.07340v1-h2al-hyperbolic-hierarchy-aware-aggregative-learning-for-registration-based-few-shot-medical-image-segmentation)  
    标签：评分：6.0/10、query:fbn
-   evidence：从神经活动提取连接矩阵并进行图论分析
+   evidence：配准式少样本医学图像分割，可应用于神经影像
+5. [LoRSA: Toward Generalizable Parameter-Efficient Fine-Tuning for Biomedical Downstream Tasks](/202608/12/2608.07749v1-lorsa-toward-generalizable-parameter-efficient-fine-tuning-for-biomedical-downstream-tasks)  
+   标签：评分：6.0/10、query:fbn
+   evidence：面向生物医学视觉任务的参数高效微调方法，可迁移至神经影像
+6. [CDGC-Net: 3D Medical Image Segmentation with Cooperative Dual-Scale Self-Attention and Grouped Channel Modeling](/202608/12/2608.08575v1-cdgc-net-3d-medical-image-segmentation-with-cooperative-dual-scale-self-attention-and-grouped-channel-modeling)  
+   标签：评分：6.0/10、query:fbn
+   evidence：面向3D医学图像分割的网络，可迁移至神经影像AI
+7. [Structured Sheaf Learning of Consistent Connection Graphs](/202608/12/2608.08710v1-structured-sheaf-learning-of-consistent-connection-graphs)  
+   标签：评分：6.0/10、query:fbn
+   evidence：从带噪信号学习一致连接图拓扑，可用于功能连接建模
+8. [MRIComp4Flow: Compression of 3D Brain MRI for Training Multi-Modal Generative Models](/202608/12/2608.10291v1-mricomp4flow-compression-of-3d-brain-mri-for-training-multi-modal-generative-models)  
+   标签：评分：6.0/10、query:fbn
+   evidence：面向生成模型训练的脑MRI压缩神经影像AI
 
 
 <div class="dpr-home-promo-card">
