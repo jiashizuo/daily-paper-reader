@@ -6,47 +6,39 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-08-12
-- 运行时间：2026-08-12 19:52:39 UTC
+- 最新运行日期：2026-08-13
+- 运行时间：2026-08-13 20:38:10 UTC
 - 运行状态：成功
-- 本次总论文数：9
-- 精读区：1
-- 速读区：8
+- 本次总论文数：5
+- 精读区：3
+- 速读区：2
 
 ### 今日简报（AI）
-今日从9篇医学影像AI论文中精选1篇精读与3篇速读，聚焦脑MRI与诊断推理。最值得关注的是精读论文揭示脑MRI基础模型存在“站点指纹”风险，即模型可能依赖采集站点信息而非真实解剖特征，另有运动伪影自监督学习值得一看。建议后续关注模型跨中心泛化能力，并留意多中心验证数据以评估实际可靠性。
-- 详情：[/202608/12/README](/202608/12/README)
+今日精读3篇、速读2篇，聚焦脑疾病MRI深度学习与医学图像分割。
+
+最值得看：CNN架构用于阿尔茨海默病单视图MRI检测，以及基于49,246例多队列MRIs的脑结构通用表征GenFAR。
+
+建议优先精读这两篇9分工作，后续可关注扩散模型不确定性与物理场算子的分割方法。
+- 详情：[/202608/13/README](/202608/13/README)
 
 ### 精读区论文标签
-1. [Frozen Brain-MRI Foundation Models Are Site Fingerprints](/202608/12/2608.10295v1-frozen-brain-mri-foundation-models-are-site-fingerprints)  
+1. [A comparison of CNN architectures for Alzheimer's disease detection in single-view MRI scans](/202608/13/2608.11762v1-a-comparison-of-cnn-architectures-for-alzheimers-disease-detection-in-single-view-mri-scans)  
    标签：评分：9.0/10、query:fbn
-   evidence：脑MRI基础模型编码站点指纹
+   evidence：基于MRI影像的深度学习阿尔茨海默病检测基准研究
+2. [GenFAR: A generalized representation of brain structure, derived from 49,246 multi-cohort MRIs via deep learning](/202608/13/2608.12185v1-genfar-a-generalized-representation-of-brain-structure-derived-from-49246-multi-cohort-mris-via-deep-learning)  
+   标签：评分：9.0/10、query:fbn
+   evidence：面向脑MRI的深度学习通用表示，覆盖临床、诊断等任务，属于神经影像AI医疗
+3. [ProtoGIB-Workload: Learning Workload-Specific Neural Topology Prototypes across Subjects](/202608/13/2608.10647v1-protogib-workload-learning-workload-specific-neural-topology-prototypes-across-subjects)  
+   标签：评分：8.0/10、query:fbn
+   evidence：基于图的功能连接分析用于脑状态识别，方法可迁移至fMRI
 
 ### 速读区论文标签
-1. [Deep probabilistic logic programming for diagnostic reasoning from incomplete information: A case study in stroke detection](/202608/12/2608.08561v1-deep-probabilistic-logic-programming-for-diagnostic-reasoning-from-incomplete-information-a-case-study-in-stroke-detection)  
+1. [Evaluating and Calibrating Diffusion Model-derived Uncertainty for Quantitative MRI Mapping](/202608/13/2608.11942v1-evaluating-and-calibrating-diffusion-model-derived-uncertainty-for-quantitative-mri-mapping)  
    标签：评分：7.0/10、query:fbn
-   evidence：面向卒中检测的神经符号诊断推理，涉及患者影像
-2. [Motion Artifact-Aware Self-Supervised Representation Learning for 3D Brain MRI Motion Artifact Reduction](/202608/12/2608.10170v1-motion-artifact-aware-self-supervised-representation-learning-for-3d-brain-mri-motion-artifact-reduction)  
-   标签：评分：7.0/10、query:fbn
-   evidence：利用自监督深度学习方法进行三维脑MRI运动伪影去除，属于神经影像AI医疗
-3. [OTLesMix: Wasserstein Barycenter and Optimal Transport Map for Synthetic Lesion Generation with Diverse Shapes and Locations](/202608/12/2608.06264v1-otlesmix-wasserstein-barycenter-and-optimal-transport-map-for-synthetic-lesion-generation-with-diverse-shapes-and-locations)  
+   evidence：评估和校准基于扩散模型的定量MRI映射不确定性
+2. [M-Net: Integrating Spectral Features and Physical Field Operators into Deep Learning for Medical Image Segmentation](/202608/13/2608.12196v1-m-net-integrating-spectral-features-and-physical-field-operators-into-deep-learning-for-medical-image-segmentation)  
    标签：评分：6.0/10、query:fbn
-   evidence：基于最优传输的医学影像合成病灶生成，可用于神经影像数据增强
-4. [H2AL: Hyperbolic Hierarchy-aware Aggregative Learning for Registration-based Few-shot Medical Image Segmentation](/202608/12/2608.07340v1-h2al-hyperbolic-hierarchy-aware-aggregative-learning-for-registration-based-few-shot-medical-image-segmentation)  
-   标签：评分：6.0/10、query:fbn
-   evidence：配准式少样本医学图像分割，可应用于神经影像
-5. [LoRSA: Toward Generalizable Parameter-Efficient Fine-Tuning for Biomedical Downstream Tasks](/202608/12/2608.07749v1-lorsa-toward-generalizable-parameter-efficient-fine-tuning-for-biomedical-downstream-tasks)  
-   标签：评分：6.0/10、query:fbn
-   evidence：面向生物医学视觉任务的参数高效微调方法，可迁移至神经影像
-6. [CDGC-Net: 3D Medical Image Segmentation with Cooperative Dual-Scale Self-Attention and Grouped Channel Modeling](/202608/12/2608.08575v1-cdgc-net-3d-medical-image-segmentation-with-cooperative-dual-scale-self-attention-and-grouped-channel-modeling)  
-   标签：评分：6.0/10、query:fbn
-   evidence：面向3D医学图像分割的网络，可迁移至神经影像AI
-7. [Structured Sheaf Learning of Consistent Connection Graphs](/202608/12/2608.08710v1-structured-sheaf-learning-of-consistent-connection-graphs)  
-   标签：评分：6.0/10、query:fbn
-   evidence：从带噪信号学习一致连接图拓扑，可用于功能连接建模
-8. [MRIComp4Flow: Compression of 3D Brain MRI for Training Multi-Modal Generative Models](/202608/12/2608.10291v1-mricomp4flow-compression-of-3d-brain-mri-for-training-multi-modal-generative-models)  
-   标签：评分：6.0/10、query:fbn
-   evidence：面向生成模型训练的脑MRI压缩神经影像AI
+   evidence：面向医学图像分割的数学归纳偏置，可迁移至神经影像
 
 
 <div class="dpr-home-promo-card">
