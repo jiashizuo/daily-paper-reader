@@ -6,39 +6,43 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-08-13
-- 运行时间：2026-08-13 20:38:10 UTC
+- 最新运行日期：2026-08-14
+- 运行时间：2026-08-14 21:13:52 UTC
 - 运行状态：成功
-- 本次总论文数：5
-- 精读区：3
-- 速读区：2
+- 本次总论文数：7
+- 精读区：4
+- 速读区：3
 
 ### 今日简报（AI）
-今日精读3篇、速读2篇，聚焦脑疾病MRI深度学习与医学图像分割。
-
-最值得看：CNN架构用于阿尔茨海默病单视图MRI检测，以及基于49,246例多队列MRIs的脑结构通用表征GenFAR。
-
-建议优先精读这两篇9分工作，后续可关注扩散模型不确定性与物理场算子的分割方法。
-- 详情：[/202608/13/README](/202608/13/README)
+今日精读聚焦阿尔茨海默病进展预测与3D医学影像基础模型，另涉神经老化与图神经网络等5篇论文。  
+最值得关注：基于多尺度脑网络的疾病传播模型（9.0分）与通用3D MRI视觉语言模型（9.0分）均获高度评价。  
+建议优先阅读这两篇高分精读，了解脑网络建模与多模态影像分析的最新进展。
+- 详情：[/202608/14/README](/202608/14/README)
 
 ### 精读区论文标签
-1. [A comparison of CNN architectures for Alzheimer's disease detection in single-view MRI scans](/202608/13/2608.11762v1-a-comparison-of-cnn-architectures-for-alzheimers-disease-detection-in-single-view-mri-scans)  
+1. [Activity-dependent epidemic spreading on multiscale brain networks predicts Alzheimer's disease progression](/202608/14/2608.12647v1-activity-dependent-epidemic-spreading-on-multiscale-brain-networks-predicts-alzheimers-disease-progression)  
    标签：评分：9.0/10、query:fbn
-   evidence：基于MRI影像的深度学习阿尔茨海默病检测基准研究
-2. [GenFAR: A generalized representation of brain structure, derived from 49,246 multi-cohort MRIs via deep learning](/202608/13/2608.12185v1-genfar-a-generalized-representation-of-brain-structure-derived-from-49246-multi-cohort-mris-via-deep-learning)  
+   evidence：基于多尺度脑连接组的活动依赖传播模型预测阿尔茨海默病进展
+2. [Mr3D-VL: A generalist vision language foundation model for Multiparametric 3D Magnetic Resonance Imaging](/202608/14/2608.12689v1-mr3d-vl-a-generalist-vision-language-foundation-model-for-multiparametric-3d-magnetic-resonance-imaging)  
    标签：评分：9.0/10、query:fbn
-   evidence：面向脑MRI的深度学习通用表示，覆盖临床、诊断等任务，属于神经影像AI医疗
-3. [ProtoGIB-Workload: Learning Workload-Specific Neural Topology Prototypes across Subjects](/202608/13/2608.10647v1-protogib-workload-learning-workload-specific-neural-topology-prototypes-across-subjects)  
+   evidence：面向多参数三维脑MRI肿瘤诊断的通用视觉语言基础模型
+3. [A Deep RL based Framework for Targeted White Matter Tractography](/202608/14/2608.12960v1-a-deep-rl-based-framework-for-targeted-white-matter-tractography)  
    标签：评分：8.0/10、query:fbn
-   evidence：基于图的功能连接分析用于脑状态识别，方法可迁移至fMRI
+   evidence：深度强化学习用于靶向白质纤维束成像，重建脑结构连接
+4. [How Good are Foundation Models in Longitudinal MRI Disease Progression Reasoning?](/202608/14/2608.13309v1-how-good-are-foundation-models-in-longitudinal-mri-disease-progression-reasoning)  
+   标签：评分：8.0/10、query:fbn
+   evidence：用于基础模型纵向多视图MRI疾病进展推理的基准
 
 ### 速读区论文标签
-1. [Evaluating and Calibrating Diffusion Model-derived Uncertainty for Quantitative MRI Mapping](/202608/13/2608.11942v1-evaluating-and-calibrating-diffusion-model-derived-uncertainty-for-quantitative-mri-mapping)  
+1. [Complexity and Stability of Neural Activity Across Aging and Neurodegenerative Disease](/202608/14/2608.05882v1-complexity-and-stability-of-neural-activity-across-aging-and-neurodegenerative-disease)  
    标签：评分：7.0/10、query:fbn
-   evidence：评估和校准基于扩散模型的定量MRI映射不确定性
-2. [M-Net: Integrating Spectral Features and Physical Field Operators into Deep Learning for Medical Image Segmentation](/202608/13/2608.12196v1-m-net-integrating-spectral-features-and-physical-field-operators-into-deep-learning-for-medical-image-segmentation)  
+   evidence：脑电图神经影像分析，关注衰老与神经退行性疾病
+2. [Neural Message Passing on Structural Interaction Graphs for Fully-Inductive Graph Neural Networks](/202608/14/2608.08567v2-neural-message-passing-on-structural-interaction-graphs-for-fully-inductive-graph-neural-networks)  
+   标签：评分：7.0/10、query:fbn
+   evidence：通用图神经网络方法，可应用于脑网络疾病诊断
+3. [A Latent Trajectory Analysis for Multivariate Outcomes with Mixed-Scale: Application to Alzheimer's Disease Neuroimaging Initiative](/202608/14/2608.06514v1-a-latent-trajectory-analysis-for-multivariate-outcomes-with-mixed-scale-application-to-alzheimers-disease-neuroimaging-initiative)  
    标签：评分：6.0/10、query:fbn
-   evidence：面向医学图像分割的数学归纳偏置，可迁移至神经影像
+   evidence：对ADNI神经影像数据进行统计建模，与神经影像医疗AI相关
 
 
 <div class="dpr-home-promo-card">
