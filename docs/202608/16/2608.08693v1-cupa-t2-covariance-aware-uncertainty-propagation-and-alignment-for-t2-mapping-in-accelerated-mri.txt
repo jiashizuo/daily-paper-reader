@@ -1,0 +1,263 @@
+Title: CUPA-T2*: Covariance-Aware Uncertainty Propagation and Alignment for T2* Mapping in Accelerated MRI
+
+URL Source: https://arxiv.org/pdf/2608.08693v1
+
+Published Time: Tue, 11 Aug 2026 01:21:01 GMT
+
+Number of Pages: 11
+
+Markdown Content:
+# CUPA-T2*: Covariance-Aware Uncertainty Propagation and Alignment for T2* Mapping in Accelerated MRI 
+
+Gideon N. L. Rouwendaal 1,2*, Natascha Niessen 2,3, Hannah Eichhorn 1,2, Dirk H. J. Poot 4,5, Christine Preibisch 6,7, and Julia A. Schnabel 1,2,6,8,9 
+
+> 1
+
+Institute of Machine Learning in Biomedical Imaging, Helmholtz Munich, Germany  
+
+> 2
+
+School of Computation, Information & Technology, Technical University of Munich, Germany  
+
+> 3
+
+GE HealthCare, Munich, Germany  
+
+> 4
+
+Biomedical Imaging Group Rotterdam, Erasmus MC, Rotterdam, The Netherlands  
+
+> 5
+
+Visionlab, University of Antwerp, Antwerp, Belgium  
+
+> 6
+
+School of Medicine & Health, Technical University of Munich, Germany  
+
+> 7
+
+Department of Neuroradiology, Klinikum rechts der Isar, Technical University of Munich, Germany  
+
+> 8
+
+Munich Center for Machine Learning (MCML), Germany  
+
+> 9
+
+School of Biomedical Engineering & Imaging Sciences, King’s College London, UK 
+
+*gideon.rouwendaal@tum.de 
+
+Abstract. Quantitative T2* maps have strong potential for biomarker discovery but are limited by long scan times, rendering them impracti-cal in clinical settings. Significant acceleration can be achieved through undersampling in k-space combined with learning-based reconstruction. However, reconstruction artifacts and noise can propagate into down-stream T2* fitting, degrading its accuracy. We introduce CUPA-T2*, a framework that explicitly propagates voxel-wise inter-echo uncertainty from stochastic Monte Carlo dropout reconstructions to downstream T2* fitting via covariance-aware sampling. T2* fitting is performed with a heteroscedastic MLP and a correlation-based regularizer that encourages alignment between predicted variance and reconstruction uncertainty. Experiments on accelerated brain MRI data show tissue-dependent be-havior: CUPA-T2* achieves competitive overall T2* fitting performance and improves white-matter performance at higher accelerations. Com-pared with a heteroscedastic baseline, the proposed framework substan-tially increases alignment between reconstruction uncertainty and pre-dicted T2* variance, while also revealing a trade-off with calibration (ECE) and selective prediction performance (AURC). CUPA-T2* en-ables reconstruction uncertainty-aware T2* fitting and delivers voxel-wise uncertainty maps to support the interpretation of quantitative T2* estimates. Our code is available at https://github.com/compai-lab/2026-miccai-rouwendaal. 
+
+Keywords: Quantitative MRI · T2* mapping · Uncertainty Propaga-tion · Uncertainty Quantification. arXiv:2608.08693v1 [cs.CV] 9 Aug 2026 2 G. Rouwendaal et al. 
+
+# 1 Introduction 
+
+Quantitative MRI (qMRI) estimates physical tissue parameters from multi-contrast acquisitions, improving comparability across scanners and facilitating biomarker discovery. In brain imaging, T2* mapping enables the assessment of iron deposition, which is associated with neurodegenerative pathologies such as Parkinson’s disease, Alzheimer’s disease, and multiple sclerosis (particularly in rim-positive white matter (WM) lesions) [1, 3, 11, 24]. However, qMRI techniques rely on multi-contrast acquisitions, which substantially increase scan time. Ac-celeration via k-space undersampling is therefore essential and has significantly contributed to the broader adoption of qMRI. This also renders the reconstruc-tion problem ill-posed, leading to artifacts and noise that can propagate into downstream parameter estimation. Deep learning methods have substantially advanced accelerated qMRI recon-struction from undersampled data [17]. In practice, qMRI typically involves a two-stage pipeline consisting of multi-contrast image reconstruction followed by voxel-wise parameter estimation. While these approaches substantially improve reconstruction quality and parameter prediction accuracy, principled uncertainty quantification across reconstruction and downstream parameter estimation re-mains limited. Predictive uncertainty in deep learning can be decomposed into aleatoric (data-inherent) and epistemic (model) components [2, 6, 15]. In accelerated MRI, undersampling yields non-unique reconstructions, with multiple solutions consis-tent with the same measured k-space. In stochastic learning-based models, this ambiguity appears as epistemic uncertainty in the reconstructed complex signal. In multi-echo T2* mapping, joint reconstruction of echoes or shared sampling patterns can introduce correlations between echoes into the uncertainty esti-mates. Figure 1 illustrates this effect via a representative voxel-wise inter-echo covariance matrix with pronounced off-diagonal structure. Ignoring inter-echo correlations may degrade the robustness of T2* parameter estimates, leading to potential misdiagnosis. Most existing (q)MRI approaches either neglect reconstruction uncertainty or summarize it using voxel-wise scalar variances [7, 13–16], ignoring the struc-tured covariance induced by undersampling. Uncertainty propagation has been   
+
+> Fig. 1. Mean reconstructions across echo times (TE), computed over MC-dropout sam-ples, with the corresponding voxel-wise reconstruction uncertainty map (summarized as the RMS marginal standard deviation) and an example voxel-wise inter-echo covari-ance matrix. CUPA-T2* 3
+
+explored in accelerated MRI pipelines [22, 23]. In qMRI, Sun et al. [7] introduced phase-wise uncertainty guidance within a two-stage reconstruction–fitting frame-work using Monte Carlo (MC) dropout. Nevertheless, explicit modeling of covari-ance and enforcement of cross-stage alignment between reconstruction-derived epistemic and downstream predicted aleatoric uncertainty remain unaddressed. In this work, we present Covariance-Aware Uncertainty Propagation and 
+
+Alignment for robust T2* mapping (CUPA-T2*), a two-stage framework that explicitly preserves and propagates inter-echo covariance into a heteroscedastic T2* regression model while enforcing structural alignment between reconstruc-tion epistemic uncertainty and predicted aleatoric uncertainty. To the best of our knowledge, this is the first work to combine covariance-aware uncertainty propagation with an explicit objective that aligns reconstruction-derived uncer-tainty with predicted T2* variance. The main contributions can be summarized as follows: 1. We introduce covariance-aware sampling that transfers structured recon-struction uncertainty into heteroscedastic T2* regression. 2. We propose a Root Mean Square (RMS) based correlation regularizer that promotes structural alignment between reconstruction-derived epistemic un-certainty and predicted aleatoric uncertainty. 
+
+# 2 Methods 
+
+Figure 2 shows the proposed CUPA-T2* framework, comprising three stages: (A) An unrolled reconstruction network with MC dropout [5, 6], (B) voxel-wise inter-echo covariance estimation with RMS summarization, and (C) heteroscedastic T2* regression with covariance-aware sampling and uncertainty alignment. The stages are described in detail below. 
+
+2.1 Unrolled multi-echo reconstruction network with dropout 
+
+We adopt the unrolled multi-echo reconstruction architecture described in [5], which is validated on the public T2*-MOVE dataset [4], also used in this study. The network reconstructs complex-valued multi-echo images from undersampled multi-coil k-space via N = 5 iterations alternating CNN denoising and data consistency (DC) steps. To enable stochastic sampling, dropout ( p = 0 .3) is inserted into intermediate denoiser layers and kept active during inference [6]. After training, a set of S = 100 stochastic reconstructions x(s)Ss=1 per slice is generated, serving as the basis for voxel-wise inter-echo uncertainty estimation. 
+
+2.2 Voxel-wise inter-echo uncertainty and sampling 
+
+From the S MC reconstructions with E = 12 echoes, each voxel v is represented as a real vector x(s) 
+
+> v
+
+∈ IR 2E , formed by concatenating the real and imaginary 4 G. Rouwendaal et al.   
+
+> Fig. 2. Overview of the proposed CUPA-T2* framework. (A) An unrolled multi-echo reconstruction network with MC dropout. (B) Voxel-wise inter-echo covariance is es-timated from MC samples and factorized to enable covariance-aware sampling, mod-ulated by RMS uncertainty. (C) A heteroscedastic T2* regressor predicts mean and variance, trained with β-NLL and RMS-based cross-stage uncertainty losses.
+
+components across echoes, from which the mean μv and covariance Σv are com-puted. To propagate the reconstruction uncertainty to the T2* fitting stage, a covariance factor Lv is calculated such that Σv ≈ Lv L⊤ 
+
+> v
+
+, where Lv ∈ IR 2E×2E
+
+is obtained via Cholesky decomposition. This yields a full-rank factor that pre-serves the estimated inter-echo covariance structure. We additionally derive a scalar summary for alignment and noise-schedule control by computing the RMS marginal standard deviation, given as uv =
+
+q 12E tr( Σv ). Given μv and factor 
+
+Lv , we generate uncertainty-aware samples as 
+
+x(s) 
+
+> v
+
+= μv + αv Lv z(s) (1) where z(s) ∼ N (0 , I ) and αv controls stochastic noise proportional to voxel-wise uncertainty. The sampling coefficient is defined as αv = αmin + ( αmax −
+
+αmin )ˆ uγv , where γ determines how strongly sampling strength increases with uncertainty. Figure 3 illustrates tissue-dependent uncertainty, motivating tissue-aware α scheduling. The resulting schedule adjusts the noise injection level based on uncertainty, keeping it low in clean voxels and higher in noisy ones. The magnitude ˜xv of the resulting complex-valued samples xsv serves as input to the parameter fitting network. 
+
+2.3 Covariance-aware heteroscedastic T2* fitting and predictive uncertainty 
+
+We employ a heteroscedastic multi-layer perceptron (MLP) that jointly predicts the voxel-wise conditional mean and aleatoric variance of T2*, given the sampled CUPA-T2* 5
+
+representation ˜xv . Specifically, the MLP outputs a mean ˆμT2 ∗ 
+
+> v
+
+and a log-variance 
+
+log( σT2 ∗ 
+
+> v
+
+) = ˆℓT2 ∗ 
+
+> v
+
+. The heteroscedastic MLP includes dropout layers that remain active during inference to enable MC-based epistemic uncertainty estimation [15]. Training is performed using the β-negative log-likelihood ( β-NLL) loss [10], 
+
+Lβ−NLL (xv ) = 
+
+h
+
+exp( ˆℓT2 ∗ 
+
+> v
+
+)
+
+iβ
+
+> sg
+
+12
+
+
+
+exp   − ˆℓT2 ∗
+
+> v
+
+  yT2 ∗ 
+
+> v
+
+− ˆμT2 ∗
+
+> v
+
+2 + ˆℓT2 ∗
+
+> v
+
+
+
+(2) where [·]sg denotes the stop-gradient operation. We set β = 0 .5 following [10]. Reference T2* targets ( yT 2∗ 
+
+> v
+
+) are obtained from fully sampled k-space recon-structions by voxel-wise non-linear least-squares fitting of a mono-exponential decay model across all 12 echoes within a brain mask and T2* values clipped at 200 ms. Although reconstruction uncertainty arises from epistemic variability in the stochastic reconstruction network, it induces irreducible stochastic variability in the regression inputs and thus acts as effective input-dependent aleatoric vari-ability during parameter estimation. To promote structural alignment between this reconstruction-derived uncertainty and the predicted conditional variance, we introduce an RMS-based correlation regularizer. Specifically, we align the predicted log-variance with the reconstruction-derived RMS uncertainty uv by adding ρ = Pearson( ˆℓT2 ∗ 
+
+> v
+
+, log uv ) to L = Lβ-N LL + λ(1 − ρ), where λ con-trols alignment strength. Importantly, the regularizer promotes correspondence between the two uncertainty patterns rather than assuming a formal equiva-lence between upstream epistemic and downstream aleatoric uncertainty. Be-cause RMS uncertainty exhibits tissue-dependent distributions, a global corre-lation would be dominated by high-variance tissues. We therefore compute the Pearson correlation separately for WM, gray matter (GM), and cerebrospinal fluid (CSF) and average them with equal weights. Although stratification nar-rows the within-tissue dynamic range, it prevents variance-driven bias and pro-motes balanced structural alignment across tissues. At inference, predictive uncertainty is decomposed into aleatoric and epis-temic components [2, 15]. Using M = 100 MC-dropout forward passes, aleatoric uncertainty is estimated as the mean predicted variance 1
+
+> M
+
+PMm=1 exp( ˆℓ(m) 
+
+> v
+
+), and        
+
+> Fig. 3. Tissue-dependent uncertainty and sampling. (a) Tissue segmentation with ex-ample high- and low-uvoxels. (b) Uncertainty distributions per tissue. (c) Sampling schedules α(u). (d) Mean ±1 SD MC signal decay for high- and low-uvoxels. 6G. Rouwendaal et al.
+
+epistemic uncertainty as the variance of the predictive means Var m(ˆ μ(m) 
+
+> v
+
+). The total predictive uncertainty is their sum. The MLP has five fully connected layers (hidden dimension 64), trained with Adam (learning rate 0.001, batch size 1024), using early stopping (patience 40) on mean WM and GM NRMSE. Following [7], per-echo standard deviations from S MC-dropout reconstructions in the magnitude domain are concatenated to the magnitude signal, yielding a IR 2E feature vector. Inputs are normalized by the first echo. The RMS-alignment weight is set to λ = 0 .05 , as it achieved the best validation performance across acceleration rates in most settings. During validation and testing, the MC mean and standard deviation are used. 
+
+# 3 Experiments and Results 
+
+3.1 Dataset 
+
+We use the publicly available T2*-MOVE dataset for quantitative T2* mapping of the human brain [4]. Fully sampled k-space data are retrospectively under-sampled using a single Cartesian random mask along the phase-encoding (PE) direction, simulating acceleration factors R = 2 , 3, 4. We focus on this range be-cause R = 4 already reduces scan time to 55 seconds, while higher accelerations leave too few PE lines for reliable T2* fitting. The 22 subjects are split subject-wise into 14/3/4 for training, validation, and testing, yielding 381/87/104 slices after discarding slices containing less than 20% brain tissue. 
+
+3.2 Evaluation 
+
+We compare CUPA-T2* to a non-heteroscedastic MLP (PUQ) [7] and a het-eroscedastic baseline (Het) [2], without covariance-aware sampling and RMS alignment. T2* map quality is assessed using NRMSE and SSIM within each brain mask and per tissue. Aleatoric uncertainty performance is assessed using the calibration error (ECE) computed from empirical coverage at 1σ, 2σ, and 3σ,area under the risk-coverage curve (AURC), and Pearson correlation ( ρ) between reconstruction RMS and predicted aleatoric variance. Wilcoxon signed-rank tests are employed for statistical testing, using p = 0 .001 .
+
+3.3 Results and Discussion 
+
+Table 1 shows the NRMSE and SSIM on the test set for the different models and acceleration rates. All methods show consistently good performance, with only small differences between them. Overall, PUQ achieves the lowest global NRMSE and the highest SSIM. However, a tissue-specific analysis (see Table 2) reveals that CUPA-T2* reduces WM error at acceleration R = 3 and R = 4 . A possible explanation is that white matter is relatively homogeneous and exhibits fewer physiological fluctuations, yielding more reliable inter-echo covariance estimates and, therefore, less-noisy propagated samples. In contrast, higher uncertainty CUPA-T2* 7
+
+Fig. 4. Qualitative comparison of T2* estimation and uncertainty. First column: refer-ence and predicted T2* maps. Second column: absolute error maps. Columns 3–5: total predictive uncertainty, aleatoric uncertainty, and epistemic uncertainty, respectively. 
+
+Table 1. T2* fitting performance (NRMSE, SSIM) over all tissues across acceleration rates. Best metrics in bold and ∗ indicating statistically superior to all others.                                 
+
+> Method 2×3×4×
+> NRMSE ↓SSIM ↑NRMSE ↓SSIM ↑NRMSE ↓SSIM ↑
+> PUQ 0.125 ∗0.964 ∗0.181 ∗0.928 ∗0.235 ∗0.893 ∗
+> Het 0.128 0.962 0.183 0.926 0.236 0.891 CUPA-T2* 0.127 0.963 0.188 0.921 0.242 0.885
+
+in CSF under stronger undersampling may limit its benefit. This suggests that covariance-aware propagation is most beneficial in regions with coherent intere-cho structure, but less effective in high-uncertainty regions. 
+
+Uncertainty. Table 3 summarizes the uncertainty metrics. While Het achieved the lowest AURC and ECE, it failed to capture the correlation between recon-struction uncertainty and predicted variance. In contrast, CUPA-T2* substan-tially increases this relationship. Qualitatively, Figure 4 confirms this correlation. CUPA-T2* uncertainty maps highlight regions more prone to reconstruction ar-tifacts, such as voxel boundaries and brain-background interfaces. At the same 8 G. Rouwendaal et al. 
+
+Table 2. Tissue-specific T2* NRMSE under different acceleration rates. Best metrics in bold and ∗ indicating statistically superior to all others. CUPA-T2* achieves the lowest WM NRMSE at R = 3 , 4.                                               
+
+> Method 2×3×4×
+> WM ↓GM ↓CSF ↓WM ↓GM ↓CSF ↓WM ↓GM ↓CSF ↓
+> PUQ 0.100 0.117 ∗0.166 ∗0.137 0.168 0.250 ∗0.174 0.209 0.334 ∗
+> Het 0.100 0.118 0.174 0.138 0.169 0.256 0.173 0.211 0.337 CUPA-T2* 0.099 0.119 0.171 0.135 ∗0.171 0.270 0.168 ∗0.210 0.359
+
+Table 3. Overall uncertainty metrics across acceleration rates. Best metrics in bold 
+
+and ∗ indicating statistically superior to all others.                                       
+
+> Method 2×3×4×
+> AURC ↓ρ↑ECE ↓AURC ↓ρ↑ECE ↓AURC ↓ρ↑ECE ↓
+> Het 3.398 ∗0.280 0.031 ∗4.560 ∗0.259 0.033 ∗5.637 ∗0.189 0.036 ∗
+> CUPA-T2* 3.471 0.766 ∗0.046 4.814 0.728 ∗0.051 5.910 0.651 ∗0.047
+
+Table 4. Ablation: tissue-specific T ∗ 
+
+> 2
+
+NRMSE and overall uncertainty at R = 4 . Best metrics in bold and ∗ indicating statistically superior to all others.                                                      
+
+> Method Quantitative (NRMSE) Overall uncertainty WM ↓GM ↓CSF ↓AURC ↓ρ↑ECE ↓
+> CUPA-T2* 0.168 0.210 0.359 5.910 0.651 0.047
+> α= 0 0.173 0.211 0.335 ∗5.902 0.641 0.042
+> ΣI 0.173 0.213 0.340 5.901 0.628 0.049
+> λ= 0 .00.167 ∗0.211 0.386 5.772 0.250 0.060
+> λ= 0 .01 0.169 0.210 0.354 5.723 0.370 0.042
+> λ= 0 .10.167 ∗0.212 0.360 6.319 0.839 ∗0.072
+
+time, AURC and ECE increase, indicating a trade-off between cross-stage un-certainty alignment and downstream uncertainty quality. A possible reason is that the current objective aligns predicted T2* variance with epistemic recon-struction uncertainty, which reflects only part of the total upstream predictive uncertainty. 
+
+Ablation Study (R = 4). We evaluated the impact of individual CUPA-T2* components by ablating: (i) covariance-aware sampling ( α = 0 ), (ii) inter-echo covariance by replacing it with the diagonal covariance ( ΣI ), and (iii) alignment strength ( λ). Table 4 summarizes the T2* fitting and uncertainty performance at R = 4. Disabling covariance-aware sampling ( α = 0 , ΣI ) degrades WM NRMSE, but improves CSF, confirming benefits for low-uncertainty tissues. Removing the regularizer ( λ = 0 ) yields the largest drop in ρ. Introducing a small alignment correlation ( λ = 0 .01 ) increases ρ while achieving the best AURC and ECE. Fur-ther increasing to λ = 0 .1 maximizes ρ, but worsens AURC and ECE, supporting the trade-off between correlation and AURC and ECE. CUPA-T2* 9
+
+# 4 Conclusion 
+
+In this work, we proposed CUPA-T2*, a framework that moves beyond scalar-only uncertainty by propagating inter-echo covariance from stochastic recon-structions into heteroscedastic fitting. This enables voxel-wise T2* uncertainty maps, informed by structured reconstruction uncertainty through explicit align-ment. Our results indicate tissue-dependent behavior: CUPA-T2* reduces fit-ting errors in WM, whereas performance in high-uncertainty CSF is less robust. Overall, CUPA-T2* significantly improves correlation between reconstruction-derived epistemic uncertainty and predicted aleatoric variance. The proposed framework can naturally extend to other quantitative parameters that exhibit inter-contrast correlations. Future work should explore aligning with total pre-dictive uncertainty rather than only epistemic uncertainty. 
+
+Acknowledgments. G.N.L.R. is funded by the European Union under the MSCA-DN project IQ-BRAIN. Views and opinions expressed are, however, those of the author(s) only and do not necessarily reflect those of the European Union or the European Re-search Executive Agency. Neither the European Union nor the granting authority can be held responsible for them. C.P. is supported by the Deutsche Forschungsgemein-schaft (DFG, German Research Foundation) under project number 563563598. D.H.J. Poot receives research funding from GE Healthcare. This work is supported by the DAAD programme Konrad Zuse Schools of Excellence in Artificial Intelligence spon-sored by the German Federal Ministry of Research, Technology and Space. 
+
+Disclosure of Interests. NN is an employee of GE HealthCare, Munich. All other authors declare that they do not have any financial or non-financial conflict of interests. 
+
+# References 
+
+1. Haacke, E.M., Cheng, N.Y.C., House, M.J., Liu, Q., Neelavalli, J., Ogg, R.J., Khan, A., Ayaz, M., Kirsch, W., Obenaus, A.: Imaging iron stores in the brain using magnetic resonance imaging. Magnetic Resonance Imaging 23 (1), 1–25 (2005) 2. Kendall, A., Gal, Y.: What uncertainties do we need in Bayesian deep learning for computer vision? Advances in Neural Information Processing Systems 30 (2017) 3. Zhou, C.-H., Zhu, Y.-C.: Imaging of cerebral iron as an emerging marker for brain aging, neurodegeneration, and cerebrovascular diseases. Brain Sciences 15 (9), 944 (2025). https://doi.org/10.3390/brainsci15090944 4. Eichhorn, H. et al.: T2*-MOVE: An Open k-Space Dataset to Address Motion in T2* Quantification from Gradient Echo MRI. Nefeli, Helmholtz Zentrum München (2026). https://nefeli.helmholtz-munich.de/records/9hqjb-tfw77 5. Eichhorn, H., Spieker, V., Hammernik, K., Saks, E., Felsner, L., Weiss, K., Preibisch, C., Schnabel, J.A.: Motion-robust T ∗ 
+
+> 2
+
+quantification from low-resolution gradi-ent echo brain MRI with physics-informed deep learning. Magnetic Resonance in Medicine 95 , 346–362 (2026). https://doi.org/10.1002/mrm.70050 6. Gal, Y., Ghahramani, Z.: Dropout as a Bayesian approximation: Representing model uncertainty in deep learning. In: Proceedings of the 33rd International Conference on Machine Learning (ICML), PMLR 48, 1050–1059 (2016) 10 G. Rouwendaal et al. 7. Sun, H., Li, Z., Du, C., Li, H., Wang, Y., Chen, H.: Guiding quantitative MRI reconstruction with phase-wise uncertainty. In: International Conference on Medical Image Computing and Computer-Assisted Intervention (MICCAI), pp. 248–257. Springer (2025) 8. D. P. Kingma and J. Ba, Adam: A Method for Stochastic Optimization, in Proceed-ings of the International Conference on Learning Representations (ICLR) , 2015. 9. Z. Wang, A. C. Bovik, H. R. Sheikh, and E. P. Simoncelli, Image quality assess-ment: From error visibility to structural similarity, IEEE Transactions on Image Processing , vol. 13, no. 4, pp. 600–612, 2004. doi:10.1109/TIP.2003.819861. 10. Seitzer, M., Tavakoli, A., Antic, D., Martius, G.: On the Pitfalls of Heteroscedas-tic Uncertainty Estimation with Probabilistic Neural Networks. arXiv preprint arXiv:2203.09168 (2022). https://doi.org/10.48550/arXiv.2203.09168 11. Pyatigorskaya, N., Sanz-Morère, C.B., Gaurav, R., Biondetti, E., Valabregue, R., Santin, M., Yahia-Cherif, L., Lehéricy, S.: Iron imaging as a diagnostic tool for Parkinson’s disease: A systematic review and meta-analysis. Frontiers in Neurology 
+
+11 , 366 (2020). https://doi.org/10.3389/fneur.2020.00366 12. Shafieizargar, B., Byanju, R., Sijbers, J., Klein, S., den Dekker, A.J., Poot, D.H.J.: Systematic review of reconstruction techniques for accelerated quantitative MRI. Magnetic Resonance in Medicine 90 (3), 1172–1208 (2023). https://doi.org/10.1002/mrm.29721 13. Edupuganti, V., Mardani, M., Vasanawala, S., Pauly, J.: Uncertainty quantification in deep MRI reconstruction. IEEE Transactions on Medical Imaging 40 (1), 239–250 (2021). https://doi.org/10.1109/TMI.2020.3025065 14. Ekanayake, M., Pawar, K., Chen, Z., Egan, G., Chen, Z.: PixCUE: Joint uncer-tainty estimation and image reconstruction in MRI using deep pixel classification. Journal of Imaging Informatics in Medicine 38 (4), 2071–2084 (2025). 15. Tanno, R., Worrall, D., Kaden, E., Ghosh, A., Grussu, F., Bizzi, A., Sotiropou-los, S.N., Criminisi, A., Alexander, D.C.: Uncertainty quantification in deep learn-ing for safer neuroimage enhancement. arXiv preprint arXiv:1907.13418 (2019). https://doi.org/10.48550/arXiv.1907.13418 16. Glang, F., Deshmane, A., Prokudin, S., et al.: DeepCEST 3T: Robust MRI parame-ter determination and uncertainty quantification with neural networks—application to CEST imaging of the human brain at 3T Magnetic Resonance in Medicine 84 ,450–466 (2020). https://doi.org/10.1002/mrm.28117 17. Heckel, R., Jacob, M., Chaudhari, A., Perlman, O., Shimron, E.: Deep learning for accelerated and robust MRI reconstruction. MAGMA 37 (3), 335–368 (2024). https://doi.org/10.1007/s10334-024-01173-8 18. Jeelani, H., Yang, Y., Zhou, R., Kramer, C.M., Salerno, M., Weller, D.S.: A my-ocardial T1-mapping framework with recurrent and U-Net convolutional neural net-works. In: 2020 IEEE 17th International Symposium on Biomedical Imaging (ISBI), pp. 1941–1944 (2020). https://doi.org/10.1109/ISBI45749.2020.9098653 19. Liu, F., Feng, L., Kijowski, R.: MANTIS: Model-augmented neural network with incoherent k-space sampling for efficient MR parameter mapping. Magnetic Reso-nance in Medicine 82 , 174–188 (2019). https://doi.org/10.1002/mrm.27707 20. Jun, Y., Shin, H., Eo, T., Kim, T., Hwang, D.: Deep model-based magnetic resonance parameter mapping network (DOPAMINE) for fast T1 mapping us-ing variable flip angle method. Medical Image Analysis 70 , 102017 (2021). https://doi.org/10.1016/j.media.2021.102017 21. Zimmermann, F.F., Kolbitsch, C., Schuenke, P., Kofler, A.: PINQI: An end-to-end physics-informed approach to learned quantitative MRI recon-CUPA-T2* 11 struction. IEEE Transactions on Computational Imaging 10 , 628–639 (2024). https://doi.org/10.1109/TCI.2024.3388869 22. Fischer, P., Thomas, K., Baumgartner, C.F.: Uncertainty estimation and propaga-tion in accelerated MRI reconstruction. In: International Workshop on Uncertainty for Safe Utilization of Machine Learning in Medical Imaging, pp. 84–94. Springer, Cham (2023). 23. Feiner, L.F., Menten, M.J., Hammernik, K., Hager, P., Huang, W., Rueckert, D., Braren, R.F., Kaissis, G.: Propagation and attribution of uncertainty in medical imaging pipelines. In: International Workshop on Uncertainty for Safe Utilization of Machine Learning in Medical Imaging, pp. 1–11. Springer, Cham (2023). 24. Gillen, K.M., Mubarak, M., Nguyen, T.D., Pitt, D.: Significance and In Vivo Detec-tion of Iron-Laden Microglia in White Matter Multiple Sclerosis Lesions. Frontiers in Immunology 9, 255 (2018). https://doi.org/10.3389/fimmu.2018.00255
