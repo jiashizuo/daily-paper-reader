@@ -6,35 +6,46 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-08-17
-- 运行时间：2026-08-17 19:47:58 UTC
+- 最新运行日期：2026-08-18
+- 运行时间：2026-08-18 20:01:23 UTC
 - 运行状态：成功
-- 本次总论文数：4
-- 精读区：0
+- 本次总论文数：8
+- 精读区：4
 - 速读区：4
 
 ### 今日简报（AI）
-今日共处理4篇文献，均为速读，精读0篇。  
-最值得关注：脑电解码与脑-音频重建方向，如RAG-Audio实现忠实重建，EEG-PRIME用原型对齐提升解码。  
-下一步可结合数据驱动方法，关注个性化神经健康应用。
-- 详情：[/202608/17/README](/202608/17/README)
+今日扫描8篇文献，精读聚焦脑网络线性模型与组ICA新算法，速读涉及AD识别及胎儿脑MRI。  
+最值得关注的是BrainLinear的稀疏切子空间线性模型与CoLiG-ICA的copula连接组分解，均在脑网络分析上提出新思路。  
+下一步可尝试将上述模型应用于自有脑影像数据，或跟踪其开源代码与临床验证进展。
+- 详情：[/202608/18/README](/202608/18/README)
 
 ### 精读区论文标签
-- 本次无精读推荐。
+1. [BrainLinear: A Linear Model for Brain Network Analysis in Sparse Tangent Subspaces](/202608/18/2608.15266v1-brainlinear-a-linear-model-for-brain-network-analysis-in-sparse-tangent-subspaces)  
+   标签：评分：10.0/10、query:fbn
+   evidence：稀疏切量子空间中的功能连接组分析，用于脑疾病识别与功能连接建模
+2. [Group ICA 2.0: Closing the Gap Between Subjects and Group Latent Decomposition with Copula-Linked Group ICA (CoLiG-ICA)](/202608/18/2608.16029v1-group-ica-20-closing-the-gap-between-subjects-and-group-latent-decomposition-with-copula-linked-group-ica-colig-ica)  
+   标签：评分：9.0/10、query:fbn
+   evidence：用于fMRI脑网络分解与功能连接建模的组ICA算法
+3. [EEG Decoding Using CNN and LSTM Network](/202608/18/2608.13285v1-eeg-decoding-using-cnn-and-lstm-network)  
+   标签：评分：8.0/10、query:fbn
+   evidence：基于CNN与LSTM的脑电运动想象解码，属于神经影像AI医疗健康
+4. [Decoupling Parcellation from Classification: Systematic Benchmark of Fast Brain Segmentation Methods for Alzheimer's Disease Detection](/202608/18/2608.16039v1-decoupling-parcellation-from-classification-systematic-benchmark-of-fast-brain-segmentation-methods-for-alzheimers-disease-detection)  
+   标签：评分：8.0/10、query:fbn
+   evidence：脑区分割方法在阿尔茨海默病检测中的基准测试
 
 ### 速读区论文标签
-1. [RAG-Audio: Retrieval-Augmented Generation for Faithful Brain-to-Audio Reconstruction](/202608/17/2608.09331v1-rag-audio-retrieval-augmented-generation-for-faithful-brain-to-audio-reconstruction)  
+1. [Emergence of Transfer Learning towards Specific Identification of Alzheimer's Disease A Prospective Approach](/202608/18/2608.14731v1-emergence-of-transfer-learning-towards-specific-identification-of-alzheimers-disease-a-prospective-approach)  
    标签：评分：7.0/10、query:fbn
-   evidence：基于fMRI的AI医疗：检索增强的脑到音频重建
-2. [EEG-PRIME: Prototype-Aligned Representation Learning with Multi-Level Conditioning for EEG Decoding](/202608/17/2608.13072v1-eeg-prime-prototype-aligned-representation-learning-with-multi-level-conditioning-for-eeg-decoding)  
+   evidence：基于神经影像数据的迁移学习用于阿尔茨海默病识别
+2. [Automated Fetal Brain MRI Biometry in Healthy and Pathological Cases](/202608/18/2608.15692v1-automated-fetal-brain-mri-biometry-in-healthy-and-pathological-cases)  
    标签：评分：7.0/10、query:fbn
-   evidence：面向脑电信号解码的基础模型，属于神经影像AI的邻近领域
-3. [Data-driven techniques for translational neuroscience and personalized neuro-health](/202608/17/2608.13749v1-data-driven-techniques-for-translational-neuroscience-and-personalized-neuro-health)  
-   标签：评分：7.0/10、query:fbn
-   evidence：面向个性化神经健康的神经影像数据驱动综述
-4. [Joint Estimation of Sparse Multilayer Networks via Graph Limits](/202608/17/2608.14536v1-joint-estimation-of-sparse-multilayer-networks-via-graph-limits)  
+   evidence：健康与病理胎儿脑MRI自动生物测量
+3. [Causal Mediation Analysis for Network Data with Graph Neural Network](/202608/18/2608.13274v1-causal-mediation-analysis-for-network-data-with-graph-neural-network)  
    标签：评分：6.0/10、query:fbn
-   evidence：多层网络估计方法可应用于脑连接组建模
+   evidence：面向网络数据的图神经网络因果中介分析，可迁移至脑连接组与功能连接研究
+4. [M-LINKX: Multiview Graph Learning for Brain Cognitive Disease Detection](/202608/18/2608.14847v1-m-linkx-multiview-graph-learning-for-brain-cognitive-disease-detection)  
+   标签：评分：6.0/10、query:fbn
+   evidence：基于图学习的脑认知疾病检测（EEG信号）
 
 
 <div class="dpr-home-promo-card">

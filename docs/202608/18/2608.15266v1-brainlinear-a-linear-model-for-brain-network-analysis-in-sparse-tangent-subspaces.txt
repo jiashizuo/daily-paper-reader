@@ -1,0 +1,691 @@
+Title: BrainLinear: A Linear Model for Brain Network Analysis in Sparse Tangent Subspaces
+
+URL Source: https://arxiv.org/pdf/2608.15266v1
+
+Published Time: Tue, 18 Aug 2026 00:41:15 GMT
+
+Number of Pages: 13
+
+Markdown Content:
+# BrainLinear: A Linear Model for Brain Network Analysis in Sparse Tangent Subspaces 
+
+## Sijing Wu 1,2 , Dongyuan Li 2, Miaoting Huang 1, Weiwei Ye 2, Ying Zhang 3, Feng Xia 4, Renhe Jiang 2 
+
+> 1
+
+Guangdong University of Foreign Studies  
+
+> 2
+
+The University of Tokyo  
+
+> 3
+
+RIKEN AIP  
+
+> 4
+
+Royal Melbourne Institute of Technology 
+
+lidy@csis.u-tokyo.ac.jp 
+
+Abstract 
+
+Functional connectome analysis examines brain-region inter-actions to understand and identify disorders such as autism spectrum disorder and Alzheimer’s disease. Existing meth-ods typically use GNNs and Transformers to model the full functional connectivity matrix. However, processing tens of thousands of connections introduces redundancy and noise, increases computational cost, and limits connection-level in-terpretability. This raises a central question: do we really need complex interaction modeling, or is identifying a small set of disease-relevant connectivity patterns sufficient? To an-swer this question, we propose BrainLinear, a lightweight geometry-aware framework for mining disease-discriminative connectome patterns. BrainLinear first maps each functional connectivity matrix to a shared tangent space centered at the Fréchet mean of the training set, capturing subject-specific de-viations while respecting matrix geometry. It then scores each ROI-pair tangent direction by its classification contribution and disease–control difference, retaining Top-K directions as a compact representation. Finally, a shallow multilayer percep-tron performs classification on the selected representation. Ex-periments on ABIDE and ADNI show that BrainLinear matches or exceeds strong GNN and Transformer baselines at a fraction of their cost: it improves AUC and ACC over the best baseline for each metric by up to 3.54 and 1.39 percentage points, while reducing runtime and peak GPU memory by 84 .0% and 68 .4% 
+
+relative to the closest baseline in AUC. The selected directions are directionally consistent with between-group displacements and organized across major functional systems, supporting connection-level interpretation. Source code is available at: https://anonymous.4open.science/r/BrainLinear-3. 
+
+## Introduction 
+
+Brain disorder classification from functional connectomes models each subject as a weighted brain graph, with brain regions as nodes and edge weights encoding inter-regional functional connectivity, and uses this graph to predict disease status (Liu et al. 2026a,b). This network-level formulation is particularly well suited to complex disorders such as autism spectrum disorder and Alzheimer’s disease, whose abnormal-ities are distributed across multiple brain regions and func-tional systems rather than confined to isolated regions (Pagani et al. 2026). By capturing these whole-brain disruptions, 
+
+Copyright © 2027, Association for the Advancement of Artificial Intelligence (www.aaai.org). All rights reserved. 
+
+functional connectomes provide a quantitative foundation for objective disease assessment (Lucchetti et al. 2025), mechanis-tic investigation (Bernardo Maciel et al. 2026), and candidate imaging biomarker discovery (Ramos-Llordén et al. 2026). Accordingly, functional connectome analysis has become an active research direction spanning medical image analysis, computational neuroscience, and graph learning (Yang et al. 2025; Ding et al. 2026). Driven by growing neuroimaging datasets and advances in deep graph learning, functional connectome analysis has shifted from handcrafted connectivity features to end-to-end graph representation learning (Tang et al. 2025; Yang et al. 2026). Existing methods broadly fall into two cat-egories by interaction scope: local and global interaction modeling. For local interaction modeling , graph neural networks propagate information across neighboring ROIs to capture disease-relevant local structure (Velickovic et al. 2018; Cui et al. 2023; Bessadok, Mahjoub, and Rekik 2022; Xia et al. 2025). Brain-specific variants extend this paradigm by highlighting discriminative regions through ROI-aware convolution and node pooling (Li et al. 2021; Cui et al. 2022), jointly learning task-oriented connectivity structures (Kan et al. 2022a; Zhang et al. 2023), or hierarchically aggregat-ing ROIs into disease-relevant subnetworks (Xu et al. 2024; Qiu et al. 2024). For global interaction modeling , graph Transformers use global self-attention to capture long-range dependencies across arbitrary brain regions (Ying et al. 2021; Wu et al. 2021). Brain-specific variants further structure these global interactions by inferring latent functional modules from ROI connectivity profiles (Kan et al. 2022b; Bannadab-havi et al. 2023), jointly modeling local and long-range brain communication (Yu, Liu, and Ji 2025; Wei et al. 2024), or incorporating biological priors such as small-world topology into attention (Peng et al. 2025; Chen et al. 2025). Despite the remarkable success of existing methods, three core issues remain unresolved. First, ignoring the geome-try of functional connectivity matrices limits predictive performance. A functional connectivity matrix is not a col-lection of independently varying edge weights; its entries are coupled by global structural constraints (You and Park 2021; Dan, Ding, and Wu 2025b). Yet existing deep graph models typically treat it as an ordinary weighted graph and perform message passing or global attention in Euclidean space (Pei et al. 2025; Wei, Dan, and Wu 2026). Although these opera-arXiv:2608.15266v1 [cs.GR] 15 Aug 2026 tions capture ROI interactions, they do not explicitly preserve matrix-level structural dependencies, limiting their ability to characterize coordinated disease-related changes across multiple connections. Second, lacking explicit identification of discriminative connections limits interpretability. Most methods learn over the full or nearly full connectivity space, although neuroscientific evidence suggests that discriminative information can concentrate in a limited set of connectivity patterns despite abnormalities spanning multiple functional systems (Yahata et al. 2016; Pagani et al. 2026). Explanations based on attention weights, ROI importance, or learned graph structures (Yuan et al. 2025; Vidya et al. 2026) cannot reliably determine which connections drive classification, whether their directions align with disease–control differences, or whether they form biologically meaningful functional-system patterns. Third, modeling the full connectome with com-plex interactions incurs computational overhead. Common brain atlases yield thousands to tens of thousands of ROI con-nections, yet existing methods repeatedly process this space through multi-layer message passing, graph structure learning, hierarchical aggregation, or global self-attention (Dan, Ding, and Wu 2025a; Chen et al. 2025). This incurs substantial runtime and memory costs while exacerbating redundancy and overfitting in small-sample neuroimaging settings. More fundamentally, the assumption that more extensive interaction modeling necessarily yields better brain network representa-tions remains insufficiently tested (Yang et al. 2025; Han et al. 2026). Together, these limitations raise a central question: how can we preserve connectome geometry and identify dis-criminative connections without complex full-connectome interaction modeling? 
+
+To answer this research question, we propose BrainLinear, which replaces complex interaction modeling over the full connectome with discriminative subspace learning in a shared tangent space. To preserve connectivity-matrix geometry ,BrainLinear treats each regularized functional connectivity matrix as a symmetric positive definite (SPD) descriptor and maps it to a tangent space anchored at the AIRM Fréchet mean estimated from the training fold, providing a common coordinate system for whole-brain connectivity variation. To identify discriminative connections and enable their val-idation , BrainLinear ranks each ROI-pair-indexed tangent direction by the product of its linear-probe coefficient mag-nitude and disease–control displacement magnitude, then retains the Top-K directions to form a compact shared dis-criminative subspace. To avoid complex full-connectome interactions , BrainLinear trains only a shallow MLP on this compact subspace, without multi-layer message passing, graph pooling, or global self-attention. Together, these designs unify geometry-aware representation, verifiable connection-level selection, and lightweight disease classification within a single framework. Overall, our contributions are threefold: 
+
+• A new paradigm for functional connectome learning. 
+
+We replace complex interaction modeling over the full brain graph with geometry-aware discriminative subspace learning, preserving global connectome structure while retaining only compact disease-relevant information. 
+
+• Verifiable connection-level interpretability. We identify discriminative connections by combining predictive rele-vance with group displacement, and verify that they point in the direction of the observed group differences. 
+
+• Evidence that lightweight modeling is sufficient. On ABIDE and ADNI, a shallow classifier over the selected connections outperforms strong GNN and Transformer baselines, indicating that dense full-connectome interac-tion is not required for accurate classification. 
+
+## Related Work 
+
+Deep Graph Models for Functional Connectomes. Deep models for functional connectome analysis generally follow either message-passing GNNs or global-attention Transform-ers. Generic GNNs aggregate local neighborhoods with fixed or learned weights (Velickovic et al. 2018; Cui et al. 2023), while brain-specific variants add ROI-aware convolution and pooling, task-oriented network generation, and hierarchical aggregation (Kan et al. 2022a; Xu et al. 2024). Graph Trans-formers instead model global dependencies through spectral, structural, or long-range attention (Ying et al. 2021; Wu et al. 2021), with brain-specific designs adding functional modules, long-range communication, and biological priors (Yu et al. 2024; Peng et al. 2025); related work on structure-aware ag-gregation (Yan et al. 2025; Liu et al. 2025) likewise remains Euclidean. All operate in Euclidean hidden spaces over dense connectomes, without preserving matrix geometry or identify-ing the ROI-pair-level factors driving prediction. BrainLinear learns from a geometry-consistent tangent representation, se-lects and validates a compact set of discriminative coordinates, and avoids dense propagation and global attention. 
+
+Geometry-Aware Connectome Learning. Regularized func-tional connectivity matrices can be treated as SPD descriptors on a Riemannian manifold. Prior work either builds deep architectures directly on the manifold through Riemannian layers and optimization (Brooks et al. 2019; Ho and Nguyen 2020), which retains geometry at the cost of model complexity, or maps connectomes to a shared tangent space for Euclidean learning (Wong et al. 2018; Dadi et al. 2019; You and Park 2021; Abbas et al. 2023), keeping the full representation without task-driven coordinate selection. BrainLinear uses the tangent space for both representation and sparsification, ranking each ROI-pair-indexed coordinate by its probe rele-vance and disease displacement to obtain a Top-K subspace that supports compact classification and interpretation. 
+
+## Problem Formulation and Notation 
+
+Let D = {(Xi, y i)}Mi=1 be a functional-connectome dataset, where Xi = X⊤ 
+
+> i
+
+∈ RN ×N encodes pairwise functional connectivity among N regions of interest (ROIs) and yi ∈{0, 1} is the diagnostic label, with 1 and 0 denoting disease and control. Our goal is to predict yi from Xi. We write 
+
+E = {(u, v ) : 1 ≤ u < v ≤ N } for the ROI-pair index set of size E = N (N − 1) /2, fix a row-major bijection 
+
+π : E → { 1, . . . , E } indexing ROI pair (u, v ) by π(u, v ),and let Itr denote the training-subject index set. SN denotes the space of real symmetric matrices, SN 
+
+> ++
+
+⊂ SN the SPD cone, IN the identity matrix, and ∥ · ∥ F the Frobenius norm. Figure 1: Overview of BrainLinear. Functional connectomes are mapped to a shared AIRM tangent space, where disease-discriminative ROI-pair coordinates are selected by joint probe relevance and group displacement for lightweight classification. 
+
+## Methodology 
+
+As shown in Fig. 1, BrainLinear comprises two stages and a lightweight classifier. It first maps each connectome to shared whitened tangent coordinates induced by the training-fold Fréchet mean, yielding ezi ∈ RE . It then ranks these coordinates by discriminative relevance and retains the top 
+
+K to form hi ∈ RK , which is classified by a shallow MLP. Unlike dense Euclidean message passing or global attention, BrainLinear performs sparsification only after geometry-aware tangent mapping; thus, the selected features are ROI-pair-indexed tangent coordinates, rather than raw FC edges. 
+
+Geometry-Aware Tangent Representation 
+
+Functional connectomes are commonly represented by vec-torizing the upper-triangular FC entries, which treats connec-tions as independent Euclidean variables despite the positive-definite constraints coupling the full matrix. This representa-tion therefore obscures coordinated changes spanning multiple connections. BrainLinear instead models each regularized connectome on the SPD manifold and linearizes it around a training-fold reference. Because the resulting tangent coordi-nates are derived from a matrix-level spectral mapping, they capture structured whole-connectome variation. 
+
+Shared Tangent-Space Mapping Empirical FC matrices 
+
+Xi are often singular or numerically ill-conditioned. We thus symmetrize each matrix and apply an adaptive diagonal shift:            
+
+> Ai= 12
+> 
+> Xi+X⊤
+> i
+> 
+> ,Si=Ai+δiIN∈SN
+> ++ ,(1)
+
+where δi = max {0, τ −λmin (Ai)}+ϵspd , with λmin (·) being the smallest eigenvalue, τ > 0 being the target eigenvalue floor, and ϵspd > 0 denoting a small stability constant. Since SN 
+
+> ++
+
+is a curved manifold, comparing descriptors re-quires a geometry-aware metric. We adopt the affine-invariant Riemannian metric (AIRM), whose geodesic distance is       
+
+> dAIRM (Si,Sj) = log
+> 
+> S−1/2
+> iSjS−1/2
+> i
+> 
+> F
+> .(2)
+
+AIRM is invariant to invertible congruence transformations, so its distance is unaffected by linear reparameterizations of the descriptors. Since tangent-space linearization is reference-dependent and less accurate for distant samples, we use the training-fold AIRM Fréchet mean as the common reference:     
+
+> ¯S= arg min
+> S∈SN
+> ++
+> 1
+> |I tr |
+> X
+> i∈I tr
+> d2AIRM (S,Si).(3)
+
+The minimizer is unique because the SPD manifold under AIRM is Hadamard and serves as the base point for tangent-space mapping. Then each subject is assigned the shared whitened tangent coordinates induced by ¯S:      
+
+> Ti= log
+> ¯S−1/2Si¯S−1/2
+> ∈SN.(4)
+
+The AIRM logarithmic map at ¯S is Log ¯S(Si) = ¯S1/2Ti ¯S1/2.
+
+Thus, Ti is the whitened coordinate representation of this tangent vector at the identity, placing all subjects in a shared fold-specific Euclidean space. The mapping satisfies     
+
+> ∥Ti∥F=dAIRM (¯S,Si).(5)
+
+Thus, it preserves each subject’s AIRM distance to ¯S, although arbitrary pairwise distances between subjects are generally not preserved after linearization. The same training-fold reference is fixed when mapping validation and test subjects. 
+
+ROI-Pair Tangent Feature Extraction Because the matrix logarithm in Eq. (4) is applied to the complete descriptor Si,each entry Ti,uv is jointly determined by the full matrix rather than being a pointwise transformation of Xi,uv . Nevertheless, 
+
+Ti remains symmetric and preserves the original ROI index-ing, allowing each off-diagonal entry to be associated with an unordered ROI pair. Since the diagonal entries do not cor-respond to connections between distinct ROIs, BrainLinear retains only the strictly upper-triangular coordinates: 
+
+zi = vech off (Ti) ∈ RE , zi,π (u,v ) = Ti,uv , (6) where vech off (·) stacks the strictly upper-triangular entries according to the fixed row-major ordering π.This interpretability-oriented extraction is not an isometric vectorization of the tangent matrix because diagonal com-ponents are omitted. Each zi,π (u,v ) represents the subject’s matrix-wide logarithmic displacement along the tangent co-ordinate associated with the ROI pair (u, v ); its sign denotes orientation in the shared tangent space rather than a direct increase or decrease in Xi,uv . Before relevance estimation, each coordinate is standardized using training-fold statistics:          
+
+> ezi,e =zi,e −μtr
+> e
+> σtr
+> e+ϵstd
+> ,e= 1 , . . . , E, (7)
+
+where μtr  
+
+> e
+
+and σtr  
+
+> e
+
+are the empirical mean and standard deviation of coordinate e over Itr , and ϵstd > 0 is a small constant. These statistics are fixed and reused for validation and test subjects. Standardization places all coordinates on a common scale, making probe coefficients comparable and preventing coordinate scale from biasing relevance estimation or L2 regularization. 
+
+Discriminative Tangent-Coordinate Selection 
+
+Although the shared mapping places all subjects in a common Euclidean space, the representation remains high-dimensional and difficult to interpret. We therefore rank each ROI-pair coordinate by the product of its probe coefficient and disease– control displacement, which capture conditional decision sensitivity and marginal group shift, respectively; their joint contribution better reflects diagnostically relevant separation across the two subject groups than either signal alone. 
+
+Direction Relevance Estimation We fit an L2-regularized logistic regression probe on the complete standardized tan-gent representations. Let α = [ α1, . . . , α E ]⊤ ∈ RE and 
+
+b ∈ R denote the learned coefficient vector and intercept, respectively. Its pre-sigmoid decision score is      
+
+> f(ezi) = α⊤ezi+b. (8)
+
+The probe is trained with binary cross-entropy and L2 regu-larization. We use its linear decision score rather than prob-ability because the additive structure of f permits an exact coordinate-wise decomposition of the between-group score difference. Let I+ = {i ∈ I tr : yi = 1 } and I− = {i ∈ I tr : yi = 0 }
+
+denote the disease and control subjects in the training fold. Their mean standardized tangent representations are        
+
+> ¯z±=1
+> |I ±|
+> X
+> i∈I ±
+> ezi,∆= ¯ z+−¯z−,(9)
+
+where ∆ = [∆ 1, . . . , ∆E ]⊤ and ∆e = ¯ z+,e − ¯z−,e is the standardized disease–control displacement on coordinate e.Because f is affine, each group’s mean probe score equals the score at its mean representation, and the intercept cancels when the two groups are compared. The resulting group-level score difference admits the exact decomposition        
+
+> f(¯ z+)−f(¯ z−) = α⊤∆=
+> EX
+> e=1
+> αe∆e.(10)
+
+Accordingly, the signed contribution of coordinate e to the between-group score difference is ce = αe∆e. We define its discriminative relevance as the corresponding magnitude:        
+
+> se=|ce|=|αe∆e|=|αe| | ∆e|.(11)
+
+The relevance score is large only when coordinate e both influences the fitted probe and exhibits a substantial disease– control displacement, capturing their joint effect beyond either 
+
+|αe| or |∆e| alone. Because se uses the magnitude of the signed contribution ce, coordinates with ce > 0 or ce < 0
+
+remain eligible for selection; directional agreement between the probe coefficient and group displacement is therefore assessed empirically rather than imposed by the criterion. 
+
+Sparse Tangent Representation. Let J = {1, . . . , E }
+
+denote the complete tangent-coordinate index set. Given a sparsity budget K, we retain the K coordinates with the largest relevance scores. The selected index set is defined as   
+
+> JK= TopKIdx
+> 
+> {se}Ee=1 , K
+> 
+> = arg max
+> A⊆J |A| =K
+> X
+> e∈A
+> |αe∆e|.(12)
+
+Here, TopKIdx( ·, K ) returns the indices of the K largest scores. Equivalently, JK maximizes the total magnitude of retained coordinate-wise contributions, but not necessarily their signed sum. Writing JK = {j1, . . . , j K } in ascending order, let PK ∈ { 0, 1}K×E be the selection matrix whose 
+
+k-th row is e⊤ 
+
+> jk
+
+, where ejk ∈ RE denotes the jk-th standard basis vector. The selected representation of subject i is 
+
+hi = PK ezi ∈ RK . (13) This restricts the representation to a K-dimensional axis-aligned coordinate subspace, and since all selected coordinates lie in the same fold-specific tangent chart, every subject is described by a shared set of ROI-pair-indexed directions. The probe parameters, group displacements, and selected set 
+
+JK are estimated on the training fold and fixed thereafter. Signed coordinates are retained, with ezi,e positive or negative according to whether subject i lies above or below the training-fold mean along coordinate e; because each coordinate stems from the matrix-wide logarithmic mapping, its sign does not imply a corresponding change in the raw FC value Xi,uv .
+
+Lightweight Classification 
+
+Once the discriminative subspace is fixed, hi already contains ROI-pair-indexed coordinates expressed in a shared geometric chart and selected for group separation, so classification requires neither message passing nor global attention over the full connectome. We apply a shallow multilayer perceptron directly to this K-dimensional representation, where K ≪ E.Let C denote the number of diagnostic classes ( C = 2 here) and yi ∈ { 0, 1}C the one-hot encoding of yi; the predicted class probabilities and classification loss are          
+
+> byi= softmax (MLP( hi)) ,Lcls =−X
+> i∈I tr
+> y⊤
+> ilog byi,(14)
+
+where MLP( ·) is a two-layer perceptron with dropout. Model ABIDE ADNI 
+
+AUC ↑ ACC ↑ SEN ↑ SPE ↑ AUC ↑ ACC ↑ SEN ↑ SPE ↑
+
+> GNN
+
+BrainGNN 64.42 ±3.57 63.09 ±1.35 65.65 ±2.88 60.67 ±3.68 61.81 ±1.58 58.72 ±3.14 52.88 ±9.70 62.70 ±4.26 
+
+BrainGB 70.32 ±3.66 65.12 ±3.90 67.01 ±10.00 60.07 ±8.53 66.44 ±3.33 63.70 ±4.65 60.73 ±8.25 64.67 ±9.07 
+
+FBNetGen 74.50 ±3.77 67.09 ±3.37 64.71 ±9.85 69.61 ±9.30 67.05 ±2.16 63.26 ±1.38 66.79 ±6.93 61.31 ±9.65 
+
+GCN 59.59 ±3.44 59.30 ±3.38 56.67 ±4.37 61.55 ±5.29 62.45 ±3.63 59.12 ±4.53 54.55 ±9.96 62.00 ±8.55 
+
+GAT 60.43 ±3.88 60.10 ±4.13 59.26 ±5.51 62.89 ±8.03 62.00 ±2.88 58.75 ±2.86 53.20 ±7.50 64.79 ±7.65 
+
+ContrastPool 57.36 ±0.87 57.44 ±0.69 57.66 ±6.85 57.08 ±7.79 68.17 ±3.28 66.21 ±3.90 61.51 ±7.44 72.43 ±6.53 
+
+> Transformer
+
+ALTER 77.99 ±2.21 70.10 ±2.26 72.84 ±7.40 67.68 ±5.81 71.86 ±3.13 66.92 ±3.93 71.55 ±8.91 64.00 ±6.80 
+
+BioBGT 69.96 ±1.18 69.70 ±2.90 67.04 ±3.41 72.02 ±4.67 63.16 ±3.74 62.27 ±3.23 63.97 ±7.88 60.55 ±6.71 
+
+BrainNetTF 77.93 ±1.41 69.26 ±2.26 65.92 ±8.60 73.20 ±6.06 69.73 ±2.61 67.85 ±2.92 63.64 ±6.27 70.67 ±8.33 
+
+Graphormer 63.91 ±4.05 61.88 ±6.85 66.30 ±9.98 55.74 ±11.00 60.69 ±5.26 55.75 ±3.18 60.18 ±11.36 47.75 ±13.53 
+
+GraphTrans 60.13 ±6.73 57.83 ±4.71 65.70 ±10.30 49.77 ±11.52 61.41 ±3.65 58.60 ±5.41 65.57 ±6.05 54.37 ±3.42 
+
+SAN 71.35 ±2.18 65.34 ±2.91 55.41 ±9.29 68.39 ±7.50 66.11 ±3.41 61.78 ±4.22 53.94 ±7.56 63.63 ±8.51 
+
+Ours BrainLinear 78.46 ±0.38 71.49 ±2.17 68.57 ±13.51 74.23 ±12.13 75.40 ±1.03 69.11 ±1.66 71.22 ±13.02 67.12 ±13.45 
+
+Table 1: Classification performance comparison. Best results are in bold with shaded cells; second best are underlined. 
+
+## Experiments 
+
+Experimental Settings 
+
+Datasets. We evaluate BrainLinear on ABIDE and ADNI. 
+
+ABIDE includes 1,009 subjects (516 with autism spectrum disorder and 493 controls), represented by 200 × 200 func-tional connectivity matrices constructed using the Craddock 200 atlas (Craddock et al. 2012). ADNI includes 120 subjects (47 with Alzheimer’s disease and 73 controls), represented by 100 × 100 matrices constructed using the Automated Anatomical Labeling atlas (Tzourio-Mazoyer et al. 2002). 
+
+Baselines. We compare BrainLinear with 12 representative deep graph baselines, broadly grouped according to their dominant computational mechanisms. GNN-based mod-els include the generic GCN (Kipf and Welling 2017) and GAT (Velickovic et al. 2018), as well as the brain-network-oriented BrainGNN (Li et al. 2021), BrainGB (Cui et al. 2023), FBNetGen (Kan et al. 2022a), and ContrastPool (Xu et al. 2024). Transformer-based models include the generic SAN (Kreuzer et al. 2021), Graphormer (Ying et al. 2021), and the hybrid GraphTrans (Wu et al. 2021), together with the brain-specific BrainNetTF (Kan et al. 2022b), ALTER (Yu et al. 2024), and BioBGT (Peng et al. 2025). 
+
+Implementation Details. We evaluate classification per-formance using AUC , accuracy ( ACC ), sensitivity ( SEN ), and specificity ( SPE ). We regularize each FC matrix using identity shrinkage with λ = 0 .05 and eigenvalue clipping with ϵ = 10 −6, and select the top K tangent directions, with 
+
+K = 8000 for ABIDE and K = 2000 for ADNI. The classi-fier is a two-layer MLP with hidden dimensions of 256 and 64 
+
+and a dropout rate of 0.5. We train the model using AdamW with a learning rate of 3 × 10 −4, a weight decay of 10 −3, a batch size of 64 , and at most 160 epochs. All fold-dependent statistics and feature-selection operations are estimated exclu-sively from the training fold. Baseline hyperparameters follow their official implementations whenever available. We repeat each experiment across five independent runs and report the mean ± standard deviation. 
+
+Performance Evaluation 
+
+Table 1 compares BrainLinear with representative GNN- and Transformer-based models on ABIDE and ADNI. BrainLinear ranks first in five of the eight dataset–metric combinations and achieves the best AUC and ACC on both datasets. The results further reveal three findings. ❶ The advantage holds across disorders, atlases, and sample regimes. Baseline rankings vary substantially between cohorts. ContrastPool, for example, has the lowest AUC on ABIDE but the third-highest baseline AUC on ADNI. In contrast, BrainLinear leads AUC and ACC on both datasets despite their different diseases, cohort sizes, and parcellations. Its largest margin appears on ADNI, the smaller cohort with a lower-dimensional tangent space, suggesting that a compact discriminative subspace is valuable when subjects are limited relative to connectome dimension. 
+
+❷ Dense interaction modeling is not required for accurate connectome classification. BrainLinear outperforms both message-passing GNNs and attention models without using either mechanism. Interaction capacity also fails to explain baseline performance: generic graph Transformers trail the brain-specific FBNetGen on both datasets, while variation within each model family exceeds the gap between families. These results suggest that domain-specific structure, captured through geometry-aware tangent mapping and discriminative coordinate selection, matters more than broader interaction modeling. ❸ The gain reflects overall discrimination, not a class-specific advantage. ALTER achieves the best SEN on both datasets, and ContrastPool obtains the best SPE on ADNI, yet neither leads AUC or ACC. BrainLinear trails the best ADNI SEN by only 0.33 points and achieves the highest SPE on ABIDE. However, SEN and SPE vary by more than 12 points across runs, and without significance testing, the 0.47-point AUC margin on ABIDE should be interpreted as a consistent trend instead of a decisive difference. 
+
+Efficiency Evaluation 
+
+Figure 2 situates each model on ABIDE by AUC, running time, and peak GPU memory. BrainLinear sits at the upper Variant ABIDE ADNI 
+
+AUC ↑ ACC ↑ SEN ↑ SPE ↑ AUC ↑ ACC ↑ SEN ↑ SPE ↑
+
+Raw FC + MLP 65.41 ±3.15 60.80 ±2.13 58.66 ±5.63 62.00 ±7.60 67.47 ±13.88 58.33 ±12.84 63.33 ±35.17 56.38 ±16.21 
+
+Full Tangent + MLP 77.30 ±1.31 67.62 ±2.49 82.45 ±3.41 53.65 ±7.43 70.61 ±3.78 64.75 ±3.16 62.42 ±6.27 67.03 ±11.05 
+
+Random-K Tangent + MLP 72.06 ±1.83 63.66 ±1.24 74.08 ±7.99 53.85 ±9.81 65.29 ±4.64 60.50 ±4.99 60.94 ±10.75 60.01 ±13.87 
+
+Coefficient-only Top-K 76.48 ±1.13 67.92 ±3.63 73.27 ±10.29 62.88 ±16.00 70.41 ±3.75 64.36 ±3.96 72.37 ±8.66 56.80 ±13.53 
+
+Displacement-only Top-K 77.68 ±0.83 68.61 ±1.74 79.80 ±2.54 58.08 ±5.29 70.68 ±4.41 64.75 ±2.70 69.71 ±15.58 60.05 ±14.69 
+
+BrainLinear 78.46 ±0.38 71.49 ±2.17 68.57 ±13.51 74.23 ±12.13 75.40 ±1.03 69.11 ±1.66 71.22 ±13.02 67.12 ±13.45 
+
+Table 2: Ablation results on ABIDE and ADNI (%). Best results are in bold with shaded cells; second best are underlined. left, attaining the highest AUC at 12 .0 s and roughly 900 MiB, which cuts runtime by 84 .0% and peak memory by 68 .4% 
+
+relative to ALTER, the closest baseline in AUC. Cost oth-erwise predicts accuracy poorly: BioBGT spends 4235 MiB and 110 .0 s for 69 .96 AUC and FBNetGen 340 .3 s for 74 .50 ,so the heaviest full-connectome models are not the most accu-rate. Only BrainGB is more memory-frugal ( 283 MiB), and it trails by 8.14 AUC points, so no baseline is simultaneously cheaper and more accurate. The reported costs follow the official baseline implementations. 10 20 50 100 200 400    
+
+> Training Time (s, log scale)
+> 60 65 70 75 80
+> Performance (AUC %)
+> Memory Size
+> 500 MiB 2000 MiB 4000 MiB
+> BrainLinear 12.0s, 900 MiB ALTER 75.1s, 2850 MiB BrainNetTF 204.9s, 1587 MiB FBNETGEN 340.3s, 1091 MiB BrainGB 18.1s, 283 MiB BioBGT 110.0s, 4235 MiB Graphormer 75.1s, 2851 MiB GAT 29.5s, 1006 MiB
+
+Figure 2: Performance-efficiency comparison on ABIDE. 
+
+Ablation Study 
+
+Table 2 isolates the contributions of tangent mapping and coordinate selection. Raw FC + MLP directly vectorizes the upper-triangular FC entries, whereas Full Tangent + MLP 
+
+retains all E standardized tangent coordinates. Random-K
+
+Tangent + MLP uses a size-matched random subset, while 
+
+Coefficient-only Top-K and Displacement-only Top-K rank coordinates by |αe| and |∆e|, respectively. Tangent mapping yields the largest single improvement, raising ABIDE AUC by 
+
+11 .89 points, although the corresponding ADNI gain ( 3.14 ) is less conclusive given the ±13 .88 variance of Raw FC + MLP. Reducing the coordinate set is harmful when uninformed and neutral when guided by one signal: Random-K falls 5.24 
+
+and 5.32 AUC points below Full Tangent + MLP, whereas ranking by |αe| or |∆e| alone stays within 0.9 points of it on both datasets. Only the joint criterion improves on the full representation, by 1.16 and 4.79 AUC points, which supports the complementary roles of the probe coefficient and the group displacement. The variants also trade specificity for sensitivity on ABIDE, where Full Tangent + MLP reaches 82 .45 SEN at 
+
+53 .65 SPE and BrainLinear is the only configuration above 
+
+70 SPE while attaining the highest ACC on both datasets. 
+
+Hyperparameter Sensitivity Analysis 
+
+We vary the sparsity budget K, which fixes the dimensionality of the selected tangent subspace. As shown in Fig. 3, AUC increases with K and then saturates on both ABIDE and ADNI, so performance is not sensitive to the exact budget once it is large enough. Across every sparsity level, Top-K
+
+selection exceeds size-matched random-K subsets, with the gap widest at small K and narrowing as both approach the full tangent space. Accuracy therefore depends on which coordinates are retained rather than on how many, and the saturation indicates that coordinates beyond the selected budget contribute little additional discriminative signal. 10 2 10 3 10 4
+
+> Retained edges (K)
+> 0.4 0.5 0.6 0.7 0.8 0.9
+> AUC
+> Selected Top-K Random-K
+
+(a) ABIDE 10 2 10 3 
+
+> Retained edges (K)
+> 0.4 0.5 0.6 0.7 0.8 0.9
+> AUC
+> Selected Top-K Random-K
+
+(b) ADNI 
+
+Figure 3: Sensitivity analysis under different sparsity budgets. 
+
+Tangent Subspace Concentration Analysis 
+
+The saturation above suggests that discriminative relevance is concentrated in a subset of tangent coordinates. We rank coordinates as s(1) ≥ s(2) ≥ · · · ≥ s(E) and compute their cumulative relevance. As shown in Fig. 4, the top 8,000 
+
+of 19 ,900 coordinates retain 88 .0% of the total relevance on ABIDE, while the top 2,000 of 4,950 retain 93 .5% on ADNI. The cumulative curves then plateau, showing that a compact tangent subspace captures most disease-relevant variation across both atlas resolutions while discarding largely redundant tangent coordinates that contribute little additional discriminative information. 10 0 10 1 10 2 10 3 10 4
+
+> Tangent-coordinate rank
+> 10 −5
+> 10 −4
+> 10 −3
+> 10 −2
+> 10 −1
+> 10 0
+> Normalized relevance  se/s(1)
+> 0.0 0.2 0.4 0.6 0.8 1.0
+> Cumulative contribution
+> K = 8,000; cumulative contribution = 88.0%
+> Normalized relevance Cumulative contribution
+
+(a) ABIDE ( K = 8 ,000 ). 10 0 10 1 10 2 10 3 
+
+> Tangent-coordinate rank
+> 10 −5
+> 10 −4
+> 10 −3
+> 10 −2
+> 10 −1
+> 10 0
+> Normalized relevance  se/s(1)
+> 0.0 0.2 0.4 0.6 0.8 1.0
+> Cumulative contribution
+> K = 2,000; cumulative contribution = 93.5%
+> Normalized relevance Cumulative contribution
+
+(b) ADNI ( K = 2 ,000 ). 
+
+Figure 4: Discriminative relevance across tangent coordinates. 
+
+Interpretability Analysis 
+
+Selected Tangent Direction Analysis. We first assess whether the Top-K directions form a specific discriminative subspace instead of an arbitrary compression of the tangent representation. We use ABIDE since its larger cohort supports a more stable evaluation of sparse selection. In Fig. 5a, Top-K
+
+yields the highest AUC and ACC across all variants, while Non-Top-K performs worst. This contrast indicates that the relevance score concentrates diagnostically useful information in the retained directions. We further compare the ASD–TC displacement, ∆e = mean ASD (eze) − mean TC (eze), with the probe coefficient αe. Because se = |αe∆e| does not impose sign agreement, the concentration of high-contribution direc-tions in the two sign-consistent quadrants of Fig. 5b provides empirical evidence that the fitted attributions align with the observed group-level displacements. Full Top-K Random-K Non-Top-K 
+
+0.5 0.6 0.7 0.8  
+
+> Performance
+> selected
+> AUC ACC
+
+(a) Performance. −0.04 −0.02 0.00 0.02 0.04 
+
+ASD-TC displacement Δ       
+
+> −0.4 −0.2 0.0 0.2 0.4
+> Discriminative attribution  α
+> Bubble size: contribution
+> Positive: Δ, α> 0
+> Negative: Δ, α< 0
+> Opposite signs
+
+(b) Directional consistency. 
+
+Figure 5: Validation of selected tangent directions on ABIDE. 
+
+Functional Organization Analysis. We examine how the selected directions are organized across functional systems and individual ROI pairs. Fig. 6a shows a strongly nonuniform contribution pattern, dominated by default-mode-centered interactions and connections involving the visual, somatomo-tor, and frontoparietal systems. Fig. 6b further resolves these system-level patterns into specific ROI-to-ROI connections, including directions associated with both increased and de-creased connectivity in ASD. This multiscale organization shows that BrainLinear identifies coordinated connectivity patterns spanning multiple functional systems. Vis SM DA VA Lim FPN DMN                                           
+
+> Vis SM DA VA Lim FPN DMN
+> 0.40 0.62 0.35 0.46 0.31 0.60 1.02 0.62 0.21 0.37 0.39 0.23 0.47 0.71 0.35 0.37 0.11 0.24 0.18 0.30 0.47 0.46 0.39 0.24 0.13 0.22 0.30 0.60 0.31 0.23 0.18 0.22 0.07 0.23 0.43 0.60 0.47 0.30 0.30 0.23 0.18 0.63 1.02 0.71 0.47 0.60 0.43 0.63 0.59
+> 0.2 0.4 0.6 0.8 1.0
+> Contribution
+
+(a) Functional-system contribu-tions. ASD > TC ASD < TC 
+
+(b) ROI-level connections grouped by functional systems. 
+
+Figure 6: Biological interpretation of tangent directions. 
+
+Brain-Space Distribution Analysis. We project the se-lected directions into anatomical brain space. In Fig. 7, disease-associated connections are distributed across multiple regions and include positive and negative group displacements, sup-porting a network-level interpretation. The presence of dis-tributed patterns in both cohorts provides qualitative evidence that connection-level interpretation is not limited to a single disorder. However, because these projections are descriptive, they localize model-selected patterns without establishing them as validated neurobiological biomarkers. 
+
+(a) ABIDE. (b) ADNI. 
+
+Figure 7: Brain-space distribution of tangent directions. 
+
+## Conclusion 
+
+In this paper, we introduced BrainLinear, a lightweight and interpretable framework for functional connectome classi-fication. BrainLinear maps FC matrices to a shared SPD tangent space, selects a compact set of disease-discriminative directions, and classifies them with a shallow MLP, avoid-ing full-connectome message passing and global attention. On ABIDE and ADNI, it outperforms strong GNN and Transformer baselines while reducing runtime and memory usage. The selected directions are non-random, aligned with between-group displacements, and organized into coherent functional-system and ROI-level patterns, indicating that dis-criminative information concentrates in a compact tangent subspace. Future work will extend BrainLinear to dynamic connectomes and larger prospective multi-site cohorts. References 
+
+Abbas, K.; Liu, M.; Wang, M.; Duong-Tran, D.; Tipnis, U.; Amico, E.; Kaplan, A. D.; Dzemidzic, M.; Kareken, D.; Ances, B. M.; Harezlak, J.; and Goñi, J. 2023. Tangent Functional Connectomes Uncover More Unique Phenotypic Traits. iScience , 26(9): 107624. Bannadabhavi, A.; Lee, S.; Deng, W.; Ying, R.; and Li, X. 2023. Community-aware transformer for autism prediction in fmri connectome. In International conference on medical image computing and computer-assisted intervention , 287– 297. Springer. Bernardo Maciel, B.; Schipper, M.; Romero, C.; De Leeuw, C.; Helwegen, K.; Posthuma, D.; Savage, J. E.; and Van Den Heuvel, M. P. 2026. The genetic landscape of human functional brain connectivity. Nature Communications , 17: 3120. Bessadok, A.; Mahjoub, M. A.; and Rekik, I. 2022. Graph neural networks in network neuroscience. IEEE Transactions on Pattern Analysis and Machine Intelligence , 45(5): 5833– 5848. Brooks, D.; Schwander, O.; Barbaresco, F.; Schneider, J.; and Cord, M. 2019. Riemannian Batch Normalization for SPD Neural Networks. In Proceedings of the IEEE/CVF International Conference on Computer Vision , 963–972. Chen, M.; Yu, X.; Zhang, J.; Chen, T.; Cao, C.; Zhuang, Y.; Lyu, Y.; Zhang, L.; Liu, T.; and Zhu, D. 2025. Core-periphery principle guided state space model for functional connectome classification. In International Conference on Medical Image Computing and Computer-Assisted Intervention , 236–246. Springer. Craddock, R. C.; James, G. A.; Holtzheimer, P. E.; Hu, X. P.; and Mayberg, H. S. 2012. A whole brain fMRI atlas generated via spatially constrained spectral clustering. Human Brain Mapping , 33(8): 1914–1928. Cui, H.; Dai, W.; Zhu, Y.; Kan, X.; Gu, A. A. C.; Lukemire, J.; Zhan, L.; He, L.; Guo, Y.; and Yang, C. 2023. BrainGB: A Benchmark for Brain Network Analysis with Graph Neural Networks. IEEE Transactions on Medical Imaging , 42(2): 493–506. Cui, H.; Dai, W.; Zhu, Y.; Li, X.; He, L.; and Yang, C. 2022. Interpretable graph neural networks for connectome-based brain disorder analysis. In International conference on medical image computing and computer-assisted intervention ,375–385. Springer. Dadi, K.; Rahim, M.; Abraham, A.; Chyzhyk, D.; Milham, M.; Thirion, B.; Varoquaux, G.; and Alzheimer’s Disease Neuroimaging Initiative. 2019. Benchmarking Functional Connectome-Based Predictive Models for Resting-State fMRI. 
+
+NeuroImage , 192: 115–134. Dan, T.; Ding, J.; and Wu, G. 2025a. Explore brain-inspired machine intelligence for connecting dots on graphs through holographic blueprint of oscillatory synchronization. Nature Communications , 16: 9425. Dan, T.; Ding, J.; and Wu, G. 2025b. GeoDynamics: A Geometric State-Space Neural Network for Understanding Brain Dynamics on Riemannian Manifolds. In Advances in Neural Information Processing Systems , volume 38. Ding, J.; Dan, T.; Zhou, Z.; and Wu, G. 2026. SyncBrain: Ex-ploring Brain Functional Dynamics Through Neural Oscilla-tory Synchronization. In Proceedings of the AAAI Conference on Artificial Intelligence , volume 40, 1774–1782. Han, K.; Su, Y.; He, L.; Zhan, L.; Plis, S.; Calhoun, V.; and Yang, C. 2026. Rethinking functional brain connectome analysis: do graph deep learning models Help. npj Artificial Intelligence , 2(1): 19. Ho, N.; and Nguyen, X. 2020. Learning with Symmetric Positive Definite Matrices. In Advances in Neural Information Processing Systems , volume 33, 19926–19937. Kan, X.; Cui, H.; Lukemire, J.; Guo, Y.; and Yang, C. 2022a. FBNETGEN: Task-aware GNN-based fMRI Analysis via Functional Brain Network Generation. In Proceedings of the 5th International Conference on Medical Imaging with Deep Learning , volume 172, 618–637. PMLR. Kan, X.; Dai, W.; Cui, H.; Zhang, Z.; Guo, Y.; and Yang, C. 2022b. Brain Network Transformer. In Advances in Neural Information Processing Systems , volume 35, 25586–25599. Kipf, T. N.; and Welling, M. 2017. Semi-Supervised Classifi-cation with Graph Convolutional Networks. In International Conference on Learning Representations .Kreuzer, D.; Beaini, D.; Hamilton, W.; Letourneau, V.; and Tossou, P. 2021. Rethinking Graph Transformers with Spectral Attention. In Advances in Neural Information Processing Systems , volume 34, 21618–21629. Li, X.; Dvornek, N. C.; Zhuang, J.; Ventola, P.; and Duncan, J. S. 2021. Interpretable brain graph neural network for fMRI analysis. In Medical Image Computing and Computer Assisted Intervention – MICCAI 2021 , 707–717. Springer. Liu, M.; Lu, F.; Wang, M.; Zhou, J.; Liu, L.; Dang, T.; Chi, L.; Kumar, D. K.; Ma, J.; and Xia, F. 2026a. Spider-Brain: Spike-inspired Graph Learning of Asynchronous and Hierar-chical Brain Dynamics. IEEE Transactions on Cognitive and Developmental Systems .Liu, M.; Wang, C.; Dong, Q.; Ren, J.; Dang, T.; Saikrishna, V.; and Xia, F. 2026b. Multiscale Diffusion for Bio-topological Representation Learning on Multimodal Brain Graphs. ACM Transactions on Intelligent Systems and Technology , 17(5): 1–25. Liu, S.; He, D.; Yu, Z.; Jin, D.; Feng, Z.; and Zhang, W. 2025. Integrating Co-Training with Edge Discrimination to Enhance Graph Neural Networks Under Heterophily. In Proceedings of the AAAI Conference on Artificial Intelligence , volume 39, 18960–18968. Lucchetti, F.; Céléreau, E.; Steullet, P.; Alemán-Gómez, Y.; Hagmann, P.; Klauser, A.; and Klauser, P. 2025. Constructing the human brain metabolic connectome with MR spectro-scopic imaging reveals cerebral biochemical organization. 
+
+Nature Communications .Pagani, M.; Zerbi, V.; Gini, S.; Alvino, F. G.; Banerjee, A.; Bar-beris, A.; Basson, M. A.; Bozzi, Y.; Galbusera, A.; Ellegood, J.; et al. 2026. Autism subtypes identified using cross-species functional connectivity analyses. Nature Neuroscience , 29(6): 1476–1487. Pei, S.; Ma, J.; Lv, Z.; Zhang, C.; and Guan, J. 2025. Community-aware graph transformer for brain disorder iden-tification. In Proceedings of the Thirty-Fourth International Joint Conference on Artificial Intelligence , 4191–4199. Peng, C.; Huang, Y.; Dong, Q.; Yu, S.; Xia, F.; Zhang, C.; and Jin, Y. 2025. Biologically Plausible Brain Graph Transformer. In International Conference on Learning Representations .Qiu, W.; Chu, H.; Wang, S.; Zou, H.; Li, X.; Zhao, Y.; and Ying, R. 2024. Learning High-Order Relationships of Brain Regions. 41582–41603. Ramos-Llordén, G.; Lee, H.-H.; Davids, M.; Dietz, P.; Krug, A.; Kirsch, J. E.; Mahmutovic, M.; Müller, A.; Ma, Y.; Lee, H.; et al. 2026. Ultra-high gradient connectomics and microstruc-ture MRI scanner for imaging of human brain circuits across scales. Nature biomedical engineering , 10(2): 309–324. Tang, J.; Zhu, T.; Zhou, W.; and Zhao, W. 2025. Graph neural networks for fMRI functional brain networks: A survey. 
+
+Neural Networks , 108137. Tzourio-Mazoyer, N.; Landeau, B.; Papathanassiou, D.; Criv-ello, F.; Etard, O.; Delcroix, N.; Mazoyer, B.; and Joliot, M. 2002. Automated anatomical labeling of activations in SPM using a macroscopic anatomical parcellation of the MNI MRI single-subject brain. NeuroImage , 15(1): 273–289. Velickovic, P.; Cucurull, G.; Casanova, A.; Romero, A.; Lio, P.; and Bengio, Y. 2018. Graph Attention Networks. In 
+
+International Conference on Learning Representations .Vidya, S.; Gupta, K.; Aly, A.; Wills, A.; Ifeachor, E.; and Shankar, R. 2026. Identification of critical brain regions for autism diagnosis from fMRI data using explainable AI: an ob-servational analysis of the ABIDE dataset. eClinicalMedicine ,97: 103452. Wei, Z.; Dan, T.; Ding, J.; and Wu, G. 2024. NeuroPath: A Neural Pathway Transformer for Joining the Dots of Human Connectomes. Advances in Neural Information Processing Systems , 37: 67826–67849. Wei, Z.; Dan, T.; and Wu, G. 2026. Large Connectome Model: An fMRI Foundation Model of Brain Connectomes Empowered by Brain-Environment Interaction in Multitask Learning Landscape. In Proceedings of the AAAI Conference on Artificial Intelligence , volume 40, 2155–2163. Wong, E.; Anderson, J. S.; Zielinski, B. A.; and Fletcher, P. T. 2018. Riemannian Regression and Classification Models of Brain Networks Applied to Autism. In Connectomics in NeuroImaging , volume 11083 of Lecture Notes in Computer Science , 78–87. Wu, Z.; Jain, P.; Wright, M. A.; Mirhoseini, A.; Gonzalez, J. E.; and Stoica, I. 2021. Representing Long-Range Context for Graph Neural Networks with Global Attention. In Advances in Neural Information Processing Systems , volume 34, 13266– 13279. Xia, F.; Peng, C.; Ren, J.; Febrinanto, F. G.; Luo, R.; Saikr-ishna, V.; Yu, S.; and Kong, X. 2025. Graph Learning. 
+
+Foundations and Trends in Signal Processing , 19(4): 371– 551. Xu, J.; Bian, Q.; Li, X.; Zhang, A.; Ke, Y.; Qiao, M.; Zhang, W.; Sim, W. K. J.; and Gulyas, B. 2024. Contrastive Graph Pooling for Explainable Classification of Brain Networks. 
+
+IEEE Transactions on Medical Imaging , 43(9): 3292–3305. Yahata, N.; Morimoto, J.; Hashimoto, R.; Lisi, G.; Shibata, K.; Kawakubo, Y.; Kuwabara, H.; Kuroda, M.; Yamada, T.; Megumi, F.; et al. 2016. A small number of abnormal brain connections predicts adult autism spectrum disorder. Nature Communications , 7: 11254. Yan, F.; Wang, X.; He, D.; Wang, L.; Dang, J.; and Jin, D. 2025. HeterGP: Bridging Heterogeneity in Graph Neural Networks with Multi-View Prompting. In Proceedings of the AAAI Conference on Artificial Intelligence , volume 39, 21895–21903. Yang, H.; Huang, R.; Ye, S.; Zhang, P.; Guo, Y.; and Pan, S. 2026. A review of graph neural networks for brain diseases analysis. Available at SSRN 5400612 .Yang, L.; Liu, Y.; Zhuo, J.; Jin, D.; Wang, C.; Wang, Z.; and Cao, X. 2025. Do We Really Need Message Passing in Brain Network Modeling? In Proceedings of the 42nd International Conference on Machine Learning , volume 267 of Proceedings of Machine Learning Research , 70873–70887. PMLR. Ying, C.; Cai, T.; Luo, S.; Zheng, S.; Ke, G.; He, D.; Shen, Y.; and Liu, T.-Y. 2021. Do Transformers Really Perform Badly for Graph Representation? In Advances in Neural Information Processing Systems , volume 34, 28877–28888. You, K.; and Park, H.-J. 2021. Re-Visiting Riemannian Geom-etry of Symmetric Positive Definite Matrices for the Analysis of Functional Connectivity. NeuroImage , 225: 117464. Yu, M.; Liu, J.; and Ji, J. 2025. Causal Invariance-aware Augmentation for Brain Graph Contrastive Learning. In Forty-second International Conference on Machine Learning .Yu, S.; Jin, S.; Li, M.; Sarwar, T.; and Xia, F. 2024. Long-Range Brain Graph Transformer. In Advances in Neural Information Processing Systems , volume 37. Yuan, N.; Guan, D.; Li, S.; Zhang, L.; and Zhu, Q. 2025. Enhancing neurodegenerative disease diagnosis through confidence-driven dynamic spatio-temporal convolutional network. IEEE Transactions on Neural Systems and Rehabili-tation Engineering .Zhang, P.; Wen, G.; Cao, P.; Yang, J.; Zhang, J.; Zhang, X.; Zhu, X.; Zaiane, O. R.; and Wang, F. 2023. Brainusl: U nsupervised graph s tructure l earning for functional brain network analysis. In International Conference on Medical Image Computing and Computer-Assisted Intervention , 205– 214. Springer. Geometric Interpretation of Discriminative Tangent Selection 
+
+The proposed representation and selection procedure can be interpreted from a geometric perspective. Specifically, AIRM-based tangent mapping provides a Euclidean coordi-nate system around the population reference point on the SPD manifold, while discriminative selection identifies a compact subspace formed by the most informative tangent directions. 
+
+Isometry and Centering of the Tangent Representation 
+
+Let ¯S denote the Fréchet mean computed from the training sub-jects under the affine-invariant Riemannian metric (AIRM). For each subject-specific SPD matrix Si, the whitened tangent representation is defined as 
+
+Ti = log 
+
+ ¯S− 12 Si ¯S− 12
+
+
+
+. (15) 
+
+Proposition 1 (Isometry and Centering). The tangent representation preserves the geodesic displacement from the Fréchet mean: 
+
+∥Ti∥F = dAIRM ( ¯S, S i), (16) where dAIRM (·, ·) denotes the affine-invariant Riemannian distance. Moreover, the tangent coordinates are centered around the Fréchet mean: 
+
+X
+
+> i∈Dtr
+
+Ti = 0 . (17) 
+
+Proof. The AIRM distance between two SPD matrices is defined as 
+
+dAIRM (S1, S 2) = log( S− 12 
+
+> 1
+
+S2S− 12 
+
+> 1
+
+) F
+
+. (18) By setting S1 = ¯S and S2 = Si, we obtain 
+
+dAIRM ( ¯S, S i) = log( ¯S− 12 Si ¯S− 12 ) F
+
+= ∥Ti∥F . (19) The Fréchet mean satisfies the first-order optimality condi-tion 
+
+X
+
+> i
+
+Log ¯S (Si) = 0 . (20) Since 
+
+Log ¯S (Si) = ¯S 12 Ti ¯S 12 , (21) left- and right-multiplying the above equation by ¯S− 12
+
+gives 
+
+X
+
+> i
+
+Ti = 0 . (22) Therefore, the tangent representation provides a centered Euclidean coordinate system while preserving the original Riemannian geometry of SPD connectomes. 
+
+Orthogonal Decomposition of Tangent Directions 
+
+The tangent space of the SPD manifold is the space of symmetric matrices: 
+
+T ¯S SN 
+
+> ++
+
+= Sym (N ). (23) Thus, each tangent representation can be decomposed into orthogonal basis directions corresponding to connectivity coordinates. 
+
+Proposition 2 (Connectivity Directions as Tangent Basis). 
+
+For a tangent matrix Ti ∈ Sym (N ), there exists an orthogonal basis {Ee} such that 
+
+Ti = X
+
+> e
+
+βi,e Ee, (24) and 
+
+∥Ti∥2 
+
+> F
+
+= X
+
+> e
+
+β2
+
+> i,e
+
+. (25) For an off-diagonal connectivity pair (u, v ), the correspond-ing basis element is defined as 
+
+Euv = 1
+
+√2 (eueTv + ev eTu ), u < v. (26) 
+
+Proof. The symmetric matrix space is equipped with the Frobenius inner product 
+
+⟨A, B ⟩F = Tr( AT B). (27) The above basis satisfies 
+
+⟨Ea, E b⟩F = δab . (28) Therefore, any tangent matrix admits an orthogonal expan-sion: 
+
+Ti = X
+
+> e
+
+βi,e Ee. (29) The squared Frobenius norm consequently satisfies 
+
+∥Ti∥2 
+
+> F
+
+= X
+
+> e
+
+β2
+
+> i,e
+
+. (30) This decomposition provides a geometric interpretation of tangent coordinates: each ROI pair indexes a specific coordinate in the tangent space. Importantly, this indexing correspondence does not imply an isolated perturbation of the original functional connectivity edge, since each tangent coordinate is jointly determined by the full SPD matrix transformation. 
+
+Sparse Selection as Discriminative Tangent Subspace Projection 
+
+The discriminative score used for ranking tangent directions is defined as 
+
+se = |αe∆e|, (31) where αe denotes the classifier coefficient and ∆e rep-resents the between-group difference of the corresponding tangent coordinate. Feature Classifier ABIDE ADNI 
+
+AUC ↑ ACC ↑ SEN ↑ SPE ↑ AUC ↑ ACC ↑ SEN ↑ SPE ↑
+
+Raw FC Logistic 65.41 60.80 58.66 62.00 66.14 60.83 51.56 66.76 SVM 68.57 62.34 52.35 71.90 62.38 57.50 59.56 55.62 MLP 69.17 ±4.11 63.93 ±2.31 54.37 ±10.22 73.06 ±7.90 67.97 ±6.49 59.17 ±8.25 63.33 ±19.85 55.90 ±23.15 
+
+Full Tangent Logistic 73.34 66.20 56.38 75.58 67.47 58.33 63.33 56.38 SVM 73.21 66.60 58.41 74.41 68.28 59.17 43.11 70.29 MLP 77.30 ±1.31 67.62 ±2.49 82.45 ±3.41 53.65 ±7.43 70.61 ±3.78 64.75 ±3.16 62.42 ±6.27 67.03 ±11.05 
+
+Selected Tangent 
+
+Logistic 76.03 64.85 85.71 45.19 71.85 66.67 55.56 73.33 SVM 75.73 63.86 82.65 46.15 71.85 70.83 55.56 80.00 MLP 78.46 ±0.38 71.49 ±2.17 68.57 ±13.51 74.23 ±12.13 75.40 ±1.03 69.11 ±1.66 71.22 ±13.02 67.12 ±13.45 
+
+Table 3: Effect of classifier choice on different feature representations. Best results are highlighted in bold with shaded cells. 
+
+Proposition 3 (Top-K Selection as Tangent Subspace Projection). Let EK denote the selected Top-K tangent directions according to se. The resulting representation corre-sponds to a projection onto a K-dimensional discriminative tangent subspace. 
+
+Proof. According to Proposition 2, the tangent representa-tion can be expressed as 
+
+zi = X
+
+> e
+
+βi,e Ee. (32) The selected directions define the subspace 
+
+VK = span {Ee : e ∈ E K }. (33) Keeping only selected coordinates is equivalent to the orthogonal projection 
+
+PK zi = Π VK (zi). (34) Due to orthogonality, the representation satisfies 
+
+∥zi∥2 = ∥ΠVK (zi)∥2 + ∥ΠV⊥ 
+
+> K
+
+(zi)∥2. (35) Hence, Top-K selection provides an axis-aligned discrimi-native subspace in the tangent space. 
+
+Remark (Population-whitened Tangent Metric). The fea-ture normalization used in our method can be interpreted as a population-adaptive rescaling of tangent coordinates: 
+
+˜zi = D− 12 (zi − μ), (36) where D contains the variances of tangent coordinates estimated from the training set. This operation introduces a population-whitened metric in the tangent space: 
+
+gpop (x, y ) = xT D−1y. (37) Therefore, subsequent discriminative selection is per-formed in a variance-adaptive tangent coordinate system. 
+
+## Additional Implementation Details 
+
+Data preprocessing. All data-dependent operations are strictly performed within each training split to avoid infor-mation leakage. Specifically, the reference point of the SPD manifold, feature normalization statistics, discriminative di-rection scores, and Top-K tangent direction selection are estimated only from the training subjects and subsequently applied to the corresponding validation and test subjects. To guarantee numerical stability during Riemannian com-putation, each functional connectivity matrix is converted into a symmetric positive definite matrix before tangent-space mapping. Specifically, the raw connectivity matrix Xi is first symmetrized. We then apply identity shrinkage: 
+
+eXi = (1 − λ)Xi + λI, (38) where λ controls the shrinkage strength. Finally, an eigenvalue floor is applied: 
+
+Si = Qi diag   max( dij , ϵ )Q⊤ 
+
+> i
+
+, (39) where eXi = Qi diag( dij )Q⊤ 
+
+> i
+
+and ϵ = 10 −6 is used for numerical stability. The resulting SPD matrix Si is used for Riemannian tangent-space mapping. 
+
+Optimization and model configuration. After discrimi-native tangent directions are selected, the retained tangent coordinates are fed into a lightweight multilayer perceptron (MLP) classifier. The classifier consists of two fully connected layers with hidden dimensions of 256 and 64 . Dropout with probability 0.5 is applied during training to reduce overfitting. The model is optimized using AdamW with a learning rate of 3e-4 and weight decay of 1e-3 . The training process is conducted for at most 160 epochs with early stopping. For ABIDE, the final value of K is set to 8000 according to validation performance, and sensitivity analyses over different sparsity levels are provided in the supplementary experiments. 
+
+Reproducibility. Each experimental setting is evaluated with five independent random initialization seeds to account for model stochasticity. The same data partition is used across runs. Specifically, we use five random initialization seeds, resulting in 5 runs for each experimental configuration. Rank ROI Pair Network Pair ∆e αe Importance Direction                                                             
+
+> 1Precentral_L–Occipital_Mid_L Somatomotor–Unassigned 0.0405 0.3167 0.0128 Positive 2Hippocampus_R–Frontal_Sup_L Frontoparietal–DefaultMode -0.0343 -0.3740 0.0128 Negative 3Caudate_L–Caudate_R Somatomotor–Limbic -0.0514 -0.2431 0.0125 Negative 4Frontal_Mid_L–Temporal_Mid_L Frontoparietal–Visual -0.0431 -0.2761 0.0119 Negative 5Cerebelum_Crus1_R–Lingual_L Unassigned–Limbic 0.0355 0.3331 0.0118 Positive 6Frontal_Med_Orb_L–Precuneus_L Somatomotor–Visual -0.0376 -0.3073 0.0115 Negative 7Angular_R–Occipital_Mid_L Somatomotor–Frontoparietal -0.0395 -0.2783 0.0110 Negative 8Temporal_Mid_L–Postcentral_L DefaultMode–VentralAttn 0.0293 0.3533 0.0103 Positive 9Temporal_Mid_L–ParaHippocampal_L Visual–Unassigned 0.0337 0.2913 0.0098 Positive 10 Parietal_Inf_R–Precentral_R Limbic–Visual -0.0388 -0.2518 0.0098 Negative
+
+Table 4: Top-ranked discriminative tangent directions identified by BrainLinear. The importance score is defined as se = |αe∆e|.The reported performance is calculated as the mean and standard deviation over all runs. All baseline models are eval-uated under their official implementations whenever available, using the same data splits and evaluation protocols for fair comparison. All experiments are conducted on a workstation equipped with an NVIDIA GeForce RTX 4060 Ti GPU with 16 GB VRAM. The implementation is based on PyTorch, and all experiments are performed using the same computational environment. 
+
+## Additional Experimental Results 
+
+Effect of Classifier Choice 
+
+To examine whether the improvement of BrainLinear mainly originates from the proposed representation rather than the classifier architecture, we evaluate different classifiers using three feature representations: Raw FC, Full Tangent, and Selected Tangent. We compare Logistic Regression, SVM, and MLP under the same experimental setting. All experiments are repeated with five random seeds. Since Logistic Regression and SVM are deterministic classifiers, their results are reported as single values, while MLP results are reported as mean ± standard deviation. The results in Table 3 show that tangent-space representa-tions consistently outperform raw FC features across different classifiers. Moreover, selecting discriminative tangent direc-tions further improves performance, demonstrating that the gain mainly comes from the geometry-aware representation and sparse tangent subspace rather than the classifier choice. 
+
+Additional Interpretability Analysis 
+
+To further investigate whether the selected tangent directions capture biologically meaningful connectivity patterns, we provide additional connection-level and system-level analyses. Each selected tangent coordinate corresponds to an ROI-to-ROI direction in the tangent space. We analyze the most discriminative directions according to the relevance score: 
+
+se = |αe∆e|, (40) where αe denotes the coefficient of the linear probe and ∆e
+
+represents the between-group difference of the corresponding tangent coordinate. 
+
+Top-ranked Discriminative Tangent Directions Table 4 lists the top-ranked discriminative tangent directions identi-fied by BrainLinear on the ABIDE dataset. Each direction is mapped back to its corresponding anatomical ROI pair and functional systems. The results show that highly ranked directions are distributed across several functional systems, including Default Mode, Frontoparietal, Visual, and Somato-motor networks, demonstrating that the selected tangent directions capture distributed connectivity alterations rather than isolated local changes.                       
+
+> Pattern Directions Importance
+> ∆>0, α > 04089 7.2430
+> ∆<0, α < 03905 6.9698
+> ∆>0, α < 040.0024
+> ∆<0, α > 020.0013
+
+Table 5: Sign consistency analysis of selected discriminative tangent directions. 
+
+Direction Consistency Analysis 
+
+To quantify the distribution of selected tangent directions across functional systems, we further aggregate the relevance scores according to the functional network pair of each ROI connection. Specifically, the contribution of a network pair 
+
+(a, b ) is computed as 
+
+C(a, b ) = X
+
+> e∈(a,b )
+
+se, (41) where se denotes the discriminative score of the corre-sponding tangent direction. Table 5 summarizes the contribution statistics. The majority of selected directions belong to two dominant quadrants: positive displacement with positive classifier coefficient and negative displacement with negative classifier coefficient, indicating that the selected directions consistently contribute to the classification boundary. Generative AI Use Statement 
+
+We acknowledge the use of large language models (LLMs) solely for manuscript preparation and language refinement. Specifically, LLMs were employed for grammatical correc-tion, vocabulary refinement, and sentence-level structure improvements. All scientific contributions, including the proposed method-ology, experimental design, data analysis, theoretical formula-tion, interpretation of results, and conclusions, were developed by the authors. LLMs were only used for language polishing and manuscript editing.
