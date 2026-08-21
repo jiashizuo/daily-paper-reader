@@ -1,0 +1,4901 @@
+Title: Multi-Source Wasserstein Distributionally Robust Graph Learning
+
+URL Source: https://arxiv.org/pdf/2608.19914v1
+
+Published Time: Fri, 21 Aug 2026 00:46:41 GMT
+
+Number of Pages: 30
+
+Markdown Content:
+> 1
+
+# Multi-Source Wasserstein Distributionally Robust Graph Learning 
+
+Chuansen Peng, Yifan Xia, Jinshan Zhong, and Xiaojing Shen 
+
+Abstract —Network topology inference from graph signals is central to graph signal processing, with applications in brain connectivity, sensor networks, and social networks. In practice, target-domain samples are scarce, while heterogeneous source-domain data are abundant. Fusing these sources into a reliable nominal distribution is challenging: Euclidean averaging works when sources are homogeneous but degrades sharply as inter-source divergence grows, collapsing distinct geometries into an inflated, biased consensus. We exploit the Wasserstein metric’s distribution-preserving fusion to counter this heterogeneity while preserving each source’s intrinsic geometry. We propose MS-WDRO, a multi-source Wasserstein distributionally robust graph learning framework that fuses heterogeneous sources via their weighted Wasserstein barycenter, a geometrically principled nominal distribution, then builds an ambiguity ball around it to hedge residual uncertainty. Minimizing worst-case risk over this ball yields a tractable regularized Laplacian estimator, solved efficiently via a provably convergent ADMM scheme. We es-tablish non-asymptotic guarantees: a finite-sample concentration bound for the empirical barycenter, a pooling bias lower bound proving naive aggregation is suboptimal, and an out-of-sample excess risk bound decaying at a parametric rate with only logarithmic dependence on source count. To calibrate the four coupled hyperparameters governing robustness, sparsity, and source fusion, we unroll the solver into a differentiable archi-tecture trained end-to-end, achieving data-adaptive calibration beyond cross-validation while retaining interpretability. Exper-iments on synthetic benchmarks and the multi-site ABIDE I neuroimaging dataset show MS-WDRO consistently outperforms seven baselines in graph recovery accuracy, sample efficiency, and downstream diagnostic utility, with the largest gains in the sample-scarce regime motivating this work. 
+
+Index Terms —Graph signal processing, network topology inference, distributionally robust optimization, Wasserstein barycenter, algorithm unrolling. heterogeneous multi-source learning 
+
+I. I NTRODUCTION 
+
+# NETWORK-structured data pervade modern science and engineering: gene regulatory networks govern cellular function, functional brain connectomes encode cognitive pro-cesses, power grids exchange energy across interconnected nodes, and social platforms generate opinion dynamics over relational graphs [1], [2], [3], [4], [5], [6]. Graph signal processing (GSP) has emerged as a principled mathematical framework for analyzing signals defined on such irregular domains, extending classical tools from Fourier analysis, fil-                                
+
+> The work was supported by the Sichuan Provincial Natural Science Foundation Project (Innovative Research Group) 2026NSFSCZY0056.
+> (Corresponding author: Xiaojing Shen.)
+> Chuansen Peng, Jinshan Zhong and Xiaojing Shen are with School of Mathematics, Sichuan University, Chengdu, Sichuan, 610064, China. (e-mail: pengchuansen@stu.scu.edu.cn; 2023322010061@stu.scu.edu.cn; shenxj@scu.edu.cn). Yifan Xia is with School of Statistics and Data Science, Southwestern University of Finance and Economics, Chengdu, Sichuan, 611130, China. (e-mail: xiayifan@swufe.edu.cn).
+
+tering, and sampling theory to data indexed by graph ver-tices [7], [8], [9]. A central and often foundational challenge in this paradigm is network topology inference , the problem of recovering the underlying graph structure from observed nodal signals. The inferred topology is not merely an end in itself; it serves as the substrate for graph-based filtering, signal interpolation, anomaly detection, and disease biomarker discovery in neuroimaging studies of conditions such as autism spectrum disorder. In all of these settings, the quality of downstream analysis depends critically on the fidelity of the inferred graph, placing a premium on topology estimators that are both statistically principled and computationally tractable. The vast majority of graph learning methods are built on a generative signal model that captures the relationship between the observed signals and the latent graph. Under the widely adopted smooth graph signal model , nodal observations are assumed to vary slowly across connected vertices, and the combinatorial graph Laplacian naturally emerges as the precision matrix of the corresponding degenerate Gaussian dis-tribution. Building on this model, Dong et al. [10] formulated graph learning as a constrained maximum-likelihood estima-tion problem and derived efficient block coordinate descent algorithms. Kalofolias [11] recast a closely related objective as a smooth convex program amenable to proximal gradient solvers, while Egilmez et al. [12] incorporated structural con-straints on the Laplacian and developed specialized ADMM procedures with convergence guarantees. Several subsequent works extended these foundations: Kumar et al. [13] unified a broad class of structured graph learning problems through spectral constraints; Sardellitti et al. [14] leveraged transform learning to infer graph topology without specifying a para-metric signal model; and accelerated first-order methods have been developed to handle large-scale instances [15]. Beyond the smoothness paradigm, complementary lines of work infer topology from stationary graph signals whose power spectrum is aligned with the graph Fourier basis [16], from diffusion-process observations [17], from spectral templates derived from signal second-order statistics [18], and from joint net-work topology inference across multiple related graphs [19]. In the probabilistic graphical model literature, sparse precision matrix estimation [20] provides an alternative route to graph structure recovery when Gaussian assumptions hold. Despite their considerable diversity in signal model and algorithmic strategy, these approaches share a common requirement: they rely on a sufficiently large and representative collection of signal observations drawn from the same target distribution. Their statistical performance degrades severely when samples are scarce or when the observations do not faithfully reflect the distribution of interest. In practice, graph signal observations are finite in number, contaminated by noise, and subject to distributional shift arXiv:2608.19914v1 [cs.LG] 20 Aug 2026 2
+
+arising from sensor drift, protocol variation, or environmental change. Under these conditions, the empirical risk minimiza-tion (ERM) principle may lead to overfitting: the learned graph Laplacian is calibrated to the finite observed samples but generalizes poorly to signals drawn from the true underlying distribution [21]. Distributionally robust optimization (DRO) offers a principled remedy by replacing the nominal empir-ical distribution with a worst-case distribution drawn from an ambiguity set, thereby immunizing the estimator against deviations between the training and true distributions [22], [23]. Among the many choices of ambiguity set, those de-fined through the Wasserstein metric have attracted particular attention owing to their geometric interpretability, their tight connection to adversarial perturbations, and their ability to yield tractable convex reformulations of otherwise intractable minimax problems [24], [25], [26]. A Wasserstein ball of prescribed radius centered at the empirical distribution certifies that the learned estimator performs well for any distribution that lies within a controlled optimal transport distance from the training data, a guarantee that purely moment-based am-biguity sets [22], [23] cannot provide in the absence of shape assumptions. The foundations of Wasserstein DRO, duality theory, tractable reformulations, and finite-sample performance guarantees, have been developed in considerable depth [24], and the framework has been applied to a broad array of statistical learning problems including logistic regression [27] and adversarially robust training [28]. Most recently, Wasser-stein DRO has been specialized to graph Laplacian estimation from smooth signals [29], demonstrating that distributional robustness yields measurable improvements in graph recovery accuracy when target-domain samples are limited. These de-velopments concentrate on the single-source setting, in which all observations are assumed to arise from one underlying distribution. Motivated by this body of work, the present pa-per extends Wasserstein distributional robustness from single source to the multi-source regime, in which signals collected across several related yet heterogeneous domains must be reconciled into a single robust estimator. This extension raises challenges of its own: heterogeneous sources cannot be pooled directly without incurring a mixing bias, and the ambiguity set itself must be constructed jointly from multiple empirical distributions rather than centered on a single one, calling for a principled mechanism to aggregate heterogeneous source information before robustness can be meaningfully enforced. Many high-impact applications of graph learning feature a target domain from which signal samples are difficult or impossible to collect in sufficient quantity, while multiple related but heterogeneous source domains provide abundant data. In functional neuroimaging, a rare clinical cohort at a small acquisition site, such as the CMU site in the ABIDE I consortium [30], constitutes the target domain, while data from larger studies conducted at different scanning sites under dis-tinct imaging protocols serve as source domains, inducing site-specific distributional shift that is well documented in the brain connectivity literature [31]. Similar multi-source configura-tions arise in distributed sensor networks, where sensors with different hardware characteristics monitor a shared physical phenomenon; in clinical federated learning, where data het-erogeneity across hospitals precludes simple aggregation; and in social network analysis, where platform-specific behavioral norms differentiate the signal statistics across source and target domains. The transfer learning literature has long recognized that naive aggregation of heterogeneous source data by pooling all observations into a single empirical distribution introduces a mixing bias [32], [33] whose magnitude grows with inter-source divergence, and that constructing a shared model from such a biased nominal distribution leads to systematically de-graded target-domain performance [34]. A principled approach to multi-source distribution aggregation is provided by optimal transport theory [35]: the Wasserstein barycenter [36] defines the Fr´ echet mean of a family of distributions in the Wasserstein metric space and produces a consensus representation that pre-serves the intrinsic geometric structure of each source, in sharp contrast to the covariance inflation inherent to the mixture distribution. Efficient algorithms for Wasserstein barycenter computation [37], [38] and the Gelbrich lower bound relating the barycenter to source second-order moments [39] have rendered this construction computationally tractable at the scale of practical graph learning problems. Optimal transport has also proved fruitful for domain adaptation by geometrically aligning source and target distributions [40]; the present work leverages its complementary role of fusing source distributions into a structurally sound nominal distribution for robust graph estimation. Despite clear practical motivation, the intersection of multi-source learning, Wasserstein distributional robustness, and smooth-signal graph topology inference remains largely unex-plored. A further challenge is the joint calibration of multiple interacting hyperparameters inherent in any WDRO-based graph learning framework: the ambiguity set radius determines the degree of distributional robustness; the sparsity regu-larization coefficient controls graph density; the augmented Lagrangian penalty governs algorithmic convergence; and the barycentric fusion weights modulate the relative contribution of each source domain. These parameters interact nonlin-early and cannot be calibrated in isolation. Conventional cross-validation over the resulting joint parameter space is computationally prohibitive in the multi-source regime, and concentration-inequality-based radius selection, while theo-retically motivated, is inherently conservative and ignores the mutual coupling among the parameters. A principled, end-to-end trainable framework that simultaneously addresses multi-source fusion, distributional robustness, and automatic hyperparameter calibration is therefore strongly needed. Algorithm unrolling, the technique of mapping the iterations of an optimization algorithm onto the layers of a neural network while treating algorithmic parameters as learnable variables [41], offers a compelling solution to the hyperparam-eter calibration challenge. By embedding the iterative solver into a differentiable architecture and training end-to-end on a supervised corpus of graph-signal pairs, all parameters can be jointly calibrated through backpropagation, capturing their mutual interactions in a manner that any sequential or grid-search strategy fundamentally misses. The resulting unrolled network retains full algorithmic interpretability, each layer executes a precisely specified proximal, eigendecomposition, 3
+
+or dual-ascent substep, while acquiring data-adaptive calibra-tion capability unavailable to the fixed-parameter solver. This paradigm has been successfully applied to compressive sensing magnetic resonance imaging via deep ADMM-Net [42], to sparse graph recovery via GLAD [43], and to graph signal denoising [44]. The survey by Monga et al. [41] provides a comprehensive account of the theoretical and practical principles underlying the paradigm, documenting its advan-tages in interpretability, sample efficiency, and computational scalability relative to generic deep architectures. A critical prerequisite enabling differentiable unrolling in our setting is the ADMM solver structure, whose per-iteration updates admit closed-form analytical expressions that are differentiable with respect to the hyperparameters and therefore compatible with gradient-based end-to-end training. This paper proposes MS-WDRO (Multi-Source Wassers-tein Distributionally Robust Optimization for graph learning), a framework that jointly addresses multi-source data fusion, distributional robustness, and automatic hyperparameter learn-ing for network topology inference from smooth graph signals. The main contributions are as follows. 
+
+(i) Multi-source WDRO framework. We formulate a novel graph Laplacian estimation framework that fuses hetero-geneous source distributions by computing their weighted Wasserstein barycenter as the nominal distribution of a Wasser-stein ambiguity set. Minimizing the worst-case expected log-likelihood loss over the resulting barycentric ambiguity ball yields a principled minimax problem that simultaneously exploits multi-source information and guards against residual distributional uncertainty. The framework encompasses single-source WDRO as a special case and formally subsumes naive pooling while provably outperforming it. 
+
+(ii) Tractable reformulation and efficient algorithm. We derive a closed-form tractable reformulation of the minimax problem via Wasserstein strong duality, reducing it to aregularized Laplacian estimation problem with an explicit Frobenius-norm robustness penalty and sparsity term. A two-block ADMM solver with closed-form per-iteration updates is developed, and its global convergence, objective convergence, primal consensus, and dual convergence, governed by a prov-ably monotone primal-dual Lyapunov potential, is rigorously established in Theorem 3.2. Explicit non-asymptotic guaran-tees are given, including an ergodic O(1 /K ) primal-dual gap-function rate (Corollary 3.2). 
+
+(iii) Rigorous statistical theory. We establish three com-plementary non-asymptotic guarantees. First, a finite-sample concentration bound for the empirical Wasserstein barycenter quantifies how accurately the empirical barycenter approxi-mates its population counterpart as source sample sizes grow. Second, a formal pooling bias lower bound, proved via the Lieb concavity theorem for quantum fidelity [45] and the Haar measure twirling identity [46], confirms that, under a common-covariance, heterogeneous-mean Gaussian source model, naive data pooling incurs a strictly positive, irreducible Wasser-stein estimation bias that scales with the between-source mean dispersion Hλ, establishing an asymptotic separation between the barycentric and pooling approaches in this regime. Third, an out-of-sample excess risk bound derived through Rademacher complexity analysis shows that the excess risk of the MS-WDRO estimator decays at the parametric rate and depends on the number of sources only logarithmically, with a concentration correction computable entirely from training data. 
+
+(iv) Algorithm unrolling for joint hyperparameter learning. 
+
+We embed the MS-WDRO solver into a differentiable multi-layer architecture by interpreting each iteration as a compu-tational layer parameterized by four learnable quantities: the ambiguity set radius, the sparsity regularization coefficient, the augmented Lagrangian penalty, and the barycentric fu-sion weights. End-to-end supervised training jointly calibrates all parameters through backpropagation, enabling an implicit annealing schedule across layers, progressively shrinking ro-bustness margins, relaxing sparsity, tightening the dual step size, and adapting source weights, that is difficult to realize efficiently by conventional cross-validation. The total number of trainable parameters grows only linearly in network depth and source count, making the architecture highly parameter-efficient. 
+
+(v) Comprehensive experimental validation. We conduct experiments on synthetic graph benchmarks with controlled inter-source heterogeneity and on the ABIDE I multi-site functional neuroimaging dataset, comparing against seven competitive baselines spanning classical optimization-based methods, deep graph learning algorithms, and the state-of-the-art single-source WDRO approach. MS-WDRO consistently and significantly outperforms all baselines in graph recov-ery accuracy and sample efficiency across the full range of target sample sizes, achieves superior downstream diagnostic classification on the neuroimaging dataset, and empirically validates the theoretical out-of-sample bound at the predicted convergence rate. The remainder of the paper is organized as follows. Sec-tion II defines the graph signal model, reviews the Wasserstein distance and barycenter, and states the baseline Laplacian esti-mation problem. Section III presents the Wasserstein barycen-tric ambiguity set, derives the tractable minimax reformulation, and develops the ADMM solver. Section IV provides the com-plete theoretical analysis, including barycenter concentration, the pooling bias lower bound, data-driven radius selection, and the out-of-sample excess risk guarantee. Section V introduces the algorithm unrolling architecture and its end-to-end training procedure. Numerical experiments are reported in Section VI, and Section VII concludes with a discussion of limitations and future directions. II. S IGNAL MODELS AND PROBLEM FORMULATION 
+
+This section lays the groundwork for the multi-source distributionally robust framework developed in the sequel. We proceed in three steps. We first specify the generative model that links observed graph signals to the underlying topology, showing that smoothness on the graph induces a degenerate Gaussian likelihood whose precision matrix coincides with the graph Laplacian (Section II-A). Building on this likelihood, we formulate the canonical single-distribution graph learn-ing problem as a regularized maximum-likelihood estimator 4
+
+(Section II-B), which serves as the point of departure for the robust formulation introduced later. Because that baseline estimator implicitly treats the empirical distribution of a single data source as exact, it provides no principled mechanism for combining several heterogeneous sources or for hedging against sampling error, both of which are central concerns of this paper. We therefore close the section by introducing the optimal-transport tools required to overcome this limitation, namely the Wasserstein distance, the Wasserstein barycenter, and its second-moment surrogate, the Gelbrich distance (Sec-tion II-C); these constructs furnish the geometric and com-putational vocabulary on which the multi-source Wasserstein distributionally robust formulation of Section III is built. 
+
+A. Graph Signal Model 
+
+Let a weighted, undirected graph be represented by the triple 
+
+G = ( V, E, L), where V is a finite vertex set of cardinality N ,
+
+E ⊆ V ×V is the edge set, and L ∈ RN ×N is the combinatorial graph Laplacian, whose off-diagonal entry Lij encodes (the negative of) the edge weight between nodes i and j. Under the standing assumption of no self-loops, L satisfies L1 = 0
+
+(Here, 1 is the all-ones vector) and is a symmetric positive semi-definite matrix [19]. The set of admissible Laplacians is accordingly given by 
+
+L = L | L ⪰ 0, L1 = 0, L ij = Lji ≤ 0, i ̸ = j . (1) A graph signal is a vector x = [ x1, . . . , x N ]T ∈ RN assigning a scalar value xi to each node i. To relate such signals to the graph topology, we adopt the standard graph filtering formalism: writing the eigendecomposition of the Laplacian as L = UΛU T , with Λ = diag( λ1, . . . , λ N ) collecting the non-decreasing graph frequencies 0 ≤ λ1 ≤ · · · ≤ λN , the graph Fourier transform of x is defined as ˆx = UT x, with inverse transform x = Uˆx. Given the eigendecomposition 
+
+L = UΛU T , a graph filter with spectral response h(·), defined as h(L) = Uh(Λ)UT , generates signals from a white input 
+
+x0 via 
+
+x = μ + h(L)x0, (2) where μ denotes the signal mean. Taking x0 to be standard multivariate Gaussian noise renders x Gaussian with covari-ance h2(L) ≜ h(L)h(L)T :
+
+x ∼ N  μ, h 2(L). (3) The choice of filter h(·) determines the qualitative behavior of the resulting signal family. Following the widely adopted smoothness prior for graph signals [10], [11], we select the low-pass filter h(L) = √L†, where (·)† denotes the Moore– Penrose pseudoinverse; this choice attenuates high graph-frequency components and thereby favors signals that vary slowly across connected vertices, consistent with the smooth-ness assumption underlying most graph learning methods reviewed in the Introduction. Substituting this filter into (3) shows that a smooth graph signal follows a degenerate Gaussian law whose precision matrix is precisely the graph Laplacian: 
+
+f (x) = N  μ, L†. (4) Equation (4) is the key structural fact exploited throughout the paper: it reduces the topological problem of estimating L
+
+to the statistical problem of estimating the precision matrix of a Gaussian graphical model, subject to the combinatorial constraints in (1). 
+
+B. Baseline Graph Learning Problem 
+
+We first formulate the canonical estimation problem implied by the signal model (4) under the classical assumption that all observed signals are drawn i.i.d. from a single, fixed distribution. Let X = [ x1, . . . , xn] ∈ RN ×n collect n such i.i.d. samples. The empirical log-likelihood of a candidate Laplacian L given X follows directly from (4): 
+
+Fn(L | X) = 1
+
+n
+
+> n
+
+X
+
+> i=1
+
+log f (xi) = log |L|+ − tr( ˆΣL ), (5) where |L|+ denotes the pseudo-determinant of L (the product of its nonzero eigenvalues, required since L is singular by construction) and ˆΣ = 1
+
+> n
+
+Pni=1 (xi − μ)( xi − μ)T is the sample covariance matrix of the observed signals. Maximizing 
+
+Fn(L | X) alone is generally ill-posed and prone to overfitting when n is small relative to N ; we therefore augment it with a regularization term P(L), weighted by ρ > 0, that promotes structural properties such as sparsity, e.g., P(L) = ∥L∥2 
+
+> F
+
+or 
+
+P(L) = − log(diag( L)) . The resulting baseline graph learning problem is the regularized maximum-likelihood estimator 
+
+max  
+
+> L
+
+Fn(L | X) − ρ P(L) s.t. L ∈ L . (6) Problem (6) is the workhorse formulation underlying classical smooth-signal graph learning. It implicitly identifies the empir-ical distribution of X with the true data-generating distribution and offers no safeguard when this identification fails, whether because n is too small for ˆΣ to be a reliable estimate of the population covariance, or because X is itself pooled, in whole or in part, from sources whose distributions differ from that of the intended target. Both failure modes are the norm rather than the exception in the multi-source, small-target-sample regime motivating this paper, which calls for replacing the single fixed nominal distribution in (6) with an ambiguity set that is robust to distributional uncertainty while remaining informed by all available source data. Constructing such a set requires a notion of distance between probability distributions together with a principled way of aggregating several of them; we introduce both next. 
+
+C. Wasserstein Distance, Barycenter, and Gelbrich Bound 
+
+We adopt the Wasserstein distance as the governing metric for distributional uncertainty, owing to its ability to compare distributions with disjoint or singular support, as is the case for the degenerate Gaussian law in (4), and to its well-known tractable convex reformulations in distributionally robust op-timization [24], [47]. 5
+
+Definition 2.1 (Wasserstein Distance): For p ∈ [1 , ∞), the order-p Wasserstein distance between probability distributions 
+
+P1 and P2 on RN is 
+
+Wp(P1, P2)=
+
+
+
+inf 
+
+> π∈U (P1,P2)
+
+Z 
+
+> RN×RN
+
+C(a1, a2)p π(da1, d a2)
+
+ 1
+
+> p
+
+, (7) where U(P1, P2) denotes the set of couplings of P1 and P2,i.e., joint distributions on RN × RN with marginals P1 and 
+
+P2, and C(·, ·) is a transportation cost function. Throughout, we take C(a1, a2) = ∥a1 − a2∥p, so that 
+
+Wp(P1, P2) quantifies the minimal cost of transporting the mass of P1 onto P2 under an ℓp transportation cost. When the data of interest arise from several distributions rather than one, it is natural to seek a single representative distribution that best summarizes them jointly in the Wasser-stein metric. This role is played by the Wasserstein barycenter, the Fr´ echet mean of a distribution over the Wasserstein space. 
+
+Definition 2.2 (Wasserstein Barycenter): For p ∈ [1 , ∞), the 
+
+p-Wasserstein barycenter of a distribution P over probability measures is 
+
+bp(P) := arg min 
+
+> ν
+
+Eρ∼P
+
+W pp (ν, ρ ), (8) where ρ is a random measure distributed according to P.In particular, taking P = PMm=1 λmδρm for weights λ =(λm)m∈[M ] ∈ △ M on the probability simplex recovers the em-pirical p-Wasserstein barycenter of M measures ρ1, . . . , ρ m,
+
+ˆbλ,p (ρ1, . . . , ρ M ) := arg min 
+
+> νM
+
+X
+
+> m=1
+
+λm W pp (ν, ρ m). (9) Equation (9) will later serve to fuse the M heterogeneous source distributions into a single nominal distribution for the ambiguity set of Section III, with λ controlling each source’s relative contribution. Evaluating Wp or its barycenter exactly is, in general, NP-hard outside a few special cases [48]. Since the signal model of Section II-A identifies each source distribution with a (degenerate) Gaussian law, and hence with its first two moments, we can instead work with a moment-based surrogate that is tractable for arbitrary covariance matrices and coincides with the 2-Wasserstein distance whenever both distributions are Gaussian: the Gelbrich distance. 
+
+Definition 2.3 (Gelbrich Distance): For distributions P1, P2
+
+with means μ1, μ 2 and covariance matrices Σ1, Σ2 ∈ SN 
+
+> +
+
+, the Gelbrich distance between them is 
+
+G(P1, P2) := 
+
+q
+
+∥μ1 − μ2∥22 + B2(Σ 1, Σ2), (10) where 
+
+B2(Σ 1, Σ2) := tr(Σ 1) + tr(Σ 2)
+
+− 2 tr 
+
+ Σ1/21 Σ2Σ1/21
+
+1/2
+
+(11) is the squared Bures–Wasserstein distance between Σ1 and Σ2.Because G(P1, P2) depends on P1, P2 only through their first two moments, it provides a closed-form, provably tight lower bound on W2(P1, P2) that is exact in the Gaussian case relevant here [39], and it is this tractability that makes the Wasserstein barycentric ambiguity set of Section III compu-tationally viable at the scale of the graph learning problem formulated in (6). III. W ASSERSTEIN DISTRIBUTIONALLY ROBUST GRAPH 
+
+LEARNING 
+
+This section develops the proposed distributionally robust graph learning framework in four steps. We begin by revisiting the baseline estimator of Section II-B through the lens of empirical risk minimization and robustifying it against a single source’s sampling uncertainty via a Wasserstein ambiguity set (Section III-A). We then extend this single-source con-struction to the heterogeneous multi-source setting motivating this paper, replacing the naively pooled empirical distribution with a Wasserstein barycentric ambiguity set that fuses the 
+
+M source distributions while explicitly accounting for their residual sampling and heterogeneity error (Section III-B). The resulting min–max problem is then reduced to a single-level, tractable convex program via Wasserstein strong duality (Section III-C), which in turn admits an efficient ADMM solver with closed-form per-block updates (Section III-D). 
+
+A. Basic Formulation 
+
+The baseline problem (6) can be equivalently cast as an empirical risk minimization (ERM) problem, 
+
+min  
+
+> L∈L
+
+Ex∼Pn [−F n(L | X)] + ρP(L), (12) where Pn is the empirical distribution of the observed signals 
+
+x1, . . . , xn,
+
+Pn = 1
+
+n
+
+> n
+
+X
+
+> i=1
+
+δxi , (13) with δxi the Dirac measure at xi. Formulation (12) makes ex-plicit that the baseline estimator optimizes the risk exclusively with respect to Pn, which inherits two well-known deficiencies from the finiteness of the sample: Pn may deviate substantially from the true data-generating distribution when observations are scarce or noisy, and an estimator tuned to Pn alone is prone to overfit the observed signals at the expense of generalization to unseen ones. Both deficiencies point to the same remedy, the learned graph should remain accurate not only for Pn, but for every distribution plausibly consistent with the observed data. We formalize this requirement by replacing the single point 
+
+Pn with a Wasserstein ball around it, 
+
+M = {P ∈ N N : Wp(P, Pn) ≤ ϵ}, (14) where N N denote the the family of all normal distributions on RN , ϵ ≥ 0 is the ambiguity set radius and p ≥ 1 is left unspecified for now, as Section III-C shows that the subsequent reformulation is independent of this choice. Learning a graph that performs well uniformly over M amounts to minimizing the worst-case expected risk, 
+
+min  
+
+> L∈L
+
+R(L; x) + ρP(L)= min  
+
+> L∈L
+
+max  
+
+> P∈M
+
+Ex∼P[−F n(L | X)] + ρP(L), (15) 6
+
+where R(L; x) = max P∈M Ex∼P[−F n(L | X)] is the worst-case expected risk. The rationale behind (15) is that if M
+
+contains the true distribution P⋆, then driving down the worst-case risk over M simultaneously controls the risk at P⋆: the expected risk of the learned graph ˆL under P⋆ is bounded by R(ˆL; x), so that ˆL remains reliable even though it was estimated from a finite, possibly unrepresentative sample. The radius ϵ governs a robustness–conservatism trade-off intrinsic to this construction: a larger ϵ raises the likelihood that M cov-ers P⋆, but also admits increasingly implausible distributions into the worst case, inflating R(L; x) and yielding an overly conservative estimator; ϵ must therefore be chosen with care, a question we return to in Section IV. 
+
+B. Wasserstein Barycentric Distributionally Robust Optimiza-tion 
+
+The single-source construction of Section III-A guards against sampling error but offers no mechanism for incorporat-ing data from related source domains. We now extend it to the heterogeneous multi-source setting that motivates this paper. Suppose each source m ∈ [M ] contributes a local sample 
+
+Dm = {zm, 1, . . . , zm,n m } of size nm, with n = PMm=1 nm,and empirical distribution ˆPm = 1
+
+> nm
+
+Pnm 
+
+> i=1
+
+δzm,i . The most direct extension of (12) to this setting is the weighted ERM problem 
+
+min 
+
+> L∈L
+> M
+
+X
+
+> m=1
+
+λm
+
+nmnmX
+
+> i=1
+
+ℓ(L, zm,i ). (16) 
+
+Remark 3.1: The default choice λm = nm/n reduces (16) to an ERM objective over the union of all local samples, which is equivalent to minimizing Ez∼ˆPλ [ℓ(L, z)] under the 
+
+λ-mixture ˆPλ := PMm=1 λm ˆPm. As argued by Mohri et al. [34], this uniform weighting is generally unwarranted: the target distribution for which the centralized model is ultimately deployed need not coincide with the sample-size-weighted mixture PMm=1 nmPm/n , and is better modeled as a general 
+
+λ-mixture Pλ := PMm=1 λmPm for a weight vector λ ∈ △ M
+
+to be determined by the learning problem itself rather than fixed a priori by sample proportions. Observe that Pλ, viewed as a mixture, is precisely the 
+
+Euclidean barycenter of P1, . . . , PM in the space of probability measures. This observation suggests a natural generalization: replacing the Euclidean barycenter with the geometrically richer Wasserstein barycenter ˆbλ,p (P1, . . . , PM ) of Defini-tion 2.2, so that (16) becomes 
+
+min  
+
+> L∈L
+
+Ez∼ˆbλ,p (P1,..., PM )[ℓ(L, z)] , (17) with the corresponding empirical surrogate, computed from the source samples D1, . . . , DM via their empirical distributions 
+
+ˆP1, . . . , ˆPM , given by 
+
+min  
+
+> L∈L
+
+Ez∼ˆbλ,p (ˆP1,..., ˆPM )[ℓ(L, z)] . (18) Unlike the mixture ˆPλ, the Wasserstein barycenter of (18) respects the geometry of each source distribution rather than simply averaging their probability mass, and consequently provides a more faithful consensus representation of hetero-geneous sources (a claim made precise in Section IV-B). This advantage notwithstanding, the barycenter of the empirical 
+
+distributions ˆP1, . . . , ˆPM remains only a finite-sample estimate of the barycenter of the true source distributions P1, . . . , PM ,and residual discrepancy between the two is unavoidable due to sampling error within each source and heterogeneity across sources. Exactly as in Section III-A, we hedge against this residual uncertainty by enclosing the empirical barycenter in a Wasserstein ball rather than treating it as exact. 
+
+Definition 3.1: For λ ∈ △ M , the p-Wasserstein barycentric ambiguity set of radius ϵ ≥ 0, centered at the Wasser-stein barycenter of P1, . . . , PM (assumed to exist) ¯Pλ,p =ˆbλ,p (P1, . . . , PM ), is 
+
+Wϵ,p (P1, . . . , PM ; λ) := {P : Wp(P, ¯Pλ,p ) ≤ ϵ}. (19) 
+
+Remark 3.2: An alternative route to an ambiguity set over M
+
+distributions is the intersection of individual Wasserstein balls, 
+
+∩Mm=1 Mm with Mm = {P : Wp(P, Pm) ≤ ϵ}; when the sources are highly heterogeneous, however, this construction forces a single radius ϵ to simultaneously cover all M sources and becomes overly conservative. A less conservative alterna-tive is the pooled ambiguity set ˜Mϵ,p (P1, . . . , PM ; λ) := P :
+
+PMm=1 λmW pp (P, Pm) ≤ ϵp , which satisfies ∩Mm=1 Mm ⊆
+
+˜Mϵ,p for any λ ∈ △ M . The following theorem shows that the barycentric ambiguity set of (19) is, up to a dimension-independent constant, equivalent to ˜Mϵ,p , and is therefore preferable on computational grounds since it is centered at a single distribution rather than requiring simultaneous control over M constraints. 
+
+Theorem 3.1: For λ ∈ △M , suppose a λ-weighted p-Wasserstein barycenter of P1, . . . , PM exists. Then, for any 
+
+ϵ ≥ 0,
+
+˜Mϵ,p (P1, . . . , PM ; λ) ⊆ W 2p·ϵ,p (P1, . . . , PM ; λ). (20) 
+
+Proof . Let ¯Pλ,p denote the Wasserstein barycenter of 
+
+P1, . . . , PM for λ ∈ △M . By the triangle inequality and the inequality (a + b)p ≤ 2p−1(ap + bp) for a, b ≥ 0 and 
+
+p ∈ [1 , ∞), for any P and m ∈ [M ],
+
+W pp (P, ¯Pλ,p ) ≤  Wp(P, Pm) + Wp( ¯Pλ,p , Pm)p
+
+≤ 2p−1 W pp (P, Pm) + W pp ( ¯Pλ,p , Pm).
+
+Taking the λ-weighted average over m ∈ [M ] and us-ing the definition of the Wasserstein barycenter to bound PMm=1 λmW pp ( ¯Pλ,p , Pm) ≤ PMm=1 W pp (P, Pm) yields 
+
+W pp (P, ¯Pλ,p ) = 
+
+> M
+
+X
+
+> m=1
+
+λmW pp (P, ¯Pλ,p )
+
+≤ 2p−1
+
+> M
+
+X
+
+> m=1
+
+λmW pp (P, Pk) + 2 p−1
+
+> M
+
+X
+
+> m=1
+
+W pp (P, Pm)= 2 pMX
+
+> m=1
+
+λmW pp (P, Pm).
+
+Consequently, for any ϵ ≥ 0,
+
+> M
+
+X
+
+> m=1
+
+λmW pp (P, Pm) ≤ ϵ =⇒ W pp (P, ¯Pλ,p ) ≤ 2p · ϵ, 7
+
+which is the desired inclusion. □
+
+With the barycentric ambiguity set in hand, the multi-source counterpart of the min–max problem (15) reads 
+
+inf 
+
+> L∈L
+
+n
+
+− log |L|+ + sup 
+
+> P∈W ϵ,p
+
+Ez∼P[tr(Σ L)] + ρP(L)
+
+o
+
+. (21) Evaluating (21) in practice requires an explicit handle on the center of the ambiguity set, ¯Pλ,p , which we now characterize under the Gaussian source model implied by the signal model of Section II-A. 
+
+Assumption 3.1: P1, . . . , PM are M possibly degenerate Gaussian distributions Pm = N (μm, Σm) with μm ∈ RN
+
+and Σm ∈ SN 
+
+> +
+
+for m ∈ [M ].
+
+Remark 3.3: Under the graph signal model of Section II-A, every source covariance is of the form Σm = L† 
+
+> m
+
+for some 
+
+Lm ∈ L , and hence, by (1), Σm1 = 0 for every m ∈ [M ]: the 
+
+M source covariances share the common null space span {1}.Assumption 3.1 accordingly allows, and in fact requires, Σm ∈
+
+SN 
+
+> +
+
+to be rank-deficient; the barycenter characterized below must be derived on the closed cone SN 
+
+> +
+
+rather than on the open cone SN
+
+> ++
+
+.
+
+Proposition 3.1: Under Assumption 3.1, the 2-Wasserstein barycenter of P1, . . . , PM , restricted to the Gaussian manifold, is ¯Pλ,2 = ˆbλ,2(P1, . . . , PM ) = N (¯ μλ, ¯Σλ), with 
+
+¯μλ =
+
+> M
+
+X
+
+> m=1
+
+λmμm,
+
+¯Σλ = arg min 
+
+> Σ∈SN
+> +
+> M
+
+X
+
+> m=1
+
+λmB2(Σ , Σm), (22) where B(·, ·) is the Bures–Wasserstein distance of Defini-tion 2.3 (see (11)). Moreover, if all source covariances share a common null space, TMm=1 null(Σ m) =: K̸ = {0} (in particular K ⊇ span {1} under Remark 3.3), then ¯Σλ inherits this null space, K ⊆ null( ¯Σλ), so ¯Σλ is itself rank-deficient and, in particular, is never positive definite whenever K̸ = {0}.
+
+Proof. Existence and uniqueness of the minimizer in (22) on the closed cone SN 
+
+> +
+
+follow from [38, Thm. 1]. Let v ∈ K ;since Σmv = 0 for every m, we have Σ1/2 
+
+> m
+
+v = 0, and hence 
+
+vT Σv = 0 for the fixed point Σ = ¯Σλ of 
+
+Σ = 
+
+> M
+
+X
+
+> m=1
+
+λm
+
+pΣ1/2ΣmΣ1/2 (23) (each summand on the right annihilates v on both sides by the same argument, so v remains in the null space at every iterate, and hence at the fixed point), which, since ¯Σλ ⪰ 0,forces ¯Σλv = 0. □
+
+Because Proposition 3.1 shows ¯Σλ1 = 0, the fixed-point map (23) is ill-posed if applied verbatim on SN
+
+> ++
+
+, since it requires Σ−1/2 at a singular matrix. We instead solve (23) in the (N − 1) -dimensional subspace 1⊥, where positive definiteness is generically restored. Let U⊥ ∈ RN ×(N −1) be an orthonormal basis of 1⊥ and define the reduced source co-variances Σ⊥ 
+
+> m
+
+:= UT
+
+> ⊥
+
+ΣmU⊥ ∈ SN −1+ , which are generically positive definite whenever each source graph is connected (so that null( Lm) = span {1} exactly). The reduced barycenter 
+
+¯Σ⊥ 
+
+> λ
+
+∈ SN −1++ is then computed by the well-posed fixed-point iteration 
+
+( ¯Σ⊥ 
+
+> λ
+
+)k+1 = H ( ¯Σ⊥ 
+
+> λ
+
+)k, λ, {Σ⊥
+
+> m
+
+}Mm=1 
+
+
+
+=  ( ¯Σ⊥ 
+
+> λ
+
+)k−1/2 MX
+
+> m=1
+
+λm
+
+q
+
+(( ¯Σ⊥ 
+
+> λ
+
+)k)1/2Σ⊥
+
+> m
+
+(( ¯Σ⊥ 
+
+> λ
+
+)k)1/2
+
+2
+
+·  ( ¯Σ⊥ 
+
+> λ
+
+)k−1/2, (24) which converges at a linear rate to the unique positive definite fixed point ¯Σ⊥ 
+
+> λ
+
+in SN −1++ [38], [49]. The ambient barycenter covariance is then recovered exactly, and with the correct rank and null space, by the lifting 
+
+¯Σλ = U⊥ ¯Σ⊥ 
+
+> λ
+
+UT 
+
+> ⊥
+
+∈ SN 
+
+> +
+
+, ¯Σλ1 = 0. (25) 
+
+Lemma 3.1: For every L ∈ L and every Σ ∈ SN ,
+
+tr(Σ L) = tr( PΣP L ), P := I − 1 
+
+> N
+
+11 T . (26) 
+
+Proof. Since L1 = 0 and L = LT , we have L11 T = 0
+
+and 11 T L = ( L11 T )T = 0, so PL = LP = L, i.e. L =
+
+PLP . Then, by cyclicity of the trace, tr(Σ L) = tr(Σ PLP ) = tr( PΣP L ). □
+
+Remark 3.4: In practice, the fixed-point iteration (24)– (25) is applied not to the population covariances Σm but to their empirical counterparts ˆΣm, which are generically full rank due to finite-sample and observation noise, so the resulting empirical barycenter ˆΣλ need not satisfy ˆΣλ1 = 0
+
+exactly. Lemma 3.1 shows this is immaterial to the down-stream estimator: because every feasible L ∈ L annihilates 
+
+1, the ADMM objective (33) depends on ˆΣλ only through its projection P ˆΣλP; any energy the empirical fixed point spuriously accumulates along 1 is automatically annihilated by the trace term and never biases the learned graph. For numerical robustness of (24) itself, however, we still recom-mend explicitly projecting each empirical source covariance, 
+
+ˆΣm ← P ˆΣmP, before running the fixed-point iteration, so that the reduced problem in UT
+
+> ⊥
+
+(·)U⊥ is solved on genuinely well-conditioned inputs rather than on inputs whose 1-component is pure sampling noise. 
+
+Assumption 3.2: There exists a constant R < ∞ such that 
+
+∥z∥2 ≤ R almost surely under every source distribution Pm,
+
+m ∈ [M ], and under every distribution P contained in the vector-space ambiguity set Wϵ, 2(P1, . . . , PM ; λ) of (19). 
+
+Remark 3.5: Assumption 3.2 is satisfied exactly whenever signals arise from a bounded sensing range, and is satisfied up to an exponentially small failure probability whenever z
+
+is sub-Gaussian, by taking R to be the (1 − δ)-quantile of 
+
+∥z∥2 and absorbing the δ-tail into a separate, exponentially decaying error term via a standard truncation argument [24]; we omit this extension for brevity and work directly under Assumption 3.2. 
+
+Lemma 3.2: Let Φ : RN → SN ×N , Φ( z) := zz T . Under Assumption 3.2, Φ is 2R-Lipschitz from ({∥ z∥2 ≤ R}, ∥ · ∥ 2)
+
+to (SN ×N , ∥ · ∥ F ), and consequently, for any two distributions 
+
+P, P′ supported on {∥ z∥2 ≤ R},
+
+W2
+
+ Φ#P, Φ#P′; ∥ · ∥ F
+
+ ≤ 2R W 2(P, P′; ∥ · ∥ 2). (27) 8
+
+Proof. For ∥z1∥2, ∥z2∥2 ≤ R,
+
+∥Φ( z1) − Φ( z2)∥F = z1(z1 − z2)T + ( z1 − z2)zT 
+
+> 2F
+
+≤  ∥z1∥2 + ∥z2∥2
+
+∥z1 − z2∥2 ≤ 2R∥z1 − z2∥2,
+
+so Φ is 2R-Lipschitz on {∥ z∥2 ≤ R}. Let π⋆ be an optimal coupling attaining W2(P, P′). Then (Φ , Φ) #π⋆ is a feasible coupling of Φ#P and Φ#P′, and 
+
+W 22 (Φ #P, Φ#P′) ≤
+
+Z
+
+∥Φ( z1) − Φ( z2)∥2 
+
+> F
+
+dπ ⋆(z1, z2)
+
+≤ 4R2
+
+Z
+
+∥z1 − z2∥22 dπ ⋆(z1, z2) = 4 R2W 22 (P, P′),
+
+which gives (27). □
+
+Corollary 3.1: Under Assumption 3.2, the image of the vector-space ambiguity set Wϵ, 2 of (19) under the outer-product map satisfies 
+
+Φ#Wϵ, 2(P1, . . . , PM ; λ)
+
+⊆ Q on SN ×N : W2(Q, Φ# ¯Pλ,2; ∥ · ∥ F ) ≤ 2Rϵ . (28) 
+
+Proof. Immediate from Lemma 3.2 applied with P′ = ¯Pλ,2 to every P ∈ W ϵ, 2. □
+
+Corollary 3.1 is the precise sense in which the covariance-space representation of Section III-C is compatible with the vector-space ambiguity set of Section III-B: the pushforward map Φ is not an isometry, so the radius is not preserved verbatim, but it is provably inflated by the fixed, computable factor 2R. We use this containment, rather than an unproven identity of the two spaces, to derive a tractable and provably valid upper bound on the true worst-case risk in Section III-C. 
+
+C. Tractable Reformulation 
+
+Problem (21) appears intractable at first sight, since its inner supremum lacks a closed form. Tractability is restored by lifting the problem into the space of rank-one covariance matrices via the outer-product map Φ( z) := zz T ∈ SN ×N ,under which tr(Σ L) = zT Lz for Σ = Φ( z), so that the loss appearing in (15) is linear in Σ. By Corollary 3.1, the worst-case risk over the vector-space ambiguity set Wϵ, 2 is upper-bounded by the worst-case risk over the (larger, and hence tractable via standard linear-loss duality) matrix-space ball of radius ϵ′ := 2 Rϵ centered at Φ# ¯Pλ,2:
+
+sup 
+
+> P∈W ϵ, 2
+
+Ez∼P[zT Lz ] ≤ sup 
+
+> Q∈W Σ
+> λ,2(ϵ′)
+
+EΣ∼Q[tr( ΣL )] , (29) where WΣ
+
+> λ,2
+
+(ϵ′) := {Q : W2(Q, Φ# ¯Pλ,2; ∥ · ∥ F ) ≤ ϵ′}.Crucially, the two Wasserstein balls in (29) live in different, but explicitly related ground spaces, P2(RN ) on the left, and the image of P2(RN ) under the 2R-Lipschitz map Φ inside 
+
+P2(SN ×N ) on the right, and inequality (29), rather than an unjustified identity, is what licenses working in covariance space. Replacing the true worst-case risk by its tractable upper bound in (29) preserves the defining property of distributional robustness (the learned L still controls risk under every 
+
+P ∈ W ϵ, 2, if anything more conservatively), so the resulting estimator remains valid; we henceforth analyze the right-hand side of (29) in place of the original min–max problem (15). 
+
+min  
+
+> L∈L
+
+EΣ∼ ˆQm [− log( |L|+) + tr( ΣL )] + ρP(L), (30) where ˆQm = 1
+
+> nm
+
+Pnm 
+
+> i=1
+
+Dirac( zm,i zTm,i ) =
+
+> 1
+> nm
+
+Pnm 
+
+> i=1
+
+Dirac( Σim). In this covariance representation, the min–max problem (15) becomes 
+
+min  
+
+> L∈L
+
+R(L; Σ) + ρP(L)= min  
+
+> L∈L
+
+max 
+
+> P∈W λ,2
+
+EΣ∼P[− log( |L|+) + tr( ΣL )] + ρP(L).
+
+(31) The following lemma shows that the inner supremum in (31) admits a closed-form dual, collapsing the two-level min–max problem into a single-level convex program. 
+
+Lemma 3.3: Under Assumption 3.2, the min–max prob-lem (15) is upper-bounded by 
+
+min  
+
+> L∈L
+
+R(L; ¯Σλ) + ρP(L)
+
+≤ min  
+
+> L∈L
+
+− log( |L|+) + tr( ¯ΣλL) + ρP(L) + 2 Rϵ ∥vec( L)∥2,
+
+(32) where ¯Σλ is the barycenter covariance of Proposition 3.1 and 
+
+R is the energy bound of Assumption 3.2. Inequality (32) is tight, i.e. holds with equality, whenever Φ# ¯Pλ,2 is itself the empirical distribution of a single point mass, which is the case for the empirical surrogate used in Section III-D. Lemma 3.3 shows that hedging against distributional un-certainty in (31) costs, up to the provable safety margin 
+
+2R, one additional term in the objective, the norm penalty 
+
+ϵ∥vec( L)∥q , so that robustness is achieved without sacrificing the convexity or the closed-form structure of the original regularized maximum-likelihood problem (6). The remainder of this section develops an efficient ADMM solver for (32). 
+
+D. Algorithmic Development 
+
+We now derive an ADMM solver for the tractable reformu-lation (32). Applying Lemma 3.3, the problem can be written explicitly as (For notational simplicity, we define ϵ ≜ 2Rϵ 
+
+throughout the remainder of the paper) 
+
+min  
+
+> L∈L
+
+− log( |L|+) + tr( ˆΣλL) + ρ∥vec( L)∥1 + ϵ∥vec( L)∥2,
+
+(33) where ˆΣλ is the empirical counterpart of the barycenter covariance, in accordance with Remark 3.4, each empirical source covariance is projected as ˆΣm ← P ˆΣmP prior to the fixed-point iteration (24), ensuring ˆΣλ1 = 0 and consistency with the constraint set L. Because any feasible L ∈ L has non-positive off-diagonal entries and non-negative diagonal entries by construction (1), the ℓ1 term in (33) admits the linear representation 
+
+∥vec( L)∥1 = tr( LH ), (34) with H = 2 I − 11 T . Substituting (34) into (33) and collecting the two linear terms into a single effective coefficient matrix 
+
+K ≜ ˆΣλ + ρH gives 
+
+− log( |L|+) + tr( ˆΣλL) + ρ∥vec( L)∥1 + ϵ∥vec( L)∥q
+
+= tr( L ˆΣλ) − log( |L|+) + ρ tr( LH ) + ϵ∥vec( L)∥q
+
+= tr  L( ˆΣλ + ρH) − log( |L|+) + ϵ∥vec( L)∥q
+
+≜ tr( LK ) − log( |L|+) + ϵ∥vec( L)∥q . (35) 9
+
+As it stands, however, log det( L) is unbounded below on L,since every feasible L satisfies 1T L1 = 0 and is hence singu-lar. Following Egilmez et al. [12], we resolve this degeneracy by regularizing the null direction, replacing log det( L) with 
+
+log det( L + J), where J = 1 
+
+> N
+
+11 T :
+
+min  
+
+> L
+
+tr( LK ) − log det( L + J) + ϵ∥vec( L)∥q . (36) 
+
+Proposition 3.2: Problems (35) and (36) are equivalent. 
+
+Proof . Write λi(L) for the i-th eigenvalue of L in ascending order, λ1(L) ≤ · · · ≤ λN (L), so that 
+
+log det  L + 1 
+
+> N
+
+11 T  = log 
+
+ NY
+
+> i=1
+
+λi
+
+ L + 1 
+
+> N
+
+11 T 
+
+. (37) The constraint L1 = 0 implies λ1(L) = 0 with eigenvector 
+
+u1 = 1/√N , so 
+
+L + 1
+
+N 11 T = ( λ1(L)
+
+| {z } 
+
+> =0
+
++1) u1uT 
+
+> 1
+
++
+
+> N
+
+X
+
+> i=2
+
+λi(L)uiuTi . (38) Since the determinant equals the product of the eigenvalues, (38) gives 
+
+log det  L + 1 
+
+> N
+
+11 T  = log 
+
+
+
+1 ·
+
+> N
+
+Y
+
+> i=2
+
+λi(L)
+
+
+
+= log |L|+, (39) so the objectives of (35) and (36) coincide on L. □
+
+With Proposition 3.2 in place, it remains to solve (36) efficiently under the combinatorial structure of L. We proceed in two steps: first re-expressing the feasible set L in a form amenable to variable splitting, and then deriving the resulting ADMM updates in closed form. 
+
+Reformulating the constraint set. Assuming no self-loops (so the diagonal of the adjacency structure is zero), the feasible set L of (1) is compactly rewritten as 
+
+
+
+L ⪰ 0, L1 = 0L − C = 0C ∈ C 
+
+(40) where C ∈ C encodes 
+
+I ⊙ C ≥ 0B ⊙ C = 0A ⊙ C ≤ 0
+
+(41) with B = 11 T − I − A; the constraint I ⊙ C ≥ 0 is already implied by L ⪰ 0 and is retained for clarity. The constraint pair L ⪰ 0, L1 = 0 admits, in turn, an equivalent low-dimensional parametrization, 
+
+L ⪰ 0, L1 = 0 ⇐⇒ L = PΞP T , Ξ ⪰ 0, (42) where P ∈ RN ×(N −1) is any orthogonal complement of 1,i.e., PT P = I and PT 1 = 0 (the choice of P is non-unique: if 
+
+P0 satisfies both conditions, so does P0U for any unitary U ∈
+
+R(N −1) ×(N −1) ). Substituting (42) into the objective of (36) eliminates the equality constraint L1 = 0 altogether: writing 
+
+˜K = PT KP ,
+
+tr( LK ) = tr( Ξ ˜K), (43) while the barrier term simplifies via 
+
+log det( L + J) = log det 
+
+
+
+PT ΞP + 1 
+
+> N
+
+11 T 
+
+= log det 
+
+P, 1√N 1 Ξ 00 1
+
+ P, 1√N 1T 
+
+= log det( Ξ). (44) Problem (36) thus reduces to an unconstrained-domain prob-lem in the pair (Ξ, C),
+
+min  
+
+> Ξ,C
+
+tr( Ξ ˜K) − log det( Ξ) + ϵ∥C∥F
+
+s.t. Ξ ⪰ 0PΞP T − C = 0, C ∈ C , (45) which we solve via ADMM, treating Ξ and C as primal variables and introducing a dual variable Y for the consensus constraint PΞP T − C = 0.
+
+Deriving the ADMM updates. The augmented Lagrangian of (45) is 
+
+L(Ξ, C, Y) = tr( Ξ ˜K) − log det( Ξ) + ϵ∥C∥F
+
++ tr  YT (PT ΞP − C) + ϱ
+
+2 ∥PT ΞP − C∥2 
+
+> F
+
+, (46) where the constraints Ξ ⪰ 0 and C ∈ C are enforced directly on their respective minimization domains rather than relaxed via a multiplier. Each ADMM iteration alternates a minimization over Ξ, a minimization over C, and a dual ascent step on Y; writing (·)+ for the updated iterate, 
+
+Ξ+ = arg min 
+
+> Ξ⪰0
+
+L(Ξ, C, Y),
+
+C+ = arg min 
+
+> C∈C
+
+L(Ξ+, C, Y). (47) 
+
+1) Update of Ξ: Completing the square in L(Ξ, C, Y) with respect to Ξ yields 
+
+Ξ+ = arg min 
+
+> Ξ⪰0
+
+tr( Ξ ˜K) − log det( Ξ) + tr( PT YT PΞ )+ ϱ
+
+2 ∥PΞP T − C∥2
+
+> F
+
+= arg min 
+
+> Ξ⪰0
+
+ϱ
+
+2 Ξ + 1
+
+ϱ ( ˜K + ˜Y − ρ ˜C) 2
+
+> F
+
+− log det( Ξ),
+
+(48) with ˜Y = PT YP and ˜C = PT CP . The minimizer of (48) follows from a standard log-determinant proximal identity, stated here for completeness. 
+
+Lemma 3.4: The minimizer of min Θ⪰0 ϱ 
+
+> 2
+
+∥Θ + X∥2 
+
+> F
+
+−
+
+log det(Θ) is Θ∗ = UDU T , where X = UΛUT is the eigendecomposition of X and D is diagonal with 
+
+Dii = −ϱΛii + pϱ2Λ2 
+
+> ii
+
++ 4 ϱ
+
+2ϱ .
+
+Applying Lemma 3.4 to (48) gives the closed-form Ξ-update 
+
+Ξ+ = UDU T , (49) where U and Λ come from the eigendecomposition 1 
+
+> ϱ
+
+PT (K+
+
+Y−ϱC)P = UΛU T , and D is diagonal with Dii =  −ϱΛii +pϱ2Λ2 
+
+> ii
+
++ 4 ϱ/(2 ϱ).10 
+
+2) Update of C: With Ξ+ fixed, the C-update solves 
+
+C+ = arg min 
+
+> C∈C
+
+L(Ξ+, C, Y)= arg min 
+
+> C∈C
+
+−tr( YT C) + ϵ∥C∥F + ϱ
+
+2 ∥PΞ +PT − C∥2 
+
+> F
+
+,
+
+(50) whose minimizer is given by the following block-shrinkage lemma. 
+
+Lemma 3.5: The minimizer of min C∈C −tr( YT C) + 
+
+ϵ∥C∥F + ϱ 
+
+> 2
+
+∥PΞ +PT − C∥2 
+
+> F
+
+is 
+
+C∗ = I ⊙
+
+h
+
+s ·   1 
+
+> ϱ
+
+Y + PΞ +PT i
+
+> +
+
++ A ⊙
+
+h
+
+s ·   1 
+
+> ϱ
+
+Y + PΞ +PT i
+
+> −
+
+,
+
+where s = max 
+
+
+
+1 − ϵ/ϱ  
+
+> 1
+> ϱ
+
+Y + PΞ +PT , 0
+
+
+
+is the shrinkage factor. Applying Lemma 3.5 gives the C-update                                  
+
+> C+=I⊙
+> "
+> max
+> 
+> 1−ϵ/ϱ
+> ∥1
+> ϱY+PΞ +PT∥,0
+>  1
+> ϱY+PΞ +PT#
+> +
+> +A⊙
+> "
+> max
+> 
+> 1−ϵ/ϱ
+> ∥1
+> ϱY+PΞ +PT∥,0
+>  1
+> ϱY+PΞ +PT#
+> −
+> .
+> (51)
+
+3) Update of Y: The dual variable is updated by standard gradient ascent on the augmented Lagrangian, 
+
+Y+ = Y + ϱ(PΞ +PT − C+). (52) The complete procedure, alternating the closed-form updates (49), (51), and (52) until convergence, is summarized in Algorithm 1. 
+
+Algorithm 1 ADMM-Based Algorithm for MS-WDRO 
+
+Input: K; ambiguity radius ϵ; penalty parameters ρ, ϱ > 0;symmetric initialization Y(0) = 0 and symmetric C(0) ∈C; k = 0 .
+
+Output: L∗ 
+
+> 1:
+
+repeat  
+
+> 2:
+
+update Ξ(k+1) according to (49);  
+
+> 3:
+
+update C(k+1) according to (51);  
+
+> 4:
+
+update Y(k+1) according to (52);  
+
+> 5:
+
+k = k + 1 ; 
+
+> 6:
+
+until convergence  
+
+> 7:
+
+return L∗
+
+E. Convergence Analysis 
+
+We now establish the global convergence of Algorithm 1. Introduce the linear operator T : R(N −1) ×(N −1) → RN ×N ,
+
+T (Ξ) ≜ PΞP T , with adjoint T ∗(Z) = PT ZP . Since 
+
+PT P = I, T is injective: T (Ξ) = 0 ⇒ Ξ = T ∗(T (Ξ)) = 0.Problem (45) is then the canonical two-block convex program 
+
+min  
+
+> Ξ,C
+
+f (Ξ) + g(C) s.t. T (Ξ) − C = 0, (53) with f (Ξ) = tr( Ξ ˜K)−log det( Ξ) on dom f = {Ξ ≻ 0} (and 
+
++∞ otherwise), and g(C) = ϵ∥C∥F + ιC (C). Here, ιC (C) is the indicator function. Both f and g are closed, proper, and convex: f is the sum of a linear term and the standard log-determinant barrier, strictly convex on the open PD cone; g
+
+is the sum of the (continuous, hence closed) Frobenius norm and the indicator of the polyhedral set C in (41), which is nonempty and closed. 
+
+Remark 3.6: By Lemma 3.4, every eigenvalue of Ξ(k),
+
+k ≥ 1, satisfies Dii =  −ϱΛii + pϱ2Λ2 
+
+> ii
+
++ 4 ϱ/(2 ϱ) > 0
+
+irrespective of Λii , so Ξ(k) ≻ 0 strictly for every k ≥ 1.The PSD constraint on Ξ is therefore never active along the trajectory, and f is continuously differentiable at every iterate, with ∇f (Ξ) = ˜K − Ξ−1.
+
+Assumption 3.3: There exists a Laplacian L0 ∈ L , corre-sponding to a connected candidate topology compatible with the sparsity pattern encoded by A in (41), whose weights are strictly negative on every edge admitted by A; equivalently, 
+
+Ξ0 = PT L0P ≻ 0 and C0 = L0 lies in the relative interior of C.Assumption 3.3 is a mild, generically satisfied regularity condition (any densely connected weighted candidate graph provides such a point) and furnishes a point of ri(dom f ) ×
+
+ri(dom g) (ri( ·) denotes the relative interior) satisfying the coupling constraint of (53). By the Fenchel–Rockafellar du-ality theorem for linearly constrained convex programs [50], this guarantees strong duality and the existence of a saddle point (Ξ⋆, C⋆, Y⋆) of the unaugmented Lagrangian of (53), i.e. 
+
+−T ∗(Y⋆) = ∇f (Ξ⋆), Y⋆ ∈ ∂g (C⋆), T (Ξ⋆) = C⋆. (54) Since f is strictly convex on {Ξ ≻ 0}, the primal minimizer 
+
+Ξ⋆ is unique, and by injectivity of T , so is C⋆ = T (Ξ⋆).
+
+Theorem 3.2: Under Assumption 3.3, for any penalty ϱ > 0
+
+the sequence {(Ξ(k), C(k), Y(k))} generated by Algorithm 1 satisfies, writing r(k) ≜ T (Ξ(k)) − C(k):(i) (Consensus). r(k) → 0 and C(k+1) − C(k) → 0;(ii) (Objective convergence). f (Ξ(k))+ g(C(k)) → f (Ξ⋆)+ 
+
+g(C⋆);(iii) (Iterate convergence). Ξ(k) → Ξ⋆, C(k) → C⋆, and 
+
+Y(k) → Y⋆ for some dual optimal Y⋆;(iv) (Lyapunov monotonicity). The primal-dual potential 
+
+V (k) ≜ ϱ C(k) − C⋆ 2 
+
+> F
+
++ 1
+
+ϱ Y(k) − Y⋆ 2 
+
+> F
+
+(55) is monotonically non-increasing, and in fact 
+
+V (k+1) ≤ V (k) − r(k+1) 2
+
+> F
+
+− ϱ C(k+1) − C(k) 2 
+
+> F
+
+. (56) [A proof is given in Appendix A.] The Lyapunov analysis above certifies asymptotic conver-gence but not a rate. We now show that a simple ergodic averaging of the iterates enjoys an explicit O(1 /K ) rate, in the sense customary for first-order primal-dual methods under mere convexity (no strong convexity or Lipschitz-gradient assumption is invoked). 11 
+
+Corollary 3.2: For K ≥ 1, define the ergodic averages 
+
+¯ΞK = 1
+
+K
+
+> K
+
+X
+
+> k=1
+
+Ξ(k), ¯CK = 1
+
+K
+
+> K
+
+X
+
+> k=1
+
+C(k),
+
+¯YK = 1
+
+K
+
+> K
+
+X
+
+> k=1
+
+Y(k). (57) For a radius D ≥ ϱ∥C(0) −C⋆∥2 
+
+> F
+
++ϱ−1∥Y(0) −Y⋆∥2 
+
+> F
+
+= V (0) ,let BD ≜ (C, Y) : ϱ∥C − C(0) ∥2 
+
+> F
+
++ ϱ−1∥Y − Y(0) ∥2 
+
+> F
+
+≤
+
+D , which by Assumption 3.3 contains (C⋆, Y⋆). Define the primal–dual gap function 
+
+Gap D
+
+  ¯ΞK , ¯CK , ¯YK  ≜ sup 
+
+> (C,Y)∈B D
+
+n
+
+f ( ¯ΞK ) + g( ¯CK ) − g(C)+ Y, T ( ¯ΞK ) − ¯CK
+
+− ¯YK , T ( ¯ΞK ) − C − f (Ξ⋆) − g(C⋆)
+
+o
+
+. (58) 
+
+Gap D ≥ 0 always, and Gap D = 0 characterizes a saddle point of the Lagrangian restricted to BD . Then, under As-sumption 3.3, 
+
+Gap D
+
+  ¯ΞK , ¯CK , ¯YK  ≤ 2DK , K = 1 , 2, . . . . (59) In particular, both the ergodic constraint violation and the ergodic objective sub-optimality vanish at rate O(1 /K ):
+
+T ( ¯ΞK ) − ¯CK 
+
+> F
+
+≤ 2D/K 
+
+max  1, sup (C,Y)∈B D ∥Y − ¯YK ∥F
+
+ ,
+
+(60) 
+
+f ( ¯ΞK ) + g( ¯CK ) − f (Ξ⋆) − g(C⋆) = O(1 /K ). (61) 
+
+Proof. We first establish the one-step variational inequality specific to the (Ξ, C)-updates of Algorithm 1, then invoke the standard ergodic-averaging argument for monotone-operator splitting to obtain (59). 
+
+Step 1 (one-step inequality). Fix k ≥ 0 and let (Ξ, C) ∈
+
+dom f × C and Y ∈ RN ×N be arbitrary. By convexity of f
+
+and the first-order optimality condition (116) of the Ξ-update, 
+
+f (Ξ(k+1) ) − f (Ξ) ≤ ∇f (Ξ(k+1) ), Ξ(k+1) − Ξ
+
+= − Y(k+1) , T (Ξ(k+1) ) − T (Ξ)
+
+− ϱ C(k+1) − C(k), T (Ξ(k+1) ) − T (Ξ) . (62) By convexity of g and the optimality condition (117) of the 
+
+C-update, 
+
+g(C(k+1) ) − g(C) ≤ Y(k+1) , C(k+1) − C . (63) Adding (62)–(63), substituting T (Ξ(k+1) ) = C(k+1) +r(k+1) ,and adding the algebraic identity ⟨Y − Y(k+1) , r(k+1) ⟩ +
+
+⟨Y(k+1) , T (Ξ) − C⟩ − ⟨ Y, T (Ξ) − C⟩ = 0 to both sides yields, after simplification, 
+
+θ(Ξ(k+1) , C(k+1) ) − θ(Ξ, C) + Y, T (Ξ(k+1) ) − C(k+1) 
+
+− Y(k+1) , T (Ξ) − C
+
+≤ − ϱ C(k+1) − C(k), T (Ξ(k+1) ) − T (Ξ)
+
++ Y − Y(k+1) , r(k+1) , (64) where θ(Ξ, C) ≜ f (Ξ)+ g(C). Using r(k+1) = ϱ−1(Y(k+1) −
+
+Y(k)) and T (Ξ(k+1) ) − T (Ξ) = ( C(k+1) − C) + r(k+1) , the right-hand side of (64) rearranges, exactly as in the standard splitting-based ergodic-rate argument for two-block ADMM (He & Yuan [51], proof of Thm. 4.1; see also [52], App. A), into the telescoping form 
+
+ϱ
+
+2
+
+ ∥C − C(k)∥2 
+
+> F
+
+− ∥ C − C(k+1) ∥2
+
+> F
+
+
+
++ 12ϱ
+
+ ∥Y − Y(k)∥2 
+
+> F
+
+− ∥ Y − Y(k+1) ∥2
+
+> F
+
+. (65) 
+
+Step 2 (telescoping and averaging). Summing (64) (with right-hand side replaced by (65)) over k = 0 , . . . , K − 1,the right-hand side telescopes to ϱ 
+
+> 2
+
+∥C − C(0) ∥2 
+
+> F
+
++ 12ϱ ∥Y −
+
+Y(0) ∥2 
+
+> F
+
+≤ D/ 2 for (C, Y) ∈ B D , while by convexity of f, g 
+
+and Jensen’s inequality applied to the left-hand side, 
+
+K
+
+h
+
+θ( ¯ΞK , ¯CK ) − θ(Ξ, C)+ Y, T ( ¯ΞK ) − ¯CK − ¯YK , T (Ξ) − C
+
+i
+
+≤
+
+> K−1
+
+X
+
+> k=0
+
+h
+
+θ(Ξ(k+1) , C(k+1) ) − θ(Ξ, C)+ ⟨Y, T (Ξ(k+1) ) − C(k+1) ⟩− ⟨ Y(k+1) , T (Ξ) − C⟩
+
+i
+
+≤ D. (66) Dividing by K and taking the supremum over (C, Y) ∈ B D
+
+gives Gap D ( ¯ΞK , ¯CK , ¯YK ) ≤ D/K ; evaluating at (Ξ, C) = (Ξ⋆, C⋆) and using f (Ξ⋆) + g(C⋆) = p⋆ tightens the constant to 2D/K once the (non-negative) sup over Y is separated from the fixed evaluation at (Ξ⋆, C⋆), giving (59). Bounds (60)–(61) follow by taking Y = ¯YK + t  T ( ¯ΞK ) −
+
+¯CK /∥T ( ¯ΞK ) − ¯CK ∥F for a suitable t > 0 with (C, Y) ∈BD at C = ¯CK in (58), and (C, Y) = ( C⋆, Y⋆) respectively, which is the standard extraction of individual O(1 /K ) feasi-bility and objective bounds from a bounded primal–dual gap (cf. [51], Cor. 4.1). □
+
+Remark 3.7: Corollary 3.2 requires no strong convexity of 
+
+g nor Lipschitz continuity of ∇f beyond what Remark 3.6 already grants; the O(1 /K ) rate is therefore a worst-case guarantee that holds uniformly over the ambiguity radius ϵ
+
+and sparsity level ρ, consistent with the empirical iteration counts reported in Section. 
+
+F. Out-of-Sample Excess Risk via Rademacher Complexity 
+
+The coverage theorems established in Theorems 4.1 and 4.3 certify that the barycentric ambiguity set contains the popula-tion barycenter b∗ 
+
+> λ
+
+with prescribed probability, yet they do not quantify how rapidly the WDRO-GL estimator ˆL∗ converges to the oracle population minimizer as the total sample size grows. We close this gap through a uniform Rademacher complexity argument, yielding an explicit O(n−1/2min ) excess-risk bound that holds simultaneously for all L ∈ L B and reveals the precise role of inter-source heterogeneity in the generalization rate. Working with zero-mean observations for notational sim-plicity (μ = 0), write Σm,i = zm,i z⊤ 
+
+> m,i
+
+for the rank-one outer product from source k and observation i. Fix B > 012 
+
+and let LB := {L ∈ L : ∥L∥F ≤ B}. Define the population barycentric risk and the empirical WDRO risk (from Lemma 3.3) as 
+
+R(L) := − log |L|+ + tr   ¯Σ∗
+
+> λ
+
+L, (67) 
+
+ˆRϵn (L) := − log |L|+ + tr   ˆΣλL + ϵn∥vec( L)∥q , (68) where ¯Σ∗ 
+
+> λ
+
+and ˆΣλ are the covariances of the population and empirical Wasserstein barycenters, respectively, computed via the fixed-point iteration (23). The WDRO-GL estimator and the oracle minimizer are 
+
+ˆL∗ := arg min 
+
+> L∈L B
+
+ˆRϵn (L), L∗ := arg min 
+
+> L∈L B
+
+R(L).
+
+Assumption 3.4: Fix a confidence level δ ∈ (0 , 1) and let 
+
+Z := ZR(δ) and Etrunc (δ) be as in Corollary 4.1. Conditionally on Etrunc (δ), every source distribution P∗
+
+> m
+
+, m ∈ [M ], is absolutely continuous with respect to Lebesgue measure and has support contained in the common convex compact set Z ⊂ 
+
+SN 
+
+> +
+
+, with diameter DZ ≜ sup Σ,Σ′∈Z ∥Σ − Σ′∥F ≤ 2R(δ)2.The (conditional) density of each P∗ 
+
+> m
+
+is bounded below by a constant m > 0 on Z.
+
+Remark 3.8: Assumption 3.4 is not an independent modeling choice but a certified consequence of the Gaussian source model of Assumption 3.1, valid on the event Etrunc (δ) of Corollary 4.1. In particular DZ is no longer a free constant: it scales as DZ = O tr(Σ max ) + λmax (Σ max ) log( n/δ ),growing only logarithmically in the sample size n and in the inverse confidence 1/δ , which preserves the parametric 
+
+O(n−1/2min ) rate of Theorem 3.3 up to this logarithmic factor. Beyond Assumptions 3.1 and 3.4, the following mild sta-bility property of the Bures-Wasserstein barycenter covariance map is required. 
+
+Assumption 3.5: The map (Σ 1, . . . , ΣM ) 7 → BCov(Σ 1, . . . , 
+
+ΣM ; λ), which assigns to any M source covariances their 
+
+λ-weighted Bures-Wasserstein barycenter covariance via the fixed-point equation (23), is Lipschitz in the weighted ℓ1 sense: for any two families of positive-definite matrices {Σm} and 
+
+{Σ′
+
+> m
+
+},
+
+BCov(Σ 1, . . . , ΣM ; λ) − BCov(Σ ′
+
+> 1
+
+, . . . , Σ′ 
+
+> M
+
+; λ) F
+
+≤ Lbary 
+
+> M
+
+X
+
+> m=1
+
+λm∥Σm − Σ′
+
+> m
+
+∥F , (69) with Lbary = O(κ−1/2) where κ is the strong-convexity constant from Assumption 3.4. 
+
+Remark 3.9: Assumption 3.5 is a consequence of the im-plicit function theorem applied to the Bures operator T (Σ) := PMm=1 λm(Σ 1/2ΣmΣ1/2)1/2. Under Assumption 3.4, the κ-strong geodesic convexity of the Wasserstein barycenter func-tional ensures that the spectral radius of the Fr´ echet derivative 
+
+DT at the fixed point ¯Σ∗ 
+
+> λ
+
+satisfies ∥DT ∥op < 1, so by the Banach fixed-point theorem the solution moves Lbary =(1 − ∥ DT ∥op )−1 ≲ κ−1/2-Lipschitz continuously with each source covariance perturbation. 
+
+Theorem 3.3: Fix δ ∈ (0 , 1) and instantiate Assumption 3.4 at level δ/ 2, so that Z = ZR(δ/ 2) and P(Etrunc (δ/ 2)) ≥ 1 −
+
+δ/ 2. Under Assumptions 3.1, 3.4, and 3.5, suppose ˆL∗ ∈ L B
+
+and that the true target distribution P∗ satisfies Wp(P∗, b ∗
+
+> λ
+
+) ≤
+
+ϵn, as before. Define the barycentric Rademacher complexity 
+
+of the loss class FB := {z 7 → z⊤Lz : L ∈ L B } as 
+
+Rn(LB ; λ) := B
+
+> M
+
+X
+
+> m=1
+
+λm Eσm
+
+"
+
+1
+
+nm
+
+> nm
+
+X
+
+> i=1
+
+σm,i Σm,i F
+
+#
+
+,
+
+(70) where {σm,i } are i.i.d. Uniform( {− 1, +1 }) independent of the data. The following hold. (i) Conditionally on Etrunc (δ/ 2) , the barycentric Rademacher complexity satisfies the explicit non-asymptotic bound 
+
+Rn(LB ; λ) ≤ BD 2
+
+> Z
+> M
+
+X
+
+> m=1
+
+λm
+
+√nm
+
+≤ BD 2
+
+> Z
+
+√nmin 
+
+, (71) with DZ as in Assumption 3.4 at level δ/ 2.(ii) With probability at least 1 − δ over the joint draw of all source samples (a union bound over Etrunc (δ/ 2) and the concentration event of part (ii) at level δ/ 2), 
+
+RP∗ (ˆL∗) ≤ ˆRϵn (ˆL∗)
+
+| {z }
+
+> computable from data
+
++ 2 Lbary Rn(LB λ) + BL bary D2
+
+> Z
+
+p2 log( M/δ )
+
+√nmin 
+
+| {z }
+
+=: ∆ n(δ) → 0
+
+,
+
+(72) where ˆRϵn (ˆL∗) is the WDRO empirical objective value, fully computable from training data. (iii) Substituting DZ = O(log( n/δ )) from Assumption 3.4 into (72), the out-of-sample correction satisfies, as 
+
+nmin → ∞ ,
+
+∆n(δ) = O Lbary B
+
+√nmin 
+
+log nδ
+
+r
+
+log Mδ
+
+!
+
+−→ 0, (73) so ˆRϵn (ˆL∗) remains an asymptotically tight, and upper bound on the true risk RP∗ (ˆL∗).[A proof is given in Appendix B.] 
+
+Remark 3.10: Bound (72) constitutes a genuine out-of-sample guarantee: the right-hand side is fully computable from training data. The proof reveals a structural duality: the WDRO robustness penalty ϵn∥vec( ˆL∗)∥q in ˆRϵn is not merely a regularizer but serves a precise statistical role, it exactly absorbs the Kantorovich transport cost Wp(P∗, b ∗
+
+> λ
+
+)∥vec( ˆL∗)∥q
+
+between the unknown target P∗ and the barycenter, making term (I) non-positive. The remaining correction ∆n(δ), which decays at the parametric rate O(n−1/2min ), is entirely due to the finite-sample estimation error of the barycenter covariance, quantified through the Rademacher complexity of the source samples. As nmin → ∞, the empirical WDRO objective 
+
+ˆRϵn (ˆL∗) becomes an asymptotically tight upper bound on 
+
+RP∗ (ˆL∗). In contrast, any pooled-mixture nominal distribution incurs an irreducible bias ϵpool ≳ H2 
+
+> λ
+
+> 0 (Theorem 4.2), preventing the corresponding empirical objective from ever bounding the true target risk. 13 
+
+Corollary 3.3: Under the conditions of Theorem 3.3, let 
+
+L∗ := arg min L∈L B RP∗ (L) be the oracle minimizer under 
+
+P∗. With probability at least 1 − δ:
+
+RP∗ (ˆL∗) − RP∗ (L∗) ≤ 4Lbary Rn(LB ; λ)+ 2BL bary D2
+
+> Z
+
+p2 log( M/δ )
+
+√nmin 
+
++ ϵnBq , (74) where Bq := sup L∈L B ∥vec( L)∥q . With the adaptive choice 
+
+ϵn = C0D2
+
+> Z
+
+plog( M/δ )/n min :
+
+RP∗ (ˆL∗) − RP∗ (L∗)= O (BL bary + Bq ) D2
+
+> Z
+
+√nmin 
+
+r
+
+log Mδ
+
+!
+
+. (75) 
+
+Proof. Inserting and subtracting ˆRϵn (ˆL∗) and ˆRϵn (L∗):
+
+RP∗ (ˆL∗) − RP∗ (L∗) = RP∗ (ˆL∗) − ˆRϵn (ˆL∗)
+
++  ˆRϵn (ˆL∗) − ˆRϵn (L∗)| {z }
+
+> ≤0
+
++[ ˆRϵn (L∗) − RP∗ (L∗)] . (76) The middle term is non-positive by optimality of ˆL∗. The first term is bounded by ∆n(δ) via Theorem 3.3(ii). For the third term, ˆRϵn (L∗) − RP∗ (L∗) = Rˆb∗
+
+> M
+
+(L∗) − RP∗ (L∗) +
+
+ϵn∥vec( L∗)∥q . By the triangle inequality and Lemma 3.3: 
+
+Rˆb∗
+
+> M
+
+(L∗) − RP∗ (L∗) ≤ Rˆb∗
+
+> M
+
+(L∗) − Rb∗ 
+
+> λ
+
+(L∗)
+
++ Rb∗ 
+
+> λ
+
+(L∗) − RP∗ (L∗)
+
+≤ B∥ ˆΣλ − ¯Σ∗
+
+> λ
+
+∥F + Wp(P∗, b ∗
+
+> λ
+
+)∥vec( L∗)∥q , (77) where the second inequality applies Cauchy-Schwarz to the first term and Kantorovich duality (as in (124)) to the second. Since Wp(P∗, b ∗
+
+> λ
+
+) ≤ ϵn, the Kantorovich term is absorbed: 
+
+ˆRϵn (L∗) − RP∗ (L∗) ≤ B∥ ˆΣλ − ¯Σ∗
+
+> λ
+
+∥F + ϵnBq . Applying the Rademacher and McDiarmid union-bound argument (132) to 
+
+B∥ ˆΣλ − ¯Σ∗
+
+> λ
+
+∥F under the same probability-1 − δ event yields 
+
+B∥ ˆΣλ − ¯Σ∗
+
+> λ
+
+∥F ≤ ∆n(δ), so the third term is at most ∆n(δ)+ 
+
+ϵnBq . Hence RP∗ (ˆL∗) − RP∗ (L∗) ≤ 2∆ n(δ) + ϵnBq , which expands to (74). Substituting (71) and the given ϵn yields (75). 
+
+□
+
+Corollary 3.4: Under the conditions of Corollary 3.3, with the adaptive radius ϵn = C0D2
+
+> Z
+
+plog( M/δ )/n min , the WDRO-GL estimator achieves RP∗ (ˆL∗) − RP∗ (L∗) ≤ ε with probability at least 1 − δ provided 
+
+nmin ≥ C21 (BL bary + Bq )2 D4
+
+> Z
+
+ε2 log Mδ , (78) where C1 > 0 is an absolute constant. The dependence on the number of sources is only logarithmic, and the factor Lbary ∼
+
+κ−1/2 reflects that greater inter-source heterogeneity (smaller 
+
+κ) makes the barycenter covariance harder to estimate and increases the required sample size. 
+
+Proof. From (75), the excess risk is bounded by C1(BL bary +
+
+Bq )D2
+
+> Z
+
+plog( M/δ )/n min for an absolute constant C1 > 0.Setting this at most ε and solving for nmin yields (78). □
+
+IV. T HEORETICAL ANALYSIS 
+
+The out-of-sample guarantees established in Theorem 3.3 provide standard DRO coverage with respect to the empirical Wasserstein ball but leave three fundamental questions unad-dressed: (i) how well does the empirical barycenter ˆb∗ 
+
+> K
+
+itself approximate the true (population-level) barycenter b∗
+
+> λ
+
+, and at what rate does this approximation improve with sample size; (ii) is there a formal, quantifiable sense in which the Wasser-stein barycenter is a structurally superior nominal distribution compared to the na¨ ıve pooled empirical measure, particularly when inter-source heterogeneity is large; and (iii) can the ambiguity-set framework certify coverage of the target-domain 
+
+risk in the complete absence of target samples. The present section answers all three questions through a sequence of new results. The guarantees here are method-specific : they exploit the geometry of barycentric interpolation in Wasserstein space and cannot be obtained from generic DRO theory alone. Assumption 3.1 models each source as an (possibly degen-erate) Gaussian P∗ 
+
+> m
+
+= N (μm, Σm), whose support is all of 
+
+RN . The Rademacher-complexity argument of Section III-F, in contrast, requires a uniform, finite bound on ∥z∥2 to control the loss class FB . We reconcile the two by deriving, rather than positing, an effective compact support: with high probability, every sample drawn from a Gaussian source lies within an explicit ball, whose radius depends only on the source second moments and the confidence level. 
+
+Lemma 4.1: Let z ∼ N (μ, Σ) with Σ ∈ SN 
+
+> +
+
+. For any δ ∈
+
+(0 , 1) ,
+
+P
+
+
+
+∥z∥2 > ∥μ∥2 + ptr(Σ) + p2λmax (Σ) log(1 /δ )
+
+| {z }
+
+> =: R(Σ ,μ,δ )
+
+
+
+≤ δ. (79) 
+
+Proof. The map z 7 → ∥z∥2 is 1-Lipschitz. Writing z =
+
+μ + Σ 1/2g for standard Gaussian g, the composite map 
+
+g 7 → ∥ μ + Σ 1/2g∥2 is λmax (Σ) 1/2-Lipschitz in g, so the Gaussian concentration inequality gives P(∥z∥2 ≥ E∥z∥2 +
+
+t) ≤ exp( −t2/(2 λmax (Σ))) for all t ≥ 0. Bounding 
+
+E∥z∥2 ≤ ∥ μ∥2 + ptr(Σ) by Jensen’s inequality and setting 
+
+t = p2λmax (Σ) log(1 /δ ) gives (79). □
+
+Corollary 4.1: Let n = PMm=1 nm be the total number of source samples. For any δ ∈ (0 , 1) , define 
+
+R(δ) := max   
+
+> m∈[M]
+
+R Σm, μ m, δn
+
+,
+
+ZR(δ) := Σ ∈ SN 
+
+> +
+
+: tr(Σ) ≤ R(δ)2 . (80) Then ZR(δ) is convex and compact, and the event 
+
+Etrunc (δ):= Σm,i = zm,i zTm,i ∈ Z R(δ), ∀m ∈ [M ], i ∈ [nm] (81) satisfies P(Etrunc (δ)) ≥ 1 − δ.
+
+Proof. Convexity and compactness of ZR(δ) are immediate (a sublevel set of the linear functional tr( ·) intersected with the closed cone SN 
+
+> +
+
+). By Lemma 4.1 applied at level δ/n to each of the n i.i.d. draws, each individual event {∥ zm,i ∥2 ≤ R(δ)}
+
+fails with probability at most δ/n ; a union bound over all 
+
+n draws, together with tr( Σm,i ) = ∥zm,i ∥22 ≤ R(δ)2 ⇐⇒ 
+
+Σm,i ∈ Z R(δ), gives the claim. □14 
+
+Corollary 4.1 is the precise sense in which a common convex compact support is compatible with Assumption 3.1: it does not hold surely, as an unbounded Gaussian assumption forbids, but it holds on an explicit event of probability at least 
+
+1 − δ, for a radius R(δ) that is fully determined by the source second moments. Assumption 3.4 above should accordingly be read as holding on Etrunc (δ), and every downstream prob-abilistic guarantee absorbs the residual failure probability δ
+
+into its stated confidence level via a union bound, exactly as carried out in Theorem 3.3. Under Assumption 3.4, the barycenter functional F (ν) = PMm=1 λmW 22 (ν, P∗
+
+> m
+
+) is κ-strongly geodesically convex on 
+
+(P2(Z), W 2) for some κ > 0 depending only on DZ , and 
+
+λ, and the true barycenter b∗ 
+
+> λ
+
+≜ bλ,2(P∗
+
+> 1
+
+, . . . , P∗ 
+
+> M
+
+) exists and is unique [36]. We define the inter-source Wasserstein heterogeneity as the Fre´ chet standard deviation of the source distributions about their common barycenter: 
+
+Hλ ≜
+
+ MX
+
+> m=1
+
+λm W 22
+
+ P∗
+
+> m
+
+, b ∗
+
+> λ
+
+1/2
+
+. (82) Larger Hλ indicates greater spread of the sources in Wasser-stein space; Hλ = 0 if and only if all source distributions coincide. 
+
+A. Finite-Sample Concentration of the Empirical Barycenter 
+
+Our first result is a non-asymptotic perturbation bound that propagates individual-source estimation errors through the barycenter map. Unlike standard individual-source bounds, the result here explicitly separates the contribution of sampling noise (ξM ) from the contribution of inter-source heterogeneity 
+
+(Hλ), yielding a rate that adapts to the geometric configuration of the source distributions. 
+
+Lemma 4.2: Under Assumption 3.4, for any empiri-cal source measures {ˆPm}Mm=1 ⊂ P2(Z), let ξM ≜PMm=1 λmW 22 (ˆPm, P∗
+
+> m
+
+) denote the weighted aggregate source estimation error. Then 
+
+W2
+
+ ˆb∗ 
+
+> M
+
+, b ∗
+
+> λ
+
+ ≤ C0
+
+κ
+
+
+
+H1/2 
+
+> λ
+
+ξ1/4 
+
+> M
+
++ ξ1/2
+
+> M
+
+
+
+, (83) where C0 > 0 is a universal constant and κ is the strong-convexity constant of F from Assumption 3.4. [A proof is given in Appendix C.] 
+
+Remark 4.1: Lemma 4.2 reveals a fundamental two-regime behavior. (i) Homogeneous regime (Hλ = 0, all sources identical): the bound collapses to W2(ˆb∗ 
+
+> M
+
+, b ∗
+
+> λ
+
+) ≤ (C0/κ ) ξ1/2 
+
+> M
+
+,recovering the standard parametric O(n−1/2) rate. (ii) Hetero-geneous regime (Hλ > 0): the dominant term is H1/2 
+
+> λ
+
+ξ1/4 
+
+> M
+
+,yielding a slower O(H1/2 
+
+> λ
+
+· n−1/4) convergence, with the coefficient controlled by the inter-source spread. This rate degradation reflects a genuine geometric phenomenon: a larger spread of the source distributions in (P2, W 2) renders the barycenter landscape more “elongated,” slowing convergence of the empirical minimizer. Crucially, both Hλ and ξK are estimable from data, which enables the data-driven radius selection in Section IV-C. Combining Lemma 4.2 with the individual-source con-centration under Assumption 3.1 (identical to that used in Theorem 3.3), and a union bound over the M sources, yields the following main concentration theorem. 
+
+Theorem 4.1: Under Assumptions 3.4 and 3.1, for any β ∈
+
+(0 , 1) define the aggregate deviation parameter 
+
+¯ξn(β) ≜
+
+> K
+
+X
+
+> m=1
+
+λm ϵ2
+
+> nm
+
+ βM
+
+
+
+, (84) where ϵn(β) = 
+
+q c1 
+
+> n
+
+log 2 
+
+> β
+
+with c1 being a constant. Then, with probability at least 1 − β over the joint draw of all source samples, 
+
+W2
+
+ ˆb∗ 
+
+> M
+
+, b ∗
+
+> λ
+
+ ≤ εbary  
+
+> n
+
+(β)
+
+≜ C0
+
+κ
+
+h
+
+H1/2 
+
+> λ
+
+¯ξn(β)1/4 + ¯ξn(β)1/2i
+
+. (85) 
+
+Proof. Under Assumption 3.1, Theorem 3.3 applied to the k-th source with confidence level β/M gives, ∀m ∈ [M ]
+
+Pnm
+
+n
+
+W2(ˆPm, P∗
+
+> m
+
+) ≤ ϵnm (β/M )
+
+o
+
+≥ 1 − βM . (86) Let E = TMm=1 
+
+W2(ˆPm, P∗
+
+> m
+
+) ≤ ϵnm (β/M ) . By the union bound and independence of the source samples, Pn(E) ≥ 1 −
+
+β. On the event E:
+
+ξM =
+
+> M
+
+X
+
+> m=1
+
+λmW 22 (ˆPm, P∗
+
+> m
+
+) ≤
+
+> M
+
+X
+
+> m=1
+
+λm ϵ2 
+
+> nm
+
+(β/M )= ¯ξn(β). (87) Substituting (87) into Lemma 4.2 yields (85) on E, which has probability at least 1 − β. □
+
+Remark 4.2: Theorem 4.1 is the first direct non-asymptotic bound for the empirical Wasserstein barycenter as a sta-tistical estimator in the heterogeneous multi-source setting. Prior work either establishes individual-source convergence rates and uses the nominal distribution without quantifying its bias [47], or treats the barycenter concentration only in the univariate or symmetric-source setting. Here the explicit dependence on Hλ renders the bound tight: the approximation error genuinely grows with inter-source heterogeneity. When all sources share the same sample size nm = n/M , (85) reads 
+
+εbary  
+
+> n
+
+= O H1/2 
+
+> λ
+
+(M log M/n )1/4 + pM log M/n , revealing an unavoidable cost of heterogeneity that scales as H1/2 
+
+> λ
+
+.
+
+B. Structural Superiority of the Barycentric Nominal Distri-bution 
+
+We now formally characterize the irreducible mixing bias that afflicts the pooled nominal distribution ˆPpool  
+
+> λ
+
+≜
+
+PMm=1 λm ˆPm, and contrast it with the consistent behavior of the empirical barycenter. The central finding, established under a common-covariance, heterogeneous-mean Gaussian source model, is that the Wasserstein distance from the pooled distribution to the true barycenter b∗ 
+
+> λ
+
+does not vanish as 
+
+n → ∞ whenever the source means differ, whereas the barycenter-based estimator remains consistent regardless. 
+
+Theorem 4.2: Suppose the source distributions are Gaussian with a common covariance: P∗ 
+
+> m
+
+= N (μm, Σ) for m ∈ [M ],15 
+
+where Σ ∈ SN
+
+> ++
+
+. Let ¯μλ = P 
+
+> m
+
+λmμm and define the 
+
+between-source scatter matrix 
+
+∆λ =
+
+> M
+
+X
+
+> m=1
+
+λm(μm − ¯μλ)( μm − ¯μλ)T ∈ SN 
+
+> +
+
+. (88) Then the true pooled distribution P∗ 
+
+> λ
+
+= P 
+
+> m
+
+λmP∗ 
+
+> m
+
+satisfies 
+
+W 22
+
+ P∗
+
+> λ
+
+, b ∗
+
+> λ
+
+ ≥ B2 Σ + ∆ λ, Σ
+
+≥ H4
+
+> λ
+
+4N σ max (Σ) + 4 H2
+
+> λ
+
+> 0, (89) whenever Hλ > 0, where σmax (Σ) is the spectral norm of 
+
+Σ and B(·, ·) is the Bures-Wasserstein distance. In contrast, 
+
+W2(ˆb∗ 
+
+> M
+
+, b ∗
+
+> λ
+
+) → 0 almost surely as nmin → ∞ .[A proof is given in Appendix D.] 
+
+Proposition 4.1: Suppose the sources share a common mean, 
+
+μm ≡ μ for all m ∈ [M ], and pairwise-commuting covari-ances P∗ 
+
+> m
+
+= N (μ, Σm) with Σm = Qdiag( σm, 1, . . . , σ m,N )
+
+QT for a common orthonormal eigenbasis Q ∈ O( N )
+
+(O( N ) denote the orthogonal group of order N ); in par-ticular, by Proposition 3.1, Q may always be chosen with 
+
+QeN = 1/√N , since every Σm here annihilates 1. Write 
+
+¯σarith ,k = P 
+
+> m
+
+λmσm,k for the arithmetic-mean eigenvalues and 
+
+¯σλ,k =
+
+ MX
+
+> m=1
+
+λm
+
+√σm,k 
+
+2
+
+, k = 1 , . . . , N, (90) for the coordinatewise barycentric eigenvalues. Then the true barycenter is b∗ 
+
+> λ
+
+= N  μ, Q diag( ¯ σλ) QT , and, with ¯Σarith =P 
+
+> m
+
+λmΣm,
+
+W 22
+
+ P∗
+
+> λ
+
+, b ∗
+
+> λ
+
+ ≥
+
+> N
+
+X
+
+> k=1
+
+p¯σarith ,k − p¯σλ,k 
+
+2
+
+(91) 
+
+≥ max  
+
+> i̸=j
+
+λ2 
+
+> i
+
+λ2 
+
+> j
+
+B4(Σ i, Σj )4N σ max 
+
+  ¯Σarith 
+
+ > 0, (92) whenever Σi̸ = Σ j for some pair i, j with λi, λ j > 0.[A proof is given in Appendix E.] 
+
+Remark 4.3: Theorem 4.2 and Proposition 4.1 isolate two distinct, individually rigorous channels through which naive pooling incurs an irreducible bias: heterogeneous means under a shared covariance (Theorem 4.2), and heterogeneous, com-muting covariances under a shared mean (Proposition 4.1). Both floors are strictly positive, sample-size-independent, and share the same structural form, a fourth-power heterogeneity numerator over an N σ max -scaled denominator, indicating that the irreducibility of the pooling bias is not an artifact of the common-covariance restriction of Theorem 4.2, but persists along at least two independent axes of source heterogeneity. 
+
+Remark 4.4: Theorem 4.2 is proved under a common-covariance source model, and Proposition 4.1 under acommon-mean, commuting-covariance model, because in both cases the Bures–Wasserstein separation reduces to a scalar 
+
+problem: Theorem 4.2 twirls one covariance argument to 
+
+¯σI while the other stays fixed at Σ, and Proposition 4.1 diagonalizes both arguments in a shared eigenbasis Q. The fully general setting, in which sources differ simultaneously in mean and in non-commuting covariance, P∗ 
+
+> m
+
+= N (μm, Σm)
+
+with {Σm} not jointly diagonalizable and ∆λ̸ = 0, admits neither reduction: the pooled covariance ¯Σarith + ∆ λ and the barycentric covariance ¯Σλ, itself only implicitly defined through the fixed point (23), with no closed form when the 
+
+Σm do not commute, generically share no common eigenbasis, so the Lieb concavity–Haar twirling argument of Appendix D does not extend directly, nor does the elementary diagonal computation of Appendix E. We therefore state the fully gen-eral case as an open conjecture: an analogous strictly positive, sample-size-independent bias is expected to persist whenever 
+
+(μm, Σm)Mm=1 are not all identical, supported jointly by The-orem 4.2, Proposition 4.1 (which cover two complementary special cases of this general statement), and by the concordant empirical evidence of Section VI, where sources differ in both moments simultaneously. We do not claim a proof of this general statement here. A natural avenue toward closing this gap, left to future work, is a perturbative argument bounding the deviation of ¯Σλ from the commuting-case barycenter of (90) in terms of the operator norm of the commutators [Σ i, Σj ],which would interpolate continuously between Proposition 4.1 and the fully non-commuting regime. 
+
+Remark 4.5: Theorem 4.2 establishes that for any fixed 
+
+Hλ > 0, the minimum Wasserstein ball radius needed to certify coverage of b∗ 
+
+> λ
+
+using the pooled nominal distribution satisfies 
+
+lim inf  
+
+> n→∞
+
+W2(ˆPpool  
+
+> λ
+
+, b ∗
+
+> λ
+
+) ≥ W2(P∗
+
+> λ
+
+, b ∗
+
+> λ
+
+)
+
+≥ H2
+
+> λ
+
+p4N σ max (Σ) + 4 H2
+
+> λ
+
+> 0, (93) as a consequence of the law of large numbers applied to each source. In sharp contrast, Theorem 4.1 gives εbary  
+
+> n
+
+(β) → 0
+
+as nmin → ∞. Hence the ambiguity set centered at ˆb∗
+
+> M
+
+automatically shrinks with increasing data, while any ambi-guity set centered at ˆPpool  
+
+> λ
+
+must maintain a radius bounded away from zero by the irreducible mixing bias. This translates directly into a less conservative WDRO estimator L∗ when the barycentric nominal distribution is used. 
+
+C. Data-Driven Radius Selection 
+
+Theorems 4.1 and 4.2 jointly prescribe a principled, data-driven procedure for choosing ϵ in the MS-WDRO prob-lem (31). The radius should be tight enough to avoid over-conservatism, yet large enough to ensure the true barycenter 
+
+b∗ 
+
+> λ
+
+lies in the ambiguity set with prescribed probability. The following corollary makes this precise. 
+
+Corollary 4.2: Let the assumptions of Theorem 4.1 hold. Fix any β ∈ (0 , 1) . Set the radius 
+
+ϵ∗
+
+> n
+
+(β) = C0
+
+κ
+
+h ˆH1/2 
+
+> λ
+
+¯ξn(β)1/4 + ¯ξn(β)1/2i
+
+, (94) where ˆHλ =  P  
+
+> m
+
+λmW 22 (ˆPm, ˆb∗ 
+
+> M
+
+)1/2 is the empirical inter-source heterogeneity and ¯ξn(β) is as in (84). Then, with probability at least 1 − 2β:
+
+b∗ 
+
+> λ
+
+∈ W ϵ∗
+
+> n(β),2
+
+ ˆP1, . . . , ˆPM ; λ, (95) 16 
+
+and ϵ∗
+
+> n
+
+(β) → 0 almost surely as nmin → ∞ . Moreover, the radius satisfies the monotone decay 
+
+ϵ∗
+
+> n
+
+(β) ≤ C0
+
+κ
+
+"
+
+ˆH1/2
+
+> λ
+
+ c1
+
+nmin 
+
+log 2Mβ
+
+1/4#
+
+C0
+
+κ
+
+"
+
++
+
+ c1
+
+nmin 
+
+log 2Mβ
+
+1/2#
+
+, (96) contrasted with the pooled-distribution radius lower bound 
+
+ϵpool ≥ H 2
+
+> λ
+
+/p4N σ max + 4 H2
+
+> λ
+
+, which is bounded away from zero. 
+
+Proof. By the triangle inequality, 
+
+| ˆHλ − H λ| ≤ 
+
+sX
+
+> m
+
+λmW 22 (ˆPm, P∗
+
+> m
+
+) = ξ1/2
+
+> M
+
+. With probability at least 1 − β, ξM ≤ ¯ξn(β) (Theorem 4.1), so ˆHλ ≤ H λ + ¯ξn(β)1/2. Substituting ˆHλ ≤ H λ + ¯ξn(β)1/2
+
+into (94) and absorbing the lower-order term into C0, the right-hand side of (94) is at least as large as εbary  
+
+> n
+
+(β) from (85) with probability 1−β. A second application of Theorem 4.1 at level 
+
+β then yields (95) with combined probability at least 1 − 2β
+
+by the union bound. The monotone decay and the pooled-distribution comparison follow from (96) and Theorem 4.2, respectively. □
+
+D. Target-Free Risk Approximation via Source Barycenter 
+
+In the motivating scenario of this paper, no target-domain samples are available at all. The purpose of this section is to show that the WDRO-GL framework with the barycentric nominal distribution nonetheless provides a valid risk certifi-cate for the target-domain risk, at the sole cost of enlarging the Wasserstein radius by the target-to-barycenter proximity ω,a quantity that characterizes how well the source barycenter approximates the unknown target distribution. This is the strongest theoretical justification for the proposed framework. 
+
+Theorem 4.3: Let P∗ denote the unknown target distribution and suppose there exists ω ≥ 0 such that 
+
+W2
+
+ P∗, b ∗
+
+> λ
+
+ ≤ ω. (97) Under the assumptions of Theorem 4.1, set ϵ = εbary  
+
+> n
+
+(β) + ω.Then with probability at least 1 − β over the draw of source samples, 
+
+P∗ ∈ W ϵ, 2
+
+ ˆP1, . . . , ˆPM ; λ, (98) and consequently, for every graph Laplacian estimator L:
+
+RP∗ (L) ≤ RWϵ, 2 (L), (99) where RWϵ, 2 (L) = sup Q∈W ϵ, 2 EQ[ℓ(L, ·)] is the worst-case risk of (31). 
+
+Proof. By Theorem 4.1, with probability at least 1 − β:
+
+W2(ˆb∗ 
+
+> M
+
+, b ∗
+
+> λ
+
+) ≤ εbary  
+
+> n
+
+(β). (100) By the triangle inequality for W2 and the target proximity assumption (97): 
+
+W2
+
+ P∗, ˆb∗
+
+> M
+
+ ≤ W2(P∗, b ∗
+
+> λ
+
+) + W2(b∗
+
+> λ
+
+, ˆb∗ 
+
+> M
+
+)
+
+≤ ω + εbary  
+
+> n
+
+(β) = ϵ. (101) Since the ambiguity set Wϵ, 2(ˆP1, . . . , ˆPM ; λ) is the Wasser-stein ball of radius ϵ centered at ˆb∗ 
+
+> M
+
+, (101) gives P∗ ∈ W ϵ, 2
+
+on the stated probability event. The risk certificate (99) then follows immediately from the definition of the worst-case risk and the inclusion (98). □
+
+Remark 4.6: The optimal radius ϵ = εbary  
+
+> n
+
+(β) + ω admits a clean decomposition: 
+
+εbary  
+
+> n
+
+(β)
+
+| {z }  
+
+> sampling error →0
+
++ ω|{z} 
+
+> domain gap
+
+, (102) where the first term quantifies the finite-sample approximation error of ˆb∗ 
+
+> M
+
+relative to b∗ 
+
+> λ
+
+(which vanishes as nmin → ∞ ), and the second term ω is the domain gap —the irreducible cost of not observing the target. As nmin → ∞ , the optimal radius converges to ω, the smallest possible radius that can guarantee coverage of P∗ with a ball centered at b∗
+
+> λ
+
+. In practice, ω can be estimated via source-side bounds: for any k,
+
+ω ≤ W2(P∗, P∗
+
+> m
+
+) + W2(P∗
+
+> m
+
+, b ∗
+
+> λ
+
+)
+
+≤ W2(P∗, P∗
+
+> m
+
+) + Hλ/λ 1/2 
+
+> m
+
+, (103) where W2(P∗, P∗
+
+> m
+
+) can be bounded using any available side information (e.g., structural similarity or a small number of proxy observations from the target domain). In contrast, the pooled-distribution approach requires ϵpool ≥ ω + cH2 
+
+> λ
+
+even with infinite data, because the mixing bias W2(P∗
+
+> λ
+
+, b ∗
+
+> λ
+
+) does not vanish (Theorem 4.2). V. A LGORITHM UNROLLING FOR AUTOMATIC 
+
+PARAMETER LEARNING 
+
+Algorithm 1 involves four categories of free parameters whose joint calibration governs the quality of the recovered Laplacian. The sparsity regularization coefficient ρ > 0 enters the objective (33) and, after the Laplacian identity (34), defines the effective nominal matrix K = ˆΣλ + ρH (35) used at every iteration; it is therefore an objective-level parameter that shapes which optimization problem is being solved. The ADMM augmented-Lagrangian penalty ϱ > 0, introduced in (46), is structurally different: it is an algorithm-level pa-rameter that leaves the underlying problem (45) invariant but governs the analytic diagonal entries of the Ξ-update via Lemma 3.4 (49), sets the block-shrinkage threshold ϵ/ϱ 
+
+in the C-update (51), and determines the dual-ascent step size in (52). The Wasserstein ambiguity set radius ϵ > 0
+
+sets the robustness level and couples with ϱ through the joint ratio ϵ/ϱ in the proximity step, so that tuning either in isolation while holding the other fixed is suboptimal. Finally, the barycentric weight vector λ ∈ △ M determines ˆΣλ via the fixed-point iteration (23) and hence contributes to K
+
+alongside ρ. These four categories interact nonlinearly and their interactions cannot be disentangled: ρ and λ jointly construct K, while ϵ and ϱ jointly set the shrinkage threshold. Cross-validation over the resulting joint parameter space is computationally prohibitive in the multi-source regime, and concentration-inequality-based radius selection for ϵ, while tractable, is inherently conservative. To overcome these limitations, we embed the iterative structure of Algorithm 1 into a differentiable architecture via 17 Layer 1 Layer 2 Layer Kℓ      
+
+> D1, . . . , DM
+> source datasets
+> ˆΣ1, . . . , ˆΣM
+> empirical covs.
+> ˆΣm=1
+> nm
+> ∑
+> izm,i zTm,i
+> shared ˆΣ1: M
+
+MBW 
+
+MΞ
+
+MC
+
+MY 
+
+> ϵ(1) , ρ (1) , ϱ (1) ,λ(1)
+
+MBW 
+
+MΞ
+
+MC
+
+MY 
+
+> ϵ(2) , ρ (2) , ϱ (2) ,λ(2)
+
+MBW 
+
+MΞ
+
+MC
+
+MY 
+
+> ϵ(Kℓ), ρ (Kℓ), ϱ (Kℓ),λ(Kℓ)
+
+· · ·                 
+
+> (Ξ ,C,Y)(1) (Ξ ,C,Y)(Kℓ−1) ˆL=PΞ(Kℓ)PT
+> estimated Laplacian
+> Ξ(Kℓ)
+> L∗
+> ground truth
+> J(Θ)
+> training loss
+> Backpropagation: ∇ΘJ,update Θ={(ϵ(k), ρ (k), ϱ (k),α(k))}Kℓk=1
+
+Module Architecture — Computation Details                                                                     
+
+> MBW : BW Barycenter
+> Softmax reparametrisation:
+> λ(k)=softmax( α(k))∈△M
+> BW fixed-point ( iterate till conv. ):
+> ¯Sl+1 = ( ¯Sl)−12
+> 
+> M∑
+> m=1
+> λ(k)
+> m
+> √
+> ( ¯Sl)12 ˆ Σm( ¯Sl)12
+> 
+> 2( ¯Sl)−12
+> where ¯S≜ˆΣ(k)
+> λ
+> Assemble nominal matrix (uses ρ(k)):
+> K(k) = ˆ Σ(k)
+> λ+ρ(k)H,˜K(k) =PTK(k)P
+> MΞ: Eigendecomposition Update
+> Input matrix (uses ϱ(k)):
+> M(k) =1
+> ϱ(k)PT(
+> K(k) +Y(k)−ϱ(k)C(k))
+> P
+> Symmetric eigendecomp.:
+> M(k)=U(k)Λ(k)(U(k))T
+> Analytic diagonal entries (Lemma 2):
+> D(k)
+> ii =
+> −ϱ(k)Λ(k)
+> ii +
+> √
+> (ϱ(k))2(Λ (k)
+> ii )2 + 4 ϱ(k)2ϱ(k)
+> Output: Ξ(k+1) =U(k)D(k)(U(k))T⪰0
+> MC: Block-Shrinkage Update
+> Intermediate (uses ϱ(k)):
+> Z(k) =1
+> ϱ(k)Y(k) +PΞ(k+1) PT
+> Moreau prox (joint threshold ϵ(k)/ϱ (k)):
+> φ(k)(Z) = max
+> (
+> 1−ϵ(k)/ϱ (k)
+> ∥Z∥F,0
+> )
+> ·Z
+> Structured projection onto C:
+> C(k+1) =I⊙[φ(k)]+ +A⊙[φ(k)]−
+> MY: Dual-Ascent Update
+> ADMM dual step (step size ϱ(k)):
+> Y(k+1) =Y(k) +ϱ(k)(
+> PΞ(k+1) PT−C(k+1) )
+> Output state for next layer:
+> S(k+1) =(Ξ (k+1) ,C(k+1) ,Y(k+1) )
+> After Kℓlayers, recover:
+> ˆL=PΞ(Kℓ)PT∈L
+> Legend
+> BW Barycenter ( ρ(k),λ(k))
+> Ξ-Update ( ϱ(k))
+> C-Update ( ϵ(k)/ϱ (k))
+> Y-Update ( ϱ(k))Forward pass Backpropagation
+
+Fig. 1. Overall framework of the unrolled MS-WDRO. 
+
+the algorithm unrolling paradigm, reinterpreting each ADMM iteration as a computational layer and lifting all four param-eter categories to layer-specific learnable variables that are jointly calibrated through end-to-end backpropagation on a supervised training corpus. The resulting Kℓ-layer unrolled network inherits the full interpretability of the ADMM, every layer executes a precisely specified proximal or dual-ascent substep, while acquiring data-adaptive calibration capability that the fixed-parameter solver cannot achieve. Allowing layer-specific ρ(k), ϱ(k), ϵ(k), and λ(k) enables an implicit annealing: 
+
+ρ(k) may be large in early layers to impose strong sparsity regularization when the iterate is far from convergence and progressively relax in later layers as the graph structure consol-idates; ϱ(k) may similarly adapt the ADMM step size along the unrolled trajectory; and λ(k) may shift the effective nominal distribution as the estimate refines. The overall framework of the unrolled ADMM for MS-WDRO is summarized in Figure 1. We now specify the layer architecture. Let S(k) =(Ξ (k), C(k), Y(k)) denote the iterate state entering layer k,initialized as Ξ(0) = IN −1, C(0) = 0, Y(0) = 0. Each layer k
+
+is parameterized by the tuple θ(k) = ( ϵ(k), ρ (k), ϱ (k), α(k)),where ϵ(k), ρ (k), ϱ (k) > 0 are positive scalars and λ(k) =softmax( α(k)) ∈ △ M is the simplex-constrained barycentric weight vector obtained via the unconstrained reparametrization 
+
+α(k) ∈ RM , ensuring feasibility with smooth gradient flow through the simplex constraint. The layer comprises three sequentially executed differentiable modules. The first module, MΞ, constructs the layer-specific coef-ficient matrix and updates the primal variable Ξ. Given the current weights λ(k), it computes 
+
+ˆΣ(k)
+
+λ = BCov   ˆΣ1, . . . , ˆΣM ; λ(k), (104) where BCov( ·; λ(k)) is evaluated via the fixed-point iter-ation (23) at weights λ(k), and its gradient with respect to λ(k) is obtained by implicit differentiation of the fixed-point equation, valid under Assumption 3.5. The module then assembles the layer-specific nominal matrix 
+
+K(k) = ˆΣ(k)
+
+λ + ρ(k)H, ˜K(k) = PT K(k)P, (105) in which ρ(k) and λ(k) jointly determine the effective data-fidelity matrix at depth k. The Ξ-primal update then follows Lemma 3.4: the module computes the eigendecomposition 
+
+1
+
+ϱ(k) PT 
+
+K(k) + Y(k) − ϱ(k)C(k)
+
+P = U(k)Λ(k)
+
+U(k)T
+
+(106) and sets Ξ(k+1) = U(k)D(k)(U(k))T , where the diagonal entries of D(k) are 
+
+D(k)
+
+ii = −ϱ(k)Λ(k)
+
+ii +
+
+q ϱ(k)2 Λ(k)
+
+ii 
+
+2 + 4 ϱ(k)
+
+2ϱ(k) . (107) The mapping (ρ(k), ϱ (k), λ(k)) 7 → Ξ(k+1) is differentiable via matrix perturbation theory for symmetric eigendecompo-sitions. Observe that ρ(k) and ϱ(k) enter the update through structurally distinct channels: ρ(k) shifts K(k) and thereby redefines the optimization landscape at each depth, while ϱ(k)
+
+controls the analytic step-size geometry through D(k)
+
+ii .The second module, MC , executes the structural projection of C via a Moreau proximity step. Setting Z(k) = 1
+
+ϱ(k) Y(k) +
+
+PΞ(k+1) PT , the update reads 
+
+C(k+1) = I ⊙
+
+h
+
+φ(k)
+
+Z(k)i 
+
++
+
++ A ⊙
+
+h
+
+φ(k)
+
+Z(k)i 
+
+−
+
+,
+
+(108) where the matrix block-shrinkage operator is 
+
+φ(k)(Z) = max 
+
+
+
+1 − ϵ(k)/ϱ (k)
+
+∥Z∥F
+
+, 0
+
+
+
+· Z, (109) 18 
+
+[·]+ and [·]− extract the element-wise positive and negative parts, and A is the binary adjacency support mask. The effective shrinkage threshold ϵ(k)/ϱ (k) is the joint product of two independently trainable scalars: ϵ(k) encodes the de-sired robustness level while ϱ(k) normalizes it relative to the augmented-Lagrangian penalty. The mapping (ϵ(k), ϱ (k)) 7 →
+
+C(k+1) is almost everywhere differentiable, with the subgra-dient defined consistently at ∥Z(k)∥F = ϵ(k)/ϱ (k).The third module, MY , performs the dual-ascent step 
+
+Y(k+1) = Y(k) + ϱ(k)
+
+PΞ(k+1) PT − C(k+1) 
+
+, (110) which is linear in all preceding outputs and differentiable with respect to ϱ(k). After Kℓ layers, the Laplacian estimator is recovered as ˆL = PΞ(Kℓ)PT ∈ L . The complete forward pass is summarized in Algorithm 2. 
+
+Algorithm 2 Unrolled ADMM for MS-WDRO (Forward Pass) 
+
+Input: Source datasets {D m}Mm=1 ; depth Kℓ; trainable pa-rameters Θ = {(ϵ(k), ρ (k), ϱ (k), α(k))}Kℓ
+
+> k=1
+
+Output: Estimated graph Laplacian ˆL 
+
+> 1:
+
+Compute ˆΣm = 1
+
+> nm
+
+Pnm 
+
+> i=1
+
+zm,i zTm,i , k ∈ [K] 
+
+> 2:
+
+Initialize Ξ(0) = IN −1, C(0) = 0, Y(0) = 0 
+
+> 3:
+
+for k = 0 to Kℓ − 1 do  
+
+> 4:
+
+λ(k) ← softmax( α(k)) 
+
+> 5:
+
+ˆΣ(k) 
+
+> λ
+
+← BCov( ˆΣ1, . . . , ˆΣM ; λ(k)) via (23)  
+
+> 6:
+
+K(k) ← ˆΣ(k) 
+
+> λ
+
++ ρ(k)H, ˜K(k) ← PT K(k)P 
+
+> 7:
+
+Eigendecomp: 1 
+
+> ϱ(k)
+
+PT  K(k) + Y(k) − ϱ(k)C(k) P =
+
+U(k)Λ(k)(U(k))T 
+
+> 8:
+
+Compute D(k) via (107); Ξ(k+1) ← U(k)D(k)(U(k))T
+
+▷ MΞ 
+
+> 9:
+
+Z(k) ← 1 
+
+> ϱ(k)
+
+Y(k) + PΞ(k+1) PT ; update C(k+1) via (108) ▷ MC 
+
+> 10:
+
+Y(k+1) ← Y(k) + ϱ(k) PΞ(k+1) PT − C(k+1)  ▷ MY 
+
+> 11:
+
+end for  
+
+> 12:
+
+return ˆL = PΞ(Kℓ)PT
+
+The network is trained in a supervised manner on a corpus of Q labeled multi-source instances {(D(j)1 , . . . , D(j) 
+
+> M
+
+, L∗(j)
+
+)}Qj=1 . Denoting the intermediate estimate at layer k and sample j by ˆL(k) 
+
+> j
+
+= PΞ(k) 
+
+> j
+
+PT , the squared relative error (SRE) on edge weights is 
+
+SRE (k) 
+
+> j
+
+= ∥ˆL(k) 
+
+> j
+
+− L∗(j)∥2
+
+> F
+
+∥L∗(j)∥2
+
+> F
+
+. (111) Because every feasible ˆL(k) 
+
+> j
+
+∈ L has non-positive off-diagonal entries, the induced adjacency estimate ˆA(k) 
+
+> j
+
+:= − ˆL(k) 
+
+> j
+
+−
+
+diag( ˆL(k) 
+
+> j
+
+) is entrywise non-negative, so applying the sig-moid directly to ˆA(k) 
+
+> j
+
+would force σ( ˆA(k) 
+
+> j,uv
+
+) ≥ σ(0) = 0 .5 for every node pair (u, v ), precluding any calibrated probability below one-half even for true non-edges. We avoid this by first mapping the non-negative weight estimate to a signed logit via a per-layer, trainable affine transform, 
+
+s(k) 
+
+> j,uv
+
+= γ(k) ˆA(k) 
+
+> j,uv
+
+− η(k), γ (k) = softplus(˜ γ(k)) > 0, (112) where η(k) ∈ R is a learnable decision threshold and the softplus reparameterization of the slope γ(k) preserves mono-tonicity of s(k) 
+
+> j,uv
+
+in the edge weight while allowing η(k)
+
+to push small, likely-spurious weights below the decision boundary ( s(k) 
+
+> j,uv
+
+< 0 ⇒ p(k) 
+
+> j,uv
+
+< 0.5). Topology recovery is then penalized via the binary cross-entropy on the resulting, properly calibrated probability, 
+
+BCE (k) 
+
+> j
+
+= BCE 
+
+
+
+sgn( A∗(j)), σ  s(k)
+
+> j
+
+
+
+, (113) where σ(·) is the element-wise sigmoid applied to the logit matrix s(k) 
+
+> j
+
+of (112), and sgn( A∗(j)) is the binary edge indicator of the ground truth. The two additional scalars 
+
+(˜ γ(k), η (k)) are appended to Θ and trained jointly with all other layer parameters; they add O(Kℓ) parameters in total and leave the forward pass of Algorithm 2, which never invokes 
+
+BCE (k) 
+
+> j
+
+at inference time, unchanged. The aggregate layer-discounted training loss is 
+
+J (Θ) = 1
+
+Q
+
+> Q
+
+X
+
+> j=1
+> Kℓ
+
+X
+
+> k=1
+
+τ Kℓ−kh
+
+SRE (k) 
+
+> j
+
++ ζ BCE (k)
+
+> j
+
+i
+
+, (114) where Θ = {(ϵ(k), ρ (k), ϱ (k), α(k))}Kℓ 
+
+> k=1
+
+collects all trainable parameters, τ ∈ (0 , 1] is a discounting factor that reduces the contribution of early-layer intermediates which are far-ther from convergence, and ζ > 0 balances reconstruction fidelity against topological accuracy. The network is trained by minimizing (114) via the Adam optimizer with a decaying learning rate, initializing ϵ(k) = 1 , ρ(k) = 0 .5, ϱ(k) = 0 .5,
+
+α(k) = 0 (uniform barycentric weights) for all k, and projecting ϵ(k), ρ (k), ϱ (k) onto (0 , +∞) after each gradient step to maintain feasibility. Several structural properties of the proposed archi-tecture merit discussion. The four parameter categories 
+
+(ϵ(k), ρ (k), ϱ (k), λ(k)) are not interchangeable: ρ(k) and λ(k)
+
+are objective-level quantities that alter the optimization prob-lem solved at layer k through K(k), while ϱ(k) is a purely algorithmic quantity that affects the iterative updates without changing the objective. Conflating them, as would occur if ϱ
+
+were set equal to ρ, would destroy this structural separation and preclude the network from independently optimizing the sparsity-robustness trade-off and the ADMM convergence rate. The joint ratio ϵ(k)/ϱ (k), which governs the shrinkage thresh-old in MC , illustrates another benefit of separate learning: the network can adjust the effective robustness (through ϵ(k)) and the proximity step scale (through ϱ(k)) in tandem, achieving any desired threshold through a continuum of (ϵ(k), ϱ (k)) com-binations that a single conflated parameter cannot express. The total number of trainable parameters is Kℓ ·(5+ M ), three pos-itive scalars (ϵ(k), ρ (k), ϱ (k), ˜γ(k), η (k)) and M simplex-space coordinates α(k) per layer, growing only linearly in network depth and source-domain count. This compactness, combined with the domain knowledge encoded in the ADMM structure, allows the unrolled network to generalize from substantially fewer labeled training graphs than a comparably expressive generic deep architecture, which is particularly valuable in the heterogeneous multi-source regime where ground-truth graphs at the target site are typically scarce. VI. E XPERIMENTAL RESULTS 
+
+We evaluate the proposed multi-source Wasserstein distribu-tionally robust graph learning framework (MS-WDRO) against 19 
+
+seven representative baselines spanning three methodological families: smooth-signal optimization methods, deep-learning-based structure-learning methods, and distributionally robust graph learning methods. Section VI-A reports controlled ex-periments on synthetic multi-source networks, designed to iso-late the effect of target-domain sample scarcity, source-target heterogeneity, and the number of available source domains under known ground truth. Section VI-B validates the frame-work on a real multi-site resting-state fMRI cohort, where no ground-truth connectivity graph is available and performance must instead be assessed through held-out signal reconstruc-tion and a downstream clinical classification task. Throughout, we report means and standard errors over independent trials and refrain from selectively favorable comparisons. 
+
+A. Experiments on Synthetic Data 1) Multi-Source Network Generation: Each trial instanti-ates a ground-truth target network G⋆ = ( V, E⋆) on N nodes, drawn from one of three canonical random-graph families used throughout the graph signal processing literature: an Erd˝ os–R´ enyi graph with connection probability p = 0 .18 , a Barab´ asi–Albert graph with attachment parameter m = 2 , and a four-block stochastic block model with assortative intra-block connectivity. Edge weights are drawn independently from Unif(0 .3, 1.0) , and the resulting adjacency matrix is normalized to the combinatorial graph Laplacian L⋆. Unless otherwise stated, results are reported for N = 20 nodes to permit dense Monte Carlo averaging; the scalability study in Section VI-A5 extends this to N up to 500 .To emulate a realistic multi-source deployment in which M
+
+auxiliary domains are structurally related to, but not identical to, the target, each source graph Gm, m = 1, . . . , M , is obtained by applying independent random edge rewiring to 
+
+G⋆ at rate r ∈ [0 , 0.5] : with probability r, each edge in E⋆ is deleted and reconnected to a uniformly sampled node pair, after which edge weights are redrawn from Unif(0 .3, 1.0) .The rewiring rate r thus serves as a single, interpretable knob for source-target heterogeneity, with r = 0 recovering an idealized homogeneous multi-source setting and larger r
+
+producing source domains that are topologically related to, but increasingly divergent from, the target. Unless swept explicitly, we fix M = 5 source domains and r = 0 .3, values chosen to reflect a moderately heterogeneous federation of related but non-identical domains. 
+
+2) Graph Signal Generation: Signals are generated to match the generative law of (4) exactly. For every domain 
+
+d ∈ { target , 1, . . . , M } with Laplacian Ld, we draw 
+
+x = L†1/2 
+
+> d
+
+z, z ∼ N (0, IN ), (115) where L†1/2 
+
+> d
+
+:= Ud(Λ†
+
+> d
+
+)1/2UTd is obtained from the eigen-decomposition Ld = UdΛdUTd , with (Λ †
+
+> d
+
+)ii = 1 /λ d,i for 
+
+λd,i > 0 and 0 on the null direction 1. By construction, 
+
+Cov( x) = L† 
+
+> d
+
+exactly, so the precision matrix of the generated signals coincides with Ld without approximation, and graph recovery under this protocol directly instantiates the statistical model underlying Proposition 3.1 and Theorem 3.3. Each sample is further corrupted by i.i.d. observation noise, 
+
+y = x + n, n ∼ N (0, σ 2IN ), σ = 0.05 , which is not part of the generative law of Section II but represents the residual per-sample uncertainty the Wasserstein ambiguity set is designed to absorb. All methods observe only y and are evaluated against the ground-truth Ld. Each source domain contributes nsrc = 200 i.i.d. samples; the target domain contributes only ntgt ∈ { 5, . . . , 100 } samples, reflecting the small-sample regime that motivates this work. 
+
+3) Baseline Methods and Adaptation Protocol: Table I summarizes the seven baselines. None of them natively sup-ports multiple heterogeneous source domains, so a consistent and explicitly stated adaptation protocol is required for a fair comparison. We group the baselines into two protocols accord-ing to their native design: (i) naive pooling , applied to methods with no training/meta-training phase (SigRep, GLE-ADMM, MUGL, WDRO-GL), where all source and target samples are concatenated into a single empirical distribution prior to estimation; and (ii) source meta-training , applied to methods that are explicitly designed to learn a solver on a distribution of training instances and generalize to a new one (DeepGraph, GLAD, L2G), where the M source domains serve as meta-training tasks and the learned solver is evaluated zero-shot on the scarce target data. MS-WDRO uses neither protocol, since it retains the per-source empirical distributions and combines them through a Wasserstein barycenter ambiguity set, which is the central methodological distinction evaluated throughout this section. We stress that DeepGraph and GLAD were originally developed for sparse precision-matrix recovery from i.i.d. Gaussian samples rather than Laplacian estimation from smooth graph signals; their inclusion probes robustness to this task mismatch under an otherwise favorable adaptation protocol (meta-training), rather than penalizing them through a disadvantageous one. 
+
+4) Evaluation Metrics: Graph recovery accuracy is mea-sured by the edge-detection F -score, computed by thresh-olding the estimated weighted adjacency matrix at zero and comparing the resulting support to that of L⋆, and by the relative Frobenius error ∥ˆL − L⋆∥F /∥L⋆∥F . Both metrics are averaged over 50 independent Monte Carlo trials with inde-pendently resampled graphs, signals, and noise; shaded bands and error bars throughout report the resulting standard error of the mean. Wall-clock time is measured per problem instance on identical hardware and is used to assess the practical benefit of algorithm unrolling independently of estimation accuracy. 5 10 20 30 50 75 100         
+
+> Target sample size ntgt
+> 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0
+> Edge F-score
+> 510 20 30 50 75 100
+> Target sample size ntgt
+> 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9
+> Relative error  ‖̂ L − L * ‖F/‖ L * ‖F
+> dashed = naive-pooled · dotted = meta-trained on sources · solid = proposed
+> DeepGraph [Belilovsky et al., 2017] GLAD [Shrivastava et al., 2020] SigRep [Dong et al., 2016] GLE-ADMM [Zhao et al., 2019] L2G [Pu et al., 2021] MUGL [Wang et al., 2023] WDRO-GL [Zhang et al., 2025] MS-WDRO (proposed)
+
+Fig. 2. Edge F -score and relative Frobenius error versus target sample size 
+
+ntgt , averaged over 50 trials ( N = 20 , M = 5 , r = 0 .3). Dashed: naive-pooled baselines; dotted: source-meta-trained baselines; solid: proposed. 20 
+
+TABLE I BASELINE METHODS , THEIR METHODOLOGICAL FAMILY , AND THE PROTOCOL USED TO ADAPT THEM TO THE MULTI -SOURCE SETTING .Method Family Reference Adaptation protocol SigRep Smooth-signal optimization [10] Naive pooling GLE-ADMM Smooth-signal optimization [53] Naive pooling DeepGraph Deep learning (precision-matrix) [54] Source meta-training GLAD Deep learning (precision-matrix) [43] Source meta-training L2G Deep learning (algorithm unrolling) [55] Source meta-training MUGL Distributionally robust (moment) [56] Naive pooling WDRO-GL Distributionally robust (Wasserstein) [29] Naive pooling 
+
+MS-WDRO Distributionally robust (proposed) — Per-source barycentric fusion 
+
+5) Results and Analysis: a) Sample efficiency.: Figure 2 reports F -score and relative error as a function of the number of target-domain samples ntgt . MS-WDRO dominates all baselines across the entire sampled range, with the largest relative margin in the most sample-starved regime: at ntgt = 5 , MS-WDRO attains an F -score of 0.75 , compared to 0.72 for WDRO-GL, 0.60 –
+
+0.67 for the DRO- and meta-trained baselines, and below 
+
+0.53 for the smooth-signal and precision-matrix baselines. As ntgt grows to 100 , all methods improve and the gap to the strongest baseline (WDRO-GL) narrows to under two F -score points, consistent with the expectation that the value of multi-source information diminishes once the target domain is itself well sampled. We note that SigRep and GLE-ADMM cross over near ntgt = 30 : SigRep’s simpler alternating-minimization scheme reaches a useful solution sooner under extreme scarcity, but GLE-ADMM’s convergence-guaranteed ADMM/MM iteration eventually yields a better-conditioned estimate once sufficient samples are pooled, an interaction between optimizer design and sample size that would be obscured by reporting a single operating point. 0.0 0.1 0.2 0.3 0.4 0.5        
+
+> Source--target heterogeneity level r
+> 0.5 0.6 0.7 0.8 0.9 1.0
+> Edge F-score
+> 0.0 0.1 0.2 0.3 0.4 0.5
+> Source--target heterogeneity level r
+> 0.1 0.2 0.3 0.4 0.5 0.6
+> Relative error  ‖̂ L − L * ‖F/‖ L * ‖F
+> dashed = naive-pooled · dotted = meta-trained on sources · solid = proposed
+> DeepGraph [Belilovsky et al., 2017] GLAD [Shrivastava et al., 2020] SigRep [Dong et al., 2016] GLE-ADMM [Zhao et al., 2019] L2G [Pu et al., 2021] MUGL [Wang et al., 2023] WDRO-GL [Zhang et al., 2025] MS-WDRO (proposed)
+
+Fig. 3. Edge F -score and relative Frobenius error versus source-target heterogeneity (rewiring rate) r (N = 20 , M = 5 , ntgt = 20 ). 
+
+b) Robustness to source-target heterogeneity.: Figure 3 sweeps the rewiring rate r from 0 (homogeneous sources) to 0.5 (substantially divergent sources) at fixed ntgt = 20 
+
+and M = 5. All methods degrade monotonically as r
+
+increases, but at markedly different rates: MS-WDRO’s F -score falls by 14% relative ( 0.945 → 0.815 ), WDRO-GL’s by 17% , while the naive-pooling classical baselines lose over 
+
+30% . This differential is the direct empirical signature of the barycentric ambiguity set: because MS-WDRO retains each source’s empirical distribution and lets the learned radii and barycentric weights adapt to inter-source discrepancy, it is far less sensitive to the injected heterogeneity than methods that collapse all sources into one pooled empirical distribution before estimation. 1 2 3 5 8 12  
+
+> Number of source domains M
+> 0.4 0.5 0.6 0.7 0.8 0.9 1.0
+> Edge F-score
+> dashed = naive-pooled · dotted = meta-trained on sources · solid = proposed
+> DeepGraph [Belilovsky et al., 2017] GLAD [Shrivastava et al., 2020] SigRep [Dong et al., 2016] GLE-ADMM [Zhao et al., 2019] L2G [Pu et al., 2021] MUGL [Wang et al., 2023] WDRO-GL [Zhang et al., 2025] MS-WDRO (proposed)
+
+Fig. 4. Edge F -score versus number of source domains M (N = 20 , r =0.3, ntgt = 20 ). Naive-pooling baselines exhibit negative transfer beyond 
+
+M ≈ 5.
+
+c) Scalability in the number of source domains.: Figure 4 varies the number of source domains M ∈ { 1, 2, 3, 5, 8, 12 }
+
+at fixed r = 0.3. Naive-pooling baselines exhibit a rise-then-fall pattern, improving as additional sources are added up to M ≈ 5 and then degrading as further, more het-erogeneous sources dilute the pooled distribution with con-flicting structure, a form of negative transfer. In contrast, MS-WDRO and the source-meta-trained baselines improve monotonically or plateau, since additional sources are either explicitly reweighted (MS-WDRO) or contribute additional meta-training diversity (DeepGraph, GLAD, L2G) rather than being blindly pooled. This experiment provides direct evidence for the practical necessity of the barycentric formulation whenever the number and heterogeneity of available sources cannot be controlled a priori. MS-WDRO (full) No-Unroll (CV-tuned) Linear-Pooling nominal Naive-Pooled Target-Only 
+
+> 0.0 0.2 0.4 0.6 0.8 1.0
+> Edge F-score
+> MS-WDRO (full) No-Unroll (CV-tuned) Linear-Pooling nominal Naive-Pooled Target-Only
+> 0.0 0.1 0.2 0.3 0.4 0.5
+> Relative error  ‖̂ L − L * ‖F/‖ L * ‖F
+> MS-WDRO (full) No-Unroll (CV-tuned) Linear-Pooling nominal Naive-Pooled Target-Only
+> 10 1
+> 10 2
+> 10 3
+> Estimation time per instance (ms, log scale)
+
+Fig. 5. Ablation study isolating the contribution of barycentric fusion and algorithm unrolling, measured by F -score, relative error, and per-instance estimation time. 
+
+d) Ablation study.: Figure 5 isolates the contribution of each architectural component by comparing the full MS-WDRO model against four reduced variants: (i) No-Unroll ,which replaces the learned per-layer parameters with a sin-gle set of hyperparameters selected by cross-validation; (ii) 
+
+Linear-Pooling , which replaces the Wasserstein barycenter with a simple arithmetic mean of the source covariances as 21 
+
+the ambiguity-set center; (iii) Naive-Pooled , which discards the multi-source structure entirely and pools all samples as in the baseline protocol; and (iv) Target-Only , which uses no source information whatsoever. Each simplification incurs a measurable cost: removing the barycenter in favor of linear pooling costs 10 .6 F -score points, and discarding multi-source structure entirely costs 22 .9 points relative to the full model. The unrolling architecture itself contributes a comparatively modest 4.1-point accuracy gain over its cross-validated, non-unrolled counterpart, but converts a 850 ms per-instance hy-perparameter search into a 4.2 ms forward pass, a two-orders-of-magnitude reduction in inference cost that is orthogonal to, and compounds with, the accuracy benefit of barycentric fusion. 1 2 3 4 5 6 7 8 9 10                                          
+
+> Unrolling layer k
+> 0.2 0.4 0.6 0.8 1.0 1.2 1.4
+> Ambiguity radius  (k)
+> 12345678910
+> Unrolling layer k
+> 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0 1.1 1.2
+> Sparsity coeff.  (k)
+> 12345678910
+> Unrolling layer k
+> 0.4 0.6 0.8 1.0 1.2 1.4 1.6 1.8 2.0
+> ADMM penalty  (k)
+> 12345678910
+> Unrolling layer k
+> 0.05 0.10 0.15 0.20 0.25 0.30 0.35 0.40
+> Barycentric weight  (k)
+> m
+> Source m= 1 Source m= 2 Source m= 3 Source m= 4 Source m= 5
+
+Fig. 6. Layer-wise evolution of the four learned parameters over Kℓ = 10 
+
+unrolled layers: ambiguity radius ϵ(k) (objective-level; decreasing), sparsity regularisation coefficient ρ(k) (objective-level; decreasing), ADMM penalty 
+
+ϱ(k) (algorithm-level; increasing), and barycentric weights λ(k) 
+
+> m
+
+, m =1, . . . , M , for M = 5 sources. 
+
+e) Interpretability of the unrolled parameters.: Figure 6 tracks the layer-wise evolution of all four learned parameter classes, the ambiguity radius ϵ(k), the sparsity regularization coefficient ρ(k), the ADMM penalty ϱ(k), and the barycentric weights λ(k)
+
+m , m = 1 , . . . , M , across the Kℓ = 10 unrolled layers. The ambiguity radius ϵ(k) contracts monotonically from 
+
+1.37 to 0.24 : as successive layers refine an increasingly confi-dent Laplacian estimate, the network requires a progressively smaller Wasserstein robustness margin, reflecting a form of learned distributional annealing. The sparsity regularization coefficient ρ(k) follows a distinct but also decreasing trajectory, declining from 1.08 to 0.40 at a more gradual pace. Its role is to modulate the effective nominal matrix K(k) =ˆΣ(k)
+
+λ + ρ(k)H: large values in early layers impose strong 
+
+ℓ1 regularization that promotes sparse graph recovery, while the later relaxation allows fine-grained edge-weight estimation once the topological structure has been identified, implement-ing a coarse-to-fine refinement across the unrolled depth. The ADMM penalty ϱ(k) increases monotonically from 0.55 to 
+
+1.78 , consistent with standard adaptive-penalty schedules that tighten the consensus constraint as the primal iterates stabilize. Crucially, the joint block-shrinkage threshold ϵ(k)/ϱ (k) in the 
+
+MC update contracts from 2.49 at layer 1 to 0.13 at layer Kℓ,a reduction of roughly 19 ×, because the simultaneous decrease of ϵ(k) and increase of ϱ(k) compound in the denominator of the proximity operator, progressively hardening the structural projection as the estimate matures. The barycentric weights, initialized uniformly at 1/M , diverge substantially over the unrolled trajectory: the network concentrates mass on the two structurally closest sources ( λ(Kℓ)1 = 0 .34 , λ(Kℓ)3 = 0 .30 )while down-weighting the two most dissimilar ones to λ(Kℓ)4 =0.11 and λ(Kℓ)5 = 0 .06 . Taken together, these four trajectories provide qualitative confirmation that the unrolled network learns a physically interpretable and structurally motivated parameter schedule, simultaneous relaxation of distributional robustness and sparsity regularization, adaptive ADMM step-size growth, and distributionally aware source reweighting, rather than an opaque black-box transformation. 10 1 10 2 10 3    
+
+> Target sample size n
+> 10 −1
+> 10 0
+> Out-of-sample excess risk
+> Theoretical bound (1/√ n)
+> Empirical excess risk
+
+Fig. 7. Empirical out-of-sample excess risk versus target sample size n,compared against the theoretical O(1 /√n) bound of Theorem 3.3 (log-log scale). 
+
+f) Validation of the theoretical generalization bound.: 
+
+Figure 7 compares the empirical out-of-sample excess risk against the O(1 /√n) Rademacher-complexity-based bound derived in Section IV (out-of-sample performance theorem), as a function of target sample size n ∈ [10 , 1000] on a log-log scale. The empirical curve tracks the theoretical rate closely, with an ordinary-least-squares fit yielding a log-log slope of 
+
+−0.50 , matching the bound’s predicted exponent to two deci-mal places and confirming, on this synthetic testbed, that the derived finite-sample guarantee is not merely asymptotically valid but quantitatively tight. Ground truth DeepGraph GLAD     
+
+> SigRep GLE-ADMM L2G
+> MUGL WDRO-GL MS-WDRO (Ours)
+> 0.0 0.2 0.4 0.6 0.8 1.0
+> Edge weight
+
+Fig. 8. Recovered adjacency matrices for all eight methods on a representative trial, alongside the ground-truth graph. 
+
+g) Qualitative graph recovery.: Figure 8 visualizes the recovered adjacency matrices of all eight methods against the ground-truth graph for one representative trial ( N = 20 ,22 
+
+ntgt = 20 , r = 0 .3, M = 5 ). The visual pattern corroborates the quantitative results: DeepGraph and GLAD recover a visibly sparser and noisier structure that omits several true edges, the smooth-signal baselines recover the dominant edges but with substantial spurious activity in low-weight regions, and MS-WDRO’s reconstruction is the closest visual match to the ground truth, including in the recovery of several low-weight true edges missed by all baselines. 10 20 50 100 200 500  
+
+> Number of nodes N
+> 10 −3
+> 10 −2
+> 10 −1
+> 10 0
+> 10 1
+> 10 2
+> 10 3
+> Wall-clock time per instance (s, log scale)
+> dashed = naive-pooled · dotted = meta-trained · solid = proposed
+> DeepGraph [Belilovsky et al., 2017] GLAD [Shrivastava et al., 2020] SigRep [Dong et al., 2016] GLE-ADMM [Zhao et al., 2019] L2G [Pu et al., 2021] MUGL [Wang et al., 2023] WDRO-GL [Zhang et al., 2025] MS-WDRO (proposed)
+
+Fig. 9. Wall-clock time per instance versus number of nodes N (log-log scale). 
+
+h) Computational scalability.: Figure 9 reports wall-clock time as a function of network size N ∈ [10 , 500] .Methods with a fixed-depth forward pass at inference time, the meta-trained baselines and the two unrolled DRO meth-ods (WDRO-GL, MS-WDRO), scale sub-cubically in prac-tice (empirical exponent ≈ 2.2–2.3), while the naive-pooling iterative optimizers (SigRep, GLE-ADMM, MUGL), which must repeat full eigendecomposition steps until convergence at test time, scale closer to N 2.9–N 3. At N = 500 , MS-WDRO completes in under 10 seconds versus several minutes for MUGL, the slowest baseline. Critically, this scalability advantage is not unique to MS-WDRO: WDRO-GL, which shares the unrolling backbone, scales comparably, indicating that the computational benefit stems from algorithm unrolling per se, while the accuracy benefit documented above stems specifically from the barycentric multi-source formulation. MS-WDRO is, to our knowledge, the only method evaluated here that obtains both benefits simultaneously. 
+
+B. Experiments on Real-World Data 1) Dataset and Preprocessing: We evaluate on the Autism Brain Imaging Data Exchange I (ABIDE I) repository 1, a multi-site consortium of resting-state functional MRI acqui-sitions that provides a naturally occurring, rather than syn-thetically constructed, instance of heterogeneous multi-source data: each acquisition site employs a distinct scanner vendor, field strength, and imaging protocol, inducing site-specific distribution shift that is well documented in the neuroimag-ing literature. We designate seven sites with comparatively abundant subjects, NYU ( n = 172 ), UM 1 ( n = 86 ), USM (n = 71 ), Yale ( n = 56 ), Pitt ( n = 50 ), Stanford ( n = 39 ), and KKI ( n = 33 ), as source domains, and the smallest available site, CMU ( n = 14 ), as the target domain, directly instantiating the scarce-target, abundant-heterogeneous-source scenario that motivates this work. 
+
+> 1
+
+https://fcon 1000.projects.nitrc.org/indi/abide 
+
+All functional volumes are preprocessed with a standard resting-state pipeline: slice-timing and motion correction, nui-sance regression against the six rigid-body motion parame-ters together with white-matter and cerebrospinal-fluid sig-nals, band-pass temporal filtering to 0.01 –0.1 Hz , and spatial normalization to MNI152 space. Regional time series are extracted over 116 regions of interest using the AAL atlas and treated as graph signals on a node set of size N = 116 ; each subject’s time series constitutes one signal sample. Because functional connectivity graphs are unavailable as ground truth in vivo, we depart from the F -score and relative-error metrics used in Section VI-A and instead adopt two metrics standard in the graph-signal-processing and neuroimaging literature: (i) 
+
+held-out reconstruction error , the normalized mean-squared error of predicting left-out subjects’ regional time series from the learned graph under the smoothness objective, evaluated by 24 -fold cross-validation within the target site; and (ii) 
+
+downstream classification performance , the leave-one-out area under the ROC curve (AUC) of a linear classifier operating on spectral features of the learned target-site graph, applied to the autism-versus-control diagnostic label provided by ABIDE I. The seven baselines and their adaptation protocols follow Sec-tion VI-A3 unchanged, with naive pooling now concatenating all source-site and target-site subjects and source meta-training using the seven source sites as meta-training tasks. DeepGraph GLAD SigRep GLE-ADMM L2G MUGL WDRO-GL MS-WDRO (proposed)   
+
+> 0.0 0.2 0.4 0.6 0.8
+> Held-out reconstruction NMSE (ABIDE I, target site: CMU,  N = 14 )
+> Naive-pooled (target + sources) Meta-trained on source sites Explicit per-source modeling (proposed)
+
+Fig. 10. Held-out reconstruction NMSE on ABIDE I (target site: CMU, 
+
+N = 14 ) for all eight methods. Hatched bars: naive-pooled baselines; solid bars: source-meta-trained baselines; blue: proposed. 
+
+2) Results and Analysis: a) Main comparison.: Figure 10 reports held-out recon-struction NMSE for all eight methods. MS-WDRO achieves the lowest error ( 0.334 ), followed by WDRO-GL ( 0.378 ); the gap between them ( 11 .6% relative) is the smallest among all pairwise comparisons, consistent with the synthetic-data finding that the two methods share an architecture differing only in single- versus multi-source ambiguity-set construction. The task-mismatched baselines (DeepGraph, GLAD), despite being meta-trained on the same seven source sites available to MS-WDRO, trail even the basic naive-pooled classical methods (SigRep, GLE-ADMM), confirming that a favorable adaptation protocol cannot fully compensate for a generative mismatch between the precision-matrix assumption underlying these methods and the smooth-signal structure of resting-state fMRI connectivity. 
+
+b) Sample efficiency at the target site.: Figure 11 sweeps the number of CMU subjects used for target-domain estima-23 3 5 8 11 14 
+
+> Target-site (CMU) subjects used
+> 0.3 0.4 0.5 0.6 0.7 0.8
+> Held-out reconstruction NMSE
+> dashed = naive-pooled · dotted = meta-trained on sources · solid = proposed
+> DeepGraph [Belilovsky et al., 2017] GLAD [Shrivastava et al., 2020] SigRep [Dong et al., 2016] GLE-ADMM [Zhao et al., 2019] L2G [Pu et al., 2021] MUGL [Wang et al., 2023] WDRO-GL [Zhang et al., 2025] MS-WDRO (proposed)
+
+Fig. 11. Held-out reconstruction NMSE versus number of target-site (CMU) subjects used for estimation. 
+
+tion from 3 to the full 14 . The ranking established in the main comparison is preserved across the entire range, and the rela-tive advantage of MS-WDRO over WDRO-GL is largest at the smallest sample size ( n = 3 ), narrowing as more target data becomes available, mirroring the synthetic sample-efficiency result and confirming that the practical benefit of multi-source fusion is concentrated precisely in the small-sample regime that real clinical neuroimaging cohorts routinely face. DeepGraph GLAD SigRep GLE-ADMM L2G MUGL WDRO-GL MS-WDRO (proposed)   
+
+> 0.4 0.5 0.6 0.7 0.8 0.9
+> Leave-one-out AUC (autism vs. control, target site: CMU,  N = 14 )
+> chance level Naive-pooled (target + sources) Meta-trained on source sites Explicit per-source modeling (proposed)
+
+Fig. 12. Leave-one-out AUC for autism-versus-control classification using graph-spectral features of the learned target-site connectivity graph. 
+
+c) Downstream diagnostic classification.: Figure 12 re-ports leave-one-out AUC for autism-versus-control classifica-tion using graph-spectral features derived from each method’s learned target-site graph. MS-WDRO attains an AUC of 0.769 ,compared to 0.732 for WDRO-GL and 0.559 –0.648 for the task-mismatched and classical baselines; all methods exceed the chance level of 0.5. We caution that, with only 14 target-site subjects, these AUC estimates carry substantial sampling variance (bootstrap standard errors of 0.04 –0.06 ), and the absolute classification performance should be interpreted as a proof of concept that improved connectivity estimation translates into improved downstream utility, rather than as a claim of clinical-grade diagnostic accuracy. 
+
+d) Statistical significance.: Figure 13 reports paired Wilcoxon signed-rank tests, computed across the 24 cross-validation folds, comparing MS-WDRO’s reconstruction error against each baseline. All seven comparisons reach signifi-cance at the 0.05 level; the margin is overwhelming against the task-mismatched and classical baselines ( p < 10 −6) and comparatively narrow but still significant against WDRO-GL ( p = 0.016 ), the only baseline sharing MS-WDRO’s distributionally robust, unrolled architecture. DeepGraph GLAD SigRep GLE-ADMM L2G MUGL WDRO-GL    
+
+> 0246810
+> −log 10  (p) , MS-WDRO vs. baseline (paired Wilcoxon signed-rank, 24 CV folds)
+> Naive-pooled baseline Meta-trained on source sites
+> p= 0.05
+> p= 0.01
+> p= 0.001
+
+Fig. 13. Statistical significance ( − log 10 p, paired Wilcoxon signed-rank test, 24 cross-validation folds) of MS-WDRO’s improvement over each baseline. NYU UM_1 USM Yale Pitt Stanford KKI 
+
+> 0.00 0.05 0.10 0.15 0.20 0.25 0.30
+> Learned barycentric weight  λk
+> (target site: CMU,  N = 14 )
+> n=172
+> n=86
+> n=71
+> n=56
+> n=50
+> n=39
+> n=33
+> Acquisition scanner (CMU uses Siemens)
+> Siemens scanner GE scanner Philips scanner
+
+Fig. 14. Barycentric weights learned by MS-WDRO across the seven ABIDE I source sites when estimating the CMU target graph, annotated by acquisition scanner vendor. 
+
+e) Interpretability: learned source contributions.: Fig-ure 14 shows the barycentric weights that MS-WDRO assigns to the seven source sites when estimating the CMU target graph. The two largest weights are assigned to NYU ( λ =0.26 ) and USM ( λ = 0 .23 ), both of which, like CMU, were acquired on Siemens scanners, while the two GE-acquired sites (UM 1, Stanford) and the single Philips-acquired site (KKI) receive markedly lower weights ( λ ≤ 0.07 ). This alignment between the learned weights and scanner vendor, a known confound in multi-site fMRI studies that was never provided to the model as a label, offers external, domain-grounded evidence that the learned barycentric weights cap-ture genuine cross-site distributional similarity rather than an uninterpretable statistical artifact. 0.0 0.5 1.0 1.5 2.0 
+
+> Wall-clock time per instance (s)
+> 0.3 0.4 0.5 0.6 0.7 0.8
+> Held-out reconstruction NMSE (ABIDE I, target site: CMU)
+> DeepGraph GLAD SigRep GLE-ADMM L2G MUGL WDRO-GL MS-WDRO
+> unrolled / meta-trained methods cluster at low runtime
+
+Fig. 15. Held-out reconstruction NMSE versus per-instance wall-clock time on ABIDE I; MS-WDRO and WDRO-GL jointly define the Pareto frontier. 
+
+f) Runtime–accuracy trade-off.: Figure 15 plots recon-struction NMSE against per-instance wall-clock time. MS-WDRO and WDRO-GL jointly form the Pareto frontier, com-bining sub-0.25 -second inference with the lowest reconstruc-tion error; the naive-pooled iterative optimizers require 0.85 –24 
+
+2.1 seconds per instance for comparatively worse accuracy, while the meta-trained precision-matrix baselines are fast but inaccurate. No baseline is simultaneously fast and accurate. Task-mismatched (precision-matrix model) (2 methods) Task-aligned, single-source (optimization-based) (3 methods) Task-aligned, single-source (DRO-based) (2 methods) Proposed (multi-source DRO) (1 method) 
+
+> 0.3 0.4 0.5 0.6 0.7 0.8 0.9
+> Held-out reconstruction NMSE (ABIDE I, target site: CMU)
+> DeepGraph [Belilovsky et al., 2017] GLAD [Shrivastava et al., 2020] SigRep [Dong et al., 2016] GLE-ADMM [Zhao et al., 2019] L2G [Pu et al., 2021] MUGL [Wang et al., 2023] WDRO-GL [Zhang et al., 2025] MS-WDRO (proposed)
+
+Fig. 16. Reconstruction NMSE aggregated by methodological family. 
+
+g) Category-level comparison.: Figure 16 aggregates re-construction error by methodological family (task-mismatched precision-matrix models; task-aligned single-source optimiza-tion methods; task-aligned single-source DRO methods; the proposed multi-source DRO method). The between-family variance dominates the within-family variance, reinforcing that task alignment with the smooth-signal generative assumption, and subsequently distributional robustness, are the primary drivers of performance on this dataset, more so than the classical-versus-deep-learning distinction that is often treated as the primary axis of comparison in the graph-learning literature. Anatomical reference graph          
+
+> L-Front L-Front-Sup L-Temp L-Temp-Med L-Pariet L-Occip L-Insula L-Cing R-Front R-Front-Sup R-Temp R-Temp-Med  R-Pariet R-Occip R-Insula R-Cing
+> GLE-ADMM [Zhao et al., 2019]
+> L-Front L-Front-Sup L-Temp L-Temp-Med L-Pariet L-Occip L-Insula L-Cing R-Front R-Front-Sup R-Temp R-Temp-Med  R-Pariet R-Occip R-Insula R-Cing
+> WDRO-GL [Zhang et al., 2025]
+> L-Front L-Front-Sup L-Temp L-Temp-Med L-Pariet L-Occip L-Insula L-Cing R-Front R-Front-Sup R-Temp R-Temp-Med  R-Pariet R-Occip R-Insula R-Cing
+> MS-WDRO (proposed)
+> L-Front L-Front-Sup L-Temp L-Temp-Med L-Pariet L-Occip L-Insula L-Cing R-Front R-Front-Sup R-Temp R-Temp-Med  R-Pariet R-Occip R-Insula R-Cing
+> Frontal Temporal Parietal Occipital Insula Cingulate
+
+Fig. 17. Circular connectograms of the recovered CMU functional network for a representative classical baseline (GLE-ADMM), the strongest single-source baseline (WDRO-GL), and MS-WDRO, alongside a structural-proximity reference graph. 
+
+h) Qualitative connectome visualization.: Figure 17 dis-plays circular connectograms of the recovered CMU func-tional network for a representative classical baseline (GLE-ADMM), the strongest single-source baseline (WDRO-GL), and MS-WDRO, alongside a structural-proximity reference graph over sixteen coarse anatomical regions. MS-WDRO’s recovered connectogram most closely reproduces the reference graph’s dominant inter-hemispheric and homologous-region connections, while retaining several finer intra-hemis-pheric edges that GLE-ADMM omits. VII. C ONCLUSION 
+
+This paper addressed the problem of network topology in-ference from smooth graph signals in the practically important regime where target-domain observations are scarce or entirely unavailable, yet abundant heterogeneous data from multiple related source domains can be leveraged. We proposed MS-WDRO, a framework that resolves this challenge through three tightly integrated components: a Wasserstein barycentric nom-inal distribution that aggregates heterogeneous source statistics in a geometrically principled manner; a distributionally robust minimax formulation that guards against residual uncertainty between the barycenter and the true target distribution; and an algorithm-unrolling architecture that jointly learns all four framework hyperparameters, the ambiguity set radius, the sparsity regularization coefficient, the augmented Lagrangian penalty, and the barycentric fusion weights, end-to-end from labeled training data. Together, these components form aunified approach that is simultaneously grounded in statistical optimality theory, computationally tractable, and practically self-calibrating. The experimental evidence across both controlled synthetic benchmarks and the real-world ABIDE I multi-site neu-roimaging dataset revealed several insights that go beyond a straightforward accuracy comparison. First, the barycentric formulation is the dominant contributor to overall perfor-mance: replacing the Wasserstein barycenter with an arithmetic average of source covariances, a natural and computationally cheaper alternative, cost more than ten F-score points in the ablation study, confirming that the geometric structure of the Wasserstein metric space is not a theoretical nicety but a practical necessity. Second, naive-pooling baselines exhibited negative transfer as the number of source domains grew beyond a critical threshold, a phenomenon absent in MS-WDRO, whose learned barycentric weights automatically downweighted structurally dissimilar sources rather than al-lowing them to dilute the nominal distribution. Third, the algorithm unrolling architecture contributed a comparatively modest accuracy gain over its cross-validated fixed-parameter counterpart, but delivered a two-orders-of-magnitude reduction in per-instance inference time, transforming the framework from a tool suitable for offline analysis into one compatible with the throughput demands of large-scale neuroimaging studies. Fourth, and perhaps most tellingly, the barycentric weights learned on the neuroimaging dataset aligned sponta-neously with scanner vendor, a known confound that was never provided as a label, offering externally grounded evidence that the learned representations encode genuine distributional similarity rather than statistical artifacts. 
+
+Future Directions 
+
+The present work opens several directions for future inves-tigation. On the signal modeling side, extending the frame-work beyond smooth Gaussian signals to heavy-tailed, non-Gaussian, or time-varying graph settings is a promising di-rection, as the WDRO formulation provides a flexible basis for such extensions. On the learning side, developing self-supervised training strategies without ground-truth topology labels and adaptive mechanisms for selecting the unrolling depth could further improve practical applicability and com-putational efficiency. From a theoretical and practical perspec-tive, establishing generalization guarantees for the end-to-end unrolled predictor and extending MS-WDRO to decentralized 25 
+
+federated settings would provide important steps toward robust and privacy-preserving network learning. APPENDIX APROOF OF THEOREM 3.2 
+
+Proof. By Remark 3.6, f is differentiable at every Ξ(k+1) ,
+
+k ≥ 0, so the first-order optimality condition of the Ξ-update (48) reads, using the scaled form of (46) and the dual update (52), 
+
+∇f (Ξ(k+1) ) + T ∗(Y(k+1) ) = ϱ T ∗ C(k+1) − C(k). (116) Likewise, the first-order (subgradient) optimality condition of the C-update (50) together with (52) gives 
+
+Y(k+1) ∈ ∂g (C(k+1) ). (117) Since ∇f is monotone on the convex set {Ξ ≻ 0} (f
+
+convex) and ∂g is monotone ( g convex), we have 
+
+∇f (Ξ(k+1) ) − ∇ f (Ξ⋆), Ξ(k+1) − Ξ⋆ ≥ 0, (118) 
+
+Y(k+1) − Y⋆, C(k+1) − C⋆ ≥ 0. (119) Substituting the KKT identity ∇f (Ξ⋆) = −T ∗(Y⋆) and (116) into (118), and using T (Ξ(k+1) −Ξ⋆) = r(k+1) +C(k+1) −C⋆
+
+(since T (Ξ⋆) = C⋆), we obtain 
+
+Y(k+1) − Y⋆, r(k+1) + Y(k+1) − Y⋆, C(k+1) − C⋆
+
+≤ − ϱ C(k+1) − C(k), r(k+1) + C(k+1) − C⋆ . (120) Combining (120) with (119) to drop the non-negative cross term, then using Y(k+1) − Y⋆ = ( Y(k) − Y⋆) + ϱ r(k+1) 
+
+(scaled dual update (52)) and completing the square exactly as in the standard two-block ADMM convergence proof (cf. [52], App. A; [51]) 2 yields exactly the claimed descent inequal-ity (56). Non-negativity and monotonic non-increase of V (k) in (56) imply: (a) V (k) converges to a finite limit, hence {C(k)}
+
+and {Y(k)} are bounded; (b) summing (56) over k gives P
+
+> k
+
+ ϱ∥C(k+1) − C(k)∥2 
+
+> F
+
++ ∥r(k+1) ∥2
+
+> F
+
+ ≤ V (0) < ∞, so 
+
+C(k+1) − C(k) → 0 and r(k) → 0, proving (i). Bounded-ness of C(k) together with r(k) → 0 gives boundedness of 
+
+T (Ξ(k)) = C(k) + r(k); since T is injective linear between finite-dimensional spaces, its restriction to any bounded-image sequence has a bounded pre-image, so {Ξ(k)} is bounded. Every subsequential limit ( ¯Ξ, ¯C, ¯Y) therefore satisfies, by closedness of ∇f and ∂g and passing to the limit in (116)– (117) using (i), exactly the KKT system (54); by uniqueness of Ξ⋆ and C⋆, every subsequential limit of Ξ(k) (resp. C(k))equals Ξ⋆ (resp. C⋆), so the full sequences converge, proving (iii); continuity of f, g at the limit gives (ii); and a standard argument (monotonicity of V (k) defined with any dual-optimal 
+
+¯Y forces Y(k) to converge to some dual optimum) completes the proof of (iii) for Y(k). □
+
+> 2The final algebraic combination is problem-agnostic once (116)–(120) are established, and is reproduced here for completeness.
+
+APPENDIX BPROOF OF THEOREM 3.3 
+
+Proof. We first prove part (i). By the mutual independence of σm,i and σm,j for i̸ = j, Eσm ∥ P 
+
+> i
+
+σm,i Σm,i ∥2 
+
+> F
+
+=P 
+
+> i
+
+∥Σm,i ∥2 
+
+> F
+
+. Jensen’s inequality applied to the concave square-root and ∥Σm,i ∥F = ∥zm,i ∥22 ≤ D2 
+
+> Z
+
+(Assumption 3.4) give (Set DZ = DZR(δ/ 2) as specified by Corollary 4.1.) 
+
+Eσm
+
+"
+
+1
+
+nm
+
+> nm
+
+X
+
+> i=1
+
+σm,i Σm,i F
+
+#
+
+≤
+
+vuut 1
+
+n2
+
+> mnm
+
+X
+
+> i=1
+
+∥Σm,i ∥2
+
+> F
+
+≤ D2
+
+> Z
+
+√nm
+
+. (121) Multiplying by Bλ m, summing over m, and using P 
+
+> m
+
+λm/√nm ≤ 1/√nmin yields (71). We now prove part (ii). Introduce the population WDRO risk centered at the true barycenter as R∗ 
+
+> ϵn
+
+(L) := Rb∗ 
+
+> λ
+
+(L) + 
+
+ϵn∥vec( L)∥q , and decompose: 
+
+RP∗ (ˆL∗) − ˆRϵn (ˆL∗) = RP∗ (ˆL∗) − R∗ 
+
+> ϵn
+
+(ˆL∗)| {z }
+
+> (I)
+
++ R∗ 
+
+> ϵn
+
+(ˆL∗) − ˆRϵn (ˆL∗)| {z }
+
+> (II)
+
+. (122) For term (I), since − log |ˆL∗|+ cancels: 
+
+RP∗ (ˆL∗) − R∗ 
+
+> ϵn
+
+(ˆL∗) = RP∗ (ˆL∗) − Rb∗ 
+
+> λ
+
+(ˆL∗)
+
+− ϵn∥vec( ˆL∗)∥q . (123) By Lemma 3.3, the loss ℓ(L, ·) is ∥vec( L)∥q -Lipschitz with respect to the p-Wasserstein metric, so Kantorovich-Rubinstein duality gives 
+
+RP∗ (ˆL∗) − Rb∗ 
+
+> λ
+
+(ˆL∗) ≤ Wp(P∗, b ∗
+
+> λ
+
+) ∥vec( ˆL∗)∥q . (124) Substituting (124) into (123) and invoking the hypothesis 
+
+Wp(P∗, b ∗
+
+> λ
+
+) ≤ ϵn:
+
+RP∗ (ˆL∗) − R∗ 
+
+> ϵn
+
+(ˆL∗) ≤ ∥ vec( ˆL∗)∥q
+
+Wp(P∗, b ∗
+
+> λ
+
+) − ϵn
+
+
+
+≤ 0. (125) The WDRO penalty ϵn∥vec( ˆL∗)∥q thus exactly absorbs the Kantorovich transport cost from P∗ to b∗
+
+> λ
+
+, rendering term (I) non-positive. For term (II), since the ϵn∥vec ∥q contributions cancel in 
+
+R∗ 
+
+> ϵn
+
+− ˆRϵn :
+
+R∗ 
+
+> ϵn
+
+(ˆL∗) − ˆRϵn (ˆL∗) = Rb∗ 
+
+> λ
+
+(ˆL∗) − Rˆb∗
+
+> K
+
+(ˆL∗)= tr  ( ¯Σ∗ 
+
+> λ
+
+− ˆΣλ)ˆL∗. (126) Applying Cauchy-Schwarz with ∥ˆL∗∥F ≤ B:
+
+tr  ( ¯Σ∗ 
+
+> λ
+
+− ˆΣλ)ˆL∗ ≤ B∥ ¯Σ∗ 
+
+> λ
+
+− ˆΣλ∥F . (127) Applying Assumption 3.5 with ˆΣm = n−1
+
+> m
+
+P 
+
+> i
+
+Σm,i :
+
+B∥ ¯Σ∗ 
+
+> λ
+
+− ˆΣλ∥F ≤ BL bary 
+
+> M
+
+X
+
+> m=1
+
+λm∥Σm − ˆΣm∥F . (128) 26 
+
+Since ∥Σm − ˆΣm∥F = sup ∥M∥F ≤1 |tr((Σ m − ˆΣm)M)|, the Rademacher symmetrization lemma applied to the i.i.d. sample 
+
+{Σm,i }nm 
+
+> i=1
+
+yields 
+
+E∥Σm − ˆΣm∥F
+
+ ≤ 2 Eσm
+
+"
+
+1
+
+nm
+
+> nm
+
+X
+
+> i=1
+
+σm,i Σm,i F
+
+#| {z } 
+
+> =: RF
+> nm
+
+.
+
+(129) By definition (70), Rn(LB ; λ) = B P 
+
+> m
+
+λmRF 
+
+> nm
+
+, so multi-plying (129) by BL bary λm and summing gives 
+
+BL bary 
+
+> M
+
+X
+
+> m=1
+
+λm E∥Σm − ˆΣm∥F
+
+ ≤ 2Lbary Rn(LB ; λ).
+
+(130) For concentration, replacing any single zm,j changes ∥Σm −
+
+ˆΣm∥F by at most 2D2 
+
+> Z
+
+/n m. McDiarmid’s inequality at con-fidence δ/M for each m, combined with (129), gives with probability at least 1 − δ/M :
+
+∥Σm − ˆΣm∥F ≤ 2RF 
+
+> nm
+
++ D2
+
+> Z
+
+s
+
+2 log( M/δ )
+
+nm
+
+. (131) A union bound over m ∈ [M ] yields, with probability at least 
+
+1 − δ:
+
+BL bary 
+
+> M
+
+X
+
+> m=1
+
+λm∥Σm − ˆΣm∥F ≤ 2Lbary Rn(LB ; λ)+ BL bary D2
+
+> Z
+
+p2 log( M/δ )
+
+√nmin 
+
+. (132) Substituting (132) into (128) and (127) gives term (II) ≤
+
+∆n(δ) with probability at least 1 − δ. Combining with (125) and (122): 
+
+RP∗ (ˆL∗) − ˆRϵn (ˆL∗) ≤ 0 + ∆ n(δ) = ∆ n(δ), (133) which establishes (72). Part (iii) is immediate from (71). □
+
+APPENDIX CPROOF OF LEMMA 4.2 
+
+Proof. Throughout, write F (ν) = PMm=1 λmW 22 (ν, P∗
+
+> m
+
+)
+
+for the population barycenter functional and ˆF (ν) =PMm=1 λmW 22 (ν, ˆPm) for its empirical counterpart, so that 
+
+b∗ 
+
+> λ
+
+= arg min ν F (ν) and ˆb∗ 
+
+> M
+
+= arg min ν ˆF (ν). Set δ =
+
+W2(ˆb∗ 
+
+> M
+
+, b ∗
+
+> λ
+
+), ξm = W2(ˆPm, P∗
+
+> m
+
+) for m ∈ [M ], and ∆m =
+
+W2(b∗
+
+> λ
+
+, P∗
+
+> m
+
+), so that H2 
+
+> λ
+
+= PMm=1 λm∆2 
+
+> m
+
+and, by definition, 
+
+ξM = PMm=1 λmξ2
+
+> m
+
+; since λ ∈ △ M , both {λm∆2
+
+> m
+
+} and 
+
+{λmξ2
+
+> m
+
+} are convex combinations, a fact used repeatedly below. Our goal is to control δ in terms of ξM and Hλ.We first translate the sub-optimality gap F (ˆb∗ 
+
+> M
+
+)−F (b∗
+
+> λ
+
+) into a bound on δ itself. Assumption 3.4 postulates that F is κ-strongly convex along generalized geodesics on (P2(Z), W 2);combined with the first-order optimality of b∗ 
+
+> λ
+
+as the unique global minimizer of F , strong geodesic convexity yields, for every ν ∈ P 2(Z),
+
+F (ν) − F (b∗
+
+> λ
+
+) ≥ κ W 22 (ν, b ∗
+
+> λ
+
+), (134) because the first-order term in the geodesic convexity in-equality is non-negative at a minimizer and may be discarded without weakening the bound. Instantiating (134) at ν = ˆb∗
+
+> M
+
+gives 
+
+κ δ 2 ≤ F ˆb∗
+
+> M
+
+ − F b∗
+
+> λ
+
+. (135) It therefore suffices to bound the right-hand side of (135). Because ˆb∗ 
+
+> M
+
+minimizes ˆF over P2(Z) while b∗ 
+
+> λ
+
+is merely a feasible, generally suboptimal, point of ˆF , we have ˆF (ˆb∗ 
+
+> M
+
+) ≤
+
+ˆF (b∗
+
+> λ
+
+). Adding and subtracting ˆF (ˆb∗ 
+
+> M
+
+) and ˆF (b∗
+
+> λ
+
+) inside 
+
+F (ˆb∗ 
+
+> M
+
+) − F (b∗
+
+> λ
+
+) and then discarding the non-positive quantity 
+
+ˆF (ˆb∗ 
+
+> M
+
+) − ˆF (b∗
+
+> λ
+
+) produces the basic inequality 
+
+F ˆb∗
+
+> M
+
+ − F b∗
+
+> λ
+
+ ≤ F (ˆb∗ 
+
+> M
+
+) − ˆF (ˆb∗ 
+
+> M
+
+)| {z }
+
+> =: T1
+
++  ˆF (b∗
+
+> λ
+
+) − F (b∗
+
+> λ
+
+)| {z }
+
+> =: T2
+
+. (136) Expanding the definitions of F and ˆF term by term, 
+
+T1 =
+
+> M
+
+X
+
+> m=1
+
+λm
+
+W 22 (ˆb∗ 
+
+> M
+
+, P∗
+
+> m
+
+) − W 22 (ˆb∗ 
+
+> M
+
+, ˆPm),T2 =
+
+> M
+
+X
+
+> m=1
+
+λm
+
+W 22 (b∗
+
+> λ
+
+, ˆPm) − W 22 (b∗
+
+> λ
+
+, P∗
+
+> m
+
+). (137) Both sums involve differences of squared Wasserstein dis-tances from a fixed reference measure to two nearby targets, which we now bound uniformly. For any ν ∈ P 2(Z) and any 
+
+α, β ∈ P 2(Z), factoring the difference of squares and apply-ing the reverse triangle inequality |W2(ν, α ) − W2(ν, β )| ≤ 
+
+W2(α, β ) gives 
+
+W 22 (ν, α ) − W 22 (ν, β )
+
+= W2(ν, α ) − W2(ν, β ) ·  W2(ν, α ) + W2(ν, β )
+
+≤ W2(ν, α ) + W2(ν, β ) W2(α, β ). (138) We apply (138) to each summand of T1 with ν = ˆb∗ 
+
+> M
+
+, α = P∗
+
+> m
+
+,
+
+β = ˆPm, so that W2(α, β ) = ξm; it remains to bound the sum 
+
+W2(ˆb∗ 
+
+> M
+
+, P∗
+
+> m
+
+) + W2(ˆb∗ 
+
+> M
+
+, ˆPm). The triangle inequality through 
+
+b∗ 
+
+> λ
+
+gives W2(ˆb∗ 
+
+> M
+
+, P∗
+
+> m
+
+) ≤ W2(ˆb∗ 
+
+> M
+
+, b ∗
+
+> λ
+
+) + W2(b∗
+
+> λ
+
+, P∗
+
+> m
+
+) = δ +∆m, and a further application of the triangle inequality through 
+
+P∗ 
+
+> m
+
+gives W2(ˆb∗ 
+
+> M
+
+, ˆPm) ≤ W2(ˆb∗ 
+
+> M
+
+, P∗
+
+> m
+
+) + W2(P∗
+
+> m
+
+, ˆPm) ≤
+
+δ + ∆ m + ξm. Summing these two bounds, W2(ˆb∗ 
+
+> M
+
+, P∗
+
+> m
+
+) + 
+
+W2(ˆb∗ 
+
+> M
+
+, ˆPm) ≤ 2δ + 2∆ m + ξm, and substituting into (138) yields the termwise bound 
+
+W 22 (ˆb∗ 
+
+> M
+
+, P∗
+
+> m
+
+) − W 22 (ˆb∗ 
+
+> M
+
+, ˆPm) ≤ (2 δ + 2∆ m + ξm) ξm.
+
+(139) The same argument applied to each summand of T2, now with 
+
+ν = b∗
+
+> λ
+
+, α = ˆPm, β = P∗ 
+
+> m
+
+(so W2(α, β ) = ξm again), gives 
+
+W2(b∗
+
+> λ
+
+, ˆPm) ≤ W2(b∗
+
+> λ
+
+, P∗
+
+> m
+
+) + W2(P∗
+
+> m
+
+, ˆPm) = ∆ m + ξm and 
+
+W2(b∗
+
+> λ
+
+, P∗
+
+> m
+
+) = ∆ m, so that W2(b∗
+
+> λ
+
+, ˆPm) + W2(b∗
+
+> λ
+
+, P∗
+
+> m
+
+) ≤
+
+2∆ m + ξm and hence 
+
+W 22 (b∗
+
+> λ
+
+, ˆPm) − W 22 (b∗
+
+> λ
+
+, P∗
+
+> m
+
+) ≤ (2∆ m + ξm) ξm. (140) 27 
+
+Weighting (139) and (140) by λm, summing over m ∈ [M ],and substituting into (137) gives 
+
+T1 + T2 ≤ 2δ
+
+> M
+
+X
+
+> m=1
+
+λmξm + 4 
+
+> M
+
+X
+
+> m=1
+
+λm∆mξm
+
++ 2 
+
+> M
+
+X
+
+> m=1
+
+λmξ2
+
+> m
+
+, (141) which, together with (136), bounds F (ˆb∗ 
+
+> M
+
+) − F (b∗
+
+> λ
+
+) by the right-hand side of (141). The three sums in (141) are controlled by the Cauchy– Schwarz inequality with respect to the probability weights λ.Since PMm=1 λm = 1 , treating λm as a probability measure on 
+
+[M ] and applying Cauchy–Schwarz to the pairs (ξm, 1) and 
+
+(∆ m, ξ m) gives 
+
+> M
+
+X
+
+> m=1
+
+λmξm ≤
+
+ MX
+
+> m=1
+
+λmξ2
+
+> m
+
+1/2 MX
+
+> m=1
+
+λm
+
+1/2
+
+= ξ1/2 
+
+> M
+
+,
+
+(142) 
+
+> M
+
+X
+
+> m=1
+
+λm∆mξm ≤
+
+ MX
+
+> m=1
+
+λm∆2
+
+> m
+
+1/2 MX
+
+> m=1
+
+λmξ2
+
+> m
+
+1/2
+
+= Hλ ξ1/2 
+
+> M
+
+, (143) while the third sum equals ξM exactly, by definition. Substi-tuting (142)–(143) into (141) and then into (135) yields the single quadratic inequality 
+
+κ δ 2 ≤ 2δ ξ 1/2 
+
+> M
+
++ 4 Hλ ξ1/2 
+
+> M
+
++ 2 ξM . (144) It remains to extract an explicit bound on δ from (144). Rearranging, (144) states that δ ≥ 0 satisfies g(δ) ≤ 0 for the univariate quadratic g(x) = κx 2 − 2ξ1/2 
+
+> M
+
+x − C with C := 4Hλξ1/2 
+
+> M
+
++ 2 ξM ≥ 0. Since κ > 0, g is a strictly convex parabola opening upward with g(0) = −C ≤ 0; consequently 
+
+g admits a unique non-negative root x∗ ≥ 0, and g(x) ≤ 0
+
+precisely on the interval [x−, x ∗] with x− ≤ 0 ≤ x∗. As δ ≥ 0,this forces δ ≤ x∗, where the quadratic formula gives 
+
+x∗ = 2ξ1/2 
+
+> M
+
++ √4ξM + 4 κC 
+
+2κ = ξ1/2 
+
+> M
+
++ √ξM + κC κ . (145) Substituting κC = 4 κHλξ1/2 
+
+> M
+
++ 2 κξ M and collecting the ξM
+
+terms gives 
+
+δ ≤ ξ1/2 
+
+> M
+
++
+
+q
+
+(1 + 2 κ) ξM + 4 κ Hλ ξ1/2
+
+> M
+
+κ . (146) Applying the subadditivity of the square root, √a + b ≤ √a+√b for a, b ≥ 0, to the two non-negative terms under the radical in (146), with a = (1 + 2 κ)ξM and b = 4 κHλξ1/2 
+
+> M
+
+,gives 
+
+q
+
+(1 + 2 κ)ξM + 4 κHλξ1/2 
+
+> M
+
+≤ √1 + 2 κ ξ 1/2
+
+> M
+
++ 2 √κ H1/2 
+
+> λ
+
+ξ1/4 
+
+> M
+
+, (147) using 
+
+q
+
+(ξ1/2 
+
+> M
+
+)2 = ξ1/2 
+
+> M
+
+and 
+
+q
+
+4κHλξ1/2 
+
+> M
+
+= 2 √κHλ ξ1/4 
+
+> M
+
+=2√κ H1/2 
+
+> λ
+
+ξ1/4 
+
+> M
+
+. Combining (146) and (147), 
+
+δ ≤
+
+ 1 + √1 + 2 κ  ξ1/2 
+
+> M
+
++ 2 √κ H1/2 
+
+> λ
+
+ξ1/4
+
+> M
+
+κ . (148) Finally, setting C0 := 1 + √1 + 2 κ + 2 √κ, we have both 
+
+1 + √1 + 2 κ ≤ C0 and 2√κ ≤ C0 by construction, so that bounding each coefficient in (148) by C0 gives 
+
+δ ≤ C0
+
+κ
+
+
+
+H1/2 
+
+> λ
+
+ξ1/4 
+
+> M
+
++ ξ1/2
+
+> M
+
+
+
+, (149) which is exactly (83), with C0 a universal constant indepen-dent of M , λ, and the source distributions. This completes the proof. □
+
+APPENDIX DPROOF OF THEOREM 4.2 
+
+Proof. We first identify the barycenter b∗ 
+
+> λ
+
+explicitly under the common-covariance model. Substituting Σm = Σ for every m ∈ [M ] into the covariance fixed-point equation of Proposition 3.1 ((23)) shows that ¯Σ = Σ is a solution, since √Σ1/2ΣΣ 1/2 = √Σ2 = Σ and hence the right-hand side collapses to PMm=1 λmΣ = Σ by P 
+
+> m
+
+λm = 1; as Proposition 3.1 guarantees the fixed point is unique in SN
+
+> ++
+
+,this is the barycentric covariance, and together with the mean formula ¯μλ = P 
+
+> m
+
+λmμm of Proposition 3.1 we obtain 
+
+b∗ 
+
+> λ
+
+= N (¯ μλ, Σ) . (150) This identification also lets us relate the inter-source hetero-geneity Hλ of (82) to the scatter matrix ∆λ: since b∗ 
+
+> λ
+
+and each 
+
+P∗ 
+
+> m
+
+are Gaussian with the identical covariance Σ, the Gelbrich formula gives W2(b∗
+
+> λ
+
+, P∗
+
+> m
+
+)2 = ∥μm − ¯μλ∥2 + B2(Σ , Σ) = 
+
+∥μm − ¯μλ∥2, because B(Σ , Σ) = 0 ; weighting by λm and summing over m therefore yields H2 
+
+> λ
+
+= P 
+
+> m
+
+λm∥μm −
+
+¯μλ∥2 = tr  P  
+
+> m
+
+λm(μm − ¯μλ)( μm − ¯μλ)T  = tr(∆ λ), an identity used repeatedly below. We next compute the covariance of the pooled distribution 
+
+P∗ 
+
+> λ
+
+by conditioning on source membership. Let ι ∈ [M ] be a random index with Pr( ι = m) = λm, and let X ∼ P∗
+
+> λ
+
+be generated hierarchically as X = μι + Σ 1/2Z with Z ∼N (0 , IN ) independent of ι; this construction reproduces P∗ 
+
+> λ
+
+=P 
+
+> m
+
+λmN (μm, Σ) by construction. Then X − ¯μλ = ( μι −
+
+¯μλ) + Σ 1/2Z, and expanding the outer product, 
+
+(X − ¯μλ)( X − ¯μλ)T = ( μι − ¯μλ)( μι − ¯μλ)T
+
++ Σ 1/2Z(μι − ¯μλ)T + ( μι − ¯μλ)ZT Σ1/2
+
++ Σ 1/2ZZ T Σ1/2. (151) Taking the conditional expectation given ι and using E[Z] = 0,
+
+E[ZZ T ] = IN (independence of Z from ι), the two cross terms vanish and the last term reduces to Σ, giving E(X −
+
+¯μλ)( X − ¯μλ)T | ι = m = ( μm − ¯μλ)( μm − ¯μλ)T + Σ .Averaging over ι with weights λm then yields 
+
+Cov( P∗
+
+> λ
+
+) = 
+
+> M
+
+X
+
+> m=1
+
+λm
+
+h
+
+Σ + ( μm − ¯μλ)( μm − ¯μλ)T i
+
+= Σ + ∆ λ, (152) 28 
+
+using P 
+
+> m
+
+λm = 1 to isolate Σ and the definition (88) for the second term. Since ∆λ ⪰ 0 and ∆λ̸ = 0 precisely when Hλ =ptr(∆ λ) > 0, identity (152) shows that heterogeneous source means strictly inflate the covariance of the pooled distribution relative to that of the true barycenter b∗
+
+> λ
+
+, whose covariance remains Σ by (150). This covariance inflation is converted into a Wasserstein separation via the Gelbrich inequality [39], which states that for any α, β ∈ P2(RN ) with means Eα[X], Eβ [Y ] and covariances Cov( α), Cov( β),
+
+W 22 (α, β ) ≥ Eα[X] − Eβ [Y ] 2
+
++ B2 Cov( α), Cov( β), (153) this inequality holding for arbitrary distributions with the stated moments, with equality when both are Gaussian. Taking 
+
+α = P∗
+
+> λ
+
+, with mean ¯μλ and covariance Σ + ∆ λ by (152), and β = b∗
+
+> λ
+
+, with mean ¯μλ and covariance Σ by (150), the two means coincide and the mean term in (153) vanishes identically, leaving 
+
+W 22 (P∗
+
+> λ
+
+, b ∗
+
+> λ
+
+) ≥ B2(Σ + ∆ λ, Σ) , (154) which is the first inequality in (89). It remains to lower bound 
+
+B2(Σ + ∆ λ, Σ) explicitly in terms of Hλ.Writing F (ρ, σ ) ≜ tr  (ρ1/2σρ 1/2)1/2 for the Uhlmann– Bures quantum fidelity, the Bures–Wasserstein distance admits the identity 
+
+B2(Σ , Σ + ∆ λ) = tr(Σ) + tr(Σ + ∆ λ)
+
+− 2 F (Σ , Σ + ∆ λ), (155) so that a lower bound on B2 follows from an upper bound on the fidelity term F (Σ , Σ + ∆ λ). We obtain such a bound by symmetrizing Σ and Σ + ∆ λ over the orthogonal group. The fidelity F is jointly concave on SN 
+
+> +
+
+×SN 
+
+> +
+
+by the Lieb concavity theorem [45], and it is invariant under simultaneous conjuga-tion by any orthogonal matrix, F (U ρU T , U σU T ) = F (ρ, σ )
+
+for all U ∈ O( N ), since conjugation by U merely relabels the eigenbasis without altering the eigenvalues of ρ1/2σρ 1/2.Let μ denote the Haar probability measure on O( N ) and regard U 7 →  U ΣU T , U (Σ + ∆ λ)U T  as a μ-random pair of matrices. Jensen’s inequality applied to the jointly concave map F gives 
+
+F
+
+Z 
+
+U ΣU T dμ (U ),
+
+Z
+
+U (Σ + ∆ λ)U T dμ (U )
+
+
+
+≥
+
+Z
+
+F  U ΣU T , U (Σ + ∆ λ)U T  dμ (U ), (156) and by unitary invariance the integrand on the right equals the constant F (Σ , Σ + ∆ λ), so that the right-hand side of (156) evaluates to F (Σ , Σ + ∆ λ). On the left-hand side, the twirling identity R  
+
+> O( N)
+
+U AU T dμ (U ) = (tr( A)/N ) I,valid for any A ∈ SN [46], gives R U ΣU T dμ = ¯ σI and R U (Σ+∆ λ)U T dμ = (¯ σ+ ¯d)I, where we write ¯σ := tr(Σ) /N 
+
+and ¯d := tr(∆ λ)/N = H2
+
+> λ
+
+/N (the trace identity established above). Combining these two evaluations of (156) yields the scalar reduction 
+
+F (Σ , Σ + ∆ λ) ≤ F  ¯σI, (¯ σ + ¯d)I. (157) The right-hand side of (157) is now an explicit scalar quantity: since ¯σI and (¯ σ + ¯d)I are proportional to the identity and therefore commute, (¯ σI)1/2(¯ σ + ¯d)I(¯ σI)1/2 = ¯σ(¯ σ + ¯d)I,whose square root is p¯σ(¯ σ + ¯d) I, giving 
+
+F  ¯σI, (¯ σ + ¯d)I = N
+
+q
+
+¯σ(¯ σ + ¯d) = N ¯σ
+
+q
+
+1 + ¯d/ ¯σ. (158) Substituting (157) and (158) into (155), and using tr(Σ) + tr(Σ + ∆ λ) = N ¯σ + N (¯ σ + ¯d) = N (2¯ σ + ¯d), gives 
+
+B2(Σ , Σ + ∆ λ) ≥ N (2¯ σ + ¯d) − 2N ¯σ
+
+q
+
+1 + ¯d/ ¯σ. (159) The right-hand side of (159) is a perfect square in disguise: expanding N  p ¯σ + ¯d − √¯σ2 = N (¯ σ + ¯d) − 2p¯σ(¯ σ + ¯d) + ¯σ = N (2¯ σ + ¯d) − 2N p¯σ(¯ σ + ¯d), and noting p¯σ(¯ σ + ¯d) = ¯σp1 + ¯d/ ¯σ, shows that the right-hand side of (159) equals exactly N (p¯σ + ¯d − √¯σ)2. Rationalizing this difference via 
+
+(p¯σ + ¯d − √¯σ)( p¯σ + ¯d + √¯σ) = ¯d gives the equivalent closed form 
+
+N  p 
+
+¯σ + ¯d − √¯σ2 = N ¯d2
+
+ p ¯σ + ¯d + √¯σ2 . (160) Since ¯d ≥ 0, we have √¯σ ≤ p¯σ + ¯d, so the denominator in (160) satisfies (p¯σ + ¯d + √¯σ)2 ≤  2p¯σ + ¯d2 = 4(¯ σ +¯d); replacing the denominator by this upper bound can only increase the fraction, so 
+
+N ¯d2
+
+(p¯σ + ¯d + √¯σ)2 ≥ N ¯d2
+
+4(¯ σ + ¯d) . (161) Substituting ¯σ = tr(Σ) /N and ¯d = tr(∆ λ)/N into (161) and simplifying, 
+
+N ¯d2
+
+4(¯ σ + ¯d) = N ·  tr(∆ λ)/N 2
+
+4 tr(Σ) /N + tr(∆ λ)/N 
+
+=
+
+ tr(∆ λ)2
+
+4 tr(Σ) + tr(∆ λ) = H4
+
+> λ
+
+4 tr(Σ) + H2
+
+> λ
+
+ , (162) where the last equality uses tr(∆ λ) = H2
+
+> λ
+
+. Chaining (159)– (162) establishes 
+
+B2(Σ , Σ + ∆ λ) ≥ H4
+
+> λ
+
+4 tr(Σ) + H2
+
+> λ
+
+ . (163) Finally, since tr(Σ) ≤ N σ max (Σ) (the trace is the sum of N
+
+eigenvalues each bounded by the largest one), enlarging the denominator in (163) from tr(Σ) + H2 
+
+> λ
+
+to N σ max (Σ) + H2
+
+> λ
+
+can only decrease the fraction, so 
+
+B2(Σ + ∆ λ, Σ) ≥ H4
+
+> λ
+
+4N σ max (Σ) + 4 H2
+
+> λ
+
+, (164) which is the second inequality in (89). The right-hand side is strictly positive whenever Hλ > 0, since its numerator is then strictly positive while its denominator is finite, completing the proof of the quantitative lower bound (89). The contrasting almost-sure convergence W2(ˆb∗ 
+
+> M
+
+, b ∗
+
+> λ
+
+) → 0
+
+as nmin → ∞ follows from the finite-sample concentration inequality of Theorem 4.1: that theorem bounds, for every 
+
+ϵ > 0, the probability that W2(ˆb∗ 
+
+> M
+
+, b ∗
+
+> λ
+
+) exceeds ϵ by a term decaying exponentially in nmin , which is summable 29 
+
+over nmin ∈ N; the Borel–Cantelli lemma then implies that the event {W2(ˆb∗ 
+
+> M
+
+, b ∗
+
+> λ
+
+) > ϵ } occurs for only finitely many 
+
+nmin almost surely, and letting ϵ ↓ 0 along a countable sequence yields almost-sure convergence of W2(ˆb∗ 
+
+> M
+
+, b ∗
+
+> λ
+
+) to zero. In particular, the barycentric estimator is asymptotically consistent for the true barycenter b∗
+
+> λ
+
+, whereas by (89) the pooled distribution P∗ 
+
+> λ
+
+remains bounded away from b∗ 
+
+> λ
+
+by a fixed, sample-size-independent margin whenever the sources are heterogeneous: the mixing bias incurred by naive pooling is therefore irreducible, in contrast to the vanishing estimation error of the barycentric construction. □
+
+APPENDIX EPROOF OF PROPOSITION 4.1 
+
+Proof. Barycenter covariance in closed form. Substitute the ansatz Σ = Q diag( σ) QT into the fixed-point equation (23). Since every Σm is diagonal in the same basis Q, so is 
+
+Σ1/2ΣmΣ1/2, with k-th diagonal entry σkσm,k , whose square root is √σkσm,k ; equation (23) therefore decouples into N
+
+independent scalar equations σk = P 
+
+> m
+
+λm
+
+√σkσm,k , i.e. 
+
+√σk = P 
+
+> m
+
+λm
+
+√σm,k , which is uniquely solved by ¯σλ,k 
+
+of (90); uniqueness of the ambient fixed point (Proposition 3.1) then identifies ¯Σλ = Q diag( ¯ σλ) QT as the barycentric covariance, giving b∗ 
+
+> λ
+
+= N (μ, ¯Σλ).
+
+Pooled covariance. Represent X ∼ P∗ 
+
+> λ
+
+hierarchically as 
+
+X = μ + Σ 1/2 
+
+> ι
+
+Z with Pr( ι = m) = λm and Z ∼ N (0, IN )
+
+independent of ι. Since the mean is common, Cov( X) = 
+
+Eι
+
+Σ1/2 
+
+> ι
+
+E[ZZ T ] Σ 1/2
+
+> ι
+
+ = Eι[Σ ι] = ¯Σarith , with k-th diagonal entry ¯σarith ,k in the Q-basis. 
+
+Gelbrich reduction. Applying the Gelbrich inequality (153) with α = P∗ 
+
+> λ
+
+(mean μ, covariance ¯Σarith ) and β = b∗ 
+
+> λ
+
+(mean 
+
+μ, covariance ¯Σλ), the mean term vanishes identically and 
+
+W 22 (P∗
+
+> λ
+
+, b ∗
+
+> λ
+
+) ≥ B2( ¯Σarith , ¯Σλ). (165) Because ¯Σarith and ¯Σλ are simultaneously diagonal in Q
+
+(Steps 1–2), no twirling argument is needed: the fidelity term is exactly F ( ¯Σarith , ¯Σλ) = P
+
+> k
+
+√¯σarith ,k ¯σλ,k , and 
+
+B2( ¯Σarith , ¯Σλ) = 
+
+> N
+
+X
+
+> k=1
+
+p¯σarith ,k − p¯σλ,k 
+
+2
+
+, (166) which is (91). By Jensen’s inequality applied to the strictly concave map t 7 → √t, ¯σarith ,k ≥ ¯σλ,k for every k, with equality iff σm,k is constant across m (for those m with 
+
+λm > 0); hence each summand, and thus the total, is strictly positive as soon as Σi̸ = Σ j for some pair with λi, λ j > 0.
+
+Closed-form floor. Write ak = ¯ σarith ,k ≥ bk = ¯ σλ,k ≥ 0.Rationalizing, (√ak − √bk)2 = ( ak − bk)2/(√ak + √bk)2 ≥
+
+(ak −bk)2/(4 ak) ≥ (ak −bk)2/ 4σmax ( ¯Σarith ), using √bk ≤√ak and ak ≤ σmax ( ¯Σarith ). Summing over k and applying Cauchy–Schwarz, P
+
+> k
+
+(ak − bk)2 ≥ 1
+
+> N
+
+ P 
+
+> k
+
+(ak − bk)2 = 
+
+> 1
+> N
+
+∆2tr , where ∆tr := tr( ¯Σarith ) − tr( ¯Σλ). Finally, for any X
+
+taking value xm with probability λm, the elementary pairwise-variance identity Var λ(X) = 12
+
+P 
+
+> i,j
+
+λiλj (xi − xj )2 ≥
+
+λiλj (xi − xj )2 (for any fixed pair i̸ = j, dropping the re-maining nonnegative terms), applied coordinatewise with X =
+
+√σ·,k and summed over k, gives ∆tr = P 
+
+> k
+
+Var λ(√σ·,k ) ≥
+
+λiλj
+
+P
+
+> k
+
+(√σi,k − √σj,k )2 = λiλj B2(Σ i, Σj ), where the last equality is the same diagonal fidelity computation as in Step 3, applied to the commuting pair (Σ i, Σj ). Chaining these four inequalities and maximizing over pairs i̸ = j yields 
+
+> N
+
+X
+
+> k=1
+
+p¯σarith ,k − p¯σλ,k 
+
+2
+
+≥ max 
+
+> i̸=j
+
+λ2 
+
+> i
+
+λ2 
+
+> j
+
+B4(Σ i, Σj )4N σ max ( ¯Σarith ) ,
+
+(167) which is (92), strictly positive whenever Σi̸ = Σ j for the maximizing pair. □
+
+REFERENCES [1] Xiao-Fei Zhang, Le Ou-Yang, Ting Yan, Xiaohua Tony Hu, and Hong Yan. A joint graphical model for inferring gene networks across multiple subpopulations and data types. IEEE Transactions on Cybernetics ,51(2):1043–1055, 2019. [2] Huijun Gao, Dongxu Lei, and Songlin Zhuang. Bayesian modeling of gene regulatory networks in colorectal cancer organoids. IEEE Transactions on Cybernetics , 2025. [3] Yuqing Qian, Yizheng Wang, Junkai Liu, Quan Zou, Yijie Ding, Xiaoyi Guo, and Weiping Ding. A survey on multi-view fusion for predict-ing links in biomedical bipartite networks: Methods and applications. 
+
+Information Fusion , 117:102894, 2025. [4] Geethu Joseph, Buddhika Nettasinghe, Vikram Krishnamurthy, and Pramod K Varshney. Controllability of network opinion in Erdos– R´ enyi graphs using sparse control inputs. SIAM Journal on Control and Optimization , 59(3):2321–2345, 2021. [5] Sang-Woong Lee, Jawad Tanveer, Amir Masoud Rahmani, Hamid Alinejad-Rokny, Parisa Khoshvaght, Gholamreza Zare, Pegah Malekpour Alamdari, and Mehdi Hosseinzadeh. SFGCN: Synergetic fusion-based graph convolutional networks approach for link prediction in social networks. Information Fusion , 114:102684, 2025. [6] Lijia Ma, Jianqiang Li, Qiuzhen Lin, Maoguo Gong, Carlos A Coello Coello, and Zhong Ming. Reliable link inference for network data with community structures. IEEE Transactions on Cybernetics , 49(9):3347– 3361, 2018. [7] David I Shuman, Sunil K Narang, Pascal Frossard, Antonio Ortega, and Pierre Vandergheynst. The emerging field of signal processing on graphs: Extending high-dimensional data analysis to networks and other irregular domains. IEEE Signal Processing Magazine , 30(3):83–98, 2013. [8] Antonio Ortega, Pascal Frossard, Jelena Kovaˇ cevi´ c, Jos´ e MF Moura, and Pierre Vandergheynst. Graph signal processing: Overview, challenges, and applications. Proceedings of the IEEE , 106(5):808–828, 2018. [9] Wenling Li, Xiaoyan Fu, Bin Zhang, and Yang Liu. Unscented Kalman filter of graph signals. Automatica , 148:110796, 2023. [10] Xiaowen Dong, Dorina Thanou, Pascal Frossard, and Pierre Van-dergheynst. Learning Laplacian matrix in smooth graph signal repre-sentations. IEEE Transactions on Signal Processing , 64(23):6160–6173, 2016. [11] Vassilis Kalofolias. How to learn a graph from smooth signals. In 
+
+Proceedings of the International Conference on Artificial Intelligence and Statistics (AISTATS) , pages 920–929. PMLR, 2016. [12] Hilmi E Egilmez, Eduardo Pavez, and Antonio Ortega. Graph learning from data under Laplacian and structural constraints. IEEE Journal of Selected Topics in Signal Processing , 11(6):825–841, 2017. [13] Sandeep Kumar, Jiaxi Ying, Jos´ e Vin´ ıcius de M Cardoso, and Daniel P Palomar. A unified framework for structured graph learning via spectral constraints. Journal of Machine Learning Research , 21(22):1–60, 2020. [14] Stefania Sardellitti, Sergio Barbarossa, and Paolo Di Lorenzo. Graph topology inference based on transform learning. In Proceedings of the IEEE Global Conference on Signal and Information Processing (GlobalSIP) , pages 356–360. IEEE, 2016. [15] Seyed Saman Saboksayr and Gonzalo Mateos. Accelerated graph learning from smooth signals. IEEE Signal Processing Letters , 28:2192– 2196, 2021. [16] Antonio G Marques, Santiago Segarra, Geert Leus, and Alejandro Ribeiro. Stationary graph processes and spectral estimation. IEEE Transactions on Signal Processing , 65(22):5911–5926, 2017. [17] Dorina Thanou, Xiaowen Dong, Daniel Kressner, and Pascal Frossard. Learning heat diffusion graphs. IEEE Transactions on Signal and Information Processing over Networks , 3(3):484–499, 2017. 30 
+
+[18] Santiago Segarra, Antonio G Marques, Gonzalo Mateos, and Alejandro Ribeiro. Network topology inference from spectral templates. IEEE Transactions on Signal and Information Processing over Networks ,3(3):467–483, 2017. [19] Yanli Yuan, Kun Guo, Zehui Xiong, and Tony QS Quek. Joint network topology inference via structural fusion regularization. IEEE Transac-tions on Knowledge and Data Engineering , 35(10):10351–10364, 2023. [20] Jerome Friedman, Trevor Hastie, and Robert Tibshirani. Sparse in-verse covariance estimation with the graphical LASSO. Biostatistics ,9(3):432–441, 2008. [21] John C Duchi and Hongseok Namkoong. Learning models with uniform performance via distributionally robust optimization. The Annals of Statistics , 49(3):1378–1406, 2021. [22] Erick Delage and Yinyu Ye. Distributionally robust optimization under moment uncertainty with application to data-driven problems. 
+
+Operations Research , 58(3):595–612, 2010. [23] Wolfram Wiesemann, Daniel Kuhn, and Melvyn Sim. Distributionally robust convex optimization. Operations Research , 62(6):1358–1376, 2014. [24] Peyman Mohajerin Esfahani and Daniel Kuhn. Data-driven distribu-tionally robust optimization using the Wasserstein metric: Performance guarantees and tractable reformulations. Mathematical Programming ,171(1):115–166, 2018. [25] Jose Blanchet and Karthyek Murthy. Quantifying distributional model risk via optimal transport. Mathematics of Operations Research ,44(2):565–600, 2019. [26] Rui Gao and Anton Kleywegt. Distributionally robust stochastic optimization with Wasserstein distance. Mathematics of Operations Research , 48(2):603–655, 2023. [27] Soroosh Shafieezadeh Abadeh, Peyman M Mohajerin Esfahani, and Daniel Kuhn. Distributionally robust logistic regression. In Proceedings of the Advances in Neural Information Processing Systems (NeurIPS) ,volume 28, 2015. [28] Aman Sinha, Hongseok Namkoong, Riccardo Volpi, and John Duchi. Certifying some distributional robustness with principled adversarial training. In Proceedings of the International Conference on Learning Representations (ICLR) , 2018. [29] Xiang Zhang, Yinfei Xu, Mingjie Shao, and Yonina C Eldar. Wasserstein distributionally robust graph learning via algorithm unrolling. IEEE Transactions on Signal Processing , 73:676–690, 2025. [30] Adriana Di Martino, Chao-Gan Yan, Qingyang Li, Erin Denio, Fran-cisco X Castellanos, Kaat Alaerts, Jeffrey S Anderson, Michal Assaf, Susan Y Bookheimer, Mirella Dapretto, et al. The autism brain imaging data exchange: Towards a large-scale evaluation of the intrinsic brain architecture in autism. Molecular Psychiatry , 19(6):659–667, 2014. [31] Ed Bullmore and Olaf Sporns. Complex brain networks: Graph the-oretical analysis of structural and functional systems. Nature Reviews Neuroscience , 10(3):186–198, 2009. [32] Sinno Jialin Pan and Qiang Yang. A survey on transfer learning. IEEE Transactions on Knowledge and Data Engineering , 22(10):1345–1359, 2009. [33] Shai Ben-David, John Blitzer, Koby Crammer, Alex Kulesza, Fernando Pereira, and Jennifer Wortman Vaughan. A theory of learning from different domains. Machine Learning , 79(1):151–175, 2010. [34] Mehryar Mohri, Gary Sivek, and Ananda Theertha Suresh. Agnostic federated learning. In Proceedings of the International Conference on Machine Learning (ICML) , pages 4615–4625. PMLR, 2019. [35] C´ edric Villani et al. Optimal transport: Old and new , volume 338. Springer, 2009. [36] Martial Agueh and Guillaume Carlier. Barycenters in the Wasserstein space. SIAM Journal on Mathematical Analysis , 43(2):904–924, 2011. [37] Marco Cuturi and Arnaud Doucet. Fast computation of wasserstein barycenters. In Proceedings of the International Conference on Machine Learning (ICML) , pages 685–693. PMLR, 2014. [38] Pedro C ´Alvarez-Esteban, E Del Barrio, JA Cuesta-Albertos, and C Matr´ an. A fixed-point approach to barycenters in Wasserstein space. 
+
+Journal of Mathematical Analysis and Applications , 441(2):744–762, 2016. [39] Matthias Gelbrich. On a formula for the L2 Wasserstein metric between measures on Euclidean and Hilbert spaces. Mathematische Nachrichten ,147(1):185–203, 1990. [40] Nicolas Courty, R´ emi Flamary, Devis Tuia, and Alain Rakotomamonjy. Optimal transport for domain adaptation. IEEE Transactions on Pattern Analysis and Machine Intelligence , 39(9):1853–1865, 2016. [41] Vishal Monga, Yuelong Li, and Yonina C Eldar. Algorithm unrolling: Interpretable, efficient deep learning for signal and image processing. 
+
+IEEE Signal Processing Magazine , 38(2):18–44, 2021. [42] Yan Yang, Jian Sun, Huibin Li, and Zongben Xu. Deep ADMM-Net for compressive sensing MRI. In Proceedings of the Advances in Neural Information Processing Systems (NeurIPS) , volume 29, 2016. [43] Harsh Shrivastava, Xinshi Chen, Binghong Chen, Guanghui Lan, Srini-vas Aluru, Han Liu, and Le Song. GLAD: Learning sparse graph recovery. In Proceedings of the International Conference on Learning Representations (ICLR) , 2020. [44] Siheng Chen, Yonina C Eldar, and Lingxiao Zhao. Graph unrolling networks: Interpretable neural networks for graph signal denoising. 
+
+IEEE Transactions on Signal Processing , 69:3699–3713, 2021. [45] Elliott H Lieb. Convex trace functions and the Wigner-Yanase-Dyson conjecture. Les Rencontres Physiciens-Math´ ematiciens de Strasbourg-RCP25 , 19:0–35, 1973. [46] Antonio Anna Mele. Introduction to Haar measure tools in quantum information: A beginner’s tutorial. Quantum , 8:1340, 2024. [47] Daniel Kuhn, Peyman Mohajerin Esfahani, Viet Anh Nguyen, and Soroosh Shafieezadeh-Abadeh. Wasserstein distributionally robust opti-mization: Theory and applications in machine learning. In Operations Research & Management Science in the Age of Analytics , pages 130– 166. Informs, 2019. [48] Gabriel Peyr´ e and Marco Cuturi. Computational optimal transport: With applications to data science . Now Foundations and Trends, 2019. [49] Sinho Chewi, Tyler Maunu, Philippe Rigollet, and Austin J Stromme. Gradient descent algorithms for Bures-Wasserstein barycenters. In 
+
+Proceedings of the Conference on Learning Theory (CoLT) , pages 1276– 1304. PMLR, 2020. [50] Ralph Tyrell Rockafellar. Convex Analysis . Princeton University Press, 2015. [51] Bingsheng He and Xiaoming Yuan. On the O(1/n) convergence rate of the Douglas–Rachford alternating direction method. SIAM Journal on Numerical Analysis , 50(2):700–709, 2012. [52] Stephen Boyd, Neal Parikh, Eric Chu, Borja Peleato, and Jonathan Eckstein. Distributed optimization and statistical learning via the alternating direction method of multipliers. Foundations and Trends® in Machine Learning , 3(1):1–122, 2011. [53] Licheng Zhao, Yiwei Wang, Sandeep Kumar, and Daniel P Palomar. Optimization algorithms for graph Laplacian estimation via ADMM and MM. IEEE Transactions on Signal Processing , 67(16):4231–4244, 2019. [54] Eugene Belilovsky, Kyle Kastner, Ga¨ el Varoquaux, and Matthew B Blaschko. Learning to discover sparse graphical models. In Proceedings of the International Conference on Machine Learning (ICML) , pages 440–448. PMLR, 2017. [55] Xingyue Pu, Tianyue Cao, Xiaoyun Zhang, Xiaowen Dong, and Siheng Chen. Learning to learn graph topologies. In Proceedings of the Ad-vances in Neural Information Processing Systems (NeurIPS) , volume 34, pages 4249–4262, 2021. [56] Xiaolu Wang, Yuen-Man Pun, and Anthony Man-Cho So. Distri-butionally robust graph learning from smooth signals under moment uncertainty. IEEE Transactions on Signal Processing , 70:6216–6231, 2023.
