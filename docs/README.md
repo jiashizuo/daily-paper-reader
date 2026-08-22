@@ -6,32 +6,35 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-08-21
-- 运行时间：2026-08-21 20:39:03 UTC
+- 最新运行日期：2026-08-22
+- 运行时间：2026-08-22 19:24:22 UTC
 - 运行状态：成功
-- 本次总论文数：4
-- 精读区：2
-- 速读区：2
+- 本次总论文数：5
+- 精读区：4
+- 速读区：1
 
 ### 今日简报（AI）
-今日聚焦4篇精选论文，其中2篇高分精读均锁定神经影像与自闭症研究。最值得关注的是《Brain Researcher》平台带来的科学分析新范式，以及贝叶斯框架在全脑连接组推断中的突破。普通读者可优先了解AI如何辅助脑影像分析，未来或推动自闭症精准诊断。
-- 详情：[/202608/21/README](/202608/21/README)
+今日精读4篇、速读1篇，聚焦医学影像与疾病建模前沿；其中阿尔茨海默病连续病程的纵向贝叶斯学习（9.0分）和胎儿脑室超声-MRI跨模态学习（8.0分）最值得深读。两篇高分研究分别突破疾病轨迹推断与产前影像融合，实用性强。建议关注这两项方法的临床验证与开源代码，便于迁移应用。
+- 详情：[/202608/22/README](/202608/22/README)
 
 ### 精读区论文标签
-1. [Bringing analytic rigor to agentic AI for science: The Brain Researcher platform for neuroimaging data analysis](/202608/21/2608.19902v1-bringing-analytic-rigor-to-agentic-ai-for-science-the-brain-researcher-platform-for-neuroimaging-data-analysis)  
+1. [Longitudinal Bayesian Learning of Continuous Disease Position across the Alzheimer's Disease Continuum](/202608/22/2608.19436v1-longitudinal-bayesian-learning-of-continuous-disease-position-across-the-alzheimers-disease-continuum)  
    标签：评分：9.0/10、query:fbn
-   evidence：面向神经影像数据分析的智能体AI平台，提升分析严谨性
-2. [A Bayesian Edge-Space Framework for Whole-Connectome Inference in Multisite Autism Neuroimaging](/202608/21/2608.20243v1-a-bayesian-edge-space-framework-for-whole-connectome-inference-in-multisite-autism-neuroimaging)  
-   标签：评分：9.0/10、query:fbn
-   evidence：面向自闭症神经影像的贝叶斯全连接组推断，直接针对脑连接组和疾病诊断
+   evidence：纵向贝叶斯神经影像AI用于阿尔茨海默病连续进程
+2. [Cross-Modal Ultrasound-MRI Learning for Fetal Brain Ventricular Volumetry and Abnormality Screening](/202608/22/2608.14763v1-cross-modal-ultrasound-mri-learning-for-fetal-brain-ventricular-volumetry-and-abnormality-screening)  
+   标签：评分：8.0/10、query:fbn
+   evidence：胎儿脑超声-MRI跨模态学习，属神经影像AI医疗
+3. [From "What-If" to "What-Is": Counterfactual Thinking-Inspired Semantic Alignment for Visual Brain Decoding](/202608/22/2608.15163v1-from-what-if-to-what-is-counterfactual-thinking-inspired-semantic-alignment-for-visual-brain-decoding)  
+   标签：评分：8.0/10、query:fbn
+   evidence：基于反事实语义对齐的fMRI视觉脑解码
+4. [Beyond Trial Averaging: Anchoring Neural and Visual Representations for Few-Repetition Brain-to-Image Retrieval](/202608/22/2608.19128v1-beyond-trial-averaging-anchoring-neural-and-visual-representations-for-few-repetition-brain-to-image-retrieval)  
+   标签：评分：8.0/10、query:fbn
+   evidence：神经影像AI用于脑解码与图像检索
 
 ### 速读区论文标签
-1. [UMPIRE-Net: Unrolled Magnitude-Phase Regularization Network for Accelerated MRI](/202608/21/2608.14422v1-umpire-net-unrolled-magnitude-phase-regularization-network-for-accelerated-mri)  
-   标签：评分：7.0/10、query:fbn
-   evidence：基于幅度-相位正则化的深度学习加速MRI重建
-2. [Multi-Source Wasserstein Distributionally Robust Graph Learning](/202608/21/2608.19914v1-multi-source-wasserstein-distributionally-robust-graph-learning)  
+1. [Harnessing Magnitude-Only and Complex Measurements for Improved Dynamic MRI Reconstruction with Learned Priors](/202608/22/2608.18036v1-harnessing-magnitude-only-and-complex-measurements-for-improved-dynamic-mri-reconstruction-with-learned-priors)  
    标签：评分：6.0/10、query:fbn
-   evidence：面向网络拓扑推断的多源图学习方法，与功能连接建模相关
+   evidence：面向神经影像流程的深度学习MRI重建方法
 
 
 <div class="dpr-home-promo-card">
