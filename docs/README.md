@@ -6,35 +6,30 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-08-22
-- 运行时间：2026-08-22 19:24:22 UTC
+- 最新运行日期：2026-08-23
+- 运行时间：2026-08-23 19:59:20 UTC
 - 运行状态：成功
-- 本次总论文数：5
-- 精读区：4
+- 本次总论文数：2
+- 精读区：1
 - 速读区：1
 
 ### 今日简报（AI）
-今日精读4篇、速读1篇，聚焦医学影像与疾病建模前沿；其中阿尔茨海默病连续病程的纵向贝叶斯学习（9.0分）和胎儿脑室超声-MRI跨模态学习（8.0分）最值得深读。两篇高分研究分别突破疾病轨迹推断与产前影像融合，实用性强。建议关注这两项方法的临床验证与开源代码，便于迁移应用。
-- 详情：[/202608/22/README](/202608/22/README)
+今日精读一篇缺血性卒中分割新框架，另速读一篇脑机接口适应方法，共2篇。
+
+最值得关注的是AsymFeX框架，利用对称性在多种影像模态和病程中实现高精度卒中分割，评分9.0。
+
+若对医学影像AI感兴趣，可深入该框架的对称性设计；脑机接口方向则适合快速浏览其多特征超图思路。
+- 详情：[/202608/23/README](/202608/23/README)
 
 ### 精读区论文标签
-1. [Longitudinal Bayesian Learning of Continuous Disease Position across the Alzheimer's Disease Continuum](/202608/22/2608.19436v1-longitudinal-bayesian-learning-of-continuous-disease-position-across-the-alzheimers-disease-continuum)  
+1. [AsymFeX: A Symmetry-Driven Framework for Ischemic Stroke Segmentation Across Imaging Modalities and Stroke Stages](/202608/23/2608.19769v1-asymfex-a-symmetry-driven-framework-for-ischemic-stroke-segmentation-across-imaging-modalities-and-stroke-stages)  
    标签：评分：9.0/10、query:fbn
-   evidence：纵向贝叶斯神经影像AI用于阿尔茨海默病连续进程
-2. [Cross-Modal Ultrasound-MRI Learning for Fetal Brain Ventricular Volumetry and Abnormality Screening](/202608/22/2608.14763v1-cross-modal-ultrasound-mri-learning-for-fetal-brain-ventricular-volumetry-and-abnormality-screening)  
-   标签：评分：8.0/10、query:fbn
-   evidence：胎儿脑超声-MRI跨模态学习，属神经影像AI医疗
-3. [From "What-If" to "What-Is": Counterfactual Thinking-Inspired Semantic Alignment for Visual Brain Decoding](/202608/22/2608.15163v1-from-what-if-to-what-is-counterfactual-thinking-inspired-semantic-alignment-for-visual-brain-decoding)  
-   标签：评分：8.0/10、query:fbn
-   evidence：基于反事实语义对齐的fMRI视觉脑解码
-4. [Beyond Trial Averaging: Anchoring Neural and Visual Representations for Few-Repetition Brain-to-Image Retrieval](/202608/22/2608.19128v1-beyond-trial-averaging-anchoring-neural-and-visual-representations-for-few-repetition-brain-to-image-retrieval)  
-   标签：评分：8.0/10、query:fbn
-   evidence：神经影像AI用于脑解码与图像检索
+   evidence：神经影像AI医疗——缺血性卒中分割
 
 ### 速读区论文标签
-1. [Harnessing Magnitude-Only and Complex Measurements for Improved Dynamic MRI Reconstruction with Learned Priors](/202608/22/2608.18036v1-harnessing-magnitude-only-and-complex-measurements-for-improved-dynamic-mri-reconstruction-with-learned-priors)  
+1. [Multi-Feature Riemannian Hypergraph for Online Test-Time Adaptation of Motor Imagery Brain-Computer Interface](/202608/23/2608.16134v1-multi-feature-riemannian-hypergraph-for-online-test-time-adaptation-of-motor-imagery-brain-computer-interface)  
    标签：评分：6.0/10、query:fbn
-   evidence：面向神经影像流程的深度学习MRI重建方法
+   evidence：基于黎曼超图的运动想象脑机接口在线测试时自适应，EEG神经工程
 
 
 <div class="dpr-home-promo-card">
