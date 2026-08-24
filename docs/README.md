@@ -6,30 +6,26 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-08-23
-- 运行时间：2026-08-23 19:59:20 UTC
+- 最新运行日期：2026-08-24
+- 运行时间：2026-08-24 19:35:17 UTC
 - 运行状态：成功
 - 本次总论文数：2
 - 精读区：1
 - 速读区：1
 
 ### 今日简报（AI）
-今日精读一篇缺血性卒中分割新框架，另速读一篇脑机接口适应方法，共2篇。
-
-最值得关注的是AsymFeX框架，利用对称性在多种影像模态和病程中实现高精度卒中分割，评分9.0。
-
-若对医学影像AI感兴趣，可深入该框架的对称性设计；脑机接口方向则适合快速浏览其多特征超图思路。
-- 详情：[/202608/23/README](/202608/23/README)
+今日精读1篇高分模型、速读1篇图神经网络论文，聚焦医学影像与不确定性分析。最值得关注的是《An Imaging-Informed Reaction-Diffusion Model of Infarct Growth》（8.0分），用影像引导反应-扩散模型模拟梗死生长，适合理解病灶演化机制。建议普通读者优先精读该文，并顺带浏览贝叶斯图网络的不确定性主题，可对比二者在预测与风险评估上的思路。
+- 详情：[/202608/24/README](/202608/24/README)
 
 ### 精读区论文标签
-1. [AsymFeX: A Symmetry-Driven Framework for Ischemic Stroke Segmentation Across Imaging Modalities and Stroke Stages](/202608/23/2608.19769v1-asymfex-a-symmetry-driven-framework-for-ischemic-stroke-segmentation-across-imaging-modalities-and-stroke-stages)  
-   标签：评分：9.0/10、query:fbn
-   evidence：神经影像AI医疗——缺血性卒中分割
+1. [An Imaging-Informed Reaction-Diffusion Model of Infarct Growth](/202608/24/2608.20935v1-an-imaging-informed-reaction-diffusion-model-of-infarct-growth)  
+   标签：评分：8.0/10、query:fbn
+   evidence：基于临床急性MRI参数化的反应扩散模型预测缺血性梗死，属于神经影像AI医疗
 
 ### 速读区论文标签
-1. [Multi-Feature Riemannian Hypergraph for Online Test-Time Adaptation of Motor Imagery Brain-Computer Interface](/202608/23/2608.16134v1-multi-feature-riemannian-hypergraph-for-online-test-time-adaptation-of-motor-imagery-brain-computer-interface)  
+1. [Hidden Axis of Uncertainty: Latent-Posterior Alignment in Graph Neural Networks with Bayesian Output Layers](/202608/24/2608.20758v1-hidden-axis-of-uncertainty-latent-posterior-alignment-in-graph-neural-networks-with-bayesian-output-layers)  
    标签：评分：6.0/10、query:fbn
-   evidence：基于黎曼超图的运动想象脑机接口在线测试时自适应，EEG神经工程
+   evidence：贝叶斯输出层GNN不确定性机制研究，方法可迁移至fMRI图分类但未涉及神经影像
 
 
 <div class="dpr-home-promo-card">
