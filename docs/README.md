@@ -6,26 +6,32 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-08-24
-- 运行时间：2026-08-24 19:35:17 UTC
+- 最新运行日期：2026-08-25
+- 运行时间：2026-08-25 19:43:22 UTC
 - 运行状态：成功
-- 本次总论文数：2
+- 本次总论文数：4
 - 精读区：1
-- 速读区：1
+- 速读区：3
 
 ### 今日简报（AI）
-今日精读1篇高分模型、速读1篇图神经网络论文，聚焦医学影像与不确定性分析。最值得关注的是《An Imaging-Informed Reaction-Diffusion Model of Infarct Growth》（8.0分），用影像引导反应-扩散模型模拟梗死生长，适合理解病灶演化机制。建议普通读者优先精读该文，并顺带浏览贝叶斯图网络的不确定性主题，可对比二者在预测与风险评估上的思路。
-- 详情：[/202608/24/README](/202608/24/README)
+今日共读4篇论文，精读1篇、速读3篇，主题聚焦脑影像生成与表征学习。最值得关注的是精读的《AnaDiffusion》（8.0分），提出可控制的三维脑MRI生成方法；速读中《ReMAP》亦可留意，用自监督学习揭示脑表征与脆弱性。建议普通读者优先浏览AnaDiffusion的图生成思路，后续可关注多模态图学习方法（如ReCoG）。
+- 详情：[/202608/25/README](/202608/25/README)
 
 ### 精读区论文标签
-1. [An Imaging-Informed Reaction-Diffusion Model of Infarct Growth](/202608/24/2608.20935v1-an-imaging-informed-reaction-diffusion-model-of-infarct-growth)  
+1. [AnaDiffusion: Anatomically CompositionalLatent Diffusion for Controllable 3D Brain MRI Generation](/202608/25/2608.23014v1-anadiffusion-anatomically-compositionallatent-diffusion-for-controllable-3d-brain-mri-generation)  
    标签：评分：8.0/10、query:fbn
-   evidence：基于临床急性MRI参数化的反应扩散模型预测缺血性梗死，属于神经影像AI医疗
+   evidence：三维脑MRI生成属于神经影像AI医疗研究
 
 ### 速读区论文标签
-1. [Hidden Axis of Uncertainty: Latent-Posterior Alignment in Graph Neural Networks with Bayesian Output Layers](/202608/24/2608.20758v1-hidden-axis-of-uncertainty-latent-posterior-alignment-in-graph-neural-networks-with-bayesian-output-layers)  
+1. [ReMAP: Self-supervised learning to unveil brain representations and vulnerability](/202608/25/2608.22042v1-remap-self-supervised-learning-to-unveil-brain-representations-and-vulnerability)  
+   标签：评分：7.0/10、query:fbn
+   evidence：基于脑电的自监督学习用于脑状态表征，属于神经影像AI医疗
+2. [Structured Learning on Mapper Representations](/202608/25/2608.22044v1-structured-learning-on-mapper-representations)  
    标签：评分：6.0/10、query:fbn
-   evidence：贝叶斯输出层GNN不确定性机制研究，方法可迁移至fMRI图分类但未涉及神经影像
+   evidence：拓扑数据分析方法，在结构化图表示上学习，可应用于脑网络分析
+3. [ReCoG: Reciprocal Co-Evolution for Multimodal Graph Learning](/202608/25/2608.22786v1-recog-reciprocal-co-evolution-for-multimodal-graph-learning)  
+   标签：评分：6.0/10、query:fbn
+   evidence：多模态图神经网络与图结构共同演化方法，可迁移至脑连接组建模与疾病诊断
 
 
 <div class="dpr-home-promo-card">
