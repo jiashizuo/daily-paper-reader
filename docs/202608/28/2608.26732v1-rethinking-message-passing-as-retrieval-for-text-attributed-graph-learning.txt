@@ -1,0 +1,1465 @@
+Title: Rethinking Message Passing as Retrieval for Text-Attributed Graph Learning
+
+URL Source: https://arxiv.org/pdf/2608.26732v1
+
+Published Time: Fri, 28 Aug 2026 00:45:46 GMT
+
+Number of Pages: 15
+
+Markdown Content:
+JOURNAL OF L ATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2021 1
+
+# Rethinking Message Passing as Retrieval for Text-Attributed Graph Learning 
+
+Jintang Li, Yuhong Chen, Ruofan Wu, Binli Luo, Jiayi Ji, Hui Li, and Rongrong Ji 
+
+Abstract —Graph neural networks (GNNs) are typically conceptualized as message-passing neural networks, yet it remains unclear why neighborhood aggregation reliably outperforms node-wise multilayer perceptrons (MLPs). Despite its empirical success, this paradigm can be computationally expensive and sensitive to imperfect graph structures. In this work, we present a retrieval-augmented view of GNNs: each layer makes predictions by applying an MLP to a node representation together with a permutation-invariant summary of retrieved graph context. Motivated by this perspective, we propose RTA, a simple MLP-based framework that replaces structural message passing with label-aware retrieval and propagation. We provide theoretical insights that (i) connect retrieval-based aggregation to softmax-attention message passing, and (ii) establish the robustness of retrieved-context supervision to mis-retrieved outliers. Experiments on multiple text-attributed graph benchmarks show that RTA matches or even outperforms strong GNN and graph LLM baselines while improving efficiency and robustness across diverse scenarios. 
+
+Index Terms —Graph Neural Networks, Retrieval-Augmented Generation, Message Passing Neural Networks 
+
+✦
+
+1 INTRODUCTION 
+
+Graph neural networks (GNNs) have attracted substan-tial attention due to their strong empirical performance on graph-structured data [1]–[4], with applications rang-ing from social networks [5] and molecular chemistry [6] to recommendation systems [7]. The dominant paradigm behind modern GNNs is message passing [8]: nodes itera-tively exchange information along edges and update their representations by aggregating neighbor messages through permutation-invariant operators (e.g., sum or mean). While this mechanism is effective in many settings, it also intro-duces well-known challenges, including limited scalability, sensitivity to graph structure, degraded performance on heterophilous graphs [9], and representation collapse due to oversmoothing and oversquashing in deep propaga-tion [10]. More fundamentally, although message passing has become the dominant paradigm for GNNs, it remains unclear whether its effectiveness stems from graph-based propagation itself or, more generally, from conditioning node predictions on informative contexts. In parallel, retrieval-augmented generation (RAG) has emerged as a powerful paradigm in natural language un-derstanding [11]. RAG [12] follows a retrieve-then-reason 
+
+procedure: given a query, it retrieves a small set of rele-vant contexts and conditions a parametric model (e.g., an LLM) on the retrieved evidence to produce an output. This mechanism reduces reliance on parametric memory and improves robustness by grounding predictions in external information. 
+
+• Jintang Li, Yuhong Chen, Jiayi Ji, Hui Li, Rongrong Ji are with the Key Laboratory of Multimedia Trusted Perception and Efficient Computing, Ministry of Education of China, Xiamen University, Xiamen 361005, China (E-mail: edisonlee@xmu.edu.cn, yuhongchen@stu.xmu.edu.cn, jjyxmu@gmail.com, hui@xmu.edu.cn, rrji@xmu.edu.cn). 
+
+• Ruofan Wu is with the School of Statistics of Fudan University, Shanghai 200433, China (E-mail: wuruofan1989@gmail.com). 
+
+• Binli Luo is with the School of Computer Science and Engineering of Central South University, Changsha 410000, China (E-mail: lblhand-some@gmail.com). Node features   
+
+> LLM
+> MLP 1️⃣ 2️⃣
+> Message
+> &Aggregation 3️⃣ Prediction 3️⃣
+> Generation
+> $4,825 .14 1️⃣
+> Retrieval
+> Class=Blue
+
+(b) RAG 
+
+(a) GNN    
+
+> What ’s the gold price today?
+> What ’s the gold price today?
+> Ref:
+> APMEX Metals
+> Daily GoldPrice
+> Reference corpus 2️⃣
+> Augmentation
+
+Fig. 1. Technical comparison between GNN and RAG. Both leverage contextual information beyond the raw input. 
+
+Despite their different application domains, GNNs and RAG share a common computational pattern: both condi-tion predictions on contextual information beyond the raw input (see Figure 1). In a message-passing layer, the context is defined by the node’s neighborhood, whereas in RAG it consists of a set of retrieved documents or passages. However, this shared computational structure has not been explicitly characterized from a unified perspective, leaving unclear how context selection, aggregation, and prediction in message passing relate to retrieval-augmented inference. In this work, we develop a retrieval-augmented view of a broad family of message-passing GNNs: 
+
+A message-passing layer can be interpreted as an MLP operating on a node and a retrieved context set. 
+
+Concretely, we show that the message passing step of GNNs can be cast as a retrieval and augmentation module, and that different GNN variants correspond to different choices of 
+
+retriever (which contexts are selected) and set function (how contexts are aggregated). This perspective clarifies why conditioning on neighbors can generally outperform node-independent models: the model is effectively performing prediction with retrieved evidence, where the evidence is provided by graph-induced or learned retrieval sets. Building on this connection, we propose RTA (Retrieve-arXiv:2608.26732v1 [cs.LG] 27 Aug 2026 JOURNAL OF L ATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2021 2
+
+Then-Aggregate), a simple retrieval-augmented framework for text-attributed graph representation learning that avoids explicit multi-hop message passing. Crucially, RTA supports label-aware retrieval, where labeled nodes provide neces-sary supervision signals that guide both retrieval and aggre-gation without information leakage. RTA proceeds in three stages: (i) a label-aware contextual encoder produces node embeddings by augmenting each node’s text with a small set of structural neighbor texts; (ii) a top-k retriever in the structure and embedding space constructs a retrieval graph 
+
+that can connect semantically related nodes beyond local edges; and (iii) an MLP-style update aggregates retrieved neighbors to produce task-specific representations. By re-placing recursive message passing on the original graph with localized retrieval-driven interactions, RTA achieves better performance while improving scalability and robust-ness across diverse settings. Theoretically, we establish two results that characterize retrieval-based message passing and directly align with our method design. First, we show that top-k retrieval followed by aggregation provides a sparse approximation of softmax-attention message passing, where the approximation error is controlled by the retrieval margin and the score distribution within the retrieved context set. Second, we prove that label-aware retrieved-context supervision reduces the gradient in-fluence of mis-retrieved outliers, providing a theoretical ex-planation for the robustness of retrieval-based aggregation under noisy contexts. Overall, both results justify retrieval as a principled mechanism for constructing task-relevant context sets and provide theoretical support for label-guided retrieval and aggregation. The main contributions of our work are as follows:  
+
+> •
+
+Formulation. We reveal an intrinsic duality be-tween message-passing aggregation and retrieval-augmented MLPs, offering a unified view of GNN layers as prediction over retrieved contexts.  
+
+> •
+
+Framework. Leveraging this connection, we propose RTA, a scalable retrieval-centric alternative to mes-sage passing that integrates label-aware contextual encoding, embedding and structural space retrieval, and label-enhanced aggregation.  
+
+> •
+
+Theoretical results. We establish theoretical connec-tions between retrieval-based aggregation and mes-sage passing, and prove optimization robustness un-der retrieved-set supervision. We present theoretical guarantees for (i) the equivalence of retrieval-based message passing and (ii) optimization robustness under retrieved-set supervision.  
+
+> •
+
+Empirical results. We conduct extensive experiments on multiple text-attributed graph benchmarks, show-ing that RTA matches or outperforms strong GNN baselines with improved efficiency and robustness. Overall, our work takes a step toward demystifying mes-sage passing by recasting it as retrieval over contextual evidence, and it suggests a practical design space in which graph representation learning can be carried out by retrieval-defined computation graphs rather than fixed-edge diffusion. 
+
+2 RELATED WORK 
+
+Our work connects three lines of research: message-passing graph neural networks, learning over text-attributed graphs with language models, and retrieval-augmented generation. While these areas have been extensively studied in isolation, their underlying computational connection remains under-explored. We review them below and highlight how our work differs by interpreting graph representation learning itself as a retrieval-augmented prediction process. 
+
+2.1 Graph neural networks 
+
+GNNs are a flexible class of models for learning representa-tions over graph-structured data, which represent a signifi-cant leap forward in the ability to model and analyze com-plex relationships within data. By iteratively aggregating and transforming information from a node’s local neighbor-hood, GNNs learn powerful, context-aware representations that are crucial for making accurate predictions and uncov-ering hidden patterns within the graphs [1]–[3]. Beyond con-ventional local message passing, graph Transformers have emerged as an alternative paradigm for capturing long-range dependencies through attention-based interactions. Representative methods include NodeFormer [13], which develops a scalable all-pair attention mechanism for graph representation learning, and DGT [14], which dynamically selects structurally and semantically relevant nodes to en-able efficient sparse attention. The research topic of GNNs is vibrant and rapidly evolving, encompassing a wide range of theoretical advancements and algorithmic innovations [4], [15]–[17]. 
+
+2.2 Learning over text-attributed graphs 
+
+In real-world graph tasks, nodes often have textual at-tributes that convey richer information, resulting in text-attributed graphs (TAGs) [18]. TAG provides a scenario for applying LLMs on graphs that store information in natural language. Combining GNNs with LLMs can leverage the robust textual understanding of LLMs while harnessing GNNs’ ability to capture structural relationships. Specifi-cally, there are several lines of research according to the role of LLMs on graphs, including LLM as Predictor [19]– [21], LLM as Aligner [22]–[24] and LLM as Enhancer [18], [25], [26]. While adapting LLMs to graphs has emerged as a research focus, little effort has been dedicated to uncovering the correlations between GNNs and language modeling. A closely related work is AuGLM, which treats retrieval as input augmentation for an LLM classifier, whereas RTA studies retrieval as the context-selection primitive underly-ing graph message passing. 
+
+2.3 Retrieval-augmented generation 
+
+Retrieval-augmented generation [12] is an established ap-proach to enhance the generation quality of LLMs by leveraging external knowledge bases. RAG achieves good performance on various tasks such as language model-ing [27] and question-answering [28], without additionally fine-tuning LLMs. To improve generation, several studies have been dedicated to enhancing the capability of RAGs with correction [29], verification [30], or critique [31]; see [11] JOURNAL OF L ATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2021 3
+
+for a comprehensive survey on RAG techniques. Recently, researchers and practitioners have started to explore the role of graphs in facilitating RAG systems, with the most promis-ing works being GraphRAG [32] and its variants [33]–[35]. GraphRAG-based approaches leverage knowledge graphs as a structured source of context and factual grounding for LLMs. By supplying entity-centric information such as textual descriptions, they provide richer, more organized evidence, which can encourage deeper, relation-aware rea-soning by the LLM. Note that GraphRAG-based approaches and our work represent two orthogonal lines of research. GraphRAG-based approaches enhance LLM reasoning by incorporating graph-structured knowledge into RAG. In contrast, RTA advances graph representation learning by leveraging recent advances in RAG. 
+
+3 PRELIMINARY 
+
+We first introduce the notations and background needed to connect message-passing GNNs with retrieval-augmented generation. The goal of this section is not to review all variants, but to expose the shared computational pattern behind the two paradigms. 
+
+3.1 Notations 
+
+With graph-structured inputs, we typically assume a graph 
+
+G = ( V, E), where E ⊆ V × V specifies pairs of nodes in V that are connected. To unleash the power of LLMs on graphs, we consider a more challenging scenario, i.e., text-attributed graphs, which provide rich semantic infor-mation for the representation learning. In the context of text-attributed graphs, we are given a set of textual features 
+
+T = {t1, t 2, . . . , t N }, where each tu is the textual corpus associated with node u ∈ V . In such scenarios, the text set 
+
+T is encoded as the node feature matrix X = {x1, . . . , xN }.
+
+3.2 Message-passing graph neural networks 
+
+Given a graph G and d-dimensional node features X,message-passing GNNs aim to obtain informative node representations capturing both structural properties and connections between node features. 
+
+x′ 
+
+> u
+
+= ϕ
+
+
+
+xu, M ({xv : v ∈ N u})
+
+
+
+, Nu = {v : ( u, v ) ∈ E} ,
+
+(1) with the core components including a permutation invariant aggregation function L (e.g., mean or sum) and a combine or update function ϕ; Nu ⊆ V is a set of nodes adjacent to node u. Specifically, node u aggregates the messages along incoming edges using the aggregation function L. Then, the update function ϕ updates the representations of the receiver node u based on its current representation ( xu)and the aggregated messages. The update function ϕ allows the node to learn how to integrate its own features with the aggregated context effectively. Typically, ϕ is an MLP network and the design of the function ϕ is what mostly distinguishes one type of GNN from the other. For example, GraphSAGE [3] implements GNN as: 
+
+x′ 
+
+> u
+
+= MLP ( xu, MEAN ( {xv : v ∈ N u})) . (2) In recent years, GNNs have been extended with several advanced variants that incorporate additional components, { }          
+
+> 00.2 0.1
+> 0.4
+> 0
+> 0.1
+> 0.2
+> Retrieval Augmentation
+> 0.4 0.1
+> Generation
+> 0.5
+> Class=?
+> 0.1
+> Aggregation
+> GNN operation RAG operation
+> Message
+> Mean
+> Graph context
+> Prediction
+> MLP
+> or
+> LLM
+> 𝑣 0
+> 𝑣 2
+> 𝑣 3
+> 𝑣 1𝑣 1𝑣 2𝑣 3𝑣 1:3 𝑣 1:3 𝑣 0𝑣 0′
+> Fig. 2. Illustrative example on how GNNs are decomposed into RAG-like architectures.
+
+such as attention mechanisms [2], advanced aggregation functions [16], and residual connections [36]. 
+
+3.3 Retrieval-augmented generation 
+
+RAG is a natural language querying approach for enhancing off-the-shelf LLMs with external knowledge [12]. In an RAG application, we are given a collection of documents or con-texts (e.g. Wikipedia), which provides the grounded knowl-edge and serves as the external knowledge base. Given a user query q and a corpus C, a dense embedding based re-triever [37] first retrieves top-k contexts Ck = {c1, . . . , ck}
+
+that are most relevant to the query q. Here Rk ⊆ C is a set of retrieved contexts from C. Then, LLM reads the top-k
+
+contexts along with the query q to generate the answer r.Formally, a standard RAG-based system can be formulated as follows: 
+
+r = Reason ( q, Rk) ,
+
+Rk = {c1, · · · , cK } = Retrieval( q | C). (3) In practice, advanced RAG may incorporate chunking and reranking operations, which segment the contexts into chunks for improved retrieval and rerank the retrieved re-sults for enhanced generation [38]. In this work, we consider a classical RAG system that comprises only a retriever and a generator, for simplicity. 
+
+4 PRESENT WORK : RTA 
+
+In this section, we first present our perspective on how GNNs relate to the RAG-based framework. Next, we in-troduce RTA, an RAG-inspired graph learning framework designed to learn representations on text-attributed graphs using a pure RAG scheme. RTA leverages valuable insights from GNNs and label propagation [39], a label-specific vari-ant of message-passing GNNs, to efficiently and effectively capture graph context. 
+
+4.1 Connections between GNN and RAG 
+
+4.1.1 Unified view 
+
+GNNs and RAG are important tools for graph structure learning and natural language understanding, respectively. Both approaches leverage similar principles by incorpo-rating additional context beyond the raw input to enhance comprehension. In the case of GNNs, the additional context is derived from aggregating information from neighboring nodes and the graph structure itself. For RAGs, context is incorporated by retrieving relevant knowledge from exter-nal sources to supplement the input. This shared principle motivates us to align them within a unified formulation. JOURNAL OF L ATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2021 4
+
+In this regard, we formulate GNNs and RAG that follow similar rules as below: 
+
+x′ 
+
+> u
+
+= ϕ
+
+
+
+xu, M({xv : v ∈ N u})
+
+| {z }
+
+> Aggregation
+
+| {z }
+
+> Prediction
+
+, Nu = {v : ( u, v ) ∈ E} 
+
+| {z }
+
+> Message
+
+,
+
+(4) 
+
+r = ϕ
+
+
+
+q, M({cj : cj ∈ R k})
+
+| {z }
+
+> Augmentation
+
+| {z }
+
+> Generation
+
+, Rk(q) = Top -kc∈R ⟨q, c⟩
+
+| {z }
+
+> Retrieval
+
+,
+
+(5) where the cosine similarity is defined as ⟨x, y ⟩ = x·y 
+
+> ∥x∥∥ y∥
+
+.Here, we omit the text embedding step for the sake of sim-plicity. In RAG, Rk(q) denotes the top-k retrieved corpus from R that are most relevant to the query q according to a dense retriever ψ, and L is a combination operator over the retrieved contexts, such as concatenation. We overload notations in Eq. (5) for simplicity and omit prompt details. 
+
+4.1.2 Label propagation as label-centric RAG 
+
+This unified view suggests that the “context” set in Eq. (4)– (5) need not be restricted to feature vectors or text tokens; it can also contain label evidence from a labeled set (e.g., human supervision). In particular, classical label propaga-tion (LP) [39] can be interpreted as a label-specific message-passing procedure: each node collects (retrieves) label signals from its neighbors and mixes (augments) them through a propagation operator. Under the unified view above, LP corresponds to a special case where the retrieval set is the graph neighborhood Nu, the retrieved “contexts” are label message vectors, and the “generation” step reduces to a simple readout on the aggregated label context: 
+
+p′ 
+
+> u
+
+= ϕ
+
+
+
+pu, M   {pv : v ∈ N u}| {z }
+
+> Propagation
+
+| {z }
+
+> Inference
+
+, Nu = {v : ( u, v ) ∈ E} 
+
+| {z }
+
+> Message / Retrieval
+
+,
+
+pv = I[v ∈ T ] ω(˜ yv ) + I[v / ∈ T ] 0, ˆyu = arg max 
+
+> c∈[C]
+
+[p′
+
+> u
+
+]c,
+
+(6) where T denotes the labeled nodes (training set), ω(˜ yv )
+
+can be a one-hot label embedding, and unlabeled nodes contribute a padding message (e.g., 0). This perspective provides a principled motivation for label-aware RAG on graphs : when partial labels are available, they can be treated as additional retrieved context to guide both aggregation and retrieval. 
+
+4.1.3 Differences and design implications 
+
+The unified formulation in Eqs. (4), (5) and (6) high-lights a shared retrieve-and-aggregate skeleton, but the three paradigms differ in how the context set is formed and how it is fused. (i) context selection : in GNNs/LP, the graph structure fixes the retrieved set Nu, yielding query-dependent and degree-varying neighborhoods; in RAG, a learned retriever returns a fixed-size top-k set Rk(q), which effectively induces a content-dependent similarity graph with controlled out-degree. (ii) context fusion : RAG typi-cally augments inputs via prompt construction (e.g., con-catenating retrieved texts), whereas GNNs employ explicit permutation-invariant set operators (mean/sum/max/at-tention) over vector states; LP further exposes a label-only extreme where the fused context consists purely of propagated supervision signals. These differences suggest a natural hybrid for graphs: learn the context set via em-bedding and structural space top-k retrieval while retaining efficient set aggregation, and treat available labels as ad-ditional retrieved context. We next instantiate this idea by introducing label embeddings into both contextual encoding and retrieved-neighbor aggregation. 
+
+4.2 RTA: RAG-based graph learning framework 
+
+By drawing parallels between GNN and RAG, we now explore how integrating retrieval-augmented mechanisms into a simple MLP network can efficiently reshape graph representation learning. The overall framework of RTA is shown in Figure 3. Different from conventional message-passing GNNs that rely on static edges, RTA retrieves and aggregates semantically relevant contexts from the embed-ding and structural space, enabling adaptive graph con-struction and scalable structure learning. 
+
+4.2.1 Label-aware retrieval-augmented node embedding 
+
+Existing learning paradigms on TAGs typically require a text encoder, such as BERT [40] or DeBERTa [41], to obtain node feature embeddings from associated text attributes. For example, a language model LLM( ·) processes the text attribute tu to generate xu = LLM( tu). However, this operation treats each node in isolation and ignores the rich contextual information residing in neighboring textual attributes, leading to less informative embeddings. Inspired by the retrieve-then-reason paradigm in RAG, we enrich the textual representation of each node by aug-menting it with contextual text retrieved from its structural neighbors. Since the graph itself provides a localized re-trieval source, we can bypass explicit document retrieval and instead treat the neighbor texts as intrinsic contexts: 
+
+xu = Enc θ
+
+ tu, M   {tv : v ∈ N (k1) 
+
+> u
+
+} ∈ Rd, (7) where N (k1) 
+
+> u
+
+denotes the k1 sampled neighbors of node 
+
+u, and L represents a permutation-invariant combination such as prompt concatenation for the neighbor contexts. Generally, Enc θ is implemented as an LLM backbone for semantic textual embedding. To further enhance retrieval quality, we incorporate partial label signals into both the embedding and aggregation stages. When some node labels are available, we may inject them as additional context, which act as supervision-aware anchors that guide the retrieval process toward semantically and label-consistent neighborhoods: 
+
+xu = Enc θ
+
+
+
+tu, M   {(tv , y v ) : v ∈ N (k1) 
+
+> u
+
+}
+
+, (8) where yv denotes the label of node v. The introduction of label information is motivated by the label propagation [39] algorithm to bring supervision to the message-passing (re-trieval) step. This retrieval-augmented encoding stage al-lows the LLM to generate context-aware node embeddings that better reflect both semantic and structural correlations. JOURNAL OF L ATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2021 5Text -attributed  Graph  Augmented  query  (𝒌 𝟏 = 𝟑 )
+
+Textual Node 
+
+Embedding  (𝑣 0)
+
+𝑣 0
+
+𝑣 1
+
+𝑣 2
+
+𝑣 3
+
+(a)  RAG  for  Node  Embedding 
+
+(b)  Semantic -Structural Context Retrieval 
+
+Node  Embedding 
+
+Retrieved  Graph  (𝒌 𝟐 = 𝟐 ) Message  Propagation 
+
+> FAISS
+
+Reference 
+
+𝑣 0
+
+𝑣 2
+
+𝑣 3
+
+𝑣 1 Query  node 
+
+Textual  attributes  
+
+> cla ss= 1 cla ss= 1 cla ss= 0
+> Text -embedding
+> LLM
+> class=1
+> class=1
+> class=0
+
+𝑣 0
+
+𝑣 2
+
+𝑣 1
+
+𝑣 3
+
+prompting 
+
+retrieval  Task -specific  Node 
+
+Embedding  (𝑣 0)
+
+(c)  Label -aware Retrieval  Aggregation         
+
+> Query node:
+> -titl e: Long -Fo rm VideoQA with …
+> -abstra ct: ...
+> Reference (neighbors):
+> 1) Class label: computer vision
+> titl e: VideoAgent : Multi -turn tool use …
+> text: ...
+> 2) Class label: reinfor cement lear ning
+> titl e: Reinforced multi -turn reasoni ng…
+> text: ...
+> 3) Class label: computer vision
+> titl e: Evid ence -centri c evalua tion …
+> text: ...
+
+𝑣 0 𝑣 1 𝑣 2
+
+> class=1
+> class=1
+> class=0
+
+𝑣 0
+
+𝑣 2
+
+𝑣 1
+
+𝑣 3
+
+w/ Label Embedding 
+
+> Class label
+
+𝑣 0
+
+𝑣 2
+
+𝑣 1
+
+𝑣 3
+
+Scoring  
+
+> Semantic &
+> Structure
+
+Fig. 3. Overall framework of RTA. RTA recasts graph representation learning as a retrieval-augmented pipeline that avoids explicit multi-hop message passing over the original graph. Specifically, (a) for a query node v0, we augment its text with a small set of structural neighbors (size k1) and corresponding labels as the resulting prompt to obtain the contextual node embedding xv0 . Then, (b) based on the learned embeddings and the original graph structure, we construct a retrieval-defined context graph by jointly considering semantic similarity and structural proximity. Specifically, semantic retrieval is performed in the embedding space (e.g., via FAISS), while structural retrieval exploits graph diffusion information. Finally, (c) 
+
+we aggregate features and available label embeddings from retrieved contexts and apply an MLP-style update to produce task-specific node representations for prediction. 
+
+Empirically, such contextual augmentation yields richer se-mantic alignment across neighboring nodes and provides a stronger basis for subsequent structure learning. 
+
+4.2.2 Retrieval-augmented aggregation 
+
+Once the contextual embeddings {xu}u∈V are obtained, RTA performs graph structure learning by constructing a retrieval-defined context graph. Rather than propagating messages along pre-defined edges, we rebuild the graph topology through a retrieval process that identifies task-relevant nodes from both semantic and structural perspec-tives. For each node u, we retrieve a set of relevant contexts according to a retrieval score function: 
+
+R(k2) 
+
+> u
+
+= Top -k2v̸ =uS(u, v ), (9) where S(u, v ) denotes the relevance score between nodes 
+
+u and v. Specifically, we consider two complementary re-trieval signals. The semantic retrieval score is calculated based on the contextual embeddings: 
+
+Ssem (u, v ) = x⊤ 
+
+> u
+
+xv
+
+∥xu∥2∥xv ∥2
+
+, (10) which identifies nodes with similar semantic meanings and can be efficiently implemented using approximate nearest neighbor search, such as FAISS [42]. In addition to seman-tic similarity, we introduce a structural retrieval score to preserve the topological information of the original graph. Specifically, we employ personalized PageRank (PPR) [43] to measure the diffusion-based proximity between nodes. For a query node u, its PPR vector πu is defined as: 
+
+πu = αeu + (1 − α)P⊤πu, (11) where P is the transition matrix of the original graph, eu is the one-hot personalization vector centered at node u, and α
+
+is the teleport probability. The structural relevance between nodes u and v is then defined as: 
+
+Sstr (u, v ) = πu(v), (12) where πu(v) denotes the probability mass assigned to node 
+
+v in the personalized PageRank vector of node u. Since semantic similarity and PPR scores may lie on different nu-merical scales, we apply query-wise min-max normalization to make the two retrieval signals comparable: 
+
+eSr (u, v ) = Sr (u, v ) − min j̸ =u Sr (u, j )max j̸ =u Sr (u, j ) − min j̸ =u Sr (u, j ) + ϵ , r ∈ { sem , str },
+
+(13) 
+
+where ϵ is a small constant for numerical stability. The final retrieval score combines the normalized semantic and structural evidence: 
+
+S(u, v ) = λ eSsem (u, v ) + (1 − λ) eSstr (u, v ), (14) where λ ∈ [0 , 1] controls the balance between semantic and structural retrieval. Since the fused score is used only for top-k ranking, we set λ = 0 .5 by default to equally balance the two retrieval signals without dataset-specific tuning. Optionally, we further symmetrize the retrieved edges by mutual-kNN to ensure a stable, undirected retrieval graph. This process adaptively redefines connectivity according to both semantic relevance and structural proximity, result-ing in a retrieval-defined graph that better reflects task-relevant relations. As illustrated in Figure 3(b), the retrieval-aggregation process enables the model to perform structure learning in a data-driven and scalable manner. 
+
+4.2.3 Label-aware retrieval aggregation 
+
+With the dynamically constructed similarity graph, message passing can be performed in a simplified yet expressive form. Instead of iterating over fixed edges, each node ag-gregates information from its retrieved contexts: 
+
+x′ 
+
+> u
+
+= MLP 
+
+
+
+xu, M  
+
+{xv : v ∈ R (k2) 
+
+> u
+
+}
+
+ 
+
+, (15) This design can be viewed as an MLP operating over a retrieval-defined neighborhood. It eliminates the need for explicit graph convolutions and avoids common issues such JOURNAL OF L ATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2021 6
+
+as oversmoothing and computational overhead caused by multi-hop message passing. Moreover, the retrieval mech-anism allows efficient graph updates through approximate nearest neighbor (ANN) search tools such as FAISS [42], en-suring scalability to large text-attributed graphs. We embed labels via ω : [ C] → Rd (one-hot or learned embedding). Define zv = ω(yv ) if v ∈ T and zv = 0 otherwise. We aggregate retrieved neighbors and apply an MLP update: 
+
+x′ 
+
+> u
+
+= MLP 
+
+
+
+xu, M  
+
+{xv + zv : v ∈ R (k2) 
+
+> u
+
+}
+
+ 
+
+, (16) Unlike transductive label propagation that directly diffuses labels along graph edges, RTA incorporates label embed-dings as auxiliary retrieved context and does not directly overwrite unlabeled predictions. Labeled nodes influence which contexts are retrieved, but do not directly overwrite unlabeled representations. 
+
+4.2.4 Relation to prior work 
+
+While prior efforts such as GraphRAG [32] and G-Retriever [33] enhance RAG systems using graph structures, they treat graphs as auxiliary knowledge for retrieval in language models. In contrast, RTA reverses this direction: it treats retrieval as the fundamental operation for graph learning itself. By shifting from message passing on fixed edges to retrieval-based dynamic connectivity, RTA trans-forms graph learning into a retrieval-augmented reasoning process. This perspective unifies semantic retrieval and structural aggregation, resulting in a scalable, adaptable, and label-aware framework that generalizes beyond tradi-tional GNN design. 
+
+4.3 Algorithm 
+
+To facilitate a better understanding of the functionality of RTA, we provide PyTorch-style pseudocode for its imple-mentation in Algorithm 1. 
+
+Algorithm 1 PyTorch-style pseudocode for our model. 
+
+▷ Inputs: text attributes t, optional labels y, graph g▷ L-I: label-aware contextual embedding  
+
+> 1:
+
+C = Sample( g, k 1) ▷ C [u]: structural contexts for node 
+
+u 
+
+> 2:
+
+X = LLM( t, C, y ) ▷ X = {xu}u∈V : contextual node embeddings  
+
+> 3:
+
+Z = w(y) ▷ set Z[u] = 0 if yu is unavailable 
+
+▷ Semantic-structural context retrieval  
+
+> 4:
+
+Ssem = Norm(CosSim( X)) ▷ semantic relevance  
+
+> 5:
+
+Sstr = Norm(PPR( g)) ▷ structural relevance  
+
+> 6:
+
+S = λS sem + (1 − λ)Sstr ▷ retrieval score fusion  
+
+> 7:
+
+N = TopK( S, k 2) ▷ N [u] = Ru: retrieved contexts for node u▷ L-II: label-enhanced retrieval aggregation  
+
+> 8:
+
+M = ( X + Z)[ N ].mean(dim = 1) ▷ aggregate retrieved contexts  
+
+> 9:
+
+H = X + M ▷ update node representations  
+
+> 10:
+
+out = MLP( H) 
+
+> 11:
+
+return out 
+
+5 THEORETICAL ANALYSIS 
+
+In this section, we are motivated to bridge the gap between RAG and GNNs. We first develop a theoretical connec-tion between message-passing GNNs and RAG by viewing both as instances of prediction over retrieved context sets. This perspective clarifies why message passing improves over node-independent models. Then, we demonstrate the robustness and optimization stability of retrieval-induced graph learning. Due to space limitations, we present simpli-fied statements here and defer the full theorems and proofs to the supplementary material. 
+
+Theorem 1 (Informal) . Let γu > 0 be the top-k margin of retrieval scores with query node u, i.e., the gap between the k-th and the k + 1 -th largest score. Further let a GNN oracle be an arbitrary softmax-attention message passing at temperature τ
+
+induced by retrieval scores. Then under the regularity conditions as detailed in the supplementary material, there exists a RAG-style construction that approximates the oracle message at node u
+
+with ℓ∞ error O(exp( −γu/τ )) .
+
+Theorem 2. Let Ru be a retrieved set for some query node u,with prediction distribution p(Ru) = ( p1, . . . , p C ) induced by retrieved-context aggregation. Consider an outlier node o ∈ R u
+
+whose individual distribution is po = ( p′
+
+> 1
+
+, . . . , p ′ 
+
+> C
+
+) and define 
+
+m′ = arg max c∈[C] p′
+
+> c
+
+. Let yu be the ground-truth label of node 
+
+u, treated as fixed during differentiation. If yu̸ = m′ and p′ 
+
+> m′
+
+≥
+
+pm′ , then 
+
+0 ≤ ∂L(Ru)
+
+∂ℓ ′
+
+> m′
+
+≤ ∂L(o)
+
+∂ℓ ′
+
+> m′
+
+,
+
+where L(Ru) = CE( p(Ru), y u) and L(o) = 1 
+
+> |R u|
+
+CE( po, y u),and ℓ′ 
+
+> m′
+
+denotes the outlier logit for class m′.
+
+Remark 1. If the attention scores are constant on the con-text set, softmax attention reduces to uniform averaging, which matches the mean aggregator used in models such as GCN and GraphSAGE. Sum aggregation differs only by a degree-dependent scaling and can be viewed as the same update up to normalization. Therefore, the message-level conclusion remains informative for a broad class of message-passing GNNs, even when the final layer implementation does not explicitly use attention. 
+
+Remark 2. Theorem 2 shows that when retrieval introduces an outlier node o whose most confident class m′ conflicts with the ground-truth label yu and satisfies p′ 
+
+> m′
+
+≥ pm′ , the retrieved-context objective L(Ru) is more tolerant compared to the individ-ual supervision L(o), as evidenced by a smaller penalty imposed by the gradient. 
+
+6 EXPERIMENTS 
+
+In this section, we present empirical evaluation results of RTA on real-world graph benchmarks. The source code, including the datasets and all necessary scripts for re-producing the results, is available at https://github.com/ EdisonLeeeee/RTA. 
+
+6.1 Experimental settings 
+
+6.1.1 Datasets 
+
+We evaluate RTA on a diverse collection of text-attributed graphs covering both homophilic and heterophilic set-tings. Specifically, we use six homophilic datasets from the JOURNAL OF L ATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2021 7
+
+CSTAG benchmark [44], including Books-Children (Chil-dren), Books-History (History), Ele-Computers (Comput-ers), Ele-Photo (Photo), Sports-Fitness (Fitness), and Ogbn-Arxiv-TA (Arxiv). We further include four heterophilic web-page graphs, namely Cornell, Texas, Wisconsin, and Wash-ington [45]. In all datasets, each node is associated with textual attributes and a category label, and the task is node classification. For Arxiv, we use the official public split provided by the OGB benchmark [46]. For all remaining datasets, following prior work [24], [44], we adopt a ran-dom 60%/20%/20% split for train/validation/test. Dataset statistics are summarized in Table 1. We briefly describe each dataset group below.  
+
+> •
+
+Ogbn-Arxiv-TA (Arxiv) [44] is derived from the ci-tation dataset Ogbn-Arxiv [46]. The task is to predict paper categories, formulated as a 40-class classifica-tion problem. The textual attributes of each paper node are extracted from its title and abstract.  
+
+> •
+
+Books-Children and Books-History [44] are ex-tracted from the Amazon-Books dataset. Books-Children contains items under the second-level cate-gory “Children”, while Books-History contains items under the second-level category “History”. Nodes represent books, and edges indicate frequent co-purchase or co-viewing relations. The labels corre-spond to third-level book categories, and the title and description of each book are used as textual attributes.  
+
+> •
+
+Ele-Computers and Ele-Photo [44] are extracted from the Amazon-Electronics dataset. Ele-Computers contains products under the second-level category “Computers”, while Ele-Photo contains products under the second-level category “Photo”. Nodes represent electronics-related products, and edges indicate frequent co-purchase or co-viewing relations.  
+
+> •
+
+Sports-Fitness [44] is extracted from the Amazon-Sports dataset and consists of items under the second-level category “Fitness”. Nodes represent fitness-related products, and edges indicate frequent co-purchase or co-viewing relations.  
+
+> •
+
+Cornell, Texas, Wisconsin, and Washington [45] are university web-page graphs. Nodes represent web pages, edges represent hyperlinks, and textual features are derived from page content. Each node is classified into one of several page types, such as student, faculty, or department. 
+
+6.1.2 Baselines 
+
+We compare RTA with a broad range of baselines cover-ing graph neural networks, self-supervised graph learning methods, LLM-based predictors, and graph-oriented LLM methods. Specifically, the baselines fall into four categories. 
+
+▶ Standard GNNs : GCN [1], GAT [2], GraphSAGE [3], and DGT [14]; ▶ Graph contrastive learning (GCL) methods :DGI [47], BGRL [48], MaskGAE [4], and GraphMAE [49]; 
+
+▶ Vanilla LLMs : Q WEN 2.5-7B-I NSTRUCT , L LAMA -3.1-8B-INSTRUCT , QWEN 3-8B, GPT-4 O, and DEEP SEEK -V4; ▶
+
+Graph LLMs : GLEM [23], TAPE [18], LlaGA [50], OFA [26], GOFA [51], LLM-BP [24], AuGLM [52], and DENSE [21].                                             
+
+> TABLE 1 Datasets statistics. Both homophilic and heterophilic graphs are included in our experiments.
+> Dataset #Nodes #Edges #Classes Type
+> Children 76,875 1,554,578 24 Homophilic History 41,551 358,574 12 Homophilic Computers 87,229 721,081 10 Homophilic Photo 48,362 500,928 12 Homophilic Fitness 173,055 1,773,500 13 Homophilic Arxiv 169,343 1,166,243 40 Homophilic Cornell 191 292 5Heterophilic Texas 187 310 5Heterophilic Wisconsin 265 510 5Heterophilic Washington 229 394 5Heterophilic
+
+In adversarial robustness experiments, we additionally compare with robust GNNs, including RGCN [53], Medi-anGCN [16], SimPGCN [54], and ProGNN [55]. We briefly describe these baselines below. 
+
+Standard GNNs.  
+
+> •
+
+GCN [1]: A canonical graph convolutional model that mixes node features with a normalized adja-cency operator.  
+
+> •
+
+GAT [2]: Replaces fixed neighbor weights with learned attention coefficients, so different neighbors contribute unequally to the update.  
+
+> •
+
+GraphSAGE [3]: An inductive GNN that samples neighbors and aggregates them with simple set func-tions, such as mean aggregation, followed by an MLP.  
+
+> •
+
+DGT [14]: A sparse graph Transformer that dynam-ically selects structurally and semantically relevant nodes and applies sparse attention with learnable Katz positional encodings for efficient large-scale graph representation learning. 
+
+Graph contrastive learning methods.  
+
+> •
+
+DGI [47]: A self-supervised method that trains an encoder by maximizing mutual information between local patch embeddings and a global graph sum-mary, using corrupted graphs as negatives. It learns representations without labels and then fits a down-stream classifier.  
+
+> •
+
+BGRL [48]: A negative-free bootstrap approach with an online network predicting the target network’s representations under graph augmentations. It sta-bilizes training via a stop-gradient target, similar in spirit to BYOL on graphs.  
+
+> •
+
+MaskGAE [4]: A masked graph autoencoding frame-work that hides parts of the graph structure and trains an encoder–decoder to reconstruct them. The masking objective encourages representations that capture both semantics and topology.  
+
+> •
+
+GraphMAE [49]: A masked autoencoder that recon-structs masked node attributes from partially ob-served graphs via an encoder–decoder pipeline. It is commonly used as self-supervised pretraining before supervised evaluation. 
+
+Vanilla LLMs. We include QWEN 2.5-7B-I NSTRUCT ,LLAMA -3.1-8B-I NSTRUCT , QWEN 3-8B, GPT-4 O, and JOURNAL OF L ATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2021 8
+
+DEEP SEEK -V4 as zero-shot or prompt-based LLM baselines without task-specific fine-tuning. These baselines evaluate whether language models alone can perform node classification on text-attributed graphs without explicit graph modeling. 
+
+Graph LLMs.  
+
+> •
+
+GLEM [23]: Couples a text encoder with a graph model and iteratively leverages text and structure signals, typically via pseudo-labeling or co-training style updates. It is a representative hybrid that ex-plicitly fuses language and graph inductive biases.  
+
+> •
+
+TAPE [18]: Uses an LLM to produce task-aware textual signals, such as explanations or enriched descriptions, that are then distilled or encoded for learning on text-attributed graphs.  
+
+> •
+
+LlaGA [50]: A graph-aware LLM framework that injects graph context into LLM-based prediction, for example by linearizing local neighborhoods into text, and adapts the model for graph tasks.  
+
+> •
+
+OFA [26]: A general graph foundation-style baseline that targets broad task coverage with a unified back-bone and lightweight task adaptation.  
+
+> •
+
+GOFA [51]: A stronger generalization-oriented ex-tension in the same spirit as OFA, emphasizing ro-bustness and transfer across datasets and tasks.  
+
+> •
+
+LLM-BP [24]: Treats LLM predictions as local evi-dence and refines them with a belief-propagation-style graph inference procedure.  
+
+> •
+
+AuGLM [52]: An LLM-based node classifier that en-riches input with topological and semantic retrieval and employs a lightweight GNN for candidate label pruning.  
+
+> •
+
+DENSE [21]: A zero-shot LLM-on-graph baseline that reduces cost and noise by grouping or bundling nodes and contexts before querying the LLM. 
+
+Robust GNN baselines. The following baselines are used specifically in adversarial robustness experiments.  
+
+> •
+
+RGCN [53]: A robustness-oriented GCN variant that reduces sensitivity to noisy or adversarial edges by explicitly modeling uncertainty or unreliable neigh-borhoods.  
+
+> •
+
+MedianGCN [16]: Replaces mean aggregation with a coordinate-wise median operator to suppress outlier neighbor messages.  
+
+> •
+
+SimPGCN [54]: Encourages similarity-preserving representations and typically reweights edges based on feature similarity, reducing the impact of adver-sarially injected edges.  
+
+> •
+
+ProGNN [55]: Jointly learns a cleaned graph struc-ture together with GNN parameters under structural constraints. We next describe how RTA generates robustness-aware node embeddings, which serve as the basis for subsequent retrieval and aggregation. 
+
+6.1.3 LLM-based Embedding Generation 
+
+For LLM-based embedding generation, we use a robustness-aware prompt that asks the model to distinguish consistent            
+
+> TABLE 2 Prompt used to generate robustness-aware text embeddings.
+> Task :You are analyzing a target node in a graph where each node has associated text and aclass label. You are also provided with its neighbors’ texts and labels. However, due to adversarial perturbations, some neighbors may intentionally provide misleading information. Please follow these steps: 1. Read the target node’s text. 2. Check the consistency of each neighbor’s text and label with the target node’s content. 3. For consistent neighbors, softly incorporate their information; for conflicting ones, discard or downweight them. 4. Generate a numerical embedding that reflects the target node’s core semantics and is robust against inconsistent or adversarial neighbors. The embedding should capture the semantic meaning of the text and be useful for similarity comparison, clustering, and retrieval tasks.
+> Input Text :
+> {input text }
+> Reference Labels :
+> {reference labels }
+
+neighbor evidence from potentially misleading or adversar-ial neighbor information. The prompt encourages the gener-ated embedding to preserve the target node’s core semantics while downweighting inconsistent neighbor signals. The full prompt is shown in Table 2. 
+
+6.1.4 Hyperparameters 
+
+We use a unified hyperparameter setting across datasets for fair comparison. Specifically, hyperparameters are tuned on OGBN -A RXIV -TA and then kept fixed for all other datasets. All trainable models are optimized with Adam [56] for at most 500 epochs, using a learning rate of 0.001 and early stopping with a patience of 10 epochs. For RTA and neural baselines, we use a hidden dimension of 128 and adopt a two-layer architecture unless otherwise specified. For the retrieval components in RTA, we retrieve k1 =3 labeled examples for label-aware text embedding and 
+
+k2 = 5 nodes for retrieval-augmented message aggregation; we also set the PPR teleport probability α = 0.5 and the semantic-structural fusion weight λ = 0 .5 throughout all experiments. Following prior work [21], [24], we use 
+
+bge-en-icl [57] as the default text embedding model for dense retrieval. 
+
+6.1.5 Implementation and Evaluation 
+
+We implement RTA and all trainable baselines using Py-Torch [58] and PyTorch Geometric [59]. Accuracy is used as the evaluation metric. For MLP, GNN-based and GraphLLM methods, we report the average accuracy and standard deviation over ten runs. For LLM-based baselines, due to computational cost, we report the average results over three runs to account for the variability introduced by few-shot sampling. To avoid label leakage, RTA uses only training labels as label-aware guidance. For validation and test nodes, as well as nodes without labels, we replace the label input with a padding token so that no ground-truth label information JOURNAL OF L ATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2021 9
+
+TABLE 3 Node classification results (%) on text-attributed graphs. The best and second-best performances are highlighted as boldfaced and underlined, respectively. 
+
+Children History Photo Computers Fitness Arxiv Cornell Texas Wisc. Wash. 
+
+MLP 51.2 ±0.2 82.0 ±0.9 60.7 ±0.9 65.3 ±0.4 87.2 ±0.3 46.5 ±0.8 49.5 ±0.7 62.0 ±1.8 46.5 ±1.5 66.0 ±0.9
+
+GCN 56.3 ±0.3 84.4 ±0.3 84.0 ±0.9 87.6 ±0.4 92.1 ±0.7 72.5 ±0.6 52.6 ±0.4 64.8 ±1.5 49.0 ±0.7 69.5 ±0.5
+
+GAT 56.4 ±0.8 84.0 ±0.6 85.3 ±0.5 88.6 ±0.2 92.5 ±0.5 72.7 ±0.8 53.2 ±0.6 65.9 ±1.4 52.3 ±0.4 73.1 ±0.7
+
+GraphSAGE 58.5 ±0.1 86.1 ±0.8 82.9 ±0.7 87.9 ±0.8 92.8 ±0.5 72.9 ±0.8 54.8 ±0.5 64.2 ±1.3 50.1 ±1.0 71.4 ±0.6
+
+DGT 57.4 ±0.7 86.2 ±0.3 85.1 ±0.5 87.3 ±0.3 92.0 ±0.5 74.6 ±0.4 54.5 ±0.3 67.3 ±1.0 51.4 ±1.2 71.5 ±0.5
+
+DGI 54.9 ±0.5 84.9 ±0.3 82.7 ±0.6 86.9 ±0.4 92.9 ±0.7 72.1 ±0.5 14.7 ±0.9 11.2 ±1.4 12.1 ±0.7 21.0 ±1.2
+
+BGRL 55.9 ±0.4 85.9 ±0.6 83.7 ±0.5 87.9 ±0.2 93.9 ±0.4 73.3 ±0.7 16.5 ±1.0 12.8 ±1.7 13.6 ±1.4 22.3 ±1.1
+
+MaskGAE 57.1 ±0.8 86.1 ±0.9 83.8 ±0.4 89.1 ±0.3 93.2 ±0.6 73.4 ±0.5 24.9 ±1.1 19.3 ±2.0 24.0 ±1.6 26.1 ±1.4
+
+GraphMAE 57.0 ±0.6 86.2 ±0.5 83.7 ±0.7 87.9 ±0.4 93.4 ±0.5 73.3 ±0.6 23.0 ±0.7 17.7 ±0.4 23.0 ±1.7 24.9 ±0.9
+
+LLAMA 3.1-8B 20.9 36.0 47.8 53.9 43.2 38.1 40.2 58.5 50.0 44.3 QWEN 2.5-7B 23.0 19.2 41.0 52.4 56.2 34.3 38.1 56.3 48.7 42.0 QWEN 3-8B 26.6 29.4 45.6 55.3 58.4 38.5 42.3 59.6 52.3 47.5 DEEP SEEK -V4 30.5 61.4 55.1 56.3 48.8 45.9 47.0 63.4 53.4 49.6 GPT-4 O 30.8 53.3 55.6 60.3 66.4 46.8 45.5 63.1 56.6 48.9 GLEM 52.1 ±0.5 84.0 ±0.8 79.8 ±0.3 80.2 ±0.6 88.9 ±0.2 74.7 ±1.3 57.8 ±1.0 70.6 ±0.8 63.2 ±0.6 68.9 ±0.5
+
+TAPE 53.4 ±0.7 83.8 ±0.6 86.1 ±0.5 84.5 ±0.2 85.7 ±0.7 75.2 ±0.3 78.6 ±0.6 84.2 ±0.9 80.3 ±1.1 74.9 ±1.2
+
+LLaGA 53.2 ±0.4 84.9 ±0.3 87.1 ±0.7 88.0 ±0.4 92.0 ±0.3 75.2 ±0.9 82.6 ±0.8 85.5 ±1.6 85.1 ±0.9 70.5 ±0.7
+
+OFA 50.1 ±0.5 78.3 ±0.3 82.9 ±0.5 81.5 ±0.6 87.2 ±0.6 69.8 ±0.5 75.8 ±0.5 81.8 ±0.4 74.8 ±0.3 76.0 ±0.6
+
+GOFA 52.2 ±0.3 76.3 ±0.4 82.4 ±0.6 80.9 ±0.2 85.7 ±0.9 69.0 ±0.9 39.5 ±0.6 38.4 ±1.0 32.5 ±1.5 31.0 ±1.1
+
+LLM-BP 54.8 ±0.2 79.9 ±0.7 84.1 ±0.3 84.1 ±0.6 81.2 ±0.5 67.8 ±0.8 83.3 ±0.2 81.7 ±1.4 77.8 ±1.3 73.1 ±1.5
+
+AuGLM 55.2 ±0.6 81.4 ±0.2 83.5 ±0.7 82.7 ±0.8 80.9 ±0.6 69.4 ±0.4 81.5 ±0.7 80.1 ±0.8 79.4 ±1.2 78.5 ±0.8
+
+DENSE 51.4 ±0.7 77.4 ±0.3 82.5 ±0.8 86.5 ±0.6 84.1 ±0.4 70.5 ±0.9 84.8 ±1.1 92.5 ±1.5 87.2 ±0.9 81.7 ±1.7
+
+RTA (ours) 61.9 ±0.7 87.0 ±0.5 88.7 ±0.4 91.2 ±0.3 94.2 ±0.5 75.4 ±0.9 89.9 ±0.2 97.4 ±0.4 96.3 ±0.3 82.6 ±0.2
+
+is injected beyond the training set. All datasets used in the experiments are publicly available. Unless otherwise specified, all experiments are conducted on an NVIDIA RTX 4090 GPU with 24 GB memory. We use the Transformers [60] library to implement the LLM models. 
+
+6.2 Main results 
+
+The node classification results on both homophilic and heterophilic datasets are presented in Table 3. Several key observations emerge from the results. 
+
+RAG is a strong alternative to message passing : Tra-ditional GNNs and GCL methods rely on explicit mes-sage passing and structural encoding to capture graph relationships. However, our results show that RTA, which replaces conventional message passing with retrieval-based augmentation, consistently outperforms these approaches. Although we do not explicitly use recursive message pass-ing in the original graph structure, RTA surpasses standard GNNs and GCL methods by a large margin, demonstrating the advantage of leveraging textual information in conjunc-tion with graph structures. 
+
+Simple MLP with RAG outperforms graph LLMs : RTA is a simple MLP network augmented with RAG mech-anisms, making it more parameter-efficient compared to graph LLMs. Compared to graph LLMs such as TAPE and LLaGA, RTA achieves significant improvements, par-ticularly on datasets with richer textual features and het-erophilic settings. This result highlights the effectiveness of retrieval-based augmentation in enhancing model per-formance without the need for specialized graph-specific pretraining. 
+
+Graph-aware adaptation is crucial for LLMs to perform well on graph tasks : We observe that vanilla LLMs per-form poorly without fine-tuning, emphasizing the necessity of graph-aware adaptations for learning on text-attributed graphs. While LLMs excel at unstructured tasks, their in-ability to inherently model graph topology leads to subpar performance when applied directly to node classification tasks. The retrieval-based augmentation in RTA addresses this limitation by dynamically providing relevant contextual information, enabling LLMs to reason over graph data more effectively. 
+
+6.3 Robustness against adversarial attacks 
+
+We evaluate adversarial robustness on four benchmark graphs (Children, History, Photo, and Computers) under the structure-perturbation attack SGA [61], which degrades node classification by adversarially modifying edges at test time. Figure 4 reports accuracy under SGA (clean results omitted). RTA consistently achieves the best performance across all datasets. Under SGA attack, RTA attains 
+
+56 .7/79 .3/80 .3/84 .5 accuracy on Children/History/Pho-to/Computers, outperforming the strongest baseline by clear margins. In contrast, standard GNNs (e.g., GCN, GAT) collapse under attack, and robust defenses (e.g., Medi-anGCN) improve stability but remain substantially below RTA. We attribute this robustness to retrieval-based message passing: instead of relying on a single, potentially poisoned local neighborhood, RTA retrieves task-relevant context that is less coupled to any specific adjacency and provides re-dundant evidence from multiple supports, leading to more stable predictions under edge perturbations. JOURNAL OF L ATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2021 10   
+
+> Fig. 4. Performance comparison against graph adversarial attack SGA [61].
+
+(a) Children (b) History (c) Photo (d) Computers 
+
+> Fig. 5. Node classification performance with different network depth. Here we compare only with representative GNNs.
+
+6.4 Robustness against oversmoothing 
+
+Although message passing enables GNNs to capture local graph structures, standard GNNs are known to suffer from the oversmoothing problem. Oversmoothing is a common phenomenon in GNNs, where increasing network depth leads to a deterioration in performance due to node rep-resentations becoming indistinguishable. To further investi-gate whether RTA can mitigate the performance degrada-tion of GNN methods in deep architectures, we conduct experiments on the Children and History datasets with varying numbers of layers/depths, L ∈ { 2, 4, 8, 16 , 32 }. The results of different GNN methods are shown in Figure 5. As observed in Figure 5, standard GNNs experience severe oversmoothing as network depth increases. The learned representations in these methods collapse at greater depths, leading to significantly degraded performance be-yond four layers. In contrast, RTA demonstrates remark-able robustness against oversmoothing, scaling effectively to deeper architectures without substantial performance loss. Notably, RTA achieves state-of-the-art performance across all depth levels. As the number of layers increases, RTA outperforms all baselines by increasingly larger margins. This highlights the effectiveness of retrieval-based augmen-tation in preserving representation quality and mitigating the limitations of traditional message-passing-based GNNs when scaling to deeper networks. 
+
+6.5 Efficiency comparison 
+
+We provide a comparison of training time between RTA and standard GNNs, including GCN, GAT, GraphSAGE, and DGT on the Fitness dataset - the largest dataset our experiments. The results in Figure 6 highlight that RTA achieves significantly higher computational efficiency while maintaining strong performance. Unlike traditional GNNs that require iterative message passing across multiple layers, RTA efficiently retrieves and incorporates contextual infor-mation through retrieval-augmented mechanisms, reducing 
+
+> Fig. 6. Comparison of training and inference time on Fitness dataset across different GNNs.
+
+redundant computations. Additionally, RTA avoids costly graph convolutions and neighbor aggregation steps, leading to faster convergence and lower training time. The efficiency of RTA is particularly advantageous for large-scale graph datasets, where standard GNNs often suffer from scalability issues due to high memory consumption and increased computational complexity. These results demonstrate that RTA provides a practical and scalable alternative to existing GNN models, offering a balance between computational efficiency and predictive accuracy. 
+
+6.6 Ablation study 
+
+In this subsection, we conduct ablation studies on eight representative benchmarks, including homophilic graph datasets Children, History, Photo, and Computers, and heterophilic graph datasets Cornell, Texas, Wisconsin, and Washington, to investigate the key factors that influence the performance of RTA. 
+
+6.6.1 Impact of retrieved samples. 
+
+We first conduct an ablation study on the number of re-trieved text samples ( k1) and the number of neighbors used for message aggregation ( k2). The results are shown in Figure 7. Both k1 and k2 are important for the down-stream performance of RTA. When k1 = 0 or k2 = 0 , the method degenerates into a plain text-embedding baseline or a simple MLP without retrieved context or neighborhood JOURNAL OF L ATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2021 11 
+
+(a) Children (b) History (c) Photo (d) Computer 
+
+(e) Cornell (f) Texas (g) Wisconsin (h) Washington 
+
+Fig. 7. Ablation results on the number of retrieved samples in text embedding ( k1) and message aggregation ( k2). TABLE 4 Comparisons between RTA and its variants. L-I: label-aware contextual embedding; L-II: label-aware aggregation. 
+
+Children History Photo Computers Cornell Texas Wisc. Wash. 
+
+RTA \ (L-I) 56.6 ±0.3 85.4 ±0.9 86.2 ±0.8 86.9 ±0.6 85.4 ±0.4 95.1 ±0.7 90.2 ±0.6 80.7 ±0.9
+
+RTA \ (L-II) 58.3 ±0.6 86.6 ±0.7 85.4 ±0.5 88.8 ±0.3 79.4 ±1.1 86.1 ±1.5 83.3 ±1.6 74.6 ±1.4
+
+RTA \ (L-I&II) 55.9 ±0.7 84.7 ±0.4 83.2 ±0.3 85.4 ±0.4 76.6 ±1.4 68.6 ±0.9 80.6 ±0.8 69.6 ±1.2
+
+RTA \ (semantic retrieval) 57.8 ±0.7 84.9 ±0.8 84.6 ±0.7 87.1 ±0.6 78.8 ±1.3 84.7 ±1.6 82.1 ±1.5 73.8 ±1.4
+
+RTA \ (structural retrieval) 59.9 ±0.6 85.9 ±0.6 87.1 ±0.6 89.8 ±0.5 85.6 ±0.9 93.2 ±1.0 91.5 ±1.1 79.8 ±1.0
+
+RTA 61.9 ±0.7 87.0 ±0.5 88.7 ±0.4 91.2 ±0.3 89.9 ±0.2 97.4 ±0.4 96.3 ±0.3 82.6 ±0.2
+
+TABLE 5 Retriever backbone ablation for RTA on eight node classification benchmarks. 
+
+Retriever backbone Children History Photo Computers Cornell Texas Wisc. Wash. 
+
+bert-base-uncased 60.1 ±0.4 85.7 ±0.8 87.6 ±0.6 90.3 ±0.2 81.4 ±1.6 80.4 ±0.6 77.8 ±2.0 68.6 ±1.6
+
+all-mpnet-base-v2 60.6 ±0.3 86.2 ±0.3 88.2 ±0.3 90.8 ±0.3 82.6 ±1.2 84.9 ±0.8 79.1 ±1.4 69.6 ±1.5
+
+bge-en-icl 61.9 ±0.7 87.0 ±0.5 88.7 ±0.4 91.2 ±0.3 89.9 ±0.2 97.4 ±0.4 96.3 ±0.3 82.6 ±0.2
+
+aggregation. Notably, relatively small values of k1 and k2
+
+already yield strong performance, suggesting that a modest amount of high-relevance context is sufficient and helps avoid overwhelming the model. In contrast, increasing k1
+
+and k2 beyond a certain point consistently hurts accuracy, likely because additional retrieved samples or neighbors become increasingly irrelevant or redundant and introduce noise. This degradation is more pronounced on heterophilic datasets, where indiscriminate neighborhood aggregation is more likely to mix semantically mismatched information across classes. Overall, these results reveal a clear trade-off in which appropriately chosen k1 and k2 improve perfor-mance by injecting useful contextual signals. 
+
+6.6.2 Ablation on label-aware and retrieval components. 
+
+RTA couples retrieval with lightweight aggregation and incorporates label information into both the contextual em-bedding stage (L-I) and the aggregation stage (L-II). We evaluate variants by removing L-I, L-II, or both compo-nents, with results reported in Table 4. Removing either component consistently degrades performance, confirming the benefit of label supervision at different stages of RTA. In particular, removing L-I weakens the label-informed contex-tual representations used for subsequent retrieval, whereas removing L-II leads to more pronounced degradation on heterophilic graphs, where retrieved contexts are more likely to contain class-inconsistent information and label-aware aggregation helps suppress such noise. Removing both components results in the largest overall performance drop, indicating that label guidance in contextual represen-tation learning and retrieval aggregation provides comple-mentary benefits. We further examine the contribution of the two retrieval signals by individually removing semantic or structural retrieval. Both variants perform consistently worse than the full model, demonstrating that semantic and structural evidence provide complementary informa-tion for context construction. Semantic retrieval generally contributes more substantially, particularly on heterophilic graphs, where graph topology alone may provide less re-liable task-relevant context. Nevertheless, removing struc-tural retrieval also leads to clear performance degradation, showing that PPR-based structural proximity captures use-ful high-order topological dependencies that are not fully reflected by embedding similarity. Overall, jointly exploiting label-aware modeling together with semantic and structural retrieval enables RTA to construct more informative and JOURNAL OF L ATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2021 12 
+
+task-relevant context sets. 
+
+6.6.3 Ablation on the retrieval embedding model. 
+
+In our main experiments, we follow prior work [21], [24] and adopt bge-en-icl [57] as the default retrieval em-bedding model used to encode texts for dense retrieval. To study the effect of embedding quality, we keep the re-trieval pipeline fixed and only swap the text encoder among 
+
+bert-base-uncased [40], all-mpnet-base-v2 [62], and bge-en-icl . As shown in Table 5, bge-en-icl 
+
+achieves the best performance across all eight bench-marks. The improvements are relatively modest on ho-mophilic datasets, where neighborhood signals are already informative and retrieved texts mainly provide comple-mentary evidence. In contrast, on heterophilic datasets, 
+
+bge-en-icl yields substantially larger gains, which sug-gests that stronger semantic embeddings are crucial when informative neighborhoods are harder to recover and naive aggregation is more likely to introduce mismatched context. From a practical perspective, all-mpnet-base-v2 offers a favorable accuracy–efficiency trade-off, while bge-en-icl 
+
+is preferred when the additional compute is justified by the performance gains in challenging, especially heterophilic settings. 
+
+7 CONCLUSION 
+
+In this work, we establish a close connection between message-passing GNNs and retrieval-augmented genera-tion. We show that RAG-inspired designs can serve as a simplified yet effective alternative to conventional GNN architectures for text-attributed graphs. By casting graph representation learning as a retrieval-augmented problem, RTA queries and aggregates task-relevant context from text-attributed nodes, which reduces the reliance on explicit message passing. We further draw inspiration from label propagation and use training labels as guidance signals that shape both retrieval embeddings and neighborhood aggregation. Theoretically, we formalize the relationship between RAG-based aggregation and standard message-passing GNNs, and we provide robustness guarantees for the optimization of label-aware retrieval. Empirically, RTA achieves state-of-the-art results on a range of text-attributed graph benchmarks compared with strong GNN, LLM, and graph-LLM baselines, while demonstrating improved scal-ability and robustness under adversarial perturbations and mitigating oversmoothing. 
+
+ACKNOWLEDGMENTS 
+
+This work was supported by the New Generation Artificial Intelligence-National Science and Technology Major Project (No. 2025ZD0122701), the Young Scientists Fund (C) of the National Natural Science Foundation of China (No. 62602538), and the National Science Fund for Distinguished Young Scholars (No. 62525605). 
+
+REFERENCES 
+
+[1] T. N. Kipf and M. Welling, “Semi-supervised classification with graph convolutional networks,” in ICLR (Poster) . OpenRe-view.net, 2017. [2] P. Velickovic, G. Cucurull, A. Casanova, A. Romero, P. Li ` o, and Y. Bengio, “Graph attention networks,” in ICLR (Poster) . Open-Review.net, 2018. [3] W. Hamilton, Z. Ying, and J. Leskovec, “Inductive representation learning on large graphs,” Advances in neural information processing systems , vol. 30, 2017. [4] J. Li, R. Wu, W. Sun, L. Chen, S. Tian, L. Zhu, C. Meng, Z. Zheng, and W. Wang, “What’s behind the mask: Understanding masked graph modeling for graph autoencoders,” in KDD . ACM, 2023, pp. 1268–1279. [5] W. Fan, Y. Ma, Q. Li, Y. He, Y. E. Zhao, J. Tang, and D. Yin, “Graph neural networks for social recommendation,” in WWW . ACM, 2019, pp. 417–426. [6] R. Sun, H. Dai, and A. W. Yu, “Does GNN pretraining help molecular representation?” in NeurIPS , 2022. [7] X. He, K. Deng, X. Wang, Y. Li, Y. Zhang, and M. Wang, “Lightgcn: Simplifying and powering graph convolution network for recom-mendation,” in SIGIR . ACM, 2020, pp. 639–648. [8] J. Gilmer, S. S. Schoenholz, P. F. Riley, O. Vinyals, and G. E. Dahl, “Neural message passing for quantum chemistry,” in ICML , ser. Proceedings of Machine Learning Research, vol. 70. PMLR, 2017, pp. 1263–1272. [9] J. Li, Z. Wei, Y. Zhu, R. Wu, H. Zhang, L. Chen, and Z. Zheng, “Heterophily-aware representation learning on heterogeneous graphs,” IEEE Transactions on Pattern Analysis and Machine Intel-ligence , vol. 47, no. 9, pp. 7852–7866, 2025. [10] U. Alon and E. Yahav, “On the bottleneck of graph neural net-works and its practical implications,” in ICLR . OpenReview.net, 2021. [11] W. Fan, Y. Ding, L. Ning, S. Wang, H. Li, D. Yin, T. Chua, and Q. Li, “A survey on RAG meeting llms: Towards retrieval-augmented large language models,” in KDD . ACM, 2024, pp. 6491–6501. [12] P. S. H. Lewis, E. Perez, A. Piktus, F. Petroni, V. Karpukhin, N. Goyal, H. K ¨ uttler, M. Lewis, W. Yih, T. Rockt¨ aschel, S. Riedel, and D. Kiela, “Retrieval-augmented generation for knowledge-intensive NLP tasks,” in NeurIPS , 2020. [13] Q. Wu, W. Zhao, Z. Li, D. P. Wipf, and J. Yan, “Nodeformer: A scal-able graph structure learning transformer for node classification,” in NeurIPS , 2022. [14] J. Park, S. Yun, H. Park, J. Kang, J. Jeong, K. Kim, J. Ha, and H. J. Kim, “Deformable graph transformer,” IEEE Trans. Pattern Anal. Mach. Intell. , vol. 47, no. 7, pp. 5385–5396, 2025. [15] H. Zeng, H. Zhou, A. Srivastava, R. Kannan, and V. K. Prasanna, “Graphsaint: Graph sampling based inductive learning method,” in ICLR . OpenReview.net, 2020. [16] L. Chen, J. Li, Q. Peng, Y. Liu, Z. Zheng, and C. Yang, “Un-derstanding structural vulnerability in graph convolutional net-works,” in IJCAI . ijcai.org, 2021, pp. 2249–2255. [17] K. Xu, W. Hu, J. Leskovec, and S. Jegelka, “How powerful are graph neural networks?” in ICLR . OpenReview.net, 2019. [18] X. He, X. Bresson, T. Laurent, A. Perold, Y. LeCun, and B. Hooi, “Harnessing explanations: Llm-to-lm interpreter for enhanced text-attributed graph representation learning,” in ICLR . Open-Review.net, 2024. [19] J. Tang, Y. Yang, W. Wei, L. Shi, L. Su, S. Cheng, D. Yin, and C. Huang, “Graphgpt: Graph instruction tuning for large language models,” in SIGIR . ACM, 2024, pp. 491–500. [20] Z. Chen, H. Mao, H. Li, W. Jin, H. Wen, X. Wei, S. Wang, D. Yin, W. Fan, H. Liu, and J. Tang, “Exploring the potential of large language models (llms)in learning on graphs,” SIGKDD Explor. ,vol. 25, no. 2, pp. 42–61, 2023. [21] Y. Zhao, Q. Zhang, X. Luo, W. Zhang, Z. Xiao, W. Ju, P. S. Yu, and M. Zhang, “Dynamic bundling with large language models for zero-shot inference on text-attributed graphs,” in The Thirty-ninth Annual Conference on Neural Information Processing Systems , 2025. [Online]. Available: https: //openreview.net/forum?id=1nSynwHvu2 [22] Y. Shi, A. Zhang, E. Zhang, Z. Liu, and X. Wang, “Relm: Leverag-ing language models for enhanced chemical reaction prediction,” in EMNLP (Findings) . Association for Computational Linguistics, 2023, pp. 5506–5520. [23] J. Zhao, M. Qu, C. Li, H. Yan, Q. Liu, R. Li, X. Xie, and J. Tang, “Learning on large-scale text-attributed graphs via variational inference,” in ICLR . OpenReview.net, 2023. [24] H. P. Wang, S. Liu, R. Wei, and P. Li, “Generalization principles for inference over text-attributed graphs with JOURNAL OF L ATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2021 13 
+
+large language models,” in ICML , 2025. [Online]. Available: https://openreview.net/forum?id=dfOqiHuklY [25] E. Chien, W. Chang, C. Hsieh, H. Yu, J. Zhang, O. Milenkovic, and I. S. Dhillon, “Node feature extraction by self-supervised multi-scale neighborhood prediction,” in ICLR . OpenReview.net, 2022. [26] H. Liu, J. Feng, L. Kong, N. Liang, D. Tao, Y. Chen, and M. Zhang, “One for all: Towards training one graph model for all classifica-tion tasks,” in ICLR . OpenReview.net, 2024. [27] Z. Wang, Z. Wang, L. T. Le, H. S. Zheng, S. Mishra, V. Perot, Y. Zhang, A. Mattapalli, A. Taly, J. Shang, C. Lee, and T. Pfis-ter, “Speculative RAG: enhancing retrieval augmented generation through drafting,” CoRR , vol. abs/2407.08223, 2024. [28] G. Izacard, P. S. H. Lewis, M. Lomeli, L. Hosseini, F. Petroni, T. Schick, J. Dwivedi-Yu, A. Joulin, S. Riedel, and E. Grave, “Atlas: Few-shot learning with retrieval augmented language models,” J. Mach. Learn. Res. , vol. 24, pp. 251:1–251:43, 2023. [29] S. Yan, J. Gu, Y. Zhu, and Z. Ling, “Corrective retrieval augmented generation,” CoRR , vol. abs/2401.15884, 2024. [30] X. Li, C. Zhu, L. Li, Z. Yin, T. Sun, and X. Qiu, “Llatrieval: Llm-verified retrieval for verifiable generation,” in NAACL-HLT .Association for Computational Linguistics, 2024, pp. 5453–5471. [31] A. Asai, Z. Wu, Y. Wang, A. Sil, and H. Hajishirzi, “Self-rag: Learn-ing to retrieve, generate, and critique through self-reflection,” in 
+
+ICLR . OpenReview.net, 2024. [32] D. Edge, H. Trinh, N. Cheng, J. Bradley, A. Chao, A. Mody, S. Tru-itt, and J. Larson, “From local to global: A graph RAG approach to query-focused summarization,” CoRR , vol. abs/2404.16130, 2024. [33] X. He, Y. Tian, Y. Sun, N. V. Chawla, T. Laurent, Y. LeCun, X. Bres-son, and B. Hooi, “G-retriever: Retrieval-augmented generation for textual graph understanding and question answering,” in 
+
+NeurIPS , 2024. [34] B. J. Gutierrez, Y. Shu, Y. Gu, M. Yasunaga, and Y. Su, “Hipporag: Neurobiologically inspired long-term memory for large language models,” in NeurIPS , 2024. [35] B. J. Guti´ errez, Y. Shu, W. Qi, S. Zhou, and Y. Su, “From RAG to memory: Non-parametric continual learning for large language models,” in ICML . OpenReview.net, 2025. [36] G. Li, M. M ¨ uller, B. Ghanem, and V. Koltun, “Training graph neural networks with 1000 layers,” in ICML , ser. Proceedings of Machine Learning Research, vol. 139. PMLR, 2021, pp. 6437–6449. [37] V. Karpukhin, B. Oguz, S. Min, P. S. H. Lewis, L. Wu, S. Edunov, D. Chen, and W. Yih, “Dense passage retrieval for open-domain question answering,” in EMNLP (1) . Association for Computa-tional Linguistics, 2020, pp. 6769–6781. [38] J. Jin, Y. Zhu, X. Yang, C. Zhang, and Z. Dou, “Flashrag: A mod-ular toolkit for efficient retrieval-augmented generation research,” 
+
+CoRR , vol. abs/2405.13576, 2024. [39] D. Zhou, O. Bousquet, T. N. Lal, J. Weston, and B. Sch ¨ olkopf, “Learning with local and global consistency,” in NeurIPS . MIT Press, 2003, pp. 321–328. [40] J. Devlin, M. Chang, K. Lee, and K. Toutanova, “BERT: pre-training of deep bidirectional transformers for language understanding,” in NAACL-HLT (1) . Association for Computational Linguistics, 2019, pp. 4171–4186. [41] P. He, X. Liu, J. Gao, and W. Chen, “Deberta: decoding-enhanced bert with disentangled attention,” in ICLR . OpenReview.net, 2021. [42] J. Johnson, M. Douze, and H. J´ egou, “Billion-scale similarity search with GPUs,” IEEE Transactions on Big Data , vol. 7, no. 3, pp. 535– 547, 2019. [43] G. Jeh and J. Widom, “Scaling personalized web search,” in WWW .ACM, 2003, pp. 271–279. [44] H. Yan, C. Li, R. Long, C. Yan, J. Zhao, W. Zhuang, J. Yin, P. Zhang, W. Han, H. Sun, W. Deng, Q. Zhang, L. Sun, X. Xie, and S. Wang, “A comprehensive study on text-attributed graphs: Benchmarking and rethinking,” in NeurIPS , 2023. [45] M. Craven, D. DiPasquo, D. Freitag, A. McCallum, T. Mitchell, K. Nigam, and S. Slattery, “Learning to extract symbolic knowl-edge from the world wide web,” AAAI/IAAI , vol. 3, no. 3.6, p. 2, 1998. [46] W. Hu, M. Fey, M. Zitnik, Y. Dong, H. Ren, B. Liu, M. Catasta, and J. Leskovec, “Open graph benchmark: Datasets for machine learning on graphs,” arXiv preprint arXiv:2005.00687 , 2020. [47] P. Velickovic, W. Fedus, W. L. Hamilton, P. Li ` o, Y. Bengio, and R. D. Hjelm, “Deep graph infomax.” ICLR (Poster) , vol. 2, no. 3, p. 4, 2019. [48] S. Thakoor, C. Tallec, M. G. Azar, R. Munos, P. Veliˇ ckovi´ c, and M. Valko, “Bootstrapped representation learning on graphs,” in 
+
+ICLR 2021 Workshop on Geometrical and Topological Representation Learning , 2021. [49] Z. Hou, X. Liu, Y. Cen, Y. Dong, H. Yang, C. Wang, and J. Tang, “Graphmae: Self-supervised masked graph autoencoders,” in 
+
+KDD . ACM, 2022, pp. 594–604. [50] R. Chen, T. Zhao, A. K. Jaiswal, N. Shah, and Z. Wang, “Llaga: Large language and graph assistant,” in ICML . OpenReview.net, 2024. [51] L. Kong, J. Feng, H. Liu, C. Huang, J. Huang, Y. Chen, and M. Zhang, “GOFA: A generative one-for-all model for joint graph language modeling,” in The Thirteenth International Conference on Learning Representations , 2025. [Online]. Available: https://openreview.net/forum?id=mIjblC9hfm [52] Z. Xu, K. Hassani, S. Zhang, H. Zeng, M. Yasunaga, L. Wang, D. Fu, N. Yao, B. Long, and H. Tong, “How to make lms strong node classifiers?” in EACL (Findings) , ser. Findings of ACL. As-sociation for Computational Linguistics, 2026, pp. 252–274. [53] D. Zhu, Z. Zhang, P. Cui, and W. Zhu, “Robust graph convolu-tional networks against adversarial attacks,” in KDD , 2019, pp. 1399–1407. [54] W. Jin, T. Derr, Y. Wang, Y. Ma, Z. Liu, and J. Tang, “Node similarity preserving graph convolutional networks,” in WSDM , 2021, pp. 148–156. [55] W. Jin, Y. Ma, X. Liu, X. Tang, S. Wang, and J. Tang, “Graph structure learning for robust graph neural networks,” in KDD .ACM, 2020, pp. 66–74. [56] D. P. Kingma and J. Ba, “Adam: A method for stochastic optimiza-tion,” in ICLR (Poster) , 2015. [57] C. Li, M. Qin, S. Xiao, J. Chen, K. Luo, Y. Shao, D. Lian, and Z. Liu, “Making text embedders few-shot learners,” 2024. [Online]. Available: https://arxiv.org/abs/2409.15700 [58] A. Paszke, S. Gross, F. Massa, A. Lerer, J. Bradbury, G. Chanan, T. Killeen, Z. Lin, N. Gimelshein, L. Antiga, A. Desmaison, A. K ¨ opf, E. Z. Yang, Z. DeVito, M. Raison, A. Tejani, S. Chil-amkurthy, B. Steiner, L. Fang, J. Bai, and S. Chintala, “Pytorch: An imperative style, high-performance deep learning library,” in 
+
+NeurIPS , 2019, pp. 8024–8035. [59] M. Fey and J. E. Lenssen, “Fast graph representation learning with PyTorch Geometric,” in ICLR Workshop on Representation Learning on Graphs and Manifolds , 2019. [60] T. Wolf, L. Debut, V. Sanh, J. Chaumond, C. Delangue, A. Moi, P. Cistac, T. Rault, R. Louf, M. Funtowicz, and J. Brew, “Hugging-face’s transformers: State-of-the-art natural language processing,” 
+
+CoRR , vol. abs/1910.03771, 2019. [61] J. Li, T. Xie, L. Chen, F. Xie, X. He, and Z. Zheng, “Adversarial attack on large scale graph,” IEEE Trans. Knowl. Data Eng. , vol. 35, no. 1, pp. 82–95, 2023. [62] N. Reimers and I. Gurevych, “Sentence-bert: Sentence embeddings using siamese bert-networks,” in Proceedings of the 2019 Conference on Empirical Methods in Natural Language Processing . Association for Computational Linguistics, 11 2019. [Online]. Available: http://arxiv.org/abs/1908.10084 
+
+APPENDIX 
+
+This section provides theoretical support for the retrieval-augmented view developed in Section 4. Rather than treat-ing message passing as a graph-specific primitive, we an-alyze it as prediction over a retrieved context set . Concretely, for a query node u we denote by R(k) 
+
+> u
+
+its retrieved set (constructed by score-based Top-k retrieval), and we view the downstream computation as a permutation-invariant summarization of R(k) 
+
+> u
+
+followed by a parametric predictor. We further consider the label-aware setting where a subset of nodes (e.g., the training set) can provide super-vision as retrieved label evidence . Throughout, let T ⊆ V 
+
+denote the set of labeled nodes: for each v ∈ T we observe a (possibly noisy) label ˜yv ∈ [C], while nodes outside 
+
+T contribute only a fixed padding embedding (taken as 
+
+0 for simplicity). Under this notation, we establish two JOURNAL OF L ATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2021 14 
+
+complementary results that align directly with the design of RTA: (i) an approximation showing that Top-k retrieval with mean aggregation provides a sparse approximation to softmax-attention message passing under a margin condi-tion; and (ii) an optimization robustness guarantee showing that retrieved-context supervision attenuates the gradient impact of mis-retrieved outliers. Together, these statements clarify when retrieval-defined context sets can replace tra-ditional message passing on fixed edges, and why injecting label evidence into retrieval and aggregation can improve stability without sacrificing robustness to residual retrieval noise. 
+
+Assumption 1 (Bounded retrieved features) . Define normal-ized embeddings ¯xu = xu/∥xu∥2, such that ∥¯xu∥2 = 1 . Let 
+
+ω : [ C] → Rd be the label embedding map and define the label embedding used in aggregation as 
+
+zv = ω(˜ yv ) if v ∈ T , zv = 0 otherwise .
+
+Let the label-augmented neighbor feature be 
+
+rv := xv + zv ∈ Rd.
+
+Assume coordinate-wise boundedness: for all v and coordinates j,
+
+|(rv )j | ≤ B. 
+
+Assumption 2 (Top-k retrieval margin) . Fix a node u. Let 
+
+s(u, v ) be the retrieval score used in Eq. (9) to construct 
+
+R(k) 
+
+> u
+
+. In RTA, s(u, v ) = S(u, v ) denotes the generalized re-trieval score that combines semantic and structural relevance. Let 
+
+v(1) , v (2) , . . . be nodes sorted by s(u, ·) in descending order and define the top-k margin 
+
+γu = s u, v (k)
+
+ − s u, v (k+1) 
+
+.
+
+Assume γu > 0 for the nodes of interest. 
+
+Theorem 3 (Formal statement of Theorem 1) . Fix a node 
+
+u and let s(u, v ) be the retrieval score used in Eq. (9). Let 
+
+R(k) 
+
+> u
+
+= {v(1) , . . . , v (k)} be the Top-k set under s(u, ·). For any temperature τ > 0, define softmax attention weights over all candidates v̸ = u by 
+
+auv (τ ) := exp  s(u, v )/τ P  
+
+> w̸=u
+
+exp  s(u, w )/τ  .
+
+Define the attention message and the Top-k mean message as 
+
+matt  
+
+> u
+
+(τ ) := X 
+
+> v̸=u
+
+auv (τ ) rv , mmean  
+
+> u
+
+:= 1
+
+k
+
+X
+
+> v∈R (k)
+> u
+
+rv ,
+
+where rv = xv + zv as in Assumption 1. Let πu(τ ) := P
+
+> v / ∈R (k)
+> u
+
+auv (τ ) be the attention mass outside the retrieved set, and let 
+
+δu := s u, v (1) 
+
+ − s u, v (k)
+
+ ≥ 0
+
+be the score spread within the retrieved set. Under Assumption 1, the following bound holds: 
+
+matt  
+
+> u
+
+(τ ) − mmean   
+
+> u∞
+
+≤ 2B π u(τ ) + B  exp( δu/τ ) − 1.
+
+Moreover, under Assumption 2, 
+
+πu(τ ) ≤ (N − 1 − k) exp   − γu/τ ,
+
+where N = |V| .Proof. Let S = R(k) 
+
+> u
+
+. Define the renormalized weights on S
+
+by 
+
+˜auv (τ ) = auv (τ )
+
+P 
+
+> w∈S
+
+auw (τ ) = auv (τ )1 − πu(τ ) (v ∈ S),
+
+and the truncated attention message ˜mu(τ ) =P 
+
+> v∈S
+
+˜auv (τ ) rv .First, bound the leakage error: 
+
+matt  
+
+> u
+
+(τ )− ˜mu(τ ) = X
+
+> v / ∈S
+
+auv (τ ) rv +X
+
+> v∈S
+
+
+
+auv (τ )−˜auv (τ )
+
+
+
+rv .
+
+Since P 
+
+> v∈S
+
+|auv (τ ) − ˜auv (τ )| = πu(τ ) and ∥rv ∥∞ ≤ B by Assumption 1, we obtain 
+
+∥matt  
+
+> u
+
+(τ ) − ˜mu(τ )∥∞ ≤ Bπ u(τ ) + Bπ u(τ ) = 2 Bπ u(τ ).
+
+Second, bound the within-S weighting error. By triangle inequality and ∥rv ∥∞ ≤ B,
+
+∥ ˜mu(τ )−mmean  
+
+> u
+
+∥∞ = X
+
+> v∈S
+
+ ˜auv (τ )− 1
+
+> k
+
+rv ∞
+
+≤ B X
+
+> v∈S
+
+˜auv (τ )− 1 
+
+> k
+
+.
+
+By definition of δu, for all v ∈ S we have s(u, v ) ∈
+
+[s(u, v (k)), s (u, v (k))+ δu]. Thus exp( s(u, v )/τ ) varies within a multiplicative factor exp( δu/τ ) over v ∈ S, which implies 
+
+1
+
+k exp( δu/τ ) ≤ ˜auv (τ ) ≤ exp( δu/τ )
+
+k ∀v ∈ S. 
+
+Hence, ˜auv (τ )− 1 
+
+> k
+
+≤ exp( δu/τ )−1 
+
+> k
+
+, and summing over v ∈ S
+
+yields X
+
+> v∈S
+
+˜auv (τ ) − 1 
+
+> k
+
+≤ exp( δu/τ ) − 1.
+
+Therefore, 
+
+∥ ˜mu(τ ) − mmean  
+
+> u
+
+∥∞ ≤ B  exp( δu/τ ) − 1.
+
+Combining the two bounds gives 
+
+∥matt  
+
+> u
+
+(τ ) − mmean  
+
+> u
+
+∥∞ ≤ 2Bπ u(τ ) + B  exp( δu/τ ) − 1.
+
+Finally, bound πu(τ ) under Assumption 2. For any v / ∈
+
+S, s(u, v ) ≤ s(u, v (k+1) ) ≤ s(u, v (k)) − γu. Therefore, 
+
+X
+
+> v / ∈S
+
+exp( s(u, v )/τ ) ≤ (N − 1 − k) exp  (s(u, v (k)) − γu)/τ ,
+
+while X
+
+> v∈S
+
+exp( s(u, v )/τ ) ≥ exp  s(u, v (k))/τ .
+
+Thus, 
+
+πu(τ ) = 
+
+P 
+
+> v / ∈S
+
+exp( s(u, v )/τ )
+
+P  
+
+> w̸=u
+
+exp( s(u, w )/τ ) ≤
+
+P 
+
+> v / ∈S
+
+exp( s(u, v )/τ )
+
+P 
+
+> v∈S
+
+exp( s(u, v )/τ )
+
+≤ (N − 1 − k) exp( −γu/τ ).
+
+Remark 3. Theorem 3 justifies Top-k retrieval as a principled sparsification of attention-based message passing. The theorem is stated for softmax-attention message passing because it provides a convenient envelope for many classical GNN layers. If the attention scores are constant on the context set, softmax attention reduces to uniform averaging, which matches the mean aggregator used in models such as GCN and GraphSAGE. Sum aggregation JOURNAL OF L ATEX CLASS FILES, VOL. 14, NO. 8, AUGUST 2021 15 
+
+differs only by a degree-dependent scaling and can be viewed as the same update up to normalization. Therefore, the message-level conclusion remains informative for a broad class of message-passing GNNs, even when the final layer implementation does not explicitly use attention. 
+
+Remark 4. Theorem 3 separates two sources of approximation error between matt  
+
+> u
+
+(τ ) and the Top-k mean message mmean  
+
+> u
+
+. The first term 2B π u(τ ) captures retrieval leakage : even if the Top-
+
+k set is fixed, attention still assigns some probability mass to 
+
+v / ∈ R (k) 
+
+> u
+
+, which vanishes when the margin γu is large (stable re-trieval). The second term B(exp( δu/τ ) − 1) captures within-set reweighting : attention is generally non-uniform on R(k) 
+
+> u
+
+, and it approaches uniform (hence mean aggregation) when the score spread δu = s(u, v (1) ) − s(u, v (k)) is small, i.e., the retrieved items are similarly relevant. This decomposition clarifies why a retrieval-based graph learner can replace attention-style message passing: good retrieval quality corresponds to simultaneously (i) suppressing leakage via a clear margin and (ii) keeping the retrieved set “coherent” so that a simple permutation-invariant mean operator is an accurate surrogate for attention. 
+
+Theorem 4 (Restatement of Theorem 2) . Let Ru be a re-trieved set for some query node u, with prediction distribution 
+
+p(Ru) = ( p1, . . . , p C ) induced by retrieved-context aggregation. Consider an outlier node o ∈ R u whose individual distribution is po = ( p′
+
+> 1
+
+, . . . , p ′ 
+
+> C
+
+) and define m′ = arg max c∈[C] p′
+
+> c
+
+. Let 
+
+yu be the ground-truth label of node u, treated as fixed during differentiation. If yu̸ = m′ and p′ 
+
+> m′
+
+≥ pm′ , then 
+
+0 ≤ ∂L(Ru)
+
+∂ℓ ′
+
+> m′
+
+≤ ∂L(o)
+
+∂ℓ ′
+
+> m′
+
+,
+
+where L(Ru) = CE( p(Ru), y u) and L(o) = 1 
+
+> |R u|
+
+CE( po, y u),and ℓ′ 
+
+> m′
+
+denotes the outlier logit for class m′.Proof. Since yu is the ground-truth label of the query node, it is fixed with respect to model parameters during differen-tiation. Let e ∈ { 0, 1}C be the one-hot vector of yu (i.e., eyu = 1 ). For each node i ∈ R u, let ℓi = ( ℓi, 1, . . . , ℓ i,C ) be its logits. Define the set-level logits by mean pooling: 
+
+ℓc = 1
+
+|R u|
+
+X
+
+> i∈R u
+
+ℓi,c , c = 1 , . . . , C, 
+
+and set p(Ru) = p = softmax( ℓ). For the outlier node 
+
+o, denote its logits by ℓo = ℓ′ = (ℓ′
+
+> 1
+
+, . . . , ℓ ′ 
+
+> C
+
+) and its distribution by po = p′ = softmax( ℓ′).Using ∂L(Ru) 
+
+> ∂ℓ c
+
+= pc − ec and ∂ℓ c
+
+> ∂ℓ ′
+> c
+
+= 1 
+
+> |R u|
+
+for the outlier node, the chain rule yields 
+
+∂L(Ru)
+
+∂ℓ ′
+
+> c
+
+= 1
+
+|R u| (pc − ec).
+
+Likewise, since ∇ℓ′ CE(softmax( ℓ′), y u) = p′ − e, we obtain 
+
+∂L(o)
+
+∂ℓ ′
+
+> c
+
+= 1
+
+|R u| (p′ 
+
+> c
+
+− ec).
+
+Evaluating at c = m′ and using yu̸ = m′ (hence em′ = 0 ), we have 
+
+∂L(Ru)
+
+∂ℓ ′
+
+> m′
+
+= 1
+
+|R u| pm′ ≥ 0, ∂L(o)
+
+∂ℓ ′
+
+> m′
+
+= 1
+
+|R u| p′ 
+
+> m′
+
+.
+
+Together with p′ 
+
+> m′
+
+≥ pm′ , this implies 
+
+0 ≤ ∂L(Ru)
+
+∂ℓ ′
+
+> m′
+
+≤ ∂L(o)
+
+∂ℓ ′
+
+> m′
+
+.
+
+Remark 5. Theorem 4 shows that when retrieval introduces an outlier node o whose most confident class m′ conflicts with the ground-truth label yu and satisfies p′ 
+
+> m′
+
+≥ pm′ , the retrieved-context objective L(Ru) is more tolerant compared to the individ-ual supervision L(o), as evidenced by a smaller penalty imposed by the gradient. 
+
+Remark 6. Theorem 4 further indicates that even under imperfect retrieval, outlier neighbors whose predictions conflict with the ground-truth label have their optimization impact attenuated under retrieved-context supervision. Consequently, injecting label information can improve semantic coherence and retrieval preci-sion, while the retrieved-context objective maintains robustness to the remaining retrieval noise. Together, these effects help ex-plain why combining retrieval with label-aware aggregation can simultaneously enhance optimization stability and downstream performance in graph representation learning.

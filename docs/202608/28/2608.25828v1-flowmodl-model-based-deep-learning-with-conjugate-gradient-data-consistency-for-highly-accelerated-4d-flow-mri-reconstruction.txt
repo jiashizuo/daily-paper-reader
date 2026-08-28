@@ -1,0 +1,259 @@
+Title: FlowMoDL: Model-Based Deep Learning with Conjugate-Gradient Data Consistency for Highly Accelerated 4D Flow MRI Reconstruction
+
+URL Source: https://arxiv.org/pdf/2608.25828v1
+
+Published Time: Thu, 27 Aug 2026 01:05:19 GMT
+
+Number of Pages: 10
+
+Markdown Content:
+# FlowMoDL: Model-Based Deep Learning with Conjugate-Gradient Data Consistency for Highly Accelerated 4D Flow MRI Reconstruction 
+
+Tristan Gottwald 1,3,⋆ [0009 −0004 −3550 −9779] , Michelle Bruch 4[0009 −0006 −2485 −1741] ,Mubashir-Ul Hassan 1,2,3[0009 −0005 −1404 −9176] , Fatma Alickovic 5[0009 −0001 −6885 −0269] , Milan Kloiber 1[0009 −0005 −9204 −6106] , Daniel Tenbrinck 4[0000 −0002 −4788 −9332] , Torsten Panholzer 5[0000 −0002 −2808 −6120] ,Melanie Schaller 1,3[0000 −0002 −5708 −4394] , and Jana Hutter 1,2,3[0000 −0003 −3476 −3500]  
+
+> 1
+
+Institute of Information Processing (tnt), Leibniz University Hannover, Germany  
+
+> 2
+
+CAIMED, Leibniz University Hannover, Hannover, Germany  
+
+> 3
+
+L3S, Leibniz University Hannover, Hannover, Germany  
+
+> 4
+
+Department of Data Science, Friedrich-Alexander-Universität Erlangen-Nürnberg, Germany  
+
+> 5
+
+Institute of Medical Biostatistics, Epidemiology and Informatics, University Medical Center of the Johannes Gutenberg University Mainz, Germany 
+
+> ⋆
+
+Corresponding author: gottwald@tnt.uni-hannover.de 
+
+Abstract. We present FlowMoDL, an unrolled neural network for highly accelerated 4D flow MRI reconstruction that directly optimizes for both anatomical magnitude and phase-derived velocity accuracy. Building on the MoDL framework, FlowMoDL alternates a learned (3+1)D spa-tiotemporal denoiser with conjugate-gradient data-consistency updates based on the SENSE forward model. A novel dual-pathway condition-ing scheme adapts the denoiser features and data-consistency weight-ing, enabling a single model to handle varying acceleration factors ( 10 ×
+
+to 50 ×). To ensure physiological accuracy, the network is trained us-ing a deep-supervision composite loss that explicitly penalizes velocity magnitude and angular errors, stabilized by a curriculum schedule. We evaluate FlowMoDL on the multi-center CMRx4DFlow dataset against classical and deep-learning baselines (CG-SENSE, MoDL, FlowVN, and FlowMRI-Net). A key advantage of FlowMoDL is its superior gradient step efficiency. When evaluated under an equivalent, limited budget of gradient steps, competing flow-specific networks degrade significantly. In contrast, FlowMoDL robustly converges and strictly outperforms all competitors across all acceleration factors in magnitude SSIM, nRMSE, relative velocity error, and angular error, successfully recovering sharp structural details and temporally coherent velocity fields. 
+
+Keywords: 4D Flow MRI Reconstruction · Model-based reconstruction using Deep Learned priors · Deep Learning · Aorta. arXiv:2608.25828v1 [cs.CV] 26 Aug 2026 2 T. Gottwald et al. 
+
+1 Introduction 
+
+Four-dimensional flow magnetic resonance imaging (4D flow MRI) captures time-resolved, volumetric anatomical and three-directional blood-flow information across the cardiac cycle [8]. However, its extensive data requirements necessitate aggressive k-space undersampling [9, 13]. Reconstructing these highly acceler-ated acquisitions is challenging because the velocity field is derived entirely from relative phase differences between velocity encodings. Standard reconstruction methods prioritizing magnitude [1, 5] are therefore insufficient, as even marginal phase errors induce severe, non-physiological velocity deviations. Furthermore, existing flow-specific deep learning architectures rely on computationally heavy recurrent mechanisms [6] or neglect explicitly optimizing for phase [15]. To address these limitations, we introduce FlowMoDL, a phase-aware unrolled neural network explicitly designed for highly accelerated 4D flow MRI. Built upon the MoDL framework [1], FlowMoDL couples a (3+1)D spatiotemporal regularizer with conjugate-gradient data-consistency updates. Our primary con-tributions are: 1) a hybrid architecture that preserves critical inter-encoding phase relationships; 2) a dual-pathway conditioning mechanism that adapts de-noiser features and data-consistency weighting to handle acceleration rates from 
+
+10 × to 50 × with a single trained model; 3) a curriculum-guided composite loss optimizing directly for flow and 4) state-of-the-art performance and gradient-step efficiency, strictly outperforming classical and specialized baselines on the multi-center CMRx4DFlow dataset. The code is available at https://github.com/tgottwald/FlowMoDL. 
+
+2 Method 
+
+2.1 Problem formulation 
+
+We formulate the highly accelerated 4D flow MRI reconstruction [6,15] as follows. Given the undersampled multi-coil k-space measurements 
+
+y ∈ CNv ×Nc×Nt×Nz ×Ny ×Nx , coil sensitivity maps S ∈ CNc×Nz ×Ny ×Nx , and an undersampling mask M ∈ { 0, 1}Nt×Nz ×Ny , we aim to reconstruct the MRI vol-ume sequence x ∈ CNv ×Nt×Nz ×Ny ×Nx and derive the corresponding 4D flow velocity field. Here, Nv denotes the number of velocity encodings, Nt the num-ber of cardiac phases, Nc the number of coils, and Nz , Ny , and Nx the spatial dimensions. We consider Nv = 4 , where the first encoding serves as the reference encoding and the phase differences between the remaining three encodings and the reference yield the directional velocity components over the cardiac cycle [8]. Acquisition is modeled using the SENSE [12] forward operator A:
+
+Ax = M F(Sx), (1) where F corresponds to the spatial Fourier transform. The adjoint operator of 
+
+A is referred to as AH.In contrast to existing 4D flow approaches based on learned multidimensional FlowMoDL 3Denoiser Dθk                             
+
+> FlowMoDL Cascade k
+> (3+1)D SpatioTemporal Block
+> ˆx(k−1) Head Conv3D FiLM ST Block 1 FiLM . . . ST Block NFiLM Tail Conv3D +
+> FiLM generator
+> →(γ, β )
+> CG Data Consistency
+> (AHA+λk(R)I) ˆ x(k)=AHy+λk(R)z(k)ˆx(k)
+> z(k)
+> y,M,A,AH
+> λk(R)R
+> Temporal Conv1D ReLU Spatial Conv3D
+> Feature In +ReLU Feature Out
+
+Fig. 1: Detailed architecture of a single FlowMoDL cascade k (top) and the inter-nal structure of its factorized (3+1)D spatiotemporal blocks (bottom). The net-work maps the previous estimate ˆx(k−1) to an intermediate denoised target z(k)
+
+using a learned prior Dθk equipped with a global residual connection. To improve the handling of varying acceleration rates, R is routed to both a FiLM generator within the denoiser and an MLP computing the data-consistency penalty weight 
+
+λk(R). The cascade concludes by solving the linear data-consistency equations via conjugate-gradient iterations. filter-bank updates [15] or recurrent complex-valued updates that propagate in-formation across cardiac phases and reconstruction iterations [6], we adopt the MoDL framework [1] to combine a spatiotemporal learned prior with conjugate-gradient data-consistency. The reconstruction problem is formulated as 
+
+bx = arg min 
+
+> x
+
+12 ∥Ax − y∥22 + λ
+
+2 ∥x − D θ (x)∥22 , (2) where Dθ denotes a learned spatiotemporal denoiser and λ > 0 balances mea-surement consistency and the learned residual prior. FlowMoDL approximates this formulation by alternating learned denoising and conjugate-gradient data-consistency updates across the unrolled cascades. As velocity is derived from the relative phase between the directional and ref-erence encodings, vi ∝ ∠(xix0), reconstruction must preserve inter-encoding phase. This motivates the proposed spatiotemporal architecture and the explicit penalization of velocity magnitude and direction errors in the training objective. 
+
+2.2 FlowMoDL 
+
+We propose FlowMoDL, a hybrid-unrolled neural network based on the Model-based reconstruction using Deep Learned priors (MoDL) paradigm [1]. As shown in Figure 1, the reconstruction is unrolled into K cascades. The first cascade is initialized with the adjoint reconstruction ˆx(0) = AHy.In each cascade k ∈ { 1, . . . , K }, the current estimate ˆx(k−1) is mapped to a 4 T. Gottwald et al. 
+
+denoised intermediate z(k) by the learned denoiser Dθk . Unlike the original MoDL formulation, we condition the denoiser on the scalar acceleration factor R via feature-wise linear modulation (FiLM) [10]: 
+
+z(k) = Dθk (ˆ x(k−1) , R ) (3) Holding z(k) fixed, the subsequent data-consistency update obtains the cascade output by solving 
+
+ AHA + λk(R)I ˆx(k) = AHy + λk(R)z(k). (4) This linear system is approximately solved using J iterations of the conjugate gradient (CG) method. To reduce the computational cost of each CG iteration, we transform the fully sampled readout axis into image space before the unrolled cascades, exploiting the undersampling mask being constant along this axis [4]. The resulting normal operator decomposes into independent 2D problems in-dexed by readout position, allowing each CG iteration to be performed using 2D FFTs while remaining equivalent to the full 3D data-consistency formulation. 
+
+Regularizer: To enable the network to compensate for higher acceleration fac-tors compared to the original MoDL [1], each cascade utilizes an independent denoiser network, Dθk . The denoiser processes the image by concatenating the real and imaginary parts of all velocity encodings along the channel axis, preserv-ing cross-encoding phase relationships across layers. As detailed in the bottom panel of Figure 1, the backbone comprises N residual spatiotemporal blocks. Instead of separate hyperplane convolutions [15], each block employs a (3+1)D factorization [14]: a spatial 3D convolution per cardiac phase is sequentially fol-lowed by a ReLU activation and a temporal 1D convolution per voxel. This temporal convolution aims to capture temporal flow dynamics without requir-ing the recurrent hidden states used in FlowMRI-Net, which substantially slows down training [6]. As shown by the global skip connection around the denoiser in Figure 1, the zero-initialized final convolution is added to the denoiser in-put. Consequently, each denoiser initially returns its input, providing a stable initialization of the learned regularization pathway before the subsequent CG data-consistency update. 
+
+Data consistency: The update in Equation (4) is approximated using J
+
+conjugate-gradient iterations. Since we enforce λk(R) > 0, the system opera-tor is Hermitian positive definite, ensuring that the corresponding linear system has a unique solution that is approximated by the unrolled CG iterations. Their differentiable implementation allows gradients to propagate through the data-consistency update. 
+
+Acceleration Conditioning: To handle varying acceleration factors with a single trained model, we introduce a dual-pathway conditioning scheme based on the log-scaled and normalized acceleration factor R. First, R is mapped by a FiLM generator to per-channel scales and shifts ( γ, β ), which are injected into the feature maps immediately following the denoiser stem and each subsequent residual block. Simultaneously, a separate Multi-Layer Perceptron (MLP) uses 
+
+R to predict a per-sample offset for each cascade’s regularization weight, λk(R).FlowMoDL 5
+
+This joint modulation allows both the denoiser features and the coupling be-tween the reconstruction and denoised estimate to adapt to the acceleration factor. Both conditioning networks feature zero-initialized output layers, ensur-ing training begins entirely unconditioned. 
+
+Optimization Objective Approaches focused on flow reconstruction like [6,15] optimize their networks using only a weighted per-layer L1-loss. While the L1-loss implicitly optimizes phase, in practice it heavily biases the network toward magnitude-dominant reconstructions. FlowMoDL includes three additional loss terms specifically penalizing phase misalignment: a velocity error loss, a relative error loss, and an angular error loss. Given the chosen velocity encoding param-eters venc , the ground truth velocity vector field v and predicted velocity vector field ˆv(k) are calculated from the complex-valued directional encodings (indices 1 to 3) and the reference encoding (index 0) as v = 1/π venc ⊙ ∠ x1:3 x0
+
+.Given the spatial segmentation mask s ∈ { 0, 1}Nz ×Ny ×Nx delineating the ROI, which is broadcast across the temporal and velocity dimensions, the unnormal-ized per-cascade image and velocity L1 terms over the spatiotemporal domain 
+
+Ω are defined as: 
+
+L(k)img = X
+
+> Ω
+
+s ⊙ ˆx(k) − x 1, L(k)vel = X
+
+> Ω
+
+s ⊙ ˆv(k) − v 1,
+
+L(k)rel =
+
+s P 
+
+> Ω
+
+s ⊙  ∥v∥2 − ∥ ˆv(k)∥2
+
+2
+
+P 
+
+> Ω
+
+s ⊙ ∥ v∥22 + εrel 
+
+(5) To penalize directional errors independently of magnitude, we introduce a voxel-wise angular cosine-distance surrogate: 
+
+L(k)ang = X
+
+> Ω
+
+s ⊙ (1 − cos θ) , cos θ = clip 
+
+ ˆv(k) · v
+
+∥ˆv(k)∥2 ∥v∥2 + εang 
+
+, −1, 1
+
+
+
+. (6) The total loss is a deep-supervision composite combining these metrics: 
+
+L =
+
+> K
+
+X
+
+> k=1
+
+wk
+
+h
+
+L(k)img + ωvel αv(e) L(k)vel + ωrel αv(e) L(k)rel + ωang αθ (e) L(k)ang 
+
+i
+
+, (7) where k indexes the cascade output, e is the current epoch, and wk = exp  −τ (K−
+
+k) is an exponentially-decaying weight that concentrates gradients on later cas-cades as τ increases. By including velocity and phase explicitly in the loss, the network optimizes directly for the targeted clinical metrics. To improve stabil-ity, the scalar multipliers αv(e) and αθ (e) apply a curriculum schedule [2]: the magnitude is optimized first, and the phase terms are ramped up subsequently. 
+
+Training Procedure & Hyperparameters FlowMoDL is trained end-to-end using AdamW [7] with gradient clipping and a cosine-annealing learning rate schedule ( 10 −3 to 10 −6). SENSE operations and the CG solver compute in sin-gle precision, while the convolutional backbone uses mixed precision. Gradient checkpointing is used to fit training on a 48 GB GPU. The architecture unrolls 6 T. Gottwald et al. 
+
+Table 1: Mean performance of reconstruction models on the unseen test set averaged across all acceleration factors ( R ∈ { 10 , 20 , 30 , 40 , 50 }). The best results are highlighted in bold , and the second-best results are underlined.                                                            
+
+> Model nRMSE (↓)SSIM (↑)RelErr (↓)AngErr (↓)CG-SENSE [11] 0.1592 0.6831 0.7087 45.6948 FlowVN [15] 0.2311 ±0.0061 0.4687 ±0.0200 2.1668 ±0.0648 79.8481 ±0.4238 FlowMRI-Net [6] 0.2126 ±0.0540 0.6325 ±0.0602 0.8660 ±0.0741 69.2204 ±3.7776 MoDL [1] 0.1147 ±0.0035 0.8062 ±0.0095 0.7412 ±0.0126 56.9912 ±0.6201
+> FlowMoDL (Ours) 0.0469 ±0.0017 0.9409 ±0.0026 0.2664 ±0.0065 24.5639 ±0.2458
+
+K = 8 untied cascades, each performing J = 10 CG iterations with an inde-pendent regularization weight (initialized to λk(R) = 0 .05 ). The denoiser uses 
+
+64 channels, N = 4 residual blocks, a 3×3×3 spatial kernel, and a length-5
+
+temporal kernel. Loss weights are configured to ωvel = ωrel = ωang = 0 .1. The curriculum multipliers αv(e) and αθ (e) increase linearly over 8 epochs, starting at epochs 4 and 12 , respectively. To prevent overfitting, training relies on random spatiotemporal crops of 16 × 64 × 64 spatial voxels across 6 cardiac frames. 
+
+3 Experiments 
+
+3.1 Data 
+
+We utilize the multi-center, multi-vendor CMRx4DFlow challenge dataset [4], partitioning the 138 original training cases into custom training (96 cases), val-idation (21 cases), and test (21 cases) sets preserving the original center and scanner architecture distributions of the original cohort. During training, kt-Gaussian undersampling masks are generated randomly on the fly to match a randomly selected target acceleration factor. For validation and testing, we eval-uate the models using undersampling masks pre-generated according to the same protocol at acceleration factors ranging from 10 × to 50 ×.
+
+3.2 Main Experiments 
+
+We evaluate FlowMoDL against classical CG-SENSE [11], the standard MoDL 
+
+architecture [1], FlowVN [15] and FlowMRI-Net [6]. To ensure a fair compari-son, all learned models were trained for an equivalent number of gradient steps. This corresponds to 50 epochs using standard random spatiotemporal cropping, avoiding the highly correlated, sliding-window epoch definitions originally pro-posed for FlowVN and FlowMRI-Net. Performance is measured via magnitude structural similarity (SSIM) [16], magnitude nRMSE, velocity relative error (Rel-Err) in the aorta, and velocity angular error (AngErr) [15]. Table 1 and Figure 2 summarize the quantitative results on the unseen test set, averaged across five random seeds. FlowMoDL strictly outperforms all baselines, including MoDL, across all acceleration factors ( R ∈ { 10 , . . . , 50 }). While MoDL FlowMoDL 710 20 30 40 50 Acceleration Factor ( R)010 20 30 40 50 60 70 80 90 Angular Error [°] (  ) 
+
+> Model CG-SENSE FlowVN FlowMRI-Net MoDL
+> FlowMoDL (Ours )
+
+(a) Angular Error [°] ( ↓)10 20 30 40 50 Acceleration Factor ( R)0.0 0.2 0.4 0.6 0.8 1.0 Normalized Root Mean Square Error (  )  
+
+> Model CG-SENSE FlowVN FlowMRI-Net MoDL
+> FlowMoDL (Ours )
+
+(b) nRMSE ( ↓)10 20 30 40 50 Acceleration Factor ( R)0.0 0.2 0.4 0.6 0.8 1.0 Structural Similarity Index ((  ))  
+
+> Model CG-SENSE FlowVN FlowMRI-Net MoDL
+> FlowMoDL (Ours )
+
+(c) SSIM ( ↑)10 20 30 40 50 Acceleration Factor ( R)0.0 0.5 1.0 1.5 2.0 2.5 Relative Error (  )  
+
+> Model CG-SENSE FlowVN FlowMRI-Net MoDL
+> FlowMoDL (Ours )
+
+(d) Relative Error ( ↓)
+
+Fig. 2: Metrics across different R’s. For deep learning methods, solid lines denote the mean and shaded areas represent standard deviation ( n = 5 seeds). provides a robust baseline for basic structural reconstruction, FlowMoDL’s ex-plicit phase-aware objective and spatiotemporal formulation yield substantially lower angular and relative errors, while still outperforming MoDL on nRMSE and SSIM. Notably, FlowVN and FlowMRI-Net degrade significantly under this normalized gradient-step budget, underperforming classical CG-SENSE. Quali-tative improvements are evident in Figure 3. At a high acceleration rate ( R = 50 ), both CG-SENSE and MoDL struggle with high-frequency spatial details and suffer from velocity artifacts. In contrast, FlowMoDL’s learned prior recovers sharp spatial structures and smooth velocity transitions. Beyond spatial fidelity, FlowMoDL preserves temporal coherence. Since blood flow v(t) is naturally con-tinuous while residual undersampling noise is temporally uncorrelated, we quan-tify temporal coherence using the lag-one autocorrelation ρ1 and the fraction of temporal power above half the Nyquist frequency η [3]. At R = 50 , CG-SENSE (ρ1 ≈ 0.00 , η ≈ 0.53 ) and MoDL ( ρ1 ≈ − 0.05 , η ≈ 0.55 ) yield metrics indicative of temporally white noise artifacts. Conversely, FlowMoDL ( ρ1 ≈ 0.72 , η ≈ 0.07 )closely matches the ground truth ( ρ1 ≈ 0.71 , η ≈ 0.09 ), successfully reconstruct-ing temporally coherent velocity fields with only marginal over-smoothing. 
+
+4 Conclusion 
+
+In this work, we presented FlowMoDL, an efficient model-based unrolled net-work tailored for highly accelerated 4D flow MRI reconstruction. By integrating a (3+1)D spatiotemporal learned prior with conjugate-gradient data-consistency 8 T. Gottwald et al. Magnitude Ground truth 
+
+> CG-SENSE R=50
+> MoDL R=50
+> FlowMoDL R=50
+> |Magnitude error|
+> Reference (No Error)
+> Velocity ||v|| |Velocity error|
+> Reference (No Error)
+> 0.0 0.2 0.4 0.6 0.8 1.0
+> norm.
+> 0.0 0.1 0.2 0.3 0.4 0.5
+> nRMSE
+> 0510 15 20
+> cm/s
+> 0.0 2.5 5.0 7.5 10.0 12.5 15.0 17.5
+> cm/s
+> Ours
+
+Fig. 3: Representative qualitative results at R = 50 comparing CG-SENSE, MoDL, and the proposed FlowMoDL with the fully sampled reference. Flow-MoDL reconstructs the volume with the lowest magnitude and velocity errors. and dynamic conditioning for the acceleration factor, FlowMoDL effectively re-covers both anatomical structures and complex flow dynamics using a single trained model. Crucially, optimizing directly for phase alignment via a special-ized curriculum-based composite loss, incorporating velocity, relative, and angu-lar error terms, prevents the magnitude-bias common in generic MRI reconstruc-tion tasks. Evaluated on the multi-center CMRx4DFlow dataset, FlowMoDL strictly outperforms classical CG-SENSE, standard MoDL, and specialized deep learning architectures (FlowVN and FlowMRI-Net) across acceleration factors from 10 × to 50 ×. Furthermore, we demonstrated that FlowMoDL exhibits su-perior training efficiency compared to existing flow-specific networks under a normalized gradient-step budget, consistently yielding sharp magnitude recon-structions and physiologically accurate, temporally coherent velocity fields even at extreme undersampling rates. FlowMoDL 9
+
+Acknowledgments. This work was supported by DFG Heisenberg (502024488), ERC StG EARTHWORM (101165242), ERC Proof-of-concept grant SYNCWORM (101293293) and CAIMed - Lower Saxony Center for Artificial Intelligence and Causal Methods in Medicine (ZN4257). 
+
+Disclosure of Interests. The authors have no competing interests to declare that are relevant to the content of this article. 10 T. Gottwald et al. 
+
+References 
+
+1. Aggarwal, H.K., Mani, M.P., Jacob, M.: Modl: Model-based deep learning archi-tecture for inverse problems. IEEE transactions on medical imaging 38 (2), 394–405 (2018) 2. Bengio, Y., Louradour, J., Collobert, R., Weston, J.: Curriculum learning. In: Pro-ceedings of the 26th annual international conference on machine learning. pp. 41–48 (2009) 3. Box, G.E., Jenkins, G.M., Reinsel, G.C., Ljung, G.M.: Time series analysis: fore-casting and control. John Wiley & Sons (2015) 4. CMRx4DFlow2026 Team: CMRx4DFlow2026: Data. https://cmrxrecon.github.io/2026/data.html (2026), accessed: 27 July 2026 5. Heckel, R., Jacob, M., Chaudhari, A., Perlman, O., Shimron, E.: Deep learning for accelerated and robust mri reconstruction. Magnetic Resonance Materials in Physics, Biology and Medicine 37 (3), 335–368 (2024) 6. Jacobs, L., Piccirelli, M., Vishnevskiy, V., Kozerke, S.: Flowmri-net: Ageneralizable self-supervised 4d flow mri reconstruction network (2025), https://arxiv.org/abs/2410.08856 7. Loshchilov, I., Hutter, F.: Decoupled weight decay regularization. arXiv preprint arXiv:1711.05101 (2017) 8. Markl, M., Frydrychowicz, A., Kozerke, S., Hope, M., Wieben, O.: 4d flow mri. Journal of Magnetic Resonance Imaging 36 (5), 1015–1036 (2012) 9. Munoz, C., Fotaki, A., Botnar, R.M., Prieto, C.: Latest advances in image acceler-ation: All dimensions are fair game. Journal of Magnetic Resonance Imaging 57 (2), 387–402 (2023). https://doi.org/10.1002/jmri.28462 10. Perez, E., Strub, F., De Vries, H., Dumoulin, V., Courville, A.: Film: Visual rea-soning with a general conditioning layer. In: Proceedings of the AAAI conference on artificial intelligence. vol. 32 (2018) 11. Pruessmann, K.P., Weiger, M., Börnert, P., Boesiger, P.: Advances in sensitivity encoding with arbitrary k-space trajectories. Magnetic Resonance in Medicine: An Official Journal of the International Society for Magnetic Resonance in Medicine 
+
+46 (4), 638–651 (2001) 12. Pruessmann, K.P., Weiger, M., Scheidegger, M.B., Boesiger, P.: Sense: sensitivity encoding for fast mri. Magnetic Resonance in Medicine: An Official Journal of the International Society for Magnetic Resonance in Medicine 42 (5), 952–962 (1999) 13. Stankovic, Z., Allen, B.D., Garcia, J., Jarvis, K.B., Markl, M.: 4d flow imaging with mri. Cardiovascular diagnosis and therapy 4(2), 173 (2014) 14. Tran, D., Wang, H., Torresani, L., Ray, J., LeCun, Y., Paluri, M.: A closer look at spatiotemporal convolutions for action recognition. In: Proceedings of the IEEE conference on Computer Vision and Pattern Recognition. pp. 6450–6459 (2018) 15. Vishnevskiy, V., Walheim, J., Kozerke, S.: Deep variational network for rapid 4d flow mri reconstruction. Nature Machine Intelligence 2(4), 228–235 (Apr 2020). https://doi.org/10.1038/s42256-020-0165-6, http://dx.doi.org/10.1038/s42256-020-0165-6 16. Wang, Z., Bovik, A.C., Sheikh, H.R., Simoncelli, E.P.: Image quality as-sessment: From error visibility to structural similarity 13 (4), 600–612. https://doi.org/10.1109/TIP.2003.819861
