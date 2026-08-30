@@ -1,0 +1,187 @@
+Title: Region-Weighted Losses and Model Fusion for Cross-Modal PET Attenuation Correction
+
+URL Source: https://arxiv.org/pdf/2608.21881v1
+
+Published Time: Tue, 25 Aug 2026 00:39:39 GMT
+
+Number of Pages: 8
+
+Markdown Content:
+# Region-Weighted Losses and Model Fusion for Cross-Modal PET Attenuation Correction 
+
+Khoa Tuan Nguyen 1,2, Joris Vankerschaver 2,3, and Wesley De Neve 1,2 
+
+> 1
+
+IDLab, ELIS, Ghent University, Belgium  
+
+> 2
+
+Center for Biosystems and Biotech Data Science, Ghent University Global Campus, Korea  
+
+> 3
+
+Dept. of Mathematics, Computer Science and Statistics, Ghent University, Belgium 
+
+{khoatuan.nguyen,joris.vankerschaver,wesley.deneve}@ghent.ac.kr 
+
+Abstract. We describe our approach to the Big Cross-Modal Atten-uation Correction (BIC-MAC) challenge, which asks for a pseudo-CT in Hounsfield Units to be synthesized from Non-Attenuation-Corrected PET (NAC-PET), DIXON MRI and a topogram, and scores both the pseudo-CT and the Attenuation-Corrected PET (AC-PET) reconstructed from it. Three ideas carried our improvements over the organizers’ 3D U-Net baseline. The loss matters more than the architecture: we compute the L1 error in the Carney attenuation-coefficient ( μ) space that the CT metric itself uses, weighted by anatomical region. Only once that loss was in place did the unregistered DIXON MRI work as extra input channels. A fixed convex combination of two independently trained models then beat both of its members on three of the four metrics and ranks first overall on the public validation leaderboard. 
+
+Keywords: Model fusion · PET attenuation correction · Pseudo-CT synthesis · Region-weighted loss. 
+
+## 1 Task and Evaluation 
+
+Given a subject’s NAC-PET, two-phase DIXON MRI and a 2D topogram, we must predict a whole-body pseudo-CT in Hounsfield Units (HU), which the or-ganizers pass through a fixed reconstruction pipeline built on STIR [11]. Four metrics are reported, all lower-is-better: the whole-body CT μ-map Mean Ab-solute Error (MAE), computed after converting HU to linear attenuation coeffi-cients with the Carney bilinear model [3]; the whole-body Standardized Uptake Value (SUV) MAE; an organ bias; and a dataset-level brain-outlier score. The final ranking is the mean of the per-metric ranks rather than the mean of the metrics themselves. Two properties of the fixed pipeline shaped our design, and Figure 1 shows both. First, the HU-to-μ map is bilinear with a knee near 47 HU, and the segment below the knee is 1.88 times steeper than the one above ( 9.6 × 10 −5 against 5.1 ×
+
+10 −5 cm −1 per HU), so the same HU error costs almost twice as much μ in soft tissue as it does in bone. Second, the pipeline smooths the μ-map with a 4 mm arXiv:2608.21881v1 [cs.CV] 22 Aug 2026 2 Khoa et al. 1000 750 500 250 0 250 500 750 1000            
+
+> CT value (HU)
+> 0.000 0.025 0.050 0.075 0.100 0.125 0.150 0.175
+> at 511 keV (cm  1)
+> below knee: 9.6 × 10 5cm 1/HU
+> above knee: 5.1 × 10 5cm 1/HU
+> knee, 47 HU
+> > 300 HU: loss ×3 one HU of error costs 1.88× more
+> below the knee than above
+> (a) The pipeline's HU-to-map is bilinear
+> (b) -map (c) blurred 4 mm
+> 050 100
+> mm along red line
+> 80 100 120 140 160 180
+> (10  3 cm  1)
+> (d) line profile
+> original 4 mm blur
+
+Fig. 1. The two properties of the fixed reconstruction pipeline that shaped our loss. 
+
+(a) The Carney bilinear HU-to-μ map [3] the CT metric is computed in. Its knee at 
+
+47 HU makes one HU of error worth 1.88 × more μ below the knee than above, which is why we optimize in μ space rather than in HU; the shaded band marks the > 300 HU region our loss weights ×3. (b, c) A 110 mm window on the ribs and spine of training subject sub-000 , before and after the 4 mm FWHM smoothing the pipeline applies before forward projection. (d) Profile along the red line. Smoothing removes 3.6 %of the mean μ in this window and cuts the profile’s peak-to-peak range from 77 to 
+
+37 × 10 −3 cm −1, halving the narrow rib peaks. Anything a model gets right at this scale is invisible to the three AC-PET metrics and visible only to the CT metric, which is the tension every design choice below addresses. Both the conversion and the blur are computed with the organizers’ own code. 
+
+Full Width at Half Maximum (FWHM) Gaussian before forward projection, which flattens the rib and vertebral peaks that carry most of a thorax slice’s fine structure. Pseudo-CT detail finer than about 4 mm is therefore invisible to the three AC-PET metrics, while the CT metric sees it directly. 
+
+## 2 Method 
+
+We first describe the network, which is shared by every model we report, and then the five loss terms. Only two things ever change between our models: how many input channels the network reads, and which of the loss terms are switched on. Region-Weighted Losses and Model Fusion for PET AC 3
+
+Listing 1 MuNet. Res is a residual convolution block, (+) is channel concate-nation, and AttnGate is an attention gate on the skip connection [9]. The two auxiliary heads on lines 10 and 11 predict the CT at half and quarter resolution during training and are discarded at inference. Only the input width C on line 1 differs between our two variants. The patch shape on line 1 is the 208 3 con-figuration; LLOR (Subsection 2.6) replaces it with a 448 × 448 × 48 slab, which changes no layer.                      
+
+> 1x : (C,208,208,208) C = 2 : NAC-PET, topogram -> MuNet_2 2C = 4 : + raw in/out MRI -> MuNet_4 3s1 = Res(x, 32); e1 = Down(s1) 4s2 = Res(e1, 64); e2 = Down(s2) 5s3 = Res(e2, 128); e3 = Down(s3) 6s4 = Res(e3, 256); e4 = Down(s4) 7b= Res(e4, 512) 8b= b + SelfAttn(b, heads=8); b = Dropout(b, 0.2) 9d4 = Res(Up(b ) (+) AttnGate(s4, b )) 10 d3 = Res(Up(d4) (+) AttnGate(s3, d4)) -> aux_out2 (w=0.25) --. 11 d2 = Res(Up(d3) (+) AttnGate(s2, d3)) -> aux_out1 (w=0.50) -.| 12 d1 = Res(Up(d2) (+) AttnGate(s1, d2)) || 13 ct = Conv1x1x1(d1) in [0,1] -> HU = 3000*ct - 1000 <--------’’
+
+2.1 Network 
+
+The organizers’ baseline is a patch-based residual 3D U-Net [10] with dropout at the bottleneck, reading NAC-PET as its only input. We keep that backbone and make three additions, shown in Listing 1. Attention gates on the skip connections let the decoder suppress the parts of each skip it does not need [9]. One self-attention block sits at the bottleneck. Two auxiliary heads predict the CT at half and quarter resolution, each carrying its own copy of the loss at a reduced weight, so the middle of the decoder receives a training signal directly rather than only through the layers above it. We call the result MuNet .Two input configurations are used: MuNet 2 reads NAC-PET and the to-pogram, whereas MuNet 4 extends this input with the raw in- and out-phase DIXON volumes as two additional channels. The MRI is supplied on the CT grid but aligned only by a rigid translation, so roughly 40 mm of deformable misalignment remains, and MuNet 4 receives it uncorrected. This is deliberate. Registering the MRI to the ground-truth CT with ANTs SyN [1] is worth 7.8 % of CT μ-MAE in a matched pair ( 0.006476 to 0.005970 ), but it cannot be deployed, because validation and test subjects have no CT to register to. Registering to a predicted guide CT can be deployed, yet then the operator differs between train-ing and test, and it captured at most a sixth of that gain. A learned registration network [2] keeps the two operators identical but reached only 13 .6 % of oracle registration quality and captured none of the gain. Feeding the MRI in unreg-istered avoids the problem rather than solving it: the residual misalignment is 4 Khoa et al. 
+
+small relative to the bottleneck’s receptive field, so the network can absorb it internally instead of depending on an operator we cannot keep consistent. 
+
+2.2 Lμ: a region-weighted loss in the metric’s own space 
+
+Our single most effective change was to stop measuring the error in normalized HU and measure it where the CT metric measures it. The metric converts HU to a linear attenuation coefficient μ with the Carney bilinear map before scoring, and that map is piecewise linear with a knee at 47 HU, so one HU of error is worth 1.88 times more μ below the knee than above it (Figure 1a). An L1 loss in HU therefore misprices its own errors relative to the metric, while an L1 loss in μ prices them correctly. The organizers supply a body mask per subject, and we score the loss only inside it. It is the body minus the face and the scanner bed, because the recon-struction pipeline replaces those two regions with ground truth before it projects, so nothing a model predicts there can affect any metric. Let v index the voxels of a training patch, xv the network output in [0 , 1] , yv the target, mv that body mask, and μ(·) the Carney map, which is differentiable. We minimize 
+
+Lμ =
+
+P 
+
+> v
+
+wv mv |μ(xv ) − μ(yv )|
+
+P 
+
+> v
+
+wv mv
+
+, wv = max  1, λ bone  
+
+> v
+
+, λ brain  
+
+> v
+
+, λ organ 
+
+> v
+
+. (1) The three region factors up-weight the places the four scored metrics are sensitive to: λbone  
+
+> v
+
+= 3 where the ground-truth CT exceeds 300 HU, λbrain  
+
+> v
+
+= 3 inside the brain, and λorgan  
+
+> v
+
+= 2 inside the four organs the challenge’s organ-bias metric is computed over, namely spleen, liver, pancreas and heart. We did not choose those four; the metric does, and we simply weight what it measures. Taking the maximum rather than the product keeps the combined weight bounded by 3, so no voxel can dominate the batch. The regions come from segmentations of the ground-truth CT and are used only to form the weights during training, so the deployed model still reads nothing but the released features. These weights are also what makes training from random initialization possi-ble at all. Under a plain L1 objective our from-scratch runs produced pseudo-CTs with essentially no voxels above 300 HU: the network never learned bone, which ruins the brain-outlier score because that metric is driven by the skull. 
+
+2.3 Lgrad : matching edge strength 
+
+Lμ is a per-voxel loss and is therefore indifferent to whether an edge is sharp or smeared, as long as the average intensity is right. Lgrad penalizes the absolute difference between the gradient magnitudes of the predicted and target CT, which asks for the same edge strength in the same places, and mainly affects the soft-tissue boundaries where our error concentrates. Region-Weighted Losses and Model Fusion for PET AC 5
+
+2.4 LAnPer : an Anatomical Perception loss 
+
+A pseudo-CT can have a low voxel-wise error and still be anatomically implau-sible in ways the AC-PET metrics punish. LAnPer addresses this by passing the predicted CT and the ground-truth CT through a frozen TotalSegmentator [12] network and matching intermediate decoder features, in the spirit of perceptual losses [5]. Because the segmenter was trained to recognise organs, agreeing in its feature space means agreeing about anatomy rather than about intensities. It runs in training only, and it moved the AC-PET metrics more than anything else we tried: in a matched pair differing by nothing else it improved organ bias by 5.8 % ( 3.34 to 3.14 ) and the brain-outlier score by 27 .4 % ( 0.0261 to 0.0189 ). 
+
+2.5 LNGF : aligning boundaries with the MRI 
+
+Decomposing MuNet 2’s error shows that soft-tissue boundaries carry 52 .6 % of its CT μ-MAE ( 0.0031 of 0.0058 ) against 20 .9 % ( 0.0012 ) for soft-tissue interiors, so the boundaries are where the remaining error lives. DIXON MRI has strong soft-tissue contrast and almost no bone signal, which makes it a good boundary prior and a poor intensity target. LNGF therefore compares the two images’ gradient directions while ignoring their magnitudes, using a Normalized Gradient Field (NGF) [4]: it penalizes the cross product of the unit gradient fields of the predicted CT and the mean of the two MRI phases, which is zero when the two images have edges in the same places regardless of how differently they are scaled. We gate it to soft tissue, where the MRI is informative. We keep the name from the original formulation because it is standard in registration, where the same construction is used to align images of different modalities. The MRI enters through this term alone, so a model trained with it still reads only NAC-PET and the topogram at inference. 
+
+2.6 LLOR : a loss along Lines Of Response 
+
+Every term so far is local, and three of the four metrics are not. The attenuation along a line of response is exp( −R μ ds ), so the reconstructed activity in an organ depends on μ integrated along lines that cross the whole body, not on μ
+
+inside that organ. Making an organ’s own μ accurate therefore does not make its reconstructed activity accurate, which is why simply raising λorgan failed to improve organ bias. 
+
+LLOR penalizes R (μpred − μgt ) ds along transaxial lines at four angles, com-puted as a Radon transform per axial slice, separately for lines crossing the whole body and for lines crossing each scored organ. Two details matter. We smooth the μ difference at 4 mm FWHM before integrating, matching the blur the pipeline applies before its own forward projection (Figure 1b–d), so the term only ever sees the band of spatial frequencies the AC-PET metrics can see. And a line integral is meaningless unless the line spans the body, so this term forces the training patch from a 208 3 cube to a 448 × 448 × 48 slab, which gives 681 mm of transaxial support at 1.07 times the voxel count, leaving the number of patches per batch unchanged. 6 Khoa et al. 
+
+2.7 Fusion of finished models 
+
+The container writes a single pseudo-CT and the organizers run the reconstruc-tion themselves, so we cannot submit one model’s CT with another model’s PET: any combination of models has to collapse into one volume before it is scored. We therefore average finished models voxel-wise in HU, CT fused = P 
+
+> i
+
+αiCT i
+
+with positive weights summing to one, fixed in the image. The members train independently, so their errors are partly independent and averaging cancels some of them [7]. We chose the pair and its weights by analysing the members’ mea-sured metrics, then confirmed the choice with a full reconstruction; we also tried three-member blends, which scored no better than the best pair and cost CT accuracy, so we report only the pair. 
+
+## 3 Results 
+
+All models train on all 75 released subjects with Adam [6] and a cosine sched-ule [8]. Patches are 208 3, or 448 × 448 × 48 where LLOR is active, two patches per optimizer step in both cases, which fills the 48 GB of one RTX A6000. A model takes 18 to 60 hours to train depending on the schedule. Table 1 follows the order we built things in, and each row differs from the one above it by exactly one change. Rows 1 to 2 are the loss alone: same inputs, same backbone, no MRI, and CT μ-MAE falls from 0.006610 to 0.005803 . That is the largest single step in the table, and it is why we say the loss mattered more than the architecture. Row 3 adds LNGF and row 5 instead adds the MRI as input channels, and the two do opposite things. Row 5 gives the best CT μ-MAE of any single model, 0.005679 ,which is the evidence that the unregistered MRI carries usable information. Row 3 gives up CT ( 0.005972 ) and buys the AC-PET metrics instead. The 4 mm blur is why: a term that moves fine structure changes the CT metric directly, because that metric sees the pseudo-CT at full resolution, but most of its effect is smoothed away before the projection the other three metrics depend on. Rows 4 and 6 add LLOR to each of them, and both shift the same way. Row 6 against row 5 is the clearest case: 0.42 % worse on CT, and 11 .4 %, 15 .0 % and 
+
+53 .9 % better on SUV MAE, organ bias and brain outlier. It is also the only term we found that improved organ bias at all. Row 8 averages rows 4 and 6. Row 7 refines row 6 for 100 further epochs at a fifth of the learning rate, and row 9 replaces row 6 with it inside the same blend. Row 9 is the model we submit. The refinement left the training loss where it started ( 0.0133 against 
+
+0.0132 ), and row 9 still improves on row 8 by 1.3 % on SUV MAE, 1.9 % on organ bias and 4.9 % on brain outlier, for 0.11 % more CT μ-MAE. We report both blends because the training loss gave no sign of that gain, so a run gated on training loss alone would have thrown the refinement away. The table has one gap: we never trained MuNet 4 with LNGF . The two are partly redundant by construction, because LNGF exists to inject MRI informa-tion into a network that cannot see the MRI, whereas MuNet 4 reads it directly. Region-Weighted Losses and Model Fusion for PET AC 7
+
+Table 1. Validation-set progression, at the precision the leaderboard reports. Each row adds the change in the Configuration column to the row above it within its block. Best per column in bold . Row 9 is the model we submit. Row 7’s three AC-PET entries are marked – because the challenge’s validation phase closed before we scored that model on its own, and those metrics can only be produced by the organizers’ service. Its CT μ-MAE is measured, and its effect on all four metrics is visible in row 9.                                                                           
+
+> #Model Configuration CT μ-MAE ↓SUV MAE ↓Organ ↓Brain ↓
+> 1Baseline plain L1, NAC-PET only 0.006610 0.0586 4.56 0.0541 2MuNet 2
+> Lμ+Lgrad +LAnPer 0.005803 0.0377 2.74 0.0148 3+LNGF 0.005972 0.0352 2.58 0.0158 4+LLOR 0.005958 0.0345 2.45 0.0168 5MuNet 4
+> Lμ+Lgrad +LAnPer 0.005679 0.0383 2.80 0.0168 6+LLOR 0.005703 0.0339 2.38 0.0078
+> 7+ 100 epochs at a fifth of the learning rate 0.005710 –––8Fusion 0.3×row 4 + 0 .7×row 6 0.005627 0.0331 2.27 0.0091 90.3×row 4 + 0 .7×row 7 0.005633 0.0326 2.23 0.0087
+
+We would expect less from the combination for that reason, but we have not measured it, and we would rather record the gap than argue it away. 
+
+3.1 Why the fusion gain depends on the pair 
+
+Row 8 beats both of its members on CT μ-MAE, at 0.005627 against 0.005703 
+
+and 0.005958 , which is 2.6 % below the value linear interpolation between them would give. The effect on the brain-outlier score is larger still, and we think the shape of that metric is the reason: it is an area under a curve of per-subject error fractions, so it is a tail statistic, and averaging two partly independent predictors suppresses tails much more than it shifts means. The size of that gain therefore depends on which two models are averaged rather than on how good either is alone, and rows 4 to 6 show both sides of it. Row 4 has a brain-outlier score of 0.0168 , the same value as row 5, and averaging those two gains almost nothing on brain because they fail on the same subjects: a blend we built that way lost three leaderboard places on brain while gaining one on CT, even though it was better on the other three metrics. Row 6 scores 
+
+0.0078 on the same metric, and averaging row 4 with row 6 instead gives row 8. The same model is a poor partner in one pair and half of our best result in the other, so we chose the pair from the members’ measured metrics and confirmed it with a full reconstruction rather than trusting any single model’s numbers. 
+
+3.2 Leaderboard 
+
+On the public validation leaderboard of 16 August 2026, the submitted fusion ranks first overall with a mean rank of 3.50 across 26 submissions, with per-8 Khoa et al. 
+
+metric ranks 7th on CT μ-MAE, 2nd on SUV MAE, 3rd on organ bias and 2nd on brain outlier. The margin is thin and the shape of it is worth stating: the second-placed entry, at 3.88 , beats us on three of the four metrics and loses only on CT μ-MAE, where we are 3.3 % ahead. 
+
+## References 
+
+1. Avants, B.B., Epstein, C.L., Grossman, M., Gee, J.C.: Symmetric diffeomorphic image registration with cross-correlation: Evaluating automated labeling of elderly and neurodegenerative brain. Medical Image Analysis 12 (1), 26–41 (2008) 2. Balakrishnan, G., Zhao, A., Sabuncu, M.R., Guttag, J., Dalca, A.V.: Voxelmorph: A learning framework for deformable medical image registration. IEEE Transac-tions on Medical Imaging 38 (8), 1788–1800 (2019) 3. Carney, J.P.J., Townsend, D.W., Rappoport, V., Bendriem, B.: Method to trans-form CT images for attenuation-corrected PET/CT. Medical Physics 33 (4), 976– 983 (2006) 4. Haber, E., Modersitzki, J.: Intensity gradient based registration and fusion of multi-modal images. In: Medical Image Computing and Computer-Assisted Intervention (MICCAI). LNCS, vol. 4191, pp. 726–733. Springer (2006) 5. Johnson, J., Alahi, A., Fei-Fei, L.: Perceptual losses for real-time style transfer and super-resolution. In: European Conference on Computer Vision (ECCV). pp. 694–711. Springer (2016) 6. Kingma, D.P., Ba, J.: Adam: A method for stochastic optimization. In: Interna-tional Conference on Learning Representations (ICLR) (2015) 7. Lakshminarayanan, B., Pritzel, A., Blundell, C.: Simple and scalable predictive uncertainty estimation using deep ensembles. In: Advances in Neural Information Processing Systems (NeurIPS) (2017) 8. Loshchilov, I., Hutter, F.: SGDR: Stochastic gradient descent with warm restarts. In: International Conference on Learning Representations (ICLR) (2017) 9. Oktay, O., Schlemper, J., Le Folgoc, L., Lee, M., Heinrich, M., Misawa, K., Mori, K., McDonagh, S., Hammerla, N.Y., Kainz, B., Glocker, B., Rueckert, D.: Attention u-net: Learning where to look for the pancreas. arXiv preprint arXiv:1804.03999 (2018) 10. Ronneberger, O., Fischer, P., Brox, T.: U-net: Convolutional networks for biomed-ical image segmentation. In: Medical Image Computing and Computer-Assisted Intervention (MICCAI). LNCS, vol. 9351, pp. 234–241. Springer (2015) 11. Thielemans, K., Tsoumpas, C., Mustafovic, S., Beisel, T., Aguiar, P., Dikaios, N., Jacobson, M.W.: STIR: software for tomographic image reconstruction release 2. Physics in Medicine and Biology 57 (4), 867–883 (2012) 12. Wasserthal, J., Breit, H.C., Meyer, M.T., Pradella, M., Hinck, D., Sauter, A.W., Heye, T., Boll, D.T., Cyriac, J., Yang, S., Bach, M., Segeroth, M.: Totalsegmen-tator: Robust segmentation of 104 anatomic structures in ct images. Radiology: Artificial Intelligence 5(5), e230024 (2023)
