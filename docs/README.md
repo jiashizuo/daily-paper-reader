@@ -6,29 +6,35 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-08-30
-- 运行时间：2026-08-30 21:26:33 UTC
+- 最新运行日期：2026-08-31
+- 运行时间：2026-09-01 00:01:29 UTC
 - 运行状态：成功
-- 本次总论文数：2
-- 精读区：0
+- 本次总论文数：5
+- 精读区：3
 - 速读区：2
 
 ### 今日简报（AI）
-今日速读2篇医学AI论文，均获6.0分，暂无精读。  
-重点关注跨模态PET衰减校正的损失设计与模型融合，以及医学多模态大模型在视觉问答和分割中的应用。  
-建议先精读其中一篇，结合示例数据复现实验，评估可迁移性。
-- 详情：[/202608/30/README](/202608/30/README)
+今日精读聚焦脑网络与医学影像分析，共处理5篇论文，其中2篇深度精读获高分。最值得关注的是多尺度社区指纹法用于符号功能网络（9.0分），以及物理辅助深度学习去噪优化dMRI参数拟合（8.0分）。普通读者可优先了解AI如何提升脑成像数据质量，后续可关注脑网络社区结构的临床应用。
+- 详情：[/202608/31/README](/202608/31/README)
 
 ### 精读区论文标签
-- 本次无精读推荐。
+1. [Multiscale Community-Based Fingerprinting of Signed Functional Networks](/202608/31/2608.27483v1-multiscale-community-based-fingerprinting-of-signed-functional-networks)  
+   标签：评分：9.0/10、query:fbn
+   evidence：基于带符号多层社区检测的功能连接组识别
+2. [Physics-Assisted Deep Learning Denoising for Stabilized IMPULSED dMRI Microenvironment Parameter Fitting](/202608/31/2608.27681v1-physics-assisted-deep-learning-denoising-for-stabilized-impulsed-dmri-microenvironment-parameter-fitting)  
+   标签：评分：8.0/10、query:fbn
+   evidence：面向医学影像的扩散MRI参数拟合深度学习去噪
+3. [Leveraging a Foundation Model for the EEG-Based Diagnosis of Alzheimer's Disease](/202608/31/2608.27719v1-leveraging-a-foundation-model-for-the-eeg-based-diagnosis-of-alzheimers-disease)  
+   标签：评分：8.0/10、query:fbn
+   evidence：基于脑电的阿尔茨海默病诊断与脑基础模型，属于神经影像AI医疗
 
 ### 速读区论文标签
-1. [Region-Weighted Losses and Model Fusion for Cross-Modal PET Attenuation Correction](/202608/30/2608.21881v1-region-weighted-losses-and-model-fusion-for-cross-modal-pet-attenuation-correction)  
+1. [Predicting Only from Selected Evidence: A Tempered Product-of-Experts Bottleneck for Auditable EEG Diagnosis](/202608/31/2608.24377v1-predicting-only-from-selected-evidence-a-tempered-product-of-experts-bottleneck-for-auditable-eeg-diagnosis)  
+   标签：评分：7.0/10、query:fbn
+   evidence：EEG诊断的可审计证据瓶颈方法，属于神经影像AI医疗
+2. [Giant strongly biconnected components of directed networks: a generating function approach](/202608/31/2608.25562v1-giant-strongly-biconnected-components-of-directed-networks-a-generating-function-approach)  
    标签：评分：6.0/10、query:fbn
-   evidence：跨模态PET衰减校正，属于神经影像AI医疗
-2. [From Reasoning to Pixels: Grounded Medical Multimodal LLMs for VQA and Segmentation](/202608/30/2608.26856v1-from-reasoning-to-pixels-grounded-medical-multimodal-llms-for-vqa-and-segmentation)  
-   标签：评分：6.0/10、query:mlr
-   evidence：面向医学视觉问答与分割的接地医疗多模态大模型，契合医疗多模态理解方向
+   evidence：用于有向网络鲁棒连通性分析的方法，可应用于脑连接组研究
 
 
 <div class="dpr-home-promo-card">
