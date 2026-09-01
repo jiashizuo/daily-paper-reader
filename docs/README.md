@@ -6,35 +6,47 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-08-31
-- 运行时间：2026-09-01 00:01:29 UTC
+- 最新运行日期：2026-09-01
+- 运行时间：2026-09-01 21:49:20 UTC
 - 运行状态：成功
-- 本次总论文数：5
-- 精读区：3
-- 速读区：2
+- 本次总论文数：9
+- 精读区：6
+- 速读区：3
 
 ### 今日简报（AI）
-今日精读聚焦脑网络与医学影像分析，共处理5篇论文，其中2篇深度精读获高分。最值得关注的是多尺度社区指纹法用于符号功能网络（9.0分），以及物理辅助深度学习去噪优化dMRI参数拟合（8.0分）。普通读者可优先了解AI如何提升脑成像数据质量，后续可关注脑网络社区结构的临床应用。
-- 详情：[/202608/31/README](/202608/31/README)
+今日精读9篇、速读3篇，重点关注成瘾脑连接与SPD矩阵泛化两大高分研究。最值得看：可卡因使用障碍的“结构性连接中断”模型（9.0分），以及静息态fMRI连接组预测的SPD学习外部泛化基准（9.0分）。建议先读这两篇掌握方法学要点，再按需速读MRI序列泛化与脑电分词等应用性文章。
+- 详情：[/202609/01/README](/202609/01/README)
 
 ### 精读区论文标签
-1. [Multiscale Community-Based Fingerprinting of Signed Functional Networks](/202608/31/2608.27483v1-multiscale-community-based-fingerprinting-of-signed-functional-networks)  
+1. [Structurally Informed Connectivity Disruptions in Cocaine Use Disorder](/202609/01/2608.28892v1-structurally-informed-connectivity-disruptions-in-cocaine-use-disorder)  
    标签：评分：9.0/10、query:fbn
-   evidence：基于带符号多层社区检测的功能连接组识别
-2. [Physics-Assisted Deep Learning Denoising for Stabilized IMPULSED dMRI Microenvironment Parameter Fitting](/202608/31/2608.27681v1-physics-assisted-deep-learning-denoising-for-stabilized-impulsed-dmri-microenvironment-parameter-fitting)  
+   evidence：通过功能连接建模分析可卡因使用障碍的脑网络差异与临床关系
+2. [Benchmarking External Generalization of SPD Matrix Learning for Resting-State fMRI Connectome Prediction](/202609/01/2608.30418v1-benchmarking-external-generalization-of-spd-matrix-learning-for-resting-state-fmri-connectome-prediction)  
+   标签：评分：9.0/10、query:fbn
+   evidence：基于静息态fMRI功能连接矩阵，跨六个数据集评测SPD矩阵学习方法，属于深度学习与fMRI连接组研究
+3. [Enhancing MRI Brain Tumor Edge Detection: A Hybrid Preprocessing Approach Utilizing CLAHE](/202609/01/2608.28709v1-enhancing-mri-brain-tumor-edge-detection-a-hybrid-preprocessing-approach-utilizing-clahe)  
    标签：评分：8.0/10、query:fbn
-   evidence：面向医学影像的扩散MRI参数拟合深度学习去噪
-3. [Leveraging a Foundation Model for the EEG-Based Diagnosis of Alzheimer's Disease](/202608/31/2608.27719v1-leveraging-a-foundation-model-for-the-eeg-based-diagnosis-of-alzheimers-disease)  
+   evidence：直接匹配神经影像AI医疗，面向MRI脑肿瘤边缘检测
+4. [Medical Foundation Model Features as Perceptual Loss for Brain MRI Contrast Dose Simulation](/202609/01/2608.28773v1-medical-foundation-model-features-as-perceptual-loss-for-brain-mri-contrast-dose-simulation)  
    标签：评分：8.0/10、query:fbn
-   evidence：基于脑电的阿尔茨海默病诊断与脑基础模型，属于神经影像AI医疗
+   evidence：医学基础模型特征作为脑MRI合成感知损失，属神经影像人工智能医疗
+5. [Beyond Representation Learning: A Systematic Study of Joint-Embedding Predictive Generation for 3D Brain MRI](/202609/01/2608.28787v1-beyond-representation-learning-a-systematic-study-of-joint-embedding-predictive-generation-for-3d-brain-mri)  
+   标签：评分：8.0/10、query:fbn
+   evidence：三维脑MRI联合嵌入预测生成，属神经影像人工智能医疗
+6. [GraM-Diff: A Unified Graph-Mamba Diffusion Framework for EEG-Based Alzheimer's Disease Data Generation and Diagnosis](/202609/01/2608.29755v1-gram-diff-a-unified-graph-mamba-diffusion-framework-for-eeg-based-alzheimers-disease-data-generation-and-diagnosis)  
+   标签：评分：8.0/10、query:fbn
+   evidence：使用图神经网络与扩散模型基于脑连接进行阿尔茨海默病诊断，与需求中的图深度学习脑疾病诊断高度一致
 
 ### 速读区论文标签
-1. [Predicting Only from Selected Evidence: A Tempered Product-of-Experts Bottleneck for Auditable EEG Diagnosis](/202608/31/2608.24377v1-predicting-only-from-selected-evidence-a-tempered-product-of-experts-bottleneck-for-auditable-eeg-diagnosis)  
+1. [On the Role of MRI Sequences in Cross-Dataset Generalization for Brain Tumor Segmentation](/202609/01/2608.29944v1-on-the-role-of-mri-sequences-in-cross-dataset-generalization-for-brain-tumor-segmentation)  
+   标签：评分：8.0/10、query:fbn
+   evidence：面向脑肿瘤分割跨数据集泛化的神经影像AI研究
+2. [Evaluating the Safety of Deep Learning-Based Brain MRI Reconstruction](/202609/01/2608.28714v1-evaluating-the-safety-of-deep-learning-based-brain-mri-reconstruction)  
    标签：评分：7.0/10、query:fbn
-   evidence：EEG诊断的可审计证据瓶颈方法，属于神经影像AI医疗
-2. [Giant strongly biconnected components of directed networks: a generating function approach](/202608/31/2608.25562v1-giant-strongly-biconnected-components-of-directed-networks-a-generating-function-approach)  
-   标签：评分：6.0/10、query:fbn
-   evidence：用于有向网络鲁棒连通性分析的方法，可应用于脑连接组研究
+   evidence：对深度学习脑MRI重建安全评估实践的系统评价
+3. [MEL: Coordinate-Preserving EEG Tokenization for fMRI Translation](/202609/01/2608.29304v1-mel-coordinate-preserving-eeg-tokenization-for-fmri-translation)  
+   标签：评分：7.0/10、query:fbn
+   evidence：脑电到fMRI的翻译用于医学神经影像与临床脑状态监测，属于神经影像AI方法
 
 
 <div class="dpr-home-promo-card">
