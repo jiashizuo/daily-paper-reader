@@ -1,0 +1,567 @@
+Title: Tissue-Mixture Entropy-Weighted Reconstruction for Partial-Volume-Aware Brain MRI Super-Resolution
+
+URL Source: https://arxiv.org/pdf/2608.26647v2
+
+Published Time: Thu, 03 Sep 2026 01:01:19 GMT
+
+Number of Pages: 17
+
+Markdown Content:
+# Tissue-Mixture Entropy-Weighted Reconstruction for Partial-Volume-Aware Brain MRI Super-Resolution 
+
+Xiao Tong a,b , Wenyun Yang a, Ziheng Zhang c, Jingzhi Han a, Zhaochu Luo a, Jinbo Yang a,b, ∗
+
+> aState Key Laboratory of Artificial Microstructure and Mesoscopic Physics, School of Physics, Peking University, Beijing, 100871, P. R. China
+> bWeihai Institute of Oceanology, Peking University, Weihai, 264209, P. R. China
+> cBeijing MagnVue Medix Co., Ltd., Beijing, 100085, P. R. China
+
+Abstract Background and Objectives: Full-image objectives in brain magnetic resonance imaging (MRI) super-resolution (SR) can under-weight tissue-transition regions a ff ected by the partial-volume e ff ect (PVE), as these regions occupy a small fraction of the image. Binary boundaries further provide only a discrete approximation of continuous tissue mixtures within a voxel. 
+
+Methods: We propose Anatomy-Guided Gaussian-Parameter Warping with PVE-Balanced Reconstruction (AGW-PBR), combin-ing a low-resolution (LR)-only reconstruction backbone with a PVE-aware training objective. The backbone uses LR-derived anatomical guidance, soft latent assignment, and bounded residual warping. Quality-controlled tissue fractions are converted into tissue-mixture entropy to spatially weight reconstruction within validated PVE support. PVE sidecars are used only during train-ing, while inference requires only the LR image. Downstream utility is further evaluated through zero-shot transfer to whole-tumor segmentation on BraTS2023. 
+
+Results: AGW-PBR improves reconstruction across 2 × and 4 × SR on IXI and achieves the lowest normalized gradient-vector re-construction error at both CSF–GM and GM–WM interfaces at 4 ×. Ablation studies verify the contributions of PVE-aware weight-ing and soft latent assignment. The PVE-free AGW backbone also maintains strong performance on fastMRI. On BraTS2023, AGW-PBR achieves competitive whole-tumor Dice and the lowest HD95 under direct zero-shot transfer. 
+
+Conclusions: AGW-PBR improves brain MRI SR while preserving tissue-transition information relevant to downstream analysis. The results support tissue-mixture entropy as an e ff ective supervision signal for partial-volume-aware MRI reconstruction. 
+
+Keywords: MRI super-resolution; Partial-volume e ff ect; Tissue-mixture entropy; PVE-balanced reconstruction 
+
+1. Introduction 
+
+Magnetic resonance imaging (MRI) provides strong soft-tissue contrast for structural assessment and quantitative im-           
+
+> ∗Corresponding author. Tel.: +86 10 62753459; Fax: +86 10 62751615.
+> Email addresses: tongxiao@stu.pku.edu.cn (Xiao Tong),
+> yangwenyun@pku.edu.cn (Wenyun Yang), zhangziheng@magnvue.com
+> (Ziheng Zhang), hanjingzhi@pku.edu.cn (Jingzhi Han),
+> zhaochu.luo@pku.edu.cn (Zhaochu Luo), jbyang@pku.edu.cn (Jinbo Yang)
+
+age analysis. High spatial resolution is particularly important in brain MRI for delineating cortical folds, tissue interfaces, and small anatomical structures. However acquiring images at a higher spatial resolution generally requires longer scan time and introduces trade-o ff s in signal-to-noise ratio, motion sen-sitivity, and clinical throughput [1, 2]. Image super-resolution (SR) provides a computational alternative by estimating a high-resolution (HR) image from a low-resolution (LR) observation arXiv:2608.26647v2 [cs.CV] 2 Sep 2026 without modifying scanner hardware. Brain MRI SR is particularly sensitive to tissue transitions. At finite spatial resolution, voxels near cerebrospinal fluid (CSF), gray matter (GM), and white matter (WM) interfaces can contain contributions from multiple tissues, producing partial-volume e ff ects (PVEs) [3, 4, 5]. These regions occupy a small fraction of the image, so their reconstruction errors can receive limited aggregate influence under full-image ob-jectives dominated by homogeneous tissue. Boundary-aware losses emphasize contours [6], while tissue fractions provide a continuous description of within-voxel composition. Existing PVE studies primarily address segmentation and tissue-fraction estimation [4, 5, 7]. We propose Anatomy-Guided Gaussian-Parameter Warp-ing with PVE-Balanced Reconstruction (AGW-PBR), which consists of an LR-only reconstruction backbone and a PVE-balanced training objective. The reconstruction backbone uses LR-derived structural guidance, compact soft latent assignment, and bounded grid-anchored residual warping. During training, quality-controlled CSF /GM /WM pseudo-label sidecars provide tissue-mixture entropy, which defines mean-normalized spatial reconstruction weights within validated PVE support. The sidecars remain fixed training resources. Here, “Gaussian-parameter” refers to the displacement and gating parameterization of the warping module. The contributions of this work are summarized as follows: 
+
+• We introduce PVE-Balanced Reconstruction, which uses mean-normalized tissue-mixture entropy to increase the contribution of partial-volume tissue transitions during training while retaining full-image reconstruction super-vision. 
+
+• We develop an LR-only Anatomy-Guided Gaussian-Parameter Warping (AGW) reconstruction framework based on image-derived structural guidance, compact soft latent assignment, and bounded grid-anchored residual warping. 
+
+• We establish quality-controlled PVE sidecars and inde-pendent SynthSeg-based evaluation of regional fidelity and CSF–GM /GM–WM tissue-transition gradients. Boundary-profile RMSE provides complementary anal-ysis on HR-eligible profiles. 
+
+• We evaluate the AGW-PBR model on the IXI dataset at 2× and 4 × with subject-level paired analysis and further assess downstream information retention through zero-shot transfer to a frozen BraTS2023 whole-tumor seg-mentation probe. We separately evaluate the AGW re-construction backbone on the fastMRI dataset under an independent SR-only protocol without PVE sidecars. 
+
+2. Related Work 
+
+2.1. MRI Super-Resolution Architectures 
+
+MRI super-resolution (SR) reconstructs high-resolution (HR) images or volumes from low-resolution (LR) observa-tions. Early methods relied on interpolation, projection-based reconstruction, and handcrafted priors based on smoothness, consistency, or sparsity [8, 9, 10, 11]. Learning-based methods primarily di ff er in their modeling of spatial context: convo-lutional networks extract local and multiscale features, while Transformer-based models capture long-range dependencies through attention [12, 13, 14, 15]. Continuous representations enable arbitrary-scale recon-struction by predicting intensities at queried coordinates. General SR methods such as LIIF, LTE, and CiaoSR use coordinate-conditioned features [16, 17, 18]. For MRI, Ar-SSR extends implicit representations to arbitrary-scale 3-D reconstruction, while SA-INR introduces locally aware spatial attention for flexible inter-slice upsampling [1, 19]. NExpR 2and GaussianSR further improve computational e ffi ciency or scale flexibility [20, 21]. Di ff usion-based SR reconstructs HR images through condi-tional generative refinement, with later methods reducing sam-pling cost through compact priors, residual-shifting trajectories, and continuous-scale formulations [22, 23, 24, 25]. In MRI SR, Res-SRDi ff adopts residual-shifting di ff usion, Partial Dif-fusion Models initialize reverse di ff usion from an LR-derived intermediate latent, and PRDDi ff progressively restores high-frequency k-space components for arbitrary-scale in-plane re-construction [26, 27, 28]. These architectures improve representation capacity, scale flexibility, and high-frequency reconstruction. Their recon-struction objectives are generally aggregated over the image, leaving the relative contribution of partial-volume tissue transi-tions largely implicit. 
+
+2.2. Anatomical, Segmentation, and Tissue-Aware Guidance 
+
+Anatomical guidance can be introduced through an addi-tional MR contrast. Progressive fusion, cross-modality Trans-formers, and deformable attention integrate or align comple-mentary contrast information across reconstruction stages [2, 29, 30, 31, 32]. Such guidance provides anatomical correspon-dence but requires additional acquisition and registration. Anatomical priors can also be embedded in learned rep-resentations or training objectives. PGASR conditions a dis-crete anatomical codebook on rough structure maps and aligns representations across slices and LR /HR domains, while SCSR constrains SR training with a frozen cortical-ribbon segmenta-tion model [33, 34]. BME-X instead predicts voxel-wise tis-sue classes (background, CSF, GM, and WM) and concatenates these probabilities with the input image for reconstruction [35]. These categorical tissue cues di ff er from continuous tissue frac-tions, which represent mixed tissue composition within a voxel. 
+
+2.3. Partial-Volume E ff ects and Tissue-Mixture Modeling 
+
+Partial-volume e ff ects (PVEs) arise when finite spatial res-olution causes a voxel to contain signals from multiple tissues, commonly at CSF /GM /WM interfaces in brain MRI [3, 5]. Prior work has mainly addressed PVE through mixture mod-eling, segmentation, and continuous tissue-fraction estimation using spatial and statistical models [4, 5, 7]. Boundary information and tissue fractions describe comple-mentary properties of an interface. Boundary-aware objectives can increase the contribution of reconstruction errors near struc-tural contours [6]. A boundary marks where a transition occurs, whereas a CSF /GM /WM fraction vector describes the relative tissue composition within a voxel. Tissue fractions therefore provide a continuous description of tissue mixture that is not captured by a binary contour alone. Our study uses quality-controlled CSF /GM /WM PVE pseudo-label sidecars to derive tissue-mixture entropy for training-time spatial reconstruction weighting, with indepen-dent SynthSeg segmentations used for regional evaluation. 
+
+3. Methods 
+
+3.1. Problem Formulation and Method Overview 
+
+Let Ω = {1, . . . , H} × { 1, . . . , W} denote the target Carte-sian grid. The scalar images ILR , IHR , ISR : Ω → R denote, respectively, the LR-derived observation represented on this grid, its HR target, and the reconstructed output. With a fixed degradation-and-resampling operator D and a reconstruction network Fϕ parameterized by ϕ, the problem is 
+
+ILR = D(IHR ), ISR = Fϕ(ILR ). (1) Anatomy-Guided Gaussian-Parameter Warping with PVE-Balanced Reconstruction (AGW-PBR, Fig. 1) separates an 3Fig. 1. Overview of AGW-PBR, which reconstructs high-resolution MRI in four stages. (1) Anatomy-Guided Feature Extraction : an RCAB U-Net extracts base features, while Sobel gradients guide feature modulation to obtain Fag . (2) Compact Latent Gaussian-Parameter Dictionary : temperature-scaled soft assignment combines four anonymous learned bases, and a parameter-residual branch refines the resulting five-dimensional local code. (3) Grid-Anchored Residual Warping :the local code is decoded into bounded displacements and a residual gate, which define the shifted sampling grid eu. (4) Residual Reconstruction & PVE-Balanced Optimization : the residual field and gate are sampled on eu and combined with ILR to produce ISR . During training, fixed CSF, GM, and WM PVE fractions provide an entropy-derived unit-mean weight for LPBR , which is combined with Lcharb .
+
+LR-only reconstruction pathway from a training-only PVE-balanced objective. The reconstruction pathway derives a Sobel-gradient cue from ILR , uses it to modulate learned image features, and predicts a five-dimensional local code through a softly assigned latent basis bank. This code produces bounded displacements and gates for grid-anchored residual warping. During training, fixed o ffl ine PVE sidecars weight reconstruc-tion errors within quality-controlled support but never enter the network. 
+
+3.2. Anatomy-Guided Feature Extraction 
+
+A learned RCAB U-Net-style encoder Eϕ maps the LR-derived observation to the base feature tensor 
+
+Fbase = Eϕ(ILR ) ∈ RC f ×H×W , (2) where C f is the feature-channel count. Fixed horizontal and vertical Sobel kernels Sx, Sy ∈ R3×3 produce scalar response fields and their gradient magnitude: 
+
+gx = ILR ∗ Sx, gy = ILR ∗ Sy,
+
+mgrad =
+
+q
+
+g2 
+
+> x
+
++ g2 
+
+> y
+
++ ϵg.
+
+(3) The symbol ∗ is reserved for two-dimensional convolution, and 
+
+ϵg = 10 −6 is a numerical stabilizer. The gate predictor is decomposed into explicit intermediate tensors: 
+
+Fcat = Concat c(Fbase , mgrad ),
+
+Fgate = δ C1(Fcat ),
+
+Gfeat = σ C2(Fgate ),
+
+(4) where Concat c denotes channel-wise concatenation, C1 and C2
+
+4are learned convolutional operators, δ is a Leaky ReLU, and σ
+
+is the sigmoid function. Thus, Fcat ∈ R(C f +1) ×H×W and Gfeat ∈
+
+(0 , 1) C f ×H×W . Element-wise residual modulation gives 
+
+Fag = Fbase + Fbase ⊙ Gfeat , (5) where ⊙ denotes element-wise multiplication between shape-compatible fields or tensors. This image-derived guidance path-way is active during both training and inference. 
+
+3.3. Compact Latent Gaussian-Parameter Dictionary 
+
+An assignment operator Aϕ predicts K basis logits from the anatomy-guided features: 
+
+Z = Aϕ(Fag ) ∈ RK×H×W . (6) At each anchor p ∈ Ω, the final model normalizes these logits along the K-basis axis: 
+
+Wsoft  
+
+> k
+
+(p) = exp( Zk(p)/τ )
+
+> K
+
+X
+
+> j=1
+
+exp Z j(p)/τ  , k = 1, . . . , K. (7) The temperature τ is a learnable scalar initialized to 1. The assignments satisfy Wsoft  
+
+> k
+
+(p) ≥ 0 and PKk=1 Wsoft  
+
+> k
+
+(p) = 1. Let B ∈ RK×Dη be the learned basis bank and let bk ∈ RDη
+
+be its k-th row. A parameter-residual operator Pϕ predicts Rη ∈
+
+RDη×H×W . The basis mixture and final local code are 
+
+ηbase (p) =
+
+> K
+
+X
+
+> k=1
+
+Wsoft  
+
+> k
+
+(p) bk,
+
+Rη = Pϕ(Fag ),
+
+η(p) = ηbase (p) + rη(p),
+
+(8) where rη(p) is the Dη-vector at p in Rη. AGW-PBR uses K = 4and Dη = 5, with 
+
+η(p) = [qx(p), qy(p), hx(p), hy(p), qa(p)] T. (9) Here, qx and qy are raw displacement logits, hx and hy are raw displacement-amplitude gate logits, and qa is the raw residual-intensity gate logit. The basis bank is QR-initialized and jointly optimized with the network. 
+
+3.4. Grid-Anchored Residual Warping and Reconstruction 
+
+A learned residual operator Rϕ predicts a single-channel scalar field 
+
+r = Rϕ(Fag ) ∈ RH×W . (10) Five raw components in Eq. (9) are converted into a bounded displacement vector and a residual-intensity gate: 
+
+δx(p) = tanh( qx(p)) σ(hx(p)) ,δy(p) = tanh( qy(p)) σ(hy(p)) ,
+
+δ(p) = [δx(p), δ y(p)] T,
+
+ares (p) = 0.1 + 0.9 σ(qa(p)) .
+
+(11) Thus, hx and hy modulate the displacement amplitude, and ares 
+
+gates the predicted residual. Let u(p) ∈ [−1, 1] 2 be the normalized coordinate of anchor 
+
+p. The shifted sampling coordinate is 
+
+eu(p) = u(p) + λwarp δ(p), (12) where λwarp is a fixed coe ffi cient in normalized-grid coordinates (λwarp = 0.05). Define GridSample κ(X, v) as sampling field X
+
+at normalized coordinates v using interpolation mode κ. The warped residual and gate are 
+
+er(p) = GridSample bic (r, eu(p)) ,
+
+ea(p) = GridSample lin (ares , eu(p)) .
+
+(13) The residual sampler is bicubic, the gate sampler is bilinear, and both use reflection padding with aligned corner pixels. The 5reconstructed image is 
+
+ISR (p) = ILR (p) + γ (er ⊙ ea)( p), (14) where γ is the fixed residual coe ffi cient ( γ = 0.1). Eq. (14) combines one shifted residual sample with each grid anchor. 
+
+3.5. PVE-Balanced Reconstruction Objective 
+
+Inference requires only ILR ; Sobel guidance and target-grid coordinates are generated internally. PVE sidecars are training-only resources, and SynthSeg interfaces are used only for of-fline evaluation. For image pair n, the tissue-fraction vector at p is 
+
+π(n)(p) = [π(n)CSF (p), π (n)GM (p), π (n)WM (p)] T, (15) from which the normalized entropy sidecar is constructed as 
+
+H(n)PVE (p) = − 1log 3 
+
+X
+
+> c∈{ CSF ,GM ,WM }
+
+eπ(n) 
+
+> c
+
+(p) log eπ(n) 
+
+> c
+
+(p) + ϵh
+
+ ,
+
+eπ(n) 
+
+> c
+
+(p) = clip π(n) 
+
+> c
+
+(p), 0, 1 .
+
+(16) where ϵh = 10 −8; the resulting entropy is then clipped to [0 , 1]. The resulting entropy field and valid-support mask remain fixed during training. For a current minibatch of N pairs, define the active support 
+
+Vmb = {(n, p) : n ∈ { 1, . . . , N}, p ∈ Ω, M(n)valid (p) = 1}. (17) When Vmb is nonempty, let Hmin and Hmax be the minimum and maximum of HPVE over this joint minibatch support. For (n, p) ∈ V mb , the normalized guide is 
+
+G(n)(p) =
+
+
+
+H(n)PVE (p) − Hmin 
+
+Hmax − Hmin 
+
+, Hmax − Hmin > ϵ h,
+
+0, Hmax − Hmin ≤ ϵh,
+
+(18) Thus, extrema are shared across all valid pixels in the current minibatch, and a constant guide becomes zero. If Vmb is empty, the implementation returns a safe zero PBR contribution. For nonempty Vmb , the raw weight, its valid-support mean, and the unit-mean weight are 
+
+w(n)raw (p) = 1 + αpve G(n)(p),μw = 1
+
+|V mb |
+
+X
+
+> (m,q)∈V mb
+
+w(m)raw (q),
+
+bw(n)(p) = w(n)raw (p)
+
+μw
+
+.
+
+(19) Here, αpve controls the relative emphasis on high-entropy loca-tions. By construction, |V mb |−1 PVmb bw = 1. The PBR term is the valid-support weighted L1 error, in-cluding the empty-support safeguard: 
+
+LPBR =
+
+
+
+1
+
+|V mb |
+
+X
+
+> (n,p)∈V mb
+
+bw(n)(p) I(n)SR (p) − I(n)HR (p) , |V mb | > 0,
+
+0, |V mb | = 0.
+
+(20) The global single-channel Charbonnier loss reduces over every image and target-grid location: 
+
+Lcharb = 1
+
+N|Ω|
+
+> N
+
+X
+
+> n=1
+
+X
+
+> p∈Ω
+
+rI(n)SR (p) − I(n)HR (p)2
+
++ ϵ2 
+
+> c
+
+, (21) where ϵc = 10 −3. The final training objective is 
+
+Ltotal = Lcharb + LPBR . (22) Gradients from LPBR propagate only through the reconstruction network. 
+
+3.6. Inference Boundary 
+
+At inference, the model uses only ILR , with Sobel guidance and target-grid coordinates generated internally. PVE sidecars are used only for IXI training and pseudo-label quality control, whereas SynthSeg-derived interfaces are used solely to con-struct o ffl ine test-set evaluation masks. 6Table 1. Dataset and training-budget summary for the main experiments. 
+
+Dataset Slice size Scale(s) Split Training budget Evaluation scope IXI (T 2) 256 × 256 2×, 4 × 329 train / 47 validation / 99 test subjects 80 epochs per scale / seed; seeds 42, 43, 44 Full-image and SynthSeg re-gional PSNR /SSIM. fastMRI (T 2) 320 × 320 4× 200 train / 30 validation / 43 test subjects 80 epochs per seed; seeds 42, 43, 44 Full-image PSNR /SSIM. 
+
+> Table 2. Quality-control summary of the IXI PVE pseudo-labels and independent interface masks.
+
+Item Value Note Retained cohort 475 subjects 329 training, 47 validation, and 99 test subjects pass brain-mask, registration, tissue-fraction, and sidecar quality control. Validated sidecars 43,141 slices Includes 8,998 test slices with unique subject–slice correspondence to the T 2 images. Multimodal preprocessing T1 / T2 / PD T1 and PD are aligned to T 2, and the same T 2-derived HD-BET mask is applied to all three modalities before FAST. Tissue fractions CSF / GM / WM Multi-channel FAST estimates the three partial-volume fractions on the T 2 grid. Valid support Intracranial valid voxels The HD-BET mask is intersected with finite, in-range, sum-to-one-valid tissue fractions. Excluded subjects 16 Fifteen fail to meet the brain-mask criteria, and IXI260 is excluded because of registration failure. Independent evaluation masks 99 test subjects SynthSeg-derived CSF–GM and GM–WM interfaces are used for offl ine regional evaluation. 
+
+4. Experiments 
+
+We evaluate AGW-PBR on IXI T 2 and the PVE-free AGW backbone on fastMRI T 2. IXI provides the primary reconstruc-tion and tissue-interface evaluation, while fastMRI provides an independent SR-only external test. 
+
+4.1. Experimental Settings 
+
+Datasets. The IXI dataset 1 serves as the primary brain MRI SR benchmark, with 329 training, 47 validation, and 99 test subjects after quality control. All selected T 2-weighted slices have a fixed in-plane resolution of 256 × 256. We evaluate the AGW-backbone on the fastMRI dataset 2 [36], using 200 subjects (3,200 slices) for training, 30 subjects (480 slices) for validation, and 43 subjects (688 slices) for testing. Table 1 sum-marizes the dataset and training configurations. 
+
+> 1https://brain-development.org/ixi-dataset/
+> 2https://fastmri.med.nyu.edu/
+
+4.2. Degradation Protocol and Implementation Details 
+
+Degradation protocol. LR inputs are synthesized by afrequency-domain truncation [2]. For a scale factor s, we retain the central 1 /s × 1/s region of k-space and set the remaining high-frequency coe ffi cients to zero before inverse Fourier re-construction. This retains 25% and 6.25% of k-space for 2 ×
+
+and 4 ×, respectively. 
+
+Implementation Details. Our approach is implemented in Py-Torch and trained on a single NVIDIA RTX 5090 GPU. We trained the model for 80 epochs using Adam Optimizer with a batch size of 4. The initial learning rate is 2 × 10 −4 and grad-ually reduced to 1 × 10 −6 using a cosine annealing schedule. For the IXI dataset, the training objective is Lcharb + LPBR , with 
+
+αpve = 0.1. For the fastMRI dataset, AGW-backbone is trained from scratch using only Lcharb . Fig. 2 shows the qualitative val-idation layout for the IXI PVE pseudo-labels. 7IXI479 z=86 Median valid entropy        
+
+> HR T2 FAST CSF fraction FAST GM fraction FAST WM fraction HD-BET-restricted FAST entropy Support + independent interfaces
+> IXI356 z=92 Upper-quartile valid entropy
+> IXI418 z=61 Upper-quartile interface occupancy
+> 0.0 0.5 1.0
+> Normalized FAST entropy
+> T2-space HD-BET support Independent SynthSeg CSF-GM interface Independent SynthSeg GM-WM interface
+
+Fig. 2. Qualitative validation of the IXI PVE pseudo-labels. FAST estimates CSF, GM, and WM fractions from brain-extracted T 1/T2/PD images aligned in the T 2
+
+reference space, and tissue-mixture entropy is shown only within the quality-controlled intracranial support. SynthSeg-derived CSF–GM and GM–WM interfaces serve as independent automated anatomical references. The three cases correspond to the median entropy, upper-quartile entropy, and upper-quartile interface occupancy within the eligible test cohort. 
+
+4.3. Quality Control of the PVE Pseudo-label Sidecars 
+
+The PVE pipeline retains 475 of the 491 IXI subjects af-ter brain-mask, registration, tissue-fraction, and sidecar quality control, including all 99 test subjects. Table 2 summarizes the cohort and validated sidecar resources. During training, FAST-derived tissue-mixture entropy defines the PBR weights; inde-pendent test-only SynthSeg segmentations define CSF–GM and GM–WM evaluation interfaces. Full construction and quality-control procedures are provided in Appendices A–D of the Sup-plementary Material. Fig. 3 summarizes the spatial consistency analysis between FAST-derived tissue-mixture entropy and in-dependent SynthSeg interfaces. 
+
+Compared methods. We compare the evaluated configuration (AGW-PBR on IXI and AGW-backbone on fastMRI) with rep-resentative MRI SR baselines from several model families: SR-CNN [37], RCAN [13], SwinIR [14], HAT [38], ArSSR [1], NExpR [20], GaussianSR [21], and Res-SRDi ff [26]. To adapt the 3D-based ArSSR to our 2D in-plane MRI SR setting, we replace its 3D convolutional layers with their 2D counterparts. 0.0 2.5 5.0 7.5 10.0 12.5 15.0 17.5 20.0 
+
+> In-plane distance to nearest independent tissue interface (mm)
+> 0.06 0.08 0.10 0.12 0.14 0.16 0.18 0.20 0.22
+> Subject-level mean normalized FAST entropy
+
+A. FAST entropy as a function of distance to independent tissue interfaces 
+
+> CSF-GM interface GM-WM interface
+> CSF-GM interface band (n=99) GM-WM interface band (n=99) Far intracranial tissue (n=99) 0.05 0.10 0.15 0.20 0.25 0.30
+> Subject-level mean normalized FAST entropy
+
+B. Subject-level entropy in independently defined regions 
+
+> Paired mean difference (95% bootstrap CI) CSF-GM - far: 0.139 [ 0.135, 0.142] GM-WM - far: 0.092 [ 0.086, 0.098]
+
+Fig. 3. Spatial consistency between FAST-derived tissue-mixture entropy and independent SynthSeg tissue interfaces in 99 test subjects. Panel A shows subject-level mean entropy within the valid PVE support as a function of the in-plane distance to the CSF–GM and GM–WM interfaces; shaded regions in-dicate 95% bootstrap confidence intervals. Panel B compares entropy within 2 mm of each interface with that in intracranial tissue at least 5 mm away. This analysis evaluates spatial agreement with an independent automated anatomical reference rather than absolute tissue-fraction accuracy. 
+
+8Table 3. Quantitative results on the IXI dataset at 2 × and 4 × upsampling. Slice-level scores are averaged within each subject, and results from seeds 42, 43, and 44 are then averaged within subject before reporting the cohort mean ± sample standard deviation. Bold: best. Underline: second-best.                                                                                                                         
+
+> Method 2×PSNR ↑2×SSIM ↑4×PSNR ↑4×SSIM ↑
+> SRCNN 36 .130 ±1.076 0.9711 ±0.0049 29 .157 ±0.851 0.8972 ±0.0122 RCAN 39 .498 ±1.085 0.9827 ±0.0043 31 .194 ±0.822 0.9280 ±0.0108 SwinIR 39 .620 ±1.094 0.9830 ±0.0042 31 .556 ±0.815 0.9314 ±0.0105 HAT 38 .414 ±1.021 0.9799 ±0.0044 30 .393 ±0.815 0.9179 ±0.0113 ArSSR 39 .638 ±1.093 0.9831 ±0.0043 31 .383 ±0.829 0.9313 ±0.0107 GaussianSR 39 .626 ±1.095 0.9833 ±0.0043 31 .386 ±0.834 0.9307 ±0.0109 NExpR 39 .710 ±1.100 0.9829 ±0.0042 31 .406 ±0.827 0.9326 ±0.0107 Res-SRDi ff 38 .579 ±1.112 0.9779 ±0.0052 30 .568 ±0.885 0.9190 ±0.0136
+> AGW-PBR (Ours) 39 .881 ±1.130 0.9834 ±0.0043 32 .844 ±1.008 0.9460 ±0.0112
+
+GaussianSR, NExpR, and Res-SRDi ff retain their original re-construction frameworks, with only the input and output lay-ers adapted for single-channel MR images. Res-SRDi ff follows its original configuration with 15 di ff usion and sampling steps, while GaussianSR retains its 128 × 128 patch-based training strategy. All comparisons use publicly available codebases, and all models are retrained on our MRI datasets until convergence. 
+
+Evaluation metrics and statistical analysis. We evaluate reconstruction using full-image PSNR and SSIM for the IXI comparison, fastMRI external evaluation, and ablation analysis. For the IXI 4 × experiment, regional PSNR and global masked-vector SSIM are additionally computed within independent SynthSeg-defined interface and non-interface intracranial re-gions, where interfaces are obtained by one three-dimensional six-neighbour dilation of the CSF–GM, GM–WM, and CSF– WM boundaries. Regional evaluation uses 10,872 eligible slices from all 99 test subjects, with slice-level scores averaged within each subject and then across seeds. 
+
+4.4. Results on the IXI Dataset 
+
+Qualitative Results. Fig. 4 compares representative recon-structions and absolute-error maps at 2 × and 4 ×. Di ff erences are more pronounced at 4 ×, particularly around ventricular and tissue-interface regions. AGW-PBR shows lower residual in-tensity in the highlighted ROIs while preserving local anatomi-cal continuity. 
+
+Quantitative Results. Tables 3 and 4 summarize the IXI re-sults. AGW-PBR achieves the highest PSNR and SSIM at both upsampling factors. At 4 ×, it also performs best in both SynthSeg-defined inter-face and non-interface intracranial regions, showing improved tissue-interface reconstruction without sacrificing overall in-tracranial fidelity. 
+
+Tissue-transition fidelity. We further assess structural fidelity at the independently defined CSF–GM and GM–WM tissue transitions under the IXI 4 × setting. Table 5 reports the normal-ized gradient-vector reconstruction error on the 99-subject test cohort. AGW-PBR achieves the lowest error at both interfaces, showing that the regional reconstruction gains extend to local tissue-transition gradients. Boundary-profile RMSE provides complementary evidence on HR-eligible profiles, with AGW-PBR achieving the lowest mean error at both interfaces. The complete profile definition, cohort coverage, and results are provided in Appendix E. 
+
+4.5. Results on the fastMRI Dataset 
+
+Qualitative Results. Fig. 5 shows representative 4 × fastMRI results. AGW-backbone exhibits lower error-map intensity in the highlighted ROIs, indicating cleaner local reconstruction. 
+
+Quantitative Results. Table 6 reports the PVE-free fastMRI evaluation under full-image supervision. AGW-backbone achieves the highest PSNR and SSIM, demonstrating strong 9GT SRCNN RCAN SwinIR HAT ArSSR GaussianSR NExpR Res-SRDiff Ours 
+
+Error Map          
+
+> 0.000 0.050 0.100 0.150 0.200
+> 2 × GT SRCNN RCAN SwinIR HAT ArSSR GaussianSR NExpR Res-SRDiff Ours
+
+Error Map   
+
+> 0.000 0.050 0.100 0.150 0.200
+> 4 × Fig. 4. Qualitative results on the IXI dataset under 2 ×and 4 ×upsampling. Blue boxes mark the ROI in the error maps, where stronger residual intensity indicates larger deviation from the HR reference.
+
+external-dataset performance without PVE-based weighting or tissue-interface supervision. 
+
+4.6. Ablation Study 
+
+The ablation study examines valid-support reconstruction, entropy-weight correspondence, and dictionary assignment. Full-image PSNR /SSIM are evaluated over 12,870 slices from 99 subjects, while SynthSeg interface metrics use a fixed set of 10,872 eligible slices. All slice-level metrics are averaged per subject before aggregation. 
+
+Ablation variants. A0 is the backbone trained with only full-image Charbonnier loss; A1 adds uniform valid-support recon-struction; and A2 is the complete AGW-PBR with PVE-entropy weighting. A3 and A4 replace the validated entropy field with spatially shu ffl ed and deterministic random fields, respectively. A5 retains PVE-entropy weighting but replaces soft dictionary assignment with the Hard-ST rule defined below. 
+
+Eff ect of valid-support reconstruction and entropy modula-tion. A0, A1, and A2 isolate the e ff ects of valid-support recon-struction and entropy modulation: 
+
+LA0 = Lcharb , LA1 = Lcharb + Luniform , LA2 = Lcharb + LPBR ,
+
+(23) where 
+
+Luniform = LPBR |αpve =0 . (24) Thus, A1 applies uniform weighting within the valid support, whereas A2 uses PVE entropy for spatial modulation. As shown in Table 7, A1 improves both full-image and in-terface reconstruction over A0, while A2 further improves all metrics, with larger gains at tissue interfaces. This supports the contributions of valid-support supervision and entropy-based emphasis on anatomical transitions. 
+
+Eff ect of anatomical alignment in PVE weighting. A3 and A4 test whether PVE weighting benefits from anatomical alignment or merely nonuniform spatial weights. For the n-th 10 Table 4. Independent SynthSeg regional reconstruction fidelity on the IXI dataset at 4 ×. Every method and seed uses the same canonical manifest of 10,872 eligible slices from 99 test subjects. Slice-level metrics are averaged within subject, and seeds 42, 43, and 44 are then averaged within subject before reporting the cohort mean ± sample standard deviation. Interface regions are derived from SynthSeg labels on the locked HR T 2 images, and regional SSIM uses the global masked-vector statistic. Bold: best. Underline: second-best. 
+
+Method Combined-interface PSNR ↑ Combined-interface SSIM ↑ Non-interface PSNR ↑ Non-interface SSIM ↑
+
+SRCNN 23 .705 ± 1.066 0.8977 ± 0.0159 25 .408 ± 0.918 0.9183 ± 0.0143 RCAN 25 .852 ± 0.987 0.9379 ± 0.0104 27 .165 ± 0.891 0.9439 ± 0.0114 SwinIR 26 .128 ± 0.978 0.9440 ± 0.0096 27 .490 ± 0.910 0.9484 ± 0.0110 HAT 25 .023 ± 0.984 0.9261 ± 0.0118 26 .376 ± 0.871 0.9338 ± 0.0125 ArSSR 26 .090 ± 0.981 0.9413 ± 0.0097 27 .403 ± 0.899 0.9471 ± 0.0110 GaussianSR 26 .157 ± 0.989 0.9421 ± 0.0097 27 .531 ± 0.902 0.9481 ± 0.0109 NExpR 26 .323 ± 0.987 0.9417 ± 0.0097 27 .418 ± 0.899 0.9469 ± 0.0110 Res-SRDi ff 25 .449 ± 1.053 0.9333 ± 0.0112 26 .667 ± 0.972 0.9386 ± 0.0136 
+
+AGW-PBR (Ours) 27 .784 ± 1.177 0.9590 ± 0.0096 28 .909 ± 1.129 0.9623 ± 0.0097 GT SRCNN RCAN SwinIR HAT ArSSR GaussianSR NExpR Res-SRDiff AGW-backbone 
+
+Error Map 
+
+> 0.000 0.050 0.100 0.150 0.200
+> 4 ×
+
+Fig. 5. Qualitative results on the fastMRI dataset under 4 × upsampling. Blue boxes mark the ROI in the error maps, where stronger residual intensity indicates larger deviation from the HR reference. Table 5. Tissue-transition gradient fidelity on the IXI dataset at 4 × (seed 42). Lower values indicate closer agreement with the HR gradient field. Bold: best. Underline: second-best. 
+
+Method CSF–GM Error ↓ GM–WM Error ↓
+
+SRCNN 0.6609 ± 0.0304 0.7617 ± 0.0416 RCAN 0.5142 ± 0.0272 0.6233 ± 0.0369 SwinIR 0.4951 ± 0.0268 0.5950 ± 0.0399 HAT 0.5595 ± 0.0276 0.6628 ± 0.0344 ArSSR 0.4967 ± 0.0270 0.6018 ± 0.0391 GaussianSR 0.4949 ± 0.0264 0.6014 ± 0.0386 NExpR 0.4866 ± 0.0265 0.6012 ± 0.0393 Res-SRDi ff 0.5435 ± 0.0333 0.6579 ± 0.0544 
+
+AGW-PBR (Ours) 0.4136 ± 0.0367 0.5148 ± 0.0516 
+
+subject–slice pair, let Vn denote its valid PVE support. A3 and A4 replace the validated guide with 
+
+G(n)A3 (p) = H(n)PVE (ρn(p)) , ρn : Vn → V n, (25) 
+
+G(n)A4 (p) = R(n)(p), R(n)(p) ∼ U [0 , 1) , p ∈ V n, (26) 
+
+Table 6. Quantitative results on fastMRI at 4 ×. Values are subject-level mean 
+
+± standard deviation. Bold: best. Underline: second-best. 
+
+Method PSNR ↑ SSIM ↑
+
+SRCNN 31 .6443 ± 1.0451 0.9166 ± 0.0344 RCAN 32 .3261 ± 1.0264 0.9240 ± 0.0347 SwinIR 33 .3219 ± 1.0505 0.9331 ± 0.0351 HAT 33 .0450 ± 1.0336 0.9319 ± 0.0347 ArSSR 32 .9520 ± 1.0275 0.9299 ± 0.0349 GaussianSR 32 .5919 ± 1.0271 0.9267 ± 0.0347 NExpR 33 .4477 ± 1.0544 0.9327 ± 0.0350 Res-SRDi ff 31 .8944 ± 0.9652 0.9109 ± 0.0391 
+
+AGW-backbone 33 .6827 ± 1.0681 0.9448 ± 0.0347 
+
+respectively. A3 spatially shu ffl es the entropy field and A4 uses a fixed random field within the valid support. Both follow the same weighting and PBR formulation as A2. Their consistently lower full-image and interface metrics indicate that A2 benefits from the anatomical correspondence of PVE entropy rather than nonuniform weighting alone. 
+
+Eff ect of the assignment rule. A5 replaces the soft dictionary 11 Table 7. Ablation study on T 2-weighted IXI images at 4 × using seed 42. Full-image metrics are computed over all 12,870 test slices. SynthSeg interface metrics use the canonical set of 10,872 eligible slices within the independent combined tissue-interface band. Slice-level values are averaged within each subject, and the table reports the mean ± standard deviation across 99 subjects. Bold: best. Underline: second-best. AGW denotes Anatomy-Guided Gaussian-Parameter Warping, and PBR denotes PVE-Balanced Reconstruction.                                                                                                               
+
+> ID Variant Assignment Valid-support term Weighting field PSNR ↑SSIM ↑SynthSeg interface PSNR ↑SynthSeg interface SSIM ↑
+> A0 AGW-backbone Soft ––31.8351 ±0.8771 0.9364 ±0.0105 26.7469 ±1.0569 0.9491 ±0.0095 A1 Uniform-support control Soft ✓Uniform on valid support 32.1346 ±0.8929 0.9397 ±0.0107 26.8642 ±1.0726 0.9511 ±0.0088 A2 AGW-PBR Soft ✓Validated PVE entropy 32.8897 ±0.9844 0.9463 ±0.0111 27.7167 ±1.1519 0.9585 ±0.0094
+> A3 PBR-shu ffl ed Soft ✓Shu ffl ed PVE entropy 32.0074 ±0.8976 0.9400 ±0.0105 26.8137 ±1.0560 0.9497 ±0.0095 A4 PBR-random Soft ✓Deterministic random field 31.8577 ±0.8839 0.9371 ±0.0105 26.8094 ±1.0698 0.9494 ±0.0094 A5 Hard-ST +PBR Hard-ST ✓Validated PVE entropy 31.8290 ±0.8889 0.9340 ±0.0104 26.7764 ±1.0726 0.9492 ±0.0094
+
+assignment in A2 with one-hot top-1 routing while retaining validated PVE-entropy weighting. Let Wsoft  
+
+> k
+
+(p) denote the soft assignment in Eq. (7). The hard assignment used in the forward pass and its straight-through form are defined as 
+
+bWk(p) = I
+
+k = arg max  
+
+> 1≤j≤K
+
+Wsoft  
+
+> j
+
+(p)
+
+ , (27) 
+
+WST  
+
+> k
+
+(p) = sg  bWk(p) − sg Wsoft  
+
+> k
+
+(p) + Wsoft  
+
+> k
+
+(p), (28) where I[·] is the indicator function and sg( ·) denotes the stop-gradient operator. The forward pass uses the one-hot assign-ment, while gradients are propagated through the soft assign-ment. The resulting dictionary 
+
+ηA5 base (p) =
+
+> K
+
+X
+
+> k=1
+
+WST  
+
+> k
+
+(p) bk. (29) A5 performs near A0 and remains below A2 on all four met-rics. Since A2 and A5 di ff er only in the assignment rule, the results support soft assignment, which allows each spatial loca-tion to combine multiple latent basis vectors instead of selecting a single basis. 
+
+4.7. Application on Brain Tumor Segmentation Task 
+
+We evaluate downstream brain tumor segmentation on BraTS2023 3. T2 images are degraded at 4 × and reconstructed using IXI-trained (seed 42) SwinIR, NExpR, GaussianSR, AGW-backbone, and AGW-PBR checkpoints without fine-tuning. A frozen segmentation probe trained on native HR 
+
+> 3
+
+https://www.med.upenn.edu/cbica/brats 
+
+Table 8. Downstream whole-tumor segmentation results on the BraTS test co-hort under 4 × degradation. Values are subject-level mean ± standard deviation. The SR models use the checkpoints trained on IXI with seed 42 and are trans-ferred to BraTS without fine-tuning. Bold: best. Underline: second-best. 
+
+Input / Method WT Dice ↑ WT HD95 (mm) ↓
+
+HR 0.8371 ± 0.1302 15.689 ± 18.955 Canonical LR 0.4512 ± 0.1928 70.929 ± 14.693 SwinIR 0.7020 ± 0.1822 57.755 ± 18.979 NExpR 0.7210 ± 0.1748 53.843 ± 20.958 GaussianSR 0.7234 ± 0.1733 52.530 ± 21.026 AGW-backbone 0.7055 ± 0.1824 52.507 ± 20.525 AGW-PBR (Ours) 0.7158 ± 0.1785 49.881 ± 22.519 
+
+BraTS T2 images evaluates whole-tumor (WT) segmentation using Dice and HD95 on 240 test subjects. As shown in Table 8, AGW-PBR achieves competitive WT Dice and the lowest HD95 among the evaluated SR methods, indicating stronger preservation of tumor-boundary information after reconstruction. The qualitative examples in Fig. 6 are con-sistent with the quantitative results. Several competing recon-structions introduce isolated responses or deviations around the tumor region, whereas AGW-PBR yields more spatially coher-ent WT predictions. The PVE-balanced model also improves both downstream metrics over AGW-backbone, showing that the benefit of PBR extends to pathological images that were unseen during SR training. 
+
+5. Discussion 
+
+AGW-PBR improves full-image reconstruction across the evaluated IXI scales and retains this advantage within independently defined interface and non-interface regions. The 4 × structural analysis further shows lower normalized 12 Fig. 6. Qualitative comparison of downstream whole-tumor segmentation on BraTS under 4 × degradation. The first column shows the corresponding T2 image, the intermediate columns show segmentation predictions obtained from di ff erent SR reconstructions, and the last column shows the ground-truth WT mask. Red arrows mark representative spurious or disconnected predictions. 
+
+gradient-vector error at both CSF–GM and GM–WM inter-faces. Boundary-profile RMSE provides consistent supporting evidence on the smaller HR-eligible profile populations. These results connect the global reconstruction gains with fidelity at anatomically defined tissue transitions. The ablation results support three components of the pro-posed formulation. Valid-support reconstruction improves the AGW backbone, entropy modulation provides an addi-tional gain under the same support and loss coe ffi cient, and shu ffl ed /random controls show the importance of spatial cor-respondence. The Hard-ST comparison further favors soft latent-basis aggregation. The external experiments address complementary general-ization settings. The fastMRI experiment evaluates the inde-pendently trained LR-only backbone without PVE supervision or IXI initialization. The BraTS2023 experiment evaluates di-rect transfer of IXI-trained SR checkpoints through a frozen T 2-only tumor-segmentation probe and measures task-relevant in-formation retention under this fixed downstream protocol. The study has several limitations. The LR observations are generated through synthetic central k-space truncation, which represents only part of the noise, motion, reconstruction filter-ing, and acquisition variability encountered in clinical imaging. The model processes two-dimensional slices, leaving through-plane consistency and volumetric reconstruction untested. The study does not include paired clinical LR /HR acquisitions or reader assessments. The BraTS evaluation uses a single frozen downstream probe, while fastMRI evaluates only the PVE-free backbone. Future work should examine real LR /HR acqui-sitions, 3-D reconstruction, broader downstream tasks, reader studies, and independent scanners and cohorts. 
+
+6. Conclusion 
+
+AGW-PBR combines LR-only anatomy-guided warping with a training-time PVE-balanced objective derived from quality-controlled tissue-mixture entropy. Across the evaluated IXI settings, it improves full-image and regional reconstruction fidelity and achieves the lowest normalized gradient-vector error at both CSF–GM and GM–WM interfaces. The ablation results support valid-support reconstruction, spatially aligned entropy weighting, and soft latent assignment. The PVE-free AGW backbone remains strong under in-dependent fastMRI training, and the BraTS2023 frozen-probe transfer extends the evaluation to downstream tumor segmenta-tion. Overall, the results support PVE-balanced reconstruction for brain MRI SR while preserving LR-only inference. 13 CRediT authorship contribution statement Xiao Tong: Conceptualization, Methodology, Software, Validation, Formal analysis, Writing – original draft. Wenyun Yang: Conceptualization, Supervision, Writing – review & editing. Ziheng Zhang: Resources, Data curation. Jingzhi Han: Validation, Investigation. Zhaochu Luo: Supervision, Funding acquisition, Writing – review & editing. Jinbo Yang: 
+
+Supervision, Funding acquisition, Project administration. 
+
+Declaration of generative AI and AI-assisted technologies in the manuscript preparation process 
+
+During the preparation of this article, the authors used Chat-GPT to assist with language polishing and grammatical correc-tions. After using this tool, the authors reviewed and edited the manuscript as needed and take full responsibility for the content of the published article. 
+
+Declaration of competing interest 
+
+Ziheng Zhang is employed by Beijing MagnVue Medix Co., Ltd. The remaining authors declare that they have no compet-ing financial interests or personal relationships that could have appeared to influence the work reported in this paper. 
+
+Data availability 
+
+The IXI, fastMRI and BraTS2023 datasets used in this study are publicly available from their respective repositories, subject to the applicable data-use conditions. The authors are not au-thorized to redistribute the original data. The subject-level split manifests, preprocessing and quality-control scripts, model configurations, evaluation code, and de-rived subject-level results are available from the corresponding author upon reasonable request. 
+
+Acknowledgements 
+
+This work was supported by the National Key Research and Development Program of China (Grant No. 2023YFB3507000) and the Research Fund of Weihai Institute of Oceanology, Peking University. 
+
+References 
+
+[1] Q. Wu, Y. Li, Y. Sun, Y. Zhou, H. Wei, J. Yu, Y. Zhang, An arbitrary scale super-resolution approach for 3D MR images via implicit neural representation, IEEE Journal of Biomedical and Health Informatics 27 (2) (2023) 1004– 1015. doi:10.1109/JBHI.2022.3223106 .[2] Q. Lyu, H. Shan, C. Steber, C. Helis, C. Whitlow, M. Chan, G. Wang, Multi-contrast super-resolution MRI through a progressive network, IEEE transactions on med-ical imaging 39 (9) (2020) 2738–2749. [3] M. A. G. Ballester, A. P. Zisserman, M. Brady, Estimation of the partial volume e ff ect in mri, Medical image analysis 6 (4) (2002) 389–405. [4] K. Van Leemput, F. Maes, D. Vandermeulen, P. Suetens, A unifying framework for partial volume segmentation of brain mr images, IEEE transactions on medical imaging 22 (1) (2003) 105–119. [5] J. Tohka, A. Zijdenbos, A. Evans, Fast and robust parame-ter estimation for statistical partial volume models in brain mri, Neuroimage 23 (1) (2004) 84–97. [6] J. Liu, F. Chen, X. Wang, H. Liao, An edge enhanced sr-gan for mri super resolution in slice-selection direction, in: International Workshop on Multimodal Brain Image Analysis, Springer, 2019, pp. 12–20. [7] Y. Zhang, M. Brady, S. Smith, Segmentation of brain MR images through a hidden Markov random field model and 14 the expectation-maximization algorithm, IEEE Transac-tions on Medical Imaging 20 (1) (2001) 45–57. doi: 10.1109/42.906424 .[8] R. Keys, Cubic convolution interpolation for digital image processing, IEEE transactions on acoustics, speech, and signal processing 29 (6) (1981) 1153–1160. [9] H. Stark, P. Oskoui, High-resolution image recovery from image-plane arrays, using convex projections, Journal of the Optical Society of America A 6 (11) (1989) 1715– 1726. [10] J. Sun, Z. Xu, H.-Y. Shum, Image super-resolution using gradient profile prior, in: 2008 IEEE conference on com-puter vision and pattern recognition, IEEE, 2008, pp. 1–8. [11] J. Yang, J. Wright, T. S. Huang, Y. Ma, Image super-resolution via sparse representation, IEEE transactions on image processing 19 (11) (2010) 2861–2873. [12] S. Zhang, G. Liang, S. Pan, L. Zheng, A fast medical im-age super resolution method based on deep learning net-work, IEEE Access 7 (2018) 12319–12327. [13] Y. Zhang, K. Li, K. Li, L. Wang, B. Zhong, Y. Fu, Image super-resolution using very deep residual channel atten-tion networks, in: Proceedings of the European confer-ence on computer vision (ECCV), 2018, pp. 286–301. [14] J. Liang, J. Cao, G. Sun, K. Zhang, L. Van Gool, R. Timo-fte, SwinIR: Image restoration using Swin transformer, in: Proceedings of the IEEE /CVF international conference on computer vision, 2021, pp. 1833–1844. [15] C. Forigua, M. Escobar, P. Arbelaez, Superformer: Volumetric transformer architectures for MRI super-resolution, in: International workshop on simulation and synthesis in medical imaging, Springer, 2022, pp. 132– 141. [16] Y. Chen, S. Liu, X. Wang, Learning continuous image representation with local implicit image function, in: Pro-ceedings of the IEEE /CVF Conference on Computer Vi-sion and Pattern Recognition (CVPR), 2021, pp. 8628– 8638. [17] J. Lee, K. H. Jin, Local texture estimator for implicit rep-resentation function, in: Proceedings of the IEEE /CVF Conference on Computer Vision and Pattern Recognition (CVPR), 2022, pp. 1929–1938. [18] J. Cao, Q. Wang, Y. Xian, Y. Li, B. Ni, Z. Pi, K. Zhang, Y. Zhang, R. Timofte, L. Van Gool, CiaoSR: Continuous implicit attention-in-attention network for arbitrary-scale image super-resolution, in: Proceedings of the IEEE /CVF Conference on Computer Vision and Pattern Recogni-tion (CVPR), 2023, pp. 1796–1807. doi:10.1109/ CVPR52729.2023.00179 .[19] X. Wang, S. Wang, H. Xiong, K. Xuan, Z. Zhuang, M. Liu, Z. Shen, X. Zhao, L. Zhang, Q. Wang, Spatial attention-based implicit neural representation for arbitrary reduction of MRI slice spacing, Medical Image Analy-sis 94 (2024) 103158. doi:10.1016/j.media.2024. 103158 .[20] K. Pang, K. Zhao, A. L. Y. Hung, H. Zheng, R. Yan, K. Sung, NExpR: Neural explicit representation for fast arbitrary-scale medical image super-resolution, Comput-ers in Biology and Medicine 184 (2025) 109354. doi: 10.1016/j.compbiomed.2024.109354 .[21] J. Hu, B. Xia, B. Chen, W. Yang, L. Zhang, GaussianSR: High fidelity 2D Gaussian splatting for arbitrary-scale im-age super-resolution, in: Proceedings of the AAAI Con-ference on Artificial Intelligence, Vol. 39, 2025, pp. 3554– 3562. 15 [22] C. Saharia, J. Ho, W. Chan, T. Salimans, D. J. Fleet, M. Norouzi, Image super-resolution via iterative refine-ment, IEEE Transactions on Pattern Analysis and Ma-chine Intelligence 45 (4) (2023) 4713–4726. [23] B. Xia, Y. Zhang, S. Wang, Y. Wang, X. Wu, Y. Tian, W. Yang, L. Van Gool, Di ff IR: E ffi cient di ff usion model for image restoration, in: Proceedings of the IEEE /CVF International Conference on Computer Vision (ICCV), 2023, pp. 13095–13105. [24] Z. Yue, J. Wang, C. C. Loy, ResShift: E ffi cient di ff usion model for image super-resolution by residual shifting, in: Advances in Neural Information Processing Systems (NeurIPS), 2023, pp. 13294–13307. doi:10.52202/ 075280-0583 .[25] S. Gao, X. Liu, B. Zeng, S. Xu, Y. Li, X. Luo, J. Liu, X. Zhen, B. Zhang, Implicit di ff usion models for contin-uous super-resolution, in: Proceedings of the IEEE /CVF Conference on Computer Vision and Pattern Recognition (CVPR), 2023, pp. 10021–10030. [26] M. Safari, S. Wang, Z. Eidex, Q. Li, R. L. Qiu, E. H. Mid-dlebrooks, D. S. Yu, X. Yang, Mri super-resolution recon-struction using e ffi cient di ff usion probabilistic model with residual shifting, Physics in Medicine & Biology 70 (12) (2025) 125008. [27] K. Zhao, K. Pang, A. L. Y. Hung, H. Zheng, R. Yan, K. Sung, MRI super-resolution with partial di ff usion mod-els, IEEE Transactions on Medical Imaging 44 (3) (2025) 1194–1205. doi:10.1109/TMI.2024.3483109 .[28] J. Wang, Z. Shi, X. Gu, Y. Yang, J. Sun, Di ff usion-based arbitrary-scale magnetic resonance image super-resolution via progressive k-space reconstruction and de-noising, Medical Image Analysis 107 (2026) 103814. 
+
+doi:10.1016/j.media.2025.103814 .[29] C.-M. Feng, H. Fu, S. Yuan, Y. Xu, Multi-contrast MRI super-resolution via a multi-stage integration network, in: International Conference on Medical Image Computing and Computer-Assisted Intervention, Springer, 2021, pp. 140–149. [30] C. Fang, D. Zhang, L. Wang, Y. Zhang, L. Cheng, J. Han, Cross-modality high-frequency transformer for MR im-age super-resolution, in: Proceedings of the 30th ACM International Conference on Multimedia, 2022, pp. 1584– 1592. [31] B. Zou, Z. Ji, C. Zhu, Y. Dai, W. Zhang, X. Kui, Multi-scale deformable transformer for multi-contrast knee MRI super-resolution, Biomedical Signal Processing and Con-trol 79 (2023) 104154. [32] W. Chen, S. Wu, S. Wang, Z. Li, J. Yang, H. Yao, Q. Tian, X. Song, Multi-contrast image super-resolution with de-formable attention and neighborhood-based feature aggre-gation (DANCE): Applications in anatomic and metabolic MRI, Medical Image Analysis 99 (2025) 103359. doi: 10.1016/j.media.2024.103359 .[33] Y. Luo, X. Tang, Y. Yuan, Probabilistic prior-guided anatomical alignment for MRI super-resolution, in: Med-ical Image Computing and Computer Assisted Interven-tion – MICCAI 2025, Vol. 15963 of Lecture Notes in Computer Science, Springer Nature Switzerland, 2025, pp. 425–434. doi:10.1007/978-3-032-04965-0_40 .[34] W. Wu, R. Qu, D. Shi, T. Xiong, X. Xu, X. Xing, X. Zhang, Cortical surface reconstruction from 2D MRI with segmentation-constrained super-resolution and rep-resentation learning, in: Medical Image Computing and 16 Computer Assisted Intervention – MICCAI 2024, Vol. 15002 of Lecture Notes in Computer Science, Springer Nature Switzerland, 2024, pp. 99–108. doi:10.1007/ 978-3-031-72069-7_10 .[35] Y. Sun, L. Wang, G. Li, W. Lin, L. Wang, A foun-dation model for enhancing magnetic resonance images and downstream segmentation, registration and diagnostic tasks, Nature Biomedical Engineering 9 (4) (2025) 521– 538. doi:10.1038/s41551-024-01283-7 .[36] F. Knoll, J. Zbontar, A. Sriram, M. J. Muckley, M. Bruno, A. Defazio, M. Parente, K. J. Geras, J. Katsnelson, H. Chandarana, Z. Zhang, M. Drozdzal, A. Romero, M. Rabbat, P. Vincent, N. Yakubova, J. Pinkerton, D. Wang, E. Owens, C. L. Zitnick, M. P. Recht, D. K. Sodickson, Y. W. Lui, fastMRI: A publicly available raw k-space and DICOM dataset of knee images for accel-erated MR image reconstruction using machine learning, Radiology: Artificial Intelligence 2 (1) (2020) e190007. 
+
+doi:10.1148/ryai.2020190007 .[37] C. Dong, C. C. Loy, K. He, X. Tang, Image super-resolution using deep convolutional networks, IEEE trans-actions on pattern analysis and machine intelligence 38 (2) (2015) 295–307. [38] X. Chen, X. Wang, J. Zhou, Y. Qiao, C. Dong, Activat-ing more pixels in image super-resolution transformer, in: Proceedings of the IEEE /CVF conference on computer vi-sion and pattern recognition, 2023, pp. 22367–22377. 17
