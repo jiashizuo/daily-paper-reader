@@ -1,0 +1,993 @@
+Title: DREAM: Deep-Reparametrization of Adaptive Regularization Maps for Fast Zero-Shot Self-Supervised Learning
+
+URL Source: https://arxiv.org/pdf/2609.04019v1
+
+Published Time: Fri, 04 Sep 2026 01:17:28 GMT
+
+Number of Pages: 13
+
+Markdown Content:
+> 1
+
+# DREAM: Deep-Reparametrization of Adaptive Regularization Maps for Fast Zero-Shot Self-Supervised Learning 
+
+Thanh Trung Vu, Ander Biguri, Christoph Kolbitsch, Luca Calatroni, Kostas Papafitsoros, Andreas Kofler 
+
+Abstract —Adaptive regularization is an effective means of improving the flexibility of classical variational reconstruction methods while retaining their interpretability and mathematical structure. In this work, we propose an approach for learning deep-reparameterized adaptive regularization maps (DREAM) for Total Variation (TV) and Total Generalized Variation (TGV) through algorithm unrolling in a zero-shot, self-supervised set-ting, requiring no access to large paired datasets. We first validate DREAM on a two-dimensional image-denoising problem and then apply it to large-scale dynamic MRI reconstruction. The re-sulting adaptive models are theoretically grounded, as they retain the convergence properties of the primal–dual algorithm used as the building block of the unrolled architecture. Our results show that the regularization parameter maps can be learned efficiently, requiring substantially fewer weight updates than state-of-the-art methods to achieve comparable performance. We further demonstrate that the CNN parametrization of the maps acts as an implicit prior and provides effective dimensionality reduction, outperforming direct optimization of the adaptive parameters. Across both applications, the performance gap between super-vised and zero-shot training is smaller for DREAM than for the end-to-end deep-learning methods considered for comparison. Remarkably, in dynamic cardiac MRI reconstruction, zero-shot training matches the performance of the supervised model. Moreover, the learned adaptive maps are highly interpretable, providing a compelling alternative to purely deep-learning-based methods when reference data are difficult to obtain. 
+
+I. I NTRODUCTION 
+
+Over the last few years, learned reconstruction methods have emerged as state-of-the-art in the context of image reconstruc-tion for various inverse problems [1], such as image denoising [2], computed tomography (CT) [3], or Magnetic Resonance Imaging (MRI) [4]. There exist many different possibilities to employ neural networks for image reconstruction; a major distinction can be made based on whether the learning is physics-aware or not; see, for example, the recent review [5] in the context of quantitative MRI. Optimization-driven methods such as Plug-and-Play (PnP) approaches, which were pio-neered in [6], or regularization by denoising (RED) approaches [7], can be used to solve arbitrary reconstruction problems by employing off-the-shelf Gaussian denoisers replacing first-order quantities (the gradient or the proximal operator) re-lated to image regularization models. These denoisers can be parametrized in terms of large neural networks, such as the U-Net [8] or residual architectures like DnCNN [9]. This type of method is particularly attractive from a computational point 
+
+> Corresponding author: Andreas Kofler andreas.kofler[at]ptb.de Christoph Kolbitsch and Andreas Kofler are with Physikalisch-Technische Bundesanstalt (PTB), Braunschweig and Berlin, Germany. Thanh Trung Vu and Ander Biguri are with the University of Cambridge, Cambridge, UK, Luca Calatroni is with the University of Genoa, Genoa, Italy, Kostas Papafitsoros is with Queen Mary University of London, London, UK
+
+of view, since the learning process can be entirely decoupled from the process of solving the actual inverse problem at hand. Another particularly powerful class of learning-based meth-ods is based on the so-called algorithm unrolling [10], which was originally introduced for the task of improving and accelerating sparse coding solvers [11]. Unrolled methods interpret a finite (typically, small) number of iterations of an iterative algorithm as a neural network whose parameters can be learned from data. This perspective allows retaining model/physics-based components (such as the forward model) modeling the acquisition of the observed data. Depending on the algorithmic building block used for their derivation, several reconstruction schemes based on, e.g., ADMM [12], Primal-Dual [13], proximal gradient methods [14], etc. Nowadays, unrolled models consistently occupy the first positions in organized image reconstruction challenges, see e.g. [15], [16], [17], [18]. In terms of computational burdens, the GPU mem-ory necessary for end-to-end training linearly scales with the number of unrolled iterations and may pose limits to the usable network architectures. As an alternative, deep equilibrium models [19] were proposed in the context of inverse problems in [20] to address this limitation by considering fixed-point mappings with weight tying, thus making the learning memory costs constant. The application of such approaches in the field of image reconstruction is vast [21], but still subject to significant training costs whenever fixed-point solvers have to be employed [22]. A major limitation of neural network-based approaches is their lack of interpretability. For example, learned recon-struction methods by algorithmic unrolling are often hard to interpret as solvers of an underlying minimization problem without any further condition on the network architecture. In the context of MRI reconstruction, for instance, the iterates of the state-of-the-art Model-based Deep Learning (MoDL) approach developed in [23] can be shown to correspond to the iterates of RED [7] only whenever the employed neural network has a symmetric Jacobian, as pointed out in [24]. Such conditions can be hard to verify in practice and may limit the expressivity of the proposed reconstruction scheme. Another major challenge of data-driven approaches is their need for large and diverse datasets for successful training. In a supervised training setting, datasets preferably consist of paired input-target data. However, for some applications, target data can be difficult or, in some cases, even impossible to obtain. To overcome such limitations, self-supervised train-ing strategies have also been proposed in the past, see e.g. [25], [26], [27] and references therein. Many self-supervised methods for different image reconstruction problems have their root in image denoising (see, e.g., [28]). In the context of MRI arXiv:2609.04019v1 [math.OC] 3 Sep 2026 2
+
+reconstruction, the Self-Supervision by Data Undersampling (SSDU) framework [29] builds on the Noise2Self [30] denois-ing framework where training is carried out by randomly split-ting the measurement data and using one set for reconstruction and the other set for the computation of a loss function, whose minimization drives the learning procedure. In [29] it was shown that when the access to many different measurements is available, training neural network-based models using the SSDU framework is possible, and, in many cases, one can achieve nearly the same performance as for models trained in a supervised manner. However, although carried out in the absence of target data, training still requires a large number of different samples to succeed. To address this issue, zero-shot self-supervised approaches, where the model is trained solely on the data under consideration, were proposed [31]. Learning expressive deep neural networks on a single sample requires dedicated strategies to avoid overfitting. For example, in the deep image prior framework [32], the desired solution is reparametrized as a CNN and early stopping of the training algorithm is employed to enforce implicit regularization. The deep image prior framework can be extended to include further hand-crafted regularization terms [33]. Note that employing a simpler network architecture can also be used to avoid overfitting [34], otherwise, an overfitting mitigation mecha-nism strategy is required. In the Zero-Shot SSDU (ZS-SSDU) framework [31], SSDU was extended by involving a third set of measurements to self-validate and provide a practical criterion for early stopping for training. In this work, we focus on learning an interpretable data-driven model from scratch, targeting situations in which target data are unavailable and/or large measurement datasets are difficult to obtain. In particular, we address the problem of learning adaptive regularization maps through algorithmic unrolling. We first validate DREAM on an illustrative two-dimensional image-denoising problem and then consider the challenging task of dynamic cardiac magnetic resonance imag-ing (MRI) reconstruction. In this setting, owing to the intrinsic constraints of the acquisition system and patient-specific limi-tations, such as limited breath-hold capability, data can gener-ally be acquired only through accelerated scans. The resulting measurements are therefore undersampled and may contain motion and other acquisition artifacts, preventing the corre-sponding reconstructions from serving as reliable ground-truth references. In this regard, even the reference images provided for supervised training in the recently released cardiac MRI datasets [35], [36] associated with the CMRxRecon challenge [18] are not reconstructed from fully sampled acquisitions. Rather, they are obtained from data acquired with acceleration factors of R = 2 and R = 3 , respectively; see [35], [36] for details. Thus, although these images serve as training targets, they cannot be regarded as genuine fully sampled ground-truth references, motivating the need for self-supervised approaches. We focus, in particular, on a hybrid approach that combines a hand-crafted regularization prior with a learnable parameter map that adapts the regularization strength to the local image features. This map is generated from the input image by a neural network and learned in an SSDU framework, without requiring ground-truth data. At test time, the trained network predicts an adaptive regularization map for each previously unseen input, which is subsequently used within an appropriate reconstruction algorithm to obtain the final image. In [37], such an idea was applied to learn an adaptive total-variation (TV) regularization map [38] in the context of dynamic cardiac MRI, quantitative MRI, dynamic image denoising, as well as 2D CT. In [39], the method was extended to Total Generalized Variation (TGV) regularization [40] and applied to accelerated 2D MRI and 2D image denoising. Beyond gradient-based regularization, in [41], a similar approach was applied to low-field MRI for learning adaptive sparsity level maps to be used for convolutional synthesis regularization, while in [42], the method was demonstrated to be more robust with respect to data-distribution shifts. Importantly, in all these methods, the networks were trained in a supervised setting, partly with considerable training times of several days, as well as noticeable hardware requirements. Here, differently from [37] and [39], we consider the problem of adaptive learning TV and TGV regularization maps parametrized by a U-Net [8] in a zero-shot self-supervised set-ting. By some simple but efficient adaptations, we demonstrate that the combination of adaptive TV and TGV priors enables fast and efficient zero-shot learning using the SSDU paradigm. Crucially, we show that for the considered dynamic MRI example, the obtainable results are in fact on par with the ones obtained by supervised training as well as supervised training with additional test-time fine-tuning. This importantly implies that no training data at all is required for the investigated approaches. On the other hand, these approaches could be used to generate reconstructions that could serve as target images for other supervised training methods. Last, the proposed approach, which we call DREAM, does not require early stopping or particular network constraints since the role of the network employed is, by design, limited to providing the adaptive regularization strength for the regularizers considered. II. P ROBLEM FORMULATION AND RECONSTRUCTION 
+
+METHODS 
+
+We define in the following the reconstruction models con-sidered. We focus in particular locally adaptive TV and TGV regularization models given their broad popularity in the context of image reconstruction problems, although a similar treatment may also be considered for different regularization models, see, e.g., [43], [44], [45] for higher-order regulariza-tion models and [46] for learning regularization maps in the case of Fields-Of-Experts-type regularizers [47]. 
+
+A. Notation 
+
+Let V, W ∈ { R, C} and AJ : V N → W M , x 7 → y denote a linear operator from the space of images to their measurement space, depending on J, which refers to some modality-specific set of parameters. The forward problem we aim to solve reads: find xtrue s.t. y := AJ xtrue + e, (1) where e ∼ N (0 , σ 2I) denotes an additive white Gaussian noise (AWGN) perturbation modeling measurement errors. 3Data Splitting A)   
+
+> Validation Loss Monitoring Loss Computation D) C) Self-Supervised Training Loss Computation
+> Unrolled PDHG Reconstruction Network B)
+
+Figure 1. Proposed Zero-Shot Test-Time Training (ZS-TTT) approach for learning adaptive regularization parameter maps (only shown for TV-Λ for a dynamic cardiac MRI problem). A) The raw measurement data yJ is split into three disjoint sets yIRec , yILoss and yIVal , which are used for reconstruction, loss computation and validation. B) The data yIRec is first reconstructed to an initial image by a reconstruction operator A‡ 
+
+> IRec
+
+, from which the network NET Θ estimates adaptive regularization parameter maps (here ΛΘ := [Λxy  
+
+> Θ
+
+, Λxy  
+
+> Θ
+
+, Λt
+
+> Θ
+
+]T). These are used for the definition of a problem formulation (e.g. ( TV Λ) or ( TGV Λ)), which is then solved by an unrolled primal-dual hybrid gradient algorithm (PDHG). When no target image is available, the reconstructed image can be transformed to the measurement space by the operator AILoss . C) The estimated measurement data ˜yILoss are compared to all data not used for reconstruction, and a loss function is computed as in (11). D) Finally, if necessary, overfitting can be avoided by monitoring the difference (e.g. in terms of the MSE) between the estimated measurement data restricted to the validation set 
+
+AIVal NΘ(yIRec ⊎IVal ) and the validation data yIVal .
+
+Denoting by Rλ(x) a regularization function whose contri-bution is globally weighted by a scalar parameter λ > 0. and by RΛ(x) a regularizer whose contribution is locally adapted by means of a regularization parameter map Λ, we consider the two instances of the reconstruction problem: 
+
+min 
+
+> x
+
+12 ∥AJ x − y∥22 + Rλ(x), (Pλ)
+
+min 
+
+> x
+
+12 ∥AJ x − y∥22 + RΛ(x), (PΛ)where the quadratic fidelity models the presence of AWGN. 
+
+B. Dynamic Cardiac MRI 
+
+For image denoising, the forward operator in (1) is simply the identity, while for dynamic cardiac MRI, it is more involved. In dynamic cardiac MRI, the sought image depicts the temporal evolution of a moving heart and is used for cardiac functional assessment, see e.g. [48]. The challenge in the reconstruction problem lies in its relatively high di-mensionality from a computational point of view, on the one hand, and, on the other hand, in being able to faithfully depict the cardiac movement, which is the clinical feature of interest. Let xtrue ∈ CNtime ·N with N = Nx · Ny denote the vector representation of the complex-valued dynamic target image of spatial dimension Nx × Ny . The accelerated measurement process can be modeled by (1), where y ∈ CNcoils ·Ntime ·M
+
+denotes the dynamic multi-coil k-space data with M < N .The operator AJ denotes the forward operator that samples each 2D image xi, i = 1 , . . . , N time in its 2D Fourier domain, and takes the form 
+
+AJ : CNtime ·N → CNcoils ·Ntime ·M ,
+
+[x1, . . . , xNtime ]T 7 −→ 
+
+> Ntime
+
+M
+
+> i=1
+
+AJi xi. (2) Thereby, each AJi given as 
+
+AJi := ( INcoils ⊗ EJi )C, (3) where EJi := UJi F denotes a 2D Fourier transform F
+
+followed by an undersampling mask UJi that only retains the Fourier coefficients index by the set Ji. Moreover, C := [C1, . . . , CNcoils ]T with Ck := diag( ck), ck ∈ CN represents the so-called coil-sensitivity map (CSM) operator that weights the image by multiplying it with the respective coil-sensitivity profiles. In applications, the operator C is unknown at first and must be first estimated with adequate methods, e.g., [49], [50]. After having computed an estimate ˜C of C (and thus an estimate ˜AJ of AJ ), one can proceed with the reconstruction. Note that, typically, the set of coefficients Ii acquired for each time point varies to collect complementary information and achieve incoherent sampling, which yields high-dimensional noise-like artefacts that can be eliminated by Compressed Sensing-like approaches, such as TV, TGV, and others [51]. 
+
+C. Regularization Models 1) Adaptive TV: The locally adaptive version of the TV reconstruction problem employing the locally adaptive regu-larization parameter map Λ is obtained by setting RΛ(x) := 
+
+∥Λ∇x∥1 as opposed to Rλ(x) := λ∥∇ x∥1 for λ > 0. The resulting reconstruction problem ( PΛ) specifies into 
+
+min 
+
+> x
+
+12 ∥AJ x − y∥22 + ∥Λ∇x∥1, (TV Λ)where, in our setting, ∥ · ∥ 1 denotes the ℓ1-norm, so that the proposed regularizers rely on anisotropic versions of TV. 
+
+2) Adaptive TGV: In analogy to ( TV Λ), we consider a lo-cally adaptive TGV model. In the classical context, TGV gen-eralizes TV by incorporating higher-order derivatives, which helps preserve smooth transitions while still promoting edges [40]. In practice, the second-order TGV is most commonly used and, in its adaptive form, involves two regularization maps Λ := Λ0, Λ1
+
+T, replacing the scalar parameters λ0 and 
+
+λ1 by locally adaptive weights, see [39]. The corresponding anisotropic adaptive TGV model reads 
+
+RΛ(x) := TGV Λ0, Λ1 (x):= min  
+
+> w
+
+Λ1 (∇x − w) 1 + Λ0 Ew 1, (4) where w is an auxiliary vector field and E denotes the (discrete) symmetrized gradient. Using again the (squared) Euclidean distance as fidelity term, the resulting TGV recon-struction problem reads 
+
+min 
+
+> x,w
+
+12 ∥AJ x − y∥22 + Λ1 (∇x − w) 1 + Λ0 Ew 1. (TGV Λ)4
+
+D. Learned Reconstruction by Algorithmic Unrolling 
+
+As a building block of the proposed learned procedure, we consider the primal-dual hybrid gradient (PDHG) algorithm [52], which is a well-known algorithm for solving problems of the form 
+
+min  
+
+> x
+
+f (K(x)) + g(x), (5) where f, g are proper, convex, lower-semicontinuous function-als and K is a linear operator. The PDHG iteerations read: 
+
+zk+1 = prox σ f ∗ (zk + σK¯xk),
+
+xk+1 = prox τ g (xk − τ KHzk+1 ),
+
+¯xk+1 = xk+1 + θ(xk+1 − xk),
+
+(6) where the step-sizes σ, τ fulfill στ < 1/∥K∥22 and θ = 1 , f ∗
+
+denotes the convex conjugate of f and prox σ f ∗ and prox τ g 
+
+denote the proximal operators of the scaled functions σf ∗ and 
+
+τ g , respectively. 
+
+1) PDHG for adaptive TV: To match ( TV Λ) with (5), we set f := f1 + f2 given by 
+
+f (p, q) := f1(p) + f2(q) = 12 ∥p − y∥22 + ∥Λq ∥1, (7) with the choice K := [A , ∇]T and g(x) ≡ 0, see also [53], [37] for additional details. Note that one needs to compute the proximal operator of the convex conjugate of the weighted ℓ1-norm with weights defined by Λ; this amounts to the application of a component-wise projection operator that projects the i-th component of the input onto the bilateral set 
+
+[−(Λ)i, (Λ)i] defined by the values in Λ, as detailed in [37]. 
+
+2) PDHG for TGV: To match ( TGV Λ) with (5), let z := [x, w]T and define the stacked linear operator 
+
+K(x, w) := AJ x, ∇x − w, EwT. (8) We then set g(x, w) := 0 , and 
+
+f (p, q, r) := 12 ∥p − y∥22 + ∥Λ1q∥1 + ∥Λ0r∥1,
+
+to have the problem 
+
+min  
+
+> x,w
+
+f  K(x, w) + g(x, w),
+
+which is in the form of (5). Compared to the TV case, the only additional ingredient is the presence of two weighted ℓ1
+
+terms; accordingly, the dual updates involve two component-wise projections, with bounds given pointwise by Λ1 and Λ0.
+
+3) Algorithm Unrolling: We follow the notation in [37] and denote by xT 
+
+> Λ
+
+:= ST (x0, y, AJ , Λ) the T -th iterate of PDHG for solving ( PΛ) for fixed Λ with starting value x0. Note that 
+
+xT 
+
+> Λ
+
+→ S∗(y, AJ , Λ), where S∗(y, AJ , Λ) solves ( PΛ). As in [37], we reparametrize the adaptive regularization pa-rameter map Λ as the output of a CNN applied to some input image xinput , i.e., upon vectorization, we have Λ := ΛΘ := NET Θ(xinput ), with Θ ∈ Rℓ denoting the set of trainable parameters. By N T 
+
+> Θ
+
+, we denote, by slight abuse of notation, the composition of the network NET Θ and the unrolling of T > 0
+
+iterations of the scheme ST (x0, y, AJ , ΛΘ) to approximately solve ( PΛ), i.e. N T 
+
+> Θ
+
+(y) := ST (x0, y, AJ , NET Θ(xinput ),where xinput := A‡ 
+
+> J
+
+y is obtained by a reconstruction operator 
+
+A‡ 
+
+> J
+
+, e.g., A‡ 
+
+> J
+
+∈ { AH 
+
+> J
+
+, AT 
+
+> J
+
+, A† 
+
+> J
+
+, . . . } with A† 
+
+> J
+
+being the Moore-Penrose pseudo-inverse. Figure 1B visualizes the reconstruc-tion network N T 
+
+> Θ
+
+for the dynamic cardiac MRI problem, with some notations to be defined in later sections. 
+
+E. Self-Supervised Training via Data Undersampling (SSDU) 
+
+Regularization parameter maps parametrized by CNNs have been successfully learned for TV [37], TGV [39], as well as convolutional dictionaries [41]. In all these works, supervised training was adopted, i.e., assuming access to a dataset D of input-target data pairs given in the form (1), a suitable set of trainable parameters Θ∗ was obtained by minimizing a loss function 
+
+Lsup (Θ) := X
+
+> (y,xtrue )∈D
+
+l NΘ(y), xtrue 
+
+ + r(Θ) . (9) Here, l( · , · ) denotes some appropriate discrepancy or similar-ity metric between images (e.g. the mean squared error (MSE) loss, the structural similarity index measure (SSIM), etc.) and 
+
+r( · ) some regularizational functional for the weights, such as weight-decay, which can be used to prevent overfitting. Here, we explore the possibility of training the network parameters Θ by self-supervision in a zero-shot fashion. We focus on SSDU [29] and its zero-shot variant (ZS-SSDU) [31], but other techniques such as Noise2Void [54], Noise2Self [30] could be used as well. As noted in [29], although ZS-SSDU can be applied for subject-specific learning, it typically requires early stopping to avoid overfitting [55], similar to other approaches such as deep image prior. Let J denote the set of samples that the operator AJ
+
+acquires, e.g., the set of k-space coefficients in MRI. Further, let IVal , I Rec , I Loss ⊂ J with ILoss := (J \ IVal ) \ IRec .By this, we have the partition IRec ⊎ ILoss ⊎ IVal = J.A visualization of this data splitting applied to the acquired dynamic cardiac MRI measurement is shown in Figure 1A. In the SSDU framework, where no target images are required, the discrepancy term l( · , · ) in (9) operates in the raw-data space and takes the form 
+
+l AILoss NΘ(yIRec ), yILoss 
+
+, (10) where yIRec and yILoss denote the sets of measurements restricted to the sets IRec and ILoss , respectively. Figure 1C visualizes the components of this loss term applied to the MRI problem. Thus, assuming only access to one set of measurements y, the overall zero-shot SSDU loss function is given by 
+
+LSSDU ZS (Θ) := X
+
+> (IRec ,I Loss )
+
+l AILoss NΘ(yIRec ), yILoss 
+
+ + r(Θ) ,
+
+(11) where SJ denotes the set of possible partitions of J, i.e., 
+
+SJ := {(IRec , I Loss ) | IRec , I Loss ⊂ J, I Rec ⊎ILoss ⊎IVal = J}.Because the number of possible partitions grows exponentially with the cardinality of J, (11) is infeasible to compute in practice. Therefore, choosing a subset of SJ is necessary in practice. Note that, when multiple measurements data 
+
+y1, . . . , yNtrain are available, (9) involves a further summa-tion over the different measurements. The minimization of 5
+
+(11) is tackled similarly to supervised loss functions, i.e., by stochastic gradient descent techniques. Thereby, to avoid overfitting, the set IVal serves as a validation set to monitor the quality of the reconstruction by comparing its estimated measurements to the ones restricted to IVal , i.e. by monitor-ing l AIVal NΘ(yIRec ⊎ILoss ), yIVal 
+
+. Figure 1D illustrates this validation loss monitoring process. After having obtained a suitable set of parameters Θ, one can compute an estimate of the solution by applying the trained network to the entire given measurements. III. E XPERIMENTS 
+
+Here, we apply DREAM for both the TV-Λ and TGV-Λ
+
+regularizers to an illutrative image denoising example and a challenging dynamic cardiac MRI problem. All implementa-tions use PyTorch, and the full code for all the experiments can be found at https://github.com/trung-vt/ZS SSL UTGV. For the MRI example, all operators (e.g. the Fourier, coil sensitivity operator, the finite differences operator ∇, the symmetrized gradient E etc.), as well as the implementations of the PDHG algorithm are taken from MRpro [56], [57]. 
+
+A. Experimental Setup Design 
+
+We will compare all methods in terms of their performance for the following set-ups: 1) Supervised training; 2) Supervised training + test-time training (TTT) for self-supervised fine-tuning using the SSDU loss in (11), similar to in [55]; 3) Zero-Shot self-supervised training using SSDU. Supervised training serves to evaluate the baseline perfor-mance that can be achieved given a suitable paired dataset for training. The second approach serves to adapt/fine-tune the pre-trained model to each unseen sample in the test data by further adapting the model using self-supervision. Note that this test-time fine-tuning to each sample of the test is particularly beneficial when a model is exposed to a data distribution shift [58], which we, however, do not have in our setting. The third ZS-TTT experiment reveals the achievable performance of a model without having ever been exposed to training data. For the self-supervised fine-tuning and zero-shot experiments, we further distinguish three cases. For the first case, we use a predetermined number of training iterations as a stopping criterion, representing the case where we keep training until reaching the practical computational limit. For the second case, we use an estimate of the validation SSDU loss, which is calculated on the validation set IVal as a model selection criterion. For the third, the best model is selected based on the lowest MSE with respect to the unknown target image. The three different stopping strategies serve to investigate whether overfitting to the noise occurs for any model and, if yes, how much the second model selection criterion agrees with the third, which is ideal but not applicable in practice. For image quality assessment, we use the peak signal-to-noise ratio (PSNR), the mean squared error (MSE), the structural similarity index measure (SSIM) [59], and the Haar Wavelet-based perceptual similarity index (HaarPSI) [60]. 
+
+B. Image Denoising a) Dataset: We evaluate the denoising setting using a subset of 50 images from the DIV2K training dataset [61]. The images are processed as single-channel images with pixel intensities normalized to the range [0 , 1] and cropped to size 512 × 512 . Additive Gaussian noise with 
+
+σ ∈ { 0.05 , 0.10 , 0.15 } was used. For the self-supervised loss, a split of 81% /9% /10% of the pixels is used to define the sets IRec , ILoss , and IVal .
+
+b) Methods of Comparison: As a method of comparison, we use the pre-trained “Reconstruct Anything Model“ (RAM) denoiser [62], which is provided by the DeepInv framework [63]. Although it is a general-purpose foundation model, it is still a powerful Gaussian denoiser and hence is chosen as a baseline for comparison. The model employs 35,618,813 trainable parameters. 
+
+c) Implementation Details: The pretrained supervised adaptive TV-Λ and TGV-Λ models are the same as those tested in [39]. For zero-shot training, all settings for adaptive TV and TGV models are also kept the same as in [39], except the U-Net architecture [8] now being much smaller (more than 260 times fewer parameters), with two encoding and two decoding blocks, 16 initial feature channels, resulting in an 1-16-32-64-32-16-K UNet structure, where K is the number of output channels ( K = 1 for TV-Λ and K = 2 for TGV-Λ). This means that for TV-Λ, the estimated parameter map takes the form ΛΘ := [ Λxy  
+
+> Θ
+
+, Λxy  
+
+> Θ
+
+]T to equally weight the spatial derivatives in the x- and y-directions. For TGV-
+
+Λ, the estimated parameter maps take the form Λ1,Θ := [Λxy 
+
+> 1,Θ
+
+, Λxy 
+
+> 1,Θ
+
+]T and Λ0,Θ := [ Λxy 
+
+> 0,Θ
+
+, Λxy 
+
+> 0,Θ
+
+]T. The respective networks NET Θ consist of 109,073 and 109,090 trainable parameters, respectively. 
+
+d) Training: For all models, ZS-TTT is carried out for a predetermined maximum of 500 epochs, representing the practical computational limit for one denoising example. TV-
+
+Λ and TGV-Λ were trained using Adam [64] with a learning rate of 10 −4 and no weight decay, while RAM is trained using AdamW [65] with a learning rate of 2×10 −4 and weight decay 
+
+10 −5. The number of unrolled iterations for TV-Λ and TGV-Λ
+
+is T = 96 and T = 128 , respectively. 
+
+C. Dynamic Cardiac MRI a) Dataset: We used the MDCNN dataset [66], which consists of radially acquired k-space data measurements from 108 subjects (101 patients and 7 healthy subjects) obtained with a balanced steady state free precession (bSSFP sequence) on a Siemens Magnetom Vida scanner. The image dimensions are Nx × Ny × Nt = 208 × 208 × 25 , and the number of CSMs ranges from 15 to 22; for further details see [66]. To define target images to be used for supervised training and image quality assessment, the full k-space data was recon-structed with an iterative SENSE approach [67], by estimating the CSMs from the given k-space measurements using the method [49]. From these images, we retrospectively generated undersampled multi-coil Cartesian dynamic k-space data by sub-sampling the phase encoding direction using a Gaussian variable density sampling pattern for three acceleration factors 6
+
+Rtrain ∈ { 4, 6, 8}. Thereby, the ncenter = 10 lines were always sampled for each temporal frame, and the k-space data was corrupted by complex-valued Gaussian noise with a noise level 
+
+σtrain = 0 .05 . The CSMs to be used within the reconstruction were estimated from the 24 simulated calibration k-space lines. By doing so, the CSMs used for the simulation and reconstruction differ from each other, representing a realistic model-mismatch that is encountered in practice. 
+
+b) Methods of Comparison: As a representative method of comparison, we choose the well-established Model-based Deep Learning (MoDL) approach [23], which is a physics-informed method that unrolls T iterations of a scheme for which the application of the network module can be inter-preted as a learned proximal operator used within a half-quadratic splitting scheme [5]. Our implementation of MoDL has 338,689 trainable parameters. 
+
+c) Implementation Details: TV-Λ uses a 3D U-Net ar-chitecture [8] with two encoding and two decoding blocks, 16 initial filters, and 2 output channels (one for the spatial parameter map, one for the temporal parameter map), resulting in a 2-16-32-64-32-16-2 structure. This means that for TV-
+
+Λ, the estimated parameter map takes the form ΛΘ := [Λt
+
+> Θ
+
+, Λxy  
+
+> Θ
+
+, Λxy  
+
+> Θ
+
+]T to equally weight the spatial derivatives in the x- and y-directions but differently in t-direction. TGV-
+
+Λ has a similar U-Net architecture but with 4 output chan-nels instead of 2. Consequently, for TGV-Λ, the estimated parameter maps take the form Λ1,Θ := [ Λt
+
+> 1,Θ
+
+, Λxy 
+
+> 1,Θ
+
+, Λxy 
+
+> 1,Θ
+
+]T
+
+and Λ0,Θ := [ Λt
+
+> 0,Θ
+
+, Λxy 
+
+> 0,Θ
+
+, Λxy 
+
+> 0,Θ
+
+]T. The number of trainable parameters for the TV-Λ and TGV-Λ networks is 83,986 and 84,020, respectively. The number of unrolled iterations for TV-
+
+Λ and TGV-Λ is, again, T = 96 and T = 128 , respectively. 
+
+d) Training: For supervised training, we randomly split 108 images from the MDCNN dataset [68] into 80 images for training, 8 images for validation, and 20 images for testing. The same test set is used for zero-shot self-supervised learning for a direct comparison. Together with the U-Net parameters, we train an additional parameter t. The output of the U-Net is passed through the softplus functions with β = 1 , then multiplied with softplus( t) (also with β = 1 ) to obtain the final regularization parameter maps. The parameter t is initialized to 0 before training. Adding this additional trainable parameter was observed to help the training converge more quickly. Each model was trained for 100 epochs. For both supervised and zero-shot training, we use the Adam optimizer with a learning rate of 2×10 −4. For the SSDU training, at each epoch we split the index set J := IRec ⊎ ILoss ⊎ IVal by randomly assigning the coefficients of entire k-space lines to the sets IRec , I Loss 
+
+and ILoss . We use a split of 81% /9% /10 and a batch size of 1. Since training the TGV-Λ model normally would overflow our 32GB GPU memory capacity, we applied the gradient checkpoint technique [69] to reduce memory usage at the cost of runtime. IV. R ESULTS 
+
+A. Image Denoising Results 
+
+Table I quantitatively summarizes the obtained results in terms of PSNR, MSE, SSIM, and HaarPSI by listing the means 0 200 400 Epoch 0.00 0.02 0.04 SSDU loss              
+
+> RAM
+> 0200 400 Epoch
+> TV-
+> 0200 400 Epoch
+> TGV-
+> 0.001 0.002 0.003 MSE
+> SSDU loss MSE
+> = 0.05 = 0.1 = 0.15
+> Figure 2. Training behaviour of the self-supervised zero-shot test-time training (ZS-TTT) process for RAM, TV-Λand TGV-Λfor the image denoising example. TV-Λand TGV-Λsurpass RAM in terms of achievable MSE with respect to the target image. Further, while TV-Λand TGV-Λdo not suffer from overfitting, overfitting is visible for RAM for the highest noise level.
+
+and standard deviations of the respective metrics calculated over the test dataset. As we can see, the general tendency is that the supervised methods perform best, as expected. This observation holds for RAM, TV-Λ and TGV-Λ. Where our models differ is that the gap between the performance of the models trained in a supervised manner and the ones trained in a zero-shot fashion is much smaller for TV-Λ and TGV-Λ
+
+compared to RAM. Further, we see that RAM tends to suffer from overfitting for the ZS-TTT case, especially at higher noise levels, since there are notable differences between per-formances obtained by running the ZS-TTT of RAM training until the last iteration and stopping appropriately, interrupting the training procedure. For example, for σ = 0 .15 , RAM trained by ZS-TTT reaches an SSIM statistic of 0.27 ± 0.14 
+
+when run for 500 iterations, and an SSIM of 0.64 ±0.04 when ZS-TTT is stopped according to the best validation SSDU loss. In contrast, for the same noise level, for TV-Λ and TGV-Λ,there is almost no difference between ZS-TTT run for 500 iterations and ZS-TTT stopped according to the best validation SSDU loss, where they reach SSIM values of 0.70 ± 0.05 and 
+
+0.71 ±0.05 (TV-Λ), and 0.72 ±0.06 and 0.72 ±0.06 (TGV-Λ), respectively. Figure 2 shows the comparison of the SSDU loss used for ZS-TTT and the MSE with respect to the target image for an example of the image denoising problem, which illustrates the behaviour of the methods during the optimization process. First, we notice how, in general, the optimization of RAM seems to decrease the achievable MSE more slowly, while TV-Λ and TGV-Λ reach a rather good MSE value after 
+
+∼100 iterations of self-supervised training. Again, we see the absence of overfitting for both TV-Λ and TGV-Λ, also for the highest considered noise level, where RAM, in contrast, overfits to the noise. Table II compares the times required for zero-shot self-supervised learning of the models, indicating how quickly RAM, TV-Λ and TGV-Λ can learn to denoise an image from scratch. Figure 3 shows an example of a comparison of RAM, TV-
+
+Λ and TGV-Λ for the three considered setups, i.e., supervised training, supervised + TTT, and ZS-TTT for σ = 0 .1. The figure visually confirms what was previously observed in Table I, where we see that, as expected, the supervised models perform best. However, as previously noted, the performance 7
+
+Strat. Stop PSNR ↑ SSIM ↑ HaarPSI ↑
+
+> σ = 0 .05
+> RAM
+
+Sup. N.A. 32 .87 ± 2.75 0.91 ± 0.03 0.86 ± 0.02 
+
+ST Last 27 .55 ± 2.57 0.77 ± 0.07 0.70 ± 0.06 
+
+Val. 31 .48 ± 4.04 0.91 ± 0.03 0.85 ± 0.04 
+
+Test 32 .97 ± 2.83 0.92 ± 0.03 0.86 ± 0.02 
+
+ZS Last 26 .34 ± 2.28 0.72 ± 0.08 0.76 ± 0.03 
+
+Val. 29 .91 ± 3.39 0.84 ± 0.03 0.81 ± 0.02 
+
+Test 29 .94 ± 3.36 0.84 ± 0.03 0.81 ± 0.02 
+
+> TV
+
+Sup. N.A. 32 .17 ± 3.00 0.90 ± 0.03 0.85 ± 0.02 
+
+ST Last 31 .65 ± 2.79 0.90 ± 0.03 0.84 ± 0.02 
+
+Val. 31 .83 ± 2.90 0.90 ± 0.03 0.85 ± 0.02 
+
+Test 32 .22 ± 2.94 0.90 ± 0.03 0.85 ± 0.02 
+
+ZS Last 31 .04 ± 2.44 0.86 ± 0.03 0.83 ± 0.02 
+
+Val. 31 .02 ± 2.43 0.86 ± 0.03 0.83 ± 0.02 
+
+Test 31 .41 ± 2.41 0.88 ± 0.03 0.83 ± 0.02 
+
+> TGV
+
+Sup. N.A. 32 .33 ± 2.98 0.91 ± 0.03 0.85 ± 0.02 
+
+ST Last 31 .75 ± 2.65 0.89 ± 0.03 0.84 ± 0.02 
+
+Val. 32 .33 ± 2.94 0.91 ± 0.03 0.85 ± 0.02 
+
+Test 32 .44 ± 2.90 0.91 ± 0.03 0.85 ± 0.02 
+
+ZS Last 31 .77 ± 2.69 0.89 ± 0.03 0.83 ± 0.02 
+
+Val. 31 .80 ± 2.70 0.89 ± 0.03 0.84 ± 0.02 
+
+Test 31 .86 ± 2.67 0.89 ± 0.03 0.84 ± 0.02 
+
+> σ = 0 .1
+> RAM
+
+Sup. N.A. 29 .81 ± 3.14 0.85 ± 0.05 0.75 ± 0.04 
+
+ST Last 22 .89 ± 1.81 0.53 ± 0.12 0.49 ± 0.09 
+
+Val. 29 .42 ± 3.63 0.85 ± 0.04 0.75 ± 0.04 
+
+Test 29 .86 ± 3.18 0.85 ± 0.05 0.76 ± 0.04 
+
+ZS Last 19 .95 ± 0.76 0.40 ± 0.14 0.56 ± 0.06 
+
+Val. 27 .03 ± 2.85 0.73 ± 0.04 0.68 ± 0.03 
+
+Test 27 .03 ± 2.84 0.73 ± 0.04 0.68 ± 0.03 
+
+> TV
+
+Sup. N.A. 28 .90 ± 3.26 0.83 ± 0.05 0.73 ± 0.04 
+
+ST Last 28 .25 ± 2.99 0.81 ± 0.05 0.70 ± 0.04 
+
+Val. 28 .76 ± 3.24 0.83 ± 0.05 0.72 ± 0.04 
+
+Test 28 .95 ± 3.23 0.83 ± 0.05 0.73 ± 0.04 
+
+ZS Last 27 .64 ± 2.91 0.77 ± 0.04 0.69 ± 0.02 
+
+Val. 27 .65 ± 2.93 0.77 ± 0.04 0.69 ± 0.02 
+
+Test 27 .88 ± 2.78 0.78 ± 0.04 0.70 ± 0.03 
+
+> TGV
+
+Sup. N.A. 29 .08 ± 3.25 0.84 ± 0.05 0.74 ± 0.04 
+
+ST Last 28 .07 ± 2.79 0.79 ± 0.05 0.71 ± 0.03 
+
+Val. 29 .04 ± 3.24 0.83 ± 0.05 0.74 ± 0.04 
+
+Test 29 .12 ± 3.22 0.84 ± 0.05 0.74 ± 0.04 
+
+ZS Last 28 .07 ± 3.02 0.79 ± 0.04 0.70 ± 0.03 
+
+Val. 28 .09 ± 3.03 0.79 ± 0.04 0.70 ± 0.03 
+
+Test 28 .24 ± 2.98 0.80 ± 0.04 0.71 ± 0.03 
+
+> σ = 0 .15
+> RAM
+
+Sup. N.A. 28 .09 ± 3.27 0.80 ± 0.06 0.68 ± 0.05 
+
+ST Last 19 .87 ± 1.41 0.37 ± 0.11 0.38 ± 0.09 
+
+Val. 27 .91 ± 3.49 0.81 ± 0.06 0.68 ± 0.05 
+
+Test 28 .12 ± 3.28 0.81 ± 0.06 0.69 ± 0.05 
+
+ZS Last 16 .38 ± 0.34 0.27 ± 0.14 0.44 ± 0.07 
+
+Val. 25 .12 ± 2.61 0.64 ± 0.04 0.58 ± 0.03 
+
+Test 25 .13 ± 2.61 0.64 ± 0.04 0.58 ± 0.03 
+
+> TV
+
+Sup. N.A. 27 .17 ± 3.32 0.77 ± 0.07 0.65 ± 0.04 
+
+ST Last 26 .37 ± 2.90 0.74 ± 0.07 0.61 ± 0.04 
+
+Val. 27 .10 ± 3.27 0.77 ± 0.07 0.64 ± 0.05 
+
+Test 27 .23 ± 3.28 0.77 ± 0.07 0.65 ± 0.04 
+
+ZS Last 25 .87 ± 3.04 0.70 ± 0.05 0.61 ± 0.03 
+
+Val. 25 .95 ± 3.05 0.71 ± 0.05 0.61 ± 0.03 
+
+Test 26 .05 ± 2.98 0.72 ± 0.06 0.61 ± 0.03 
+
+> TGV
+
+Sup. N.A. 27 .31 ± 3.30 0.78 ± 0.07 0.67 ± 0.05 
+
+ST Last 26 .05 ± 2.71 0.71 ± 0.05 0.62 ± 0.04 
+
+Val. 27 .27 ± 3.29 0.77 ± 0.07 0.66 ± 0.05 
+
+Test 27 .34 ± 3.29 0.78 ± 0.07 0.67 ± 0.05 
+
+ZS Last 26 .22 ± 3.17 0.72 ± 0.06 0.62 ± 0.03 
+
+Val. 26 .25 ± 3.18 0.72 ± 0.06 0.62 ± 0.03 
+
+Test 26 .34 ± 3.10 0.73 ± 0.07 0.62 ± 0.03 
+
+Table I RESULT SUMMARY FOR IMAGE DENOISING . “ STRAT .” IS THE STRATEGY ,
+
+WHERE “Sup. ”, “ ST ”, AND “ZS ” DENOTE THE SUPERVISED , SUPERVISED +TTT, AND ZERO -SHOT TTT STRATEGIES , RESPECTIVELY . “ STOP ” IS THE STOPPING CRITERION , WHERE “Last ”, “ Val. ”, AND “Test ” DENOTE THE LAST ITERATION , THE ITERATION WITH THE LOWEST VALIDATION SSDU 
+
+LOSS , AND THE ITERATION WITH THE LOWEST TEST MSE ( ORACLE ), 
+
+RESPECTIVELY .RAM TV-Λ TGV-Λ
+
+Inference time [min] ∼ 2 ∼ 2 ∼ 5
+
+Table II ZERO -SHOT SELF -SUPERVISED INFERENCE TIMES FOR RAM, TV-Λ AND 
+
+TGV-Λ. T HE REPORTED TIMES CORRESPOND TO 500 MODEL WEIGHT UPDATES ON A GPU WITH 24GB MEMORY .
+
+Ground-truth Noisy  
+
+> SSIM: 0.23 PSNR: 20.02 HaarPSI: 0.40
+
+# SSIM: 0.23 PSNR: 20.02 HaarPSI: 0.40 
+
+Supervised Supervised + TTT ZS-TTT RAM  
+
+> SSIM: 0.89 PSNR: 32.30 HaarPSI: 0.76
+
+# SSIM: 0.89 PSNR: 32.30 HaarPSI: 0.76  
+
+> SSIM: 0.90 PSNR: 32.43 HaarPSI: 0.77
+
+# SSIM: 0.90 PSNR: 32.43 HaarPSI: 0.77  
+
+> SSIM: 0.73 PSNR: 29.40 HaarPSI: 0.65
+
+# SSIM: 0.73 PSNR HaarP  
+
+> TV-Λ
+> SSIM: 0.89 PSNR: 32.05 HaarPSI: 0.76
+
+# SSIM: 0.89 PSNR: 32.05 HaarPSI: 0.76  
+
+> SSIM: 0.89 PSNR: 31.79 HaarPSI: 0.74
+
+# SSIM: 0.89 PSNR: 31.79 HaarPSI: 0.74  
+
+> SSIM: 0.79 PSNR: 30.37 HaarPSI: 0.79
+
+# SSIM: 0.79 PSNR HaarP  
+
+> TGV-Λ
+> SSIM: 0.89 PSNR: 32.11 HaarPSI: 0.76
+
+# SSIM: 0.89 PSNR: 32.11 HaarPSI: 0.76  
+
+> SSIM: 0.89 PSNR: 31.99 HaarPSI: 0.76
+
+# SSIM: 0.89 PSNR: 31.99 HaarPSI: 0.76  
+
+> SSIM: 0.86 PSNR: 31.26 HaarPSI: 0.71
+
+# SSIM: 0.86 PSNR HaarP 
+
+Figure 3. Reconstructions with different denoising methods on a test sample with noise standard deviation σ = 0 .1. Metrics for ZS-TTT (zero-shot) TV-
+
+Λ and TGV-Λ are computed on the final reconstructions (after 500 epochs), while others are computed on the best validation-SSDU-loss epoch. 
+
+gap between the supervised and the ZS-TTT TV-Λ and TGV-
+
+Λ is much smaller than for RAM. Figure 4 compares the regularization parameter maps corresponding to the example in Figure 3. Interestingly, we see that the regularization parameter maps are relatively different from each other. More precisely, for the supervised and supervised + TTT-finetuning case, the regularization parameter maps seem to contain the noise realization that is present in the noisy image, while the ones obtained by ZS-TTT are much smoother. 
+
+B. Dynamic Cardiac MRI Results 
+
+Table III quantitatively summarizes the obtained results in terms of PSNR, MSE, SSIM, and HaarPSI by listing the mean and standard deviations of the respective metrics calculated over the test dataset. Again, the supervised meth-ods tend to perform best, as expected. In contrast to the denoising experiment, we see that for TV-Λ and TGV-Λ,the difference between the supervised models and the ones obtained by ZS-TTT is often negligible. For example, even for the largest acceleration factor R = 6 , TV-Λ yields SSIM 8Supervised Supervised + TTT ZS-TTT TV  Λ-map 0.0  0.3  ≥ 0.6 TGV  Λ1-map 0.0  0.3  ≥ 0.6 TGV  Λ0-map 0.00  0.15  ≥ 0.30 TGV log 10 (Λ0/Λ1)≤ -2  0 ≥ 2
+
+Figure 4. Regularization parameter maps produced by our TV-Λ and TGV-Λ
+
+methods for supervised training, supervised training + test-time training and zero-shot test-time training. While the parameter maps estimated by network trained in a supervised fashion, noise is present in the Λ-maps, the ones estimated by the ZS-TTT network are much smoother. Note that if the ratio 
+
+Λ0/Λ1 shown at the last row is high, one expects TGV to behave roughly like TV [70]. 0 500 1000 Epoch 123SSDU loss ( ×10  4) MoDL   
+
+> 0500 1000 Epoch
+
+TV-  
+
+> 0500 1000 Epoch
+
+TGV-      
+
+> 0.5 11.5 MSE ( ×10  7)
+> SSDU loss MSE
+> R= 4 R= 6 R= 8
+
+Figure 5. Training behaviour of the self-supervised zero-shot test-time training (ZS-TTT) process for MoDL, TV-Λ and TGV-Λ for the dynamic cardiac MR imaging problem. MoDL, TV-Λ and TGV-Λ yield similar performance. However, TV-Λ and TGV-Λ nearly achieve this performance already after 100-200 iterations, while MoDL requires substantially more iterations to reach a similar MSE. 
+
+values of 0.83 ± 0.04 (supervised) and 0.82 ± 0.04 (ZS-TTT; last iteration), and TGV-Λ also yields similar SSIM values of 0.83 ± 0.04 (supervised) and 0.82 ± 0.04 (ZS-TTT; last iteration). In contrast, MoDL yields, for example, SSIM values 0.82 ±0.04 (supervised) and 0.73 ±0.05 (ZS-TT; best validation SSDU loss). This observation holds across the different image metrics, with MoDL consistently exhibiting a larger gap in performance between the supervised setting and the ZS-setting, while TV-Λ and TGV-Λ show only relatively small differences. 
+
+Strat. Stop PSNR ↑ SSIM ↑ HaarPSI ↑
+
+> R = 4
+> MoDL
+
+Sup. N.A. 36 .09 ± 1.74 0.86 ± 0.04 0.89 ± 0.03 
+
+ST Last 35 .94 ± 1.67 0.85 ± 0.04 0.87 ± 0.03 
+
+Val. 36 .09 ± 1.74 0.86 ± 0.04 0.89 ± 0.03 
+
+Test 36 .10 ± 1.74 0.86 ± 0.04 0.88 ± 0.03 
+
+ZS Last 34 .90 ± 1.68 0.83 ± 0.04 0.87 ± 0.03 
+
+Val. 34 .90 ± 1.68 0.83 ± 0.04 0.87 ± 0.03 
+
+Test 34 .90 ± 1.68 0.83 ± 0.04 0.87 ± 0.03 
+
+> TV
+
+Sup. N.A. 36 .06 ± 1.83 0.86 ± 0.04 0.89 ± 0.03 
+
+ST Last 35 .94 ± 1.67 0.85 ± 0.04 0.87 ± 0.03 
+
+Val. 36 .09 ± 1.74 0.86 ± 0.04 0.89 ± 0.03 
+
+Test 36 .10 ± 1.74 0.86 ± 0.04 0.88 ± 0.03 
+
+ZS Last 35 .83 ± 1.90 0.86 ± 0.04 0.92 ± 0.02 
+
+Val. 35 .84 ± 1.89 0.86 ± 0.04 0.92 ± 0.02 
+
+Test 35 .84 ± 1.90 0.86 ± 0.04 0.92 ± 0.02 
+
+> TGV
+
+Sup. N.A. 36 .08 ± 1.83 0.86 ± 0.04 0.89 ± 0.03 
+
+ST Last 36 .05 ± 1.98 0.87 ± 0.04 0.93 ± 0.02 
+
+Val. 36 .05 ± 1.98 0.87 ± 0.04 0.93 ± 0.02 
+
+Test 36 .20 ± 1.98 0.87 ± 0.04 0.90 ± 0.03 
+
+ZS Last 35 .87 ± 1.91 0.86 ± 0.04 0.92 ± 0.02 
+
+Val. 35 .87 ± 1.90 0.86 ± 0.04 0.92 ± 0.02 
+
+Test 35 .87 ± 1.91 0.86 ± 0.04 0.92 ± 0.02 
+
+> R = 6
+> MoDL
+
+Sup. N.A. 35 .43 ± 1.69 0.84 ± 0.04 0.84 ± 0.04 
+
+ST Last 35 .28 ± 1.76 0.84 ± 0.04 0.87 ± 0.04 
+
+Val. 35 .26 ± 1.79 0.84 ± 0.04 0.87 ± 0.04 
+
+Test 35 .49 ± 1.75 0.84 ± 0.04 0.84 ± 0.04 
+
+ZS Last 33 .74 ± 1.69 0.78 ± 0.04 0.78 ± 0.05 
+
+Val. 33 .73 ± 1.69 0.78 ± 0.04 0.78 ± 0.05 
+
+Test 33 .75 ± 1.69 0.78 ± 0.04 0.78 ± 0.05 
+
+> TV
+
+Sup. N.A. 35 .43 ± 1.74 0.84 ± 0.04 0.85 ± 0.04 
+
+ST Last 35 .28 ± 1.76 0.84 ± 0.04 0.87 ± 0.04 
+
+Val. 35 .26 ± 1.79 0.84 ± 0.04 0.87 ± 0.04 
+
+Test 35 .49 ± 1.75 0.84 ± 0.04 0.84 ± 0.04 
+
+ZS Last 35 .26 ± 1.78 0.84 ± 0.04 0.88 ± 0.04 
+
+Val. 35 .26 ± 1.78 0.84 ± 0.04 0.88 ± 0.04 
+
+Test 35 .27 ± 1.78 0.84 ± 0.04 0.88 ± 0.03 
+
+> TGV
+
+Sup. N.A. 35 .55 ± 1.75 0.84 ± 0.04 0.86 ± 0.03 
+
+ST Last 35 .51 ± 1.82 0.85 ± 0.04 0.89 ± 0.03 
+
+Val. 35 .50 ± 1.83 0.85 ± 0.05 0.89 ± 0.03 
+
+Test 35 .61 ± 1.80 0.84 ± 0.04 0.87 ± 0.03 
+
+ZS Last 35 .24 ± 1.77 0.84 ± 0.04 0.87 ± 0.04 
+
+Val. 35 .22 ± 1.78 0.84 ± 0.04 0.87 ± 0.04 
+
+Test 35 .25 ± 1.77 0.84 ± 0.04 0.87 ± 0.04 
+
+> R = 8
+> MoDL
+
+Sup. N.A. 34 .94 ± 1.62 0.82 ± 0.04 0.80 ± 0.04 
+
+ST Last 34 .70 ± 1.66 0.82 ± 0.04 0.82 ± 0.04 
+
+Val. 34 .71 ± 1.64 0.82 ± 0.04 0.82 ± 0.04 
+
+Test 34 .97 ± 1.65 0.83 ± 0.04 0.80 ± 0.04 
+
+ZS Last 32 .77 ± 1.69 0.73 ± 0.05 0.72 ± 0.05 
+
+Val. 32 .79 ± 1.71 0.73 ± 0.05 0.72 ± 0.05 
+
+Test 32 .79 ± 1.70 0.73 ± 0.05 0.72 ± 0.05 
+
+> TV
+
+Sup. N.A. 34 .94 ± 1.68 0.83 ± 0.04 0.81 ± 0.04 
+
+ST Last 34 .70 ± 1.66 0.82 ± 0.04 0.82 ± 0.04 
+
+Val. 34 .71 ± 1.64 0.82 ± 0.04 0.82 ± 0.04 
+
+Test 34 .97 ± 1.65 0.83 ± 0.04 0.80 ± 0.04 
+
+ZS Last 34 .74 ± 1.71 0.82 ± 0.04 0.83 ± 0.04 
+
+Val. 34 .75 ± 1.70 0.82 ± 0.04 0.84 ± 0.04 
+
+Test 34 .77 ± 1.71 0.82 ± 0.04 0.83 ± 0.04 
+
+> TGV
+
+Sup. N.A. 35 .09 ± 1.67 0.83 ± 0.04 0.83 ± 0.04 
+
+ST Last 35 .02 ± 1.72 0.83 ± 0.04 0.85 ± 0.04 
+
+Val. 35 .03 ± 1.71 0.83 ± 0.04 0.85 ± 0.04 
+
+Test 35 .13 ± 1.69 0.83 ± 0.04 0.84 ± 0.04 
+
+ZS Last 34 .70 ± 1.69 0.82 ± 0.04 0.83 ± 0.04 
+
+Val. 34 .68 ± 1.67 0.82 ± 0.04 0.83 ± 0.04 
+
+Test 34 .73 ± 1.68 0.82 ± 0.04 0.83 ± 0.04 
+
+Table III RESULT SUMMARY FOR THE DYNAMIC MR IMAGE RECONSTRUCTION PROBLEM . “ STRAT .” IS THE STRATEGY , WHERE “Sup. ”, “ ST ”, AND “ZS ”
+
+> DENOTE THE SUPERVISED
+
+, SUPERVISED + TTT, AND ZERO -SHOT TTT 
+
+> STRATEGIES
+
+, RESPECTIVELY . “ STOP ” IS THE STOPPING CRITERION , 
+
+> WHERE
+
+“Last ”, “ Val. ”, AND “Test ” DENOTE THE LAST ITERATION , THE ITERATION WITH THE LOWEST VALIDATION SSDU LOSS , AND THE ITERATION WITH THE LOWEST TEST MSE ( ORACLE ), RESPECTIVELY .9
+
+MoDL TV-Λ TGV-Λ
+
+Inference time [min] ∼ 4 ∼ 2 ∼ 7
+
+Table IV ZERO -SHOT SELF -SUPERVISED INFERENCE TIMES FOR MODL, TV-Λ AND 
+
+TGV-Λ. T HE REPORTED TIMES FOR ZS-TTT CORRESPOND TO 100 
+
+MODEL WEIGHT UPDATES ON A GPU WITH 32GB MEMORY .
+
+Ground-truth Iterative SENSE  
+
+> SSIM: 0.57 PSNR: 29.01 HaarPSI: 0.55
+
+Supervised Supervised + TTT ZS-TTT MoDL          
+
+> SSIM: 0.81 PSNR: 34.23 HaarPSI: 0.79
+> SSIM: 0.79 PSNR: 33.59 HaarPSI: 0.80
+> SSIM: 0.74 PSNR: 32.50 HaarPSI: 0.74
+> TV-Λ
+> SSIM: 0.80 PSNR: 33.97 HaarPSI: 0.80
+> SSIM: 0.80 PSNR: 34.07 HaarPSI: 0.84
+> SSIM: 0.79 PSNR: 33.79 HaarPSI: 0.82
+> TGV-Λ
+> SSIM: 0.80 PSNR: 34.17 HaarPSI: 0.82
+> SSIM: 0.79 PSNR: 34.03 HaarPSI: 0.84
+> SSIM: 0.79 PSNR: 33.75 HaarPSI: 0.82
+
+Figure 6. Reconstructions with different methods on a test sample with acceleration R = 6 . Metrics for ZS-TTT (zero-shot) are computed on the final reconstructions (after 100 epochs), while others are computed on the best validation-SSDU-loss epoch. 
+
+Figure 6 shows a comparison of the reconstructions obtained with all methods for all training settings. The figure visually aligns well with the observations visible from Table III. The images obtained with ZS-TTT for TV-Λ and TGV-Λ
+
+are effectively indistinguishable from the ones obtained by supervised training. For MoDL, as can also be quantitatively seen in Table III, this is not the case. Figure 7 compares the regularization parameter maps ob-tained for TV-Λ and TGV-Λ across the three learning sce-narios. Similarly to the denoising example, the regularization parameter maps are relatively different from each other, al-though the differences are less pronounced than for the image denoising case, especially for TV-Λ.V. D ISCUSSION 
+
+In the following, we discuss the results obtained by DREAM as well as different aspects of the proposed combination of ZS-SSDU for learning the regularization maps for both TV-Λ and TGV-Λ.
+
+A. Reparametrization of the Regularization Parameter Maps 
+
+In [37] and [39], supervised learning approaches were considered to estimate deeply parametrized parameter maps avoiding the need to resort to time-consuming procedures 
+
+Supervised Supervised + TTT ZS-TTT TV  Λxy  -map 0.00  0.05  ≥ 0.10 TV  Λt-map 0.0  0.2  ≥ 0.4 TGV  Λxy 
+
+> 1 -map 0.00  0.05  ≥ 0.10 TGV  Λt
+> 1-map 0.0  0.5  ≥ 1.0 TGV  Λxy
+> 0 -map 0.0  0.1  ≥ 0.2 TGV  Λt
+> 0-map 0.0  0.1  ≥ 0.2 TGV log 10
+>  Λxy
+> 0
+> Λxy
+> 1
+> ≤ -2  0 ≥ 2
+> TGV log 10
+>  Λt
+> 0
+> Λt
+> 1
+> ≤ -2  0 ≥ 2
+
+Figure 7. Regularization parameter maps produced by our TV-Λ and TGV-
+
+Λ methods for supervised training, supervised training + test-time training (Supervised + TTT), and zero-shot test-time training (ZS-TTT). 
+
+such as bilevel optimization schemes, [71]. One could indeed frame DREAM through the lenses of bilevel optimization by formulating the problem as: 
+
+
+
+min 
+
+Λ
+
+P
+
+(y,xtrue )∈D L x∗(Λ),
+
+s.t. x∗(Λ) ∈ arg min 
+
+x
+
+FΛ(x), (12) with FΛ denoting the functional of the lower-level problem, such as the adaptive TV or TGV functionals in ( TV Λ) or (TGV Λ), while L is an upper-level loss function. DREAM shares similarity with the formulation (12) by simply setting 
+
+L in (12) as LSSDU ZS in (11) and x∗(Λ) as the image xT
+
+Λ10 
+
+obtained by the unrolled reconstruction scheme. However, one important difference is that in (12), one aims at directly estimating the adaptive regularization parameter maps Λ,while, as visible in (11), the loss function depends on Θ
+
+rather than Λ directly. The reason is that, in our case, the regularization parameter maps are parametrized as the output of the network NET Θ. Such a reparametrization can, for example, also be found in another context, namely the deep image prior framework [32], where, instead of optimizing over the image itself, the image is reparametrized as the output of a network applied to pure noise. There, the regularization mechanism is given by early stopping, the intuition being that both the neural network architecture and the optimizer chosen provide regularization for the sought image. On the other hand, in our case it is the reparametrization of the parameter maps 
+
+ΛΘ = NET Θ(x0) combined with the employed SSDU-loss that leads to meaningful and effective adaptive regularization parameter maps. 0 100 200 300 400 500 0.009 0.010 0.011 0.012 0.013 Denoising TV-Λ                                      
+
+> SSDU loss vs. Epoch
+> 0100 200 300 400 500 0.0010 0.0015 0.0020 0.0025 0.0030 Denoising TV-Λ
+> MSE vs. Epoch
+> 0100 200 300 400 500 0.009 0.010 0.011 0.012 0.013 Denoising TGV-Λ
+> 0100 200 300 400 500 0.0010 0.0015 0.0020 0.0025 0.0030 Denoising TGV-Λ
+> 20 40 60 80 100 0.0002 0.0004 0.0006 0.0008 MRI TV-Λ
+> 020 40 60 80 100 1.0 1.5 2.0 2.5
+> 1e −7
+> MRI TV-Λ
+> 20 40 60 80 100 0.0002 0.0004 0.0006 0.0008 MRI TGV-Λ
+> 020 40 60 80 100 1.0 1.5 2.0 2.5
+> 1e −7
+> MRI TGV-Λ
+> NET Θ
+> SoftPlus( −9) SoftPlus(0) SoftPlus( −10) SoftPlus( −1) SoftPlus( −11) SoftPlus( −2) SoftPlus( −12)
+
+Figure 8. ZS-SSDU loss and MSE for non-parametrized regularization-parameter maps in the denoising and MRI problems. Dotted lines indicate the explicit-map parametrization with different initial values. The reparametriza-tion of the Λ-maps as output of the neural network, i.e., Λ := NET Θ(x0),allows to reach a much smaller MSE with respect to the target image. 
+
+Figure 8 compares the ZS-SSDU loss and the MSE between the reconstruction and the target under two optimization strategies for TV-Λ and TGV-Λ, for both image denoising and MRI reconstruction. In the first strategy, the entries of the regularization maps Λ are treated directly as optimization variables. In the second, the maps are represented as ΛΘ =NET Θ(xinput ), and the optimization is performed over the network parameters Θ. The latter strategy consistently yields substantially lower reconstruction MSE. In some cases, direct optimization over Λ attains an even lower SSDU loss while producing a markedly higher target MSE, suggesting that the resulting maps overfit the self-supervised objective. This distinction is reminiscent of the deep image prior framework. Here, however, the network represents the regularization maps rather than the reconstructed image. The resulting restriction of 
+
+Λ to maps that can be generated by NET Θ acts as an implicit prior, promoting structured parameter maps that generalize better than those obtained by unconstrained, direct optimiza-tion over their entries. This representation also provides an input-dependent reduction in the dimension of the optimization problem. In the denoising experiments, the network contains only 109 ,073 parameters for TV-Λ and 109 ,090 for TGV-Λ,whereas direct optimization involves 512 × 512 = 262 ,144 
+
+and 512 × 512 × 2 = 524 ,288 map entries, respectively. In the dynamic MRI experiments, the corresponding networks contain 83 ,986 and 84 ,020 parameters, compared with 208 ×
+
+208 ×25 ×2 = 2 ,163 ,200 and 208 ×208 ×25 ×4 = 4 ,326 ,400 
+
+entries in the directly optimized TV-Λ and TGV-Λ maps, respectively. 
+
+B. Interpretability of the Regularization Maps 
+
+We observe some structural differences between the regu-larization parameter maps inferred by the supervised and zero-shot approaches. For example, as seen from Figure 4 in the denoising examples, the Λ maps not only adapt to the image structure but also to the noise itself. This is not surprising since during training the model is provided with pairs of clean and noisy data and thus implicitly fed many instances of Gaussian noise, eventually learning to recognize it and distinguish it from image structure. On the other hand, even though they still inherit the image structure, the zero-shot maps are flatter and more regular since the SSDU loss provides no noise information. Similar differences are also observed for the maps in the MRI experiment seen in Figure 7, with the supervised ones exhibiting more details than the zero-shot ones, with the latter being smoother, however, these differences are not so pronounced as in denoising. We hypothesize that the reason for the differences visible in the regularization parameter maps obtained by supervised and zero-shot self-supervised training essentially originates from the structure of the loss function in (11). In the recent review [72], it is demonstrated that for image denoising, the network component NET Θ of TV-Λ can learn to distinguish between image noise and image content, yielding parameter maps that are adapted not only to the noise level but also to the specific noise instance. Since no target images are used during the minimization of the SSDU loss function in (11), the network NET Θ is hindered from learning 11 
+
+to discriminate between image content. Because the loss function (11) involves the summation over different instances of measurement splits, its minimization yields an estimate of parameters Θ that is suitable “on average“ and therefore yields smoother parameter maps. As also shown in [72], for accelerated 2D MRI for TV-Λ, the learned parameter maps are much less adapted to the specific instances of noise and undersampling pattern compared to the image denoising setup. We believe this to be the reason that, in terms of features, the regularization parameter maps for the MRI example differ less from each other between the supervised and the zero-shot SSDU setting. Furthermore, for TV-Λ, the spatial and temporal components Λxy and Λt have complementary roles in terms of their regularization contribution. In general, for the supervised, supervised + TTT, and the ZS-TTT setting, the achieved temporal regularization is much stronger than the spatial one, except for regions depicting the cardiac movement, which is consistent with the results observed in [37]. For TGV-
+
+Λ, on the other hand, the interplay between the spatial and temporal components is more complex due to the involvement of two parameters instead of one. For instance, as expected following the theory about the scalar versions [70], it suffices that one of the parameters Λt
+
+> 0
+
+, Λt 
+
+> 1
+
+is locally small in order for the temporal regularization effect of TGV to be locally small. From Figure 7 we observe indeed that it is Λt 
+
+> 0
+
+which is locally small in the heart region for all three settings. However, the maps Λxy  
+
+> 0
+
+and Λt 
+
+> 1
+
+change significantly from the supervised to the ZS-TTT setting, which means that for TGV-
+
+Λ, dramatically different parameter combinations can lead to very similar reconstructions. We attribute that to the highly non-convex nature of the training problem. 
+
+C. Performance, CPU Times and No Overfitting 
+
+From Figure 8, we have seen how the achievable results also depend on the used reparametrization of the Λ-maps. Further, from Figures 2 and 5 we have observed that for both considered problems, the deep learning-based models RAM and MoDL tend to exhibit a slower convergence to a set of suitable network parameters when trained in a zero-shot fashion using SSDU. For denoising, after 500 iterations, TV-
+
+Λ and TGV-Λ still yield a lower MSE with respect to the target image. For the dynamic MRI example, this effect is even more strongly visible, where for all acceleration factors 
+
+R = 4 , 6, 8, TV-Λ and TGV-Λ yield a lower MSE with respect to the target image after around 100 SSDU iterations than MoDL does after 1000 iterations, effectively yielding better reconstructions within ∼ 2 minutes (TV-Λ) and ∼ 7 minutes (TGV-Λ) compared to ∼ 4 minutes (MoDL), see also Tables I and III. Additionally, as can be seen from Table III, for TV-Λ and TGV-Λ, remarkably, the differences between the supervised models and the zero-shot models are very small, and sometimes even negligible, see also Figure 6. In contrast, this is not the case for MoDL, which, when trained in a zero-shot fashion, substantially suffers in terms of achievable performance. While perhaps surprising at first glance, these results are plausible since MoDL, being a method for which the regularization is entirely learned from data, seems to profit more from being exposed to a larger dataset than being adapted to the specific unseen example. In contrast, for TV-Λ and TGV-Λ, for which the regularization is hand-crafted, sample-specific adaptation of the regularization strength suffices to yield comparable performance to the supervised models. In addition to the observation that TV-Λ and TGV-Λ yield competitive results when compared to MoDL, this offers the possibility to rely on a simpler reconstruction method with im-proved interpretability without sacrificing image quality. This important result is only somewhat analogously visible for the image denoising experiment. There, although the difference in performance between the supervised models and the zero-shot models is also smaller for TV-Λ and TGV-Λ compared to RAM, it is not possible to observe an effectively comparable performance of TV-Λ and TGV-Λ. We believe that this can be attributed to the different nature of the two considered problems. For image denoising, there is inherently less data to be learned from for the ZS-TTT, which, in addition, is corrupted by potentially large noise. In contrast, for the MR example, there is more redundant data to be learned from due to the multi-coil setup of the problem, as can be seen from the forward model in (2). 
+
+D. Limitations 
+
+Despite the advantages in terms of robustness with respect to overfitting and the competitive performance of the methods, DREAM has some limitations. First, the employed ZS-TTT framework for TV-Λ and TGV-Λ appears to suffer from longer reconstruction times. For example, as can be seen from Tables II and IV, inference can take up to two and five minutes for TV-Λ and TGV-Λ, respectively, for a single 2D image, and up to two and seven minutes for TV-Λ and TGV-Λ for a single dynamic cardiac MR image. The reason for this, of course, mainly lies in the need to unroll the respective PDHG algorithms using a relatively large number of iterations 
+
+T . Although lowering T is possible, in [37] it was noted that lowering T during supervised training of TV-Λ tends to yield too large regularization parameter maps to compensate for the smaller T , effectively leading to overly smoothed images. A promising direction that we aim to investigate in the future is to study different neural network architectures and initialization mechanisms to further accelerate the learning phase. We expect this strategy to be of interest for larger realistic reconstruction problems (e.g. 3D + time) or for other similar reconstruction methods such as the one considered in [41], for which the considered problem is inherently larger due to its formulation using a synthesis-based approach. VI. C ONCLUSIONS 
+
+In this work, we presented a method for learning adap-tive regularization parameter maps for both TV and TGV regularization via algorithm unrolling in a zero-shot self-supervised framework. Through several examples, we have investigated the applicability of the approach for a simple 2D image denoising problem and for a challenging large-scale dynamic MR imaging problem (2D + time). In contrast to state-of-the-art models used for comparison (RAM for image 12 
+
+denoising, MoDL for MRI), DREAM is fast, and it requires only a fraction of the weight updates as the methods of com-parison to achieve a comparable performance. Furthermore, we demonstrated that representing the parameter maps as the output of a CNN applied to the input image provides a mean-ingful implicit prior and an input-dependent dimensionality reduction, substantially improving upon direct optimization of the regularization parameters. We have observed that the performance difference between supervised training and zero-shot test-time training is relatively small for TV-Λ and TGV-Λ
+
+for image denoising, and negligible for the dynamic cardiac MRI problem, while for RAM (for image denoising) and MoDL (for MRI), the differences are much larger. This implies that the learned TV-Λ and TGV-Λ regularization models can be used as valid alternatives to MoDL, with the advantage of exhibiting improved interpretability and, at the same time, not sacrificing image quality. Future work directions could include the extension of DREAM to other regularization functionals based on learned sparsifying transforms. REFERENCES [1] G. Ongie, A. Jalal, C. A. Metzler, R. G. Baraniuk, A. G. Dimakis, and R. Willett, “Deep learning techniques for inverse problems in imaging,” 
+
+IEEE Journal on Selected Areas in Information Theory , vol. 1, no. 1, pp. 39–56, 2020. [2] M. Elad, B. Kawar, and G. Vaksman, “Image denoising: The deep learning revolution and beyond – A survey paper,” 2023, version Number: 1. [Online]. Available: https://arxiv.org/abs/2301.03362 [3] K. S. H. Kulathilake, N. A. Abdullah, A. Q. M. Sabri, and K. W. Lai, “A review on deep learning approaches for low-dose computed tomography restoration,” Complex & Intelligent Systems , vol. 9, no. 3, pp. 2713– 2745, 2023. [4] Y. Chen, C.-B. Sch¨ onlieb, P. Li` o, T. Leiner, P. L. Dragotti, G. Wang, D. Rueckert, D. Firmin, and G. Yang, “AI-based reconstruction for fast MRI—a systematic review and meta-analysis,” Proceedings of the IEEE ,vol. 110, no. 2, pp. 224–245, 2022. [5] A. Kofler, F. F. Zimmermann, and K. Papafitsoros, Machine Learning for Quantitative Magnetic Resonance Image Reconstruction . Cham: Springer International Publishing, 2024, pp. 171–213. [6] S. V. Venkatakrishnan, C. A. Bouman, and B. Wohlberg, “Plug-and-play priors for model based reconstruction,” in 2013 IEEE Global Conference on Signal and Information Processing . IEEE, 2013, pp. 945–948. [7] Y. Romano, M. Elad, and P. Milanfar, “The little engine that could: Reg-ularization by denoising (RED),” SIAM Journal on Imaging Sciences ,vol. 10, no. 4, pp. 1804–1844, 2017. [8] O. Ronneberger, P. Fischer, and T. Brox, “U-net: Convolutional networks for biomedical image segmentation,” Medical Image Computing and Computer-Assisted Intervention (MICCAI) , vol. part III 18, pp. 234– 241, 2015. [9] K. Zhang, W. Zuo, Y. Chen, D. Meng, and L. Zhang, “Beyond a Gaussian denoiser: Residual learning of deep CNN for image denoising,” 
+
+IEEE Transactions on Image Processing , vol. 26, no. 7, pp. 3142–3155, 2017. [10] V. Monga, Y. Li, and Y. C. Eldar, “Algorithm unrolling: Interpretable, efficient deep learning for signal and image processing,” IEEE Signal Processing Magazine , vol. 38, no. 2, pp. 18–44, 2021. [11] K. Gregor and Y. LeCun, “Learning fast approximations of sparse coding,” in Proceedings of the 27th international conference on inter-national conference on machine learning , 2010, pp. 399–406. [12] J. Sun, H. Li, Z. Xu et al. , “Deep ADMM-Net for compressive sensing MRI,” Advances in Neural Information Processing Systems , vol. 29, 2016. [13] J. Adler and O. ¨Oktem, “Learned primal-dual reconstruction,” IEEE Transactions on Medical Imaging , vol. 37, no. 6, pp. 1322–1332, 2018. [14] J. Zhang and B. Ghanem, “Ista-net: Interpretable optimization-inspired deep network for image compressive sensing,” in 2018 IEEE/CVF Conference on Computer Vision and Pattern Recognition . IEEE, 2018, pp. 1828–1837. [15] M. J. Muckley, B. Riemenschneider, A. Radmanesh, S. Kim, G. Jeong, J. Ko, Y. Jun, H. Shin, D. Hwang, M. Mostapha et al. , “Results of the 2020 fastMRI challenge for machine learning MR image reconstruction,” 
+
+IEEE Transactions on Medical Imaging , vol. 40, no. 9, pp. 2306–2317, 2021. [16] Y. Beauferris, J. Teuwen, D. Karkalousos, N. Moriakov, M. Caan, G. Yi-asemis, L. Rodrigues, A. Lopes, H. Pedrini, L. Rittner et al. , “Multi-coil mri reconstruction challenge—assessing brain MRI reconstruction mod-els and their generalizability to varying coil configurations,” Frontiers in Neuroscience , vol. 16, p. 919186, 2022. [17] E. Y. Sidky and X. Pan, “Report on the AAPM deep-learning sparse-view CT grand challenge,” Medical Physics , vol. 49, no. 8, pp. 4935– 4943, 2022. [18] J. Lyu, C. Qin, S. Wang, F. Wang, Y. Li, Z. Wang, K. Guo, C. Ouyang, M. T¨ anzer, M. Liu et al. , “The state-of-the-art in cardiac MRI reconstruc-tion: Results of the CMRxRecon challenge in MICCAI 2023,” Medical Image Analysis , vol. 101, p. 103485, 2025. [19] S. Bai, J. Z. Kolter, and V. Koltun, “Deep equilibrium models,” Advances in Neural Information Processing Systems , vol. 32, 2019. [20] D. Gilton, G. Ongie, and R. Willett, “Deep equilibrium architectures for inverse problems in imaging,” IEEE Transactions on Computational Imaging , vol. 7, pp. 1123–1133, 2021. [21] Z. Zou, J. Liu, B. Wohlberg, and U. S. Kamilov, “Deep equilibrium learning of explicit regularizers for imaging inverse problems,” IEEE Open J. Signal Process , 2023, dOI:10.1109/OJSP.2023.3296036. [22] C. Daniele, S. Villa, S. Vaiter, and L. Calatroni, “Deep equilibrium models for poisson imaging inverse problems via mirror descent,” 
+
+SIAM Journal on Imaging Sciences , vol. 19, no. 2, pp. 1077–1109, 2026. [Online]. Available: https://doi.org/10.1137/25M1779048 [23] H. K. Aggarwal, M. P. Mani, and M. Jacob, “MoDL: Model-based deep learning architecture for inverse problems,” IEEE Transactions on Medical Imaging , vol. 38, no. 2, pp. 394–405, 2018. [24] E. T. Reehorst and P. Schniter, “Regularization by denoising: Clarifi-cations and new interpretations,” IEEE Transactions on Computational Imaging , vol. 5, no. 1, pp. 52–67, 2018. [25] X. Li, J. Huang, G. Sun, and Z. Yang, “Self-supervised learning for MRI reconstruction: a review and new perspective,” Magnetic Resonance Materials in Physics, Biology and Medicine , vol. 38, no. 6, pp. 1053– 1074, Dec. 2025. [26] A. Wang, S. McDonagh, and M. Davies, “Benchmarking Self-Supervised Learning Methods for Accelerated MRI Reconstruction,” 2026, version: 5. [Online]. Available: http://arxiv.org/abs/2502.14009 [27] J. Tachella and M. Davies, “Self-supervised learning from noisy and incomplete data,” Foundations and Trends in Signal Processing ,vol. 20, no. 2, pp. 85–184, 2026. [Online]. Available: https: //doi.org/10.1108/FTSIG-10-2025-0133 [28] D. Zhang, F. Zhou, F. Albu, Y. Wei, X. Yang, Y. Gu, and Q. Li, “Unleashing the power of self-supervised image denoising: A comprehensive review,” 2023. [Online]. Available: https://arxiv.org/abs/ 2308.00247 [29] B. Yaman, S. A. H. Hosseini, S. Moeller, J. Ellermann, K. U˘ gurbil, and M. Akc ¸akaya, “Self-supervised learning of physics-guided reconstruc-tion neural networks without fully sampled reference data,” Magnetic Resonance in Medicine , vol. 84, no. 6, pp. 3172–3191, 2020. [30] J. Batson and L. Royer, “Noise2Self: Blind denoising by self-supervision,” in Proceedings of the 36th International Conference on Machine Learning , ser. Proceedings of Machine Learning Research, K. Chaudhuri and R. Salakhutdinov, Eds., vol. 97. PMLR, 09–15 Jun 2019, pp. 524–533. [31] B. Yaman, S. A. H. Hosseini, and M. Akcakaya, “Zero-shot self-supervised learning for MRI reconstruction,” in International Conference on Learning Representations , 2022. [32] D. Ulyanov, A. Vedaldi, and V. Lempitsky, “Deep image prior,” in 
+
+Proceedings of the IEEE conference on computer vision and pattern recognition , 2018, pp. 9446–9454. [33] J. Liu, Y. Sun, X. Xu, and U. S. Kamilov, “Image restoration using total variation regularized deep image prior,” in ICASSP 2019-2019 IEEE International Conference on Acoustics, Speech and Signal Processing (ICASSP) , 2019, pp. 7715–7719. [34] R. Heckel and P. Hand, “Deep decoder: Concise image representations from untrained non-convolutional networks,” in International Confer-ence on Learning Representations , 2019. [35] C. Wang, J. Lyu, S. Wang, C. Qin, K. Guo, X. Zhang, X. Yu, Y. Li, F. Wang, J. Jin et al. , “CMRxRecon: A publicly available k-space dataset and benchmark to advance deep learning for cardiac MRI,” Scientific Data , vol. 11, no. 1, p. 687, 2024. 13 
+
+[36] Z. Wang, F. Wang, C. Qin, J. Lyu, C. Ouyang, S. Wang, Y. Li, M. Yu, H. Zhang, K. Guo et al. , “CMRxRecon2024: a multimodality, multiview k-space dataset boosting universal machine learning for accelerated car-diac MRI,” Radiology: Artificial Intelligence , vol. 7, no. 2, p. e240443, 2025. [37] A. Kofler, F. Altekr¨ uger, F. Antarou Ba, C. Kolbitsch, E. Papoutsellis, D. Schote, C. Sirotenko, F. F. Zimmermann, and K. Papafitsoros, “Learn-ing regularization parameter-maps for variational image reconstruction using deep neural networks and algorithm unrolling,” SIAM Journal on Imaging Sciences , vol. 16, pp. 2202–2246, 2023. [38] M. Pragliola, L. Calatroni, A. Lanza, and F. Sgallari, “On and beyond total variation regularization in imaging: the role of space variance,” 
+
+SIAM Review , vol. 65, no. 3, pp. 601–685, 2023. [39] T. T. Vu, A. Kofler, and K. Papafitsoros, “Deep unrolling for learning optimal spatially varying regularisation parameters for total generalised variation,” in International Conference on Scale Space and Variational Methods in Computer Vision . Springer, 2025, pp. 282–294. [40] K. Bredies, K. Kunisch, and T. Pock, “Total Generalized Variation,” 
+
+SIAM Journal on Imaging Sciences , vol. 3, no. 3, pp. 492–526, 2010. [41] A. Kofler, L. Calatroni, C. Kolbitsch, and K. Papafitsoros, “Learn-ing spatially adaptive ℓ1-norms weights for convolutional synthesis regularization,” in 2025 33rd European Signal Processing Conference (EUSIPCO) , 2025, pp. 1782–1786. [42] J. Schulz, D. Schote, C. Kolbitsch, K. Papafitsoros, and A. Kofler, “Learning spatially adaptive sparsity level maps for arbitrary convo-lutional dictionaries,” in 2026 IEEE International Conference on Image Processing (ICIP) , 2026, pp. 1–6. [43] A. Chambolle and P.-L. Lions, “Image recovery via total variation minimization and related problems,” Numerische Mathematik , vol. 76, no. 2, pp. 167–188, 1997. [Online]. Available: https://doi.org/10.1007/ s002110050258 [44] M. Holler and K. Kunisch, “On infimal convolution of TV-type function-als and applications to video and image reconstruction,” SIAM Journal on Imaging Sciences , vol. 7, no. 4, pp. 2258–2300, 2014. [45] S. Lefkimmiatis, J. P. Ward, and M. Unser, “Hessian schatten-norm regularization for linear inverse problems,” IEEE Transactions on Image Processing , vol. 22, no. 5, pp. 1873–1888, 2013. [46] M. Pourya, E. Kobler, M. Unser, and S. Neumayer, “DEALing with image reconstruction: Deep attentive least squares,” in Forty-second International Conference on Machine Learning , 2025. [Online]. Available: https://openreview.net/forum?id=mMasOShOVt [47] S. Roth and M. Black, “Fields of experts: a framework for learning image priors,” in 2005 IEEE Computer Society Conference on Computer Vision and Pattern Recognition (CVPR’05) , vol. 2, 2005, pp. 860–867 vol. 2. [48] C. Kolbitsch, C. Prieto, and T. Schaeffter, “Cardiac functional assess-ment without electrocardiogram using physiological self-navigation,” 
+
+Magnetic Resonance in Medicine , vol. 71, no. 3, pp. 942–954, 2014. [49] D. O. Walsh, A. F. Gmitro, and M. W. Marcellin, “Adaptive reconstruc-tion of phased array MR imagery,” Magnetic Resonance in Medicine ,vol. 43, no. 5, pp. 682–690, 2000. [50] M. Uecker, P. Lai, M. J. Murphy, P. Virtue, M. Elad, J. M. Pauly, S. S. Vasanawala, and M. Lustig, “ESPIRiT-an eigenvalue approach to autocalibrating parallel MRI: Where SENSE meets GRAPPA.” Magnetic Resonance Imaging , 2013. [51] M. Lustig, D. Donoho, and J. M. Pauly, “Sparse MRI: The application of compressed sensing for rapid MR imaging,” Magnetic Resonance in Medicine , vol. 58, no. 6, pp. 1182–1195, 2007. [52] A. Chambolle and T. Pock, “A first-order primal-dual algorithm for convex problems with applications to imaging,” Journal of Mathematical Imaging and Vision , vol. 40, no. 1, pp. 120–145, 2011. [53] E. Y. Sidky, J. H. Jørgensen, and X. Pan, “Convex optimization problem prototyping for image reconstruction in computed tomography with the Chambolle–Pock algorithm,” Physics in Medicine and Biology , vol. 57, no. 10, pp. 3065–3091, 2012. [54] A. Krull, T.-O. Buchholz, and F. Jug, “Noise2void-learning denoising from single noisy images,” in Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , 2019, pp. 2129–2137. [55] S. A. H. Hosseini, B. Yaman, S. Moeller, and M. Akc ¸akaya, “High-fidelity accelerated MRI reconstruction by scan-specific fine-tuning of physics-based neural networks,” in 2020 42nd Annual International Conference of the IEEE Engineering in Medicine & Biology Society (EMBC) . IEEE, 2020, pp. 1481–1484. [56] F. F. Zimmermann, P. Schuenke, S. Brahma, M. Guastini, J. Hammacher, A. Kofler, C. Kranich Redshaw, L. Lunin, S. Martin, D. Schote et al. ,“MRpro-PyTorch-based MR image reconstruction and processing pack-age,” Zenodo , 2025. [57] F. F. Zimmermann, P. Schuenke, C. S. Aigner, B. A. Bernhardt, M. Guastini, J. Hammacher, N. Jaitner, A. Kofler, L. Lunin, S. Martin, C. R. Kranich, J. Schattenfroh, D. Schote, Y. Wu, and C. Kolbitsch, “MRpro: open framework for model-based, learned, and quantitative MR imaging,” 2026. [Online]. Available: https://arxiv.org/abs/2507.23129 [58] M. Z. Darestani, J. Liu, and R. Heckel, “Test-time training can close the natural distribution shift performance gap in deep learning based compressed sensing,” in International Conference on Machine Learning .PMLR, 2022, pp. 4754–4776. [59] Z. Wang, A. C. Bovik, H. R. Sheikh, and E. P. Simoncelli, “Image quality assessment: From error visibility to structural similarity,” IEEE Transactions on Image Processing , vol. 13, no. 4, pp. 600–612, 2004. [60] R. Reisenhofer, S. Bosse, G. Kutyniok, and T. Wiegand, “A Haar wavelet-based perceptual similarity index for image quality assessment,” 
+
+Signal Processing: Image Communication , vol. 61, pp. 33–43, 2018. [61] E. Agustsson and R. Timofte, “NTIRE 2017 challenge on single image super-resolution: Dataset and study,” in 2017 IEEE Conference on Computer Vision and Pattern Recognition Workshops (CVPRW) . IEEE, 2017, pp. 1122–1131. [62] M. Terris, S. Hurault, M. Song, and J. Tachella, “Reconstruct Anything Model a lightweight general model for computational imaging,” in The Fourteenth International Conference on Learning Representations , 2026. [Online]. Available: https://openreview.net/forum?id=Ks9zNS6OsU [63] J. Tachella, M. Terris, S. Hurault, A. Wang, L. Davy, J. Scanvic, V. Sechaud, R. Vo, T. Moreau, T. Davies, D. Chen, N. Laurent, B. Monroy, J. Dong, Z. Hu, M.-H. Nguyen, F. Sarron, P. Weiss, P. Escande, M. Massias, T. Modrzyk, B. Levac, T. I. Liaudat, M. Song, J. Hertrich, S. Neumayer, and G. Schramm, “DeepInverse: A Python package for solving imaging inverse problems with deep learning,” 
+
+Journal of Open Source Software , vol. 10, no. 115, p. 8923, 2025. [Online]. Available: https://doi.org/10.21105/joss.08923 [64] D. P. Kingma and J. Ba, “Adam: A Method for Stochastic Optimiza-tion,” in 3rd International Conference on Learning Representations, ICLR 2015, San Diego, CA, USA, May 7-9, 2015, Conference Track Proceedings , Y. Bengio and Y. LeCun, Eds., 2015. [65] I. Loshchilov and F. Hutter, “Decoupled weight decay regularization,” in International Conference on Learning Representations , 2019. [66] H. El-Rewaidy, “Replication Data for: Multi-Domain Convolutional Neural Network (MD-CNN) For Radial Reconstruction of Dynamic Cardiac MRI,” 2020. [Online]. Available: https://doi.org/10.7910/DVN/ CI3WB6 [67] K. P. Pruessmann, M. Weiger, P. B¨ ornert, and P. Boesiger, “Advances in sensitivity encoding with arbitrary k-space trajectories,” Magnetic Resonance in Medicine , vol. 46, no. 4, pp. 638–651, 2001. [68] H. El-Rewaidy, A. S. Fahmy, F. Pashakhanloo, X. Cai, S. Kucuk-seymen, I. Csecs, U. Neisius, H. Haji-Valizadeh, B. Menze, and R. Nezafat, “Multi-domain convolutional neural network (MD-CNN) for radial reconstruction of dynamic cardiac MRI,” Magnetic Resonance in Medicine , vol. 85, no. 3, pp. 1195–1208. [69] T. Chen, B. Xu, C. Zhang, and C. Guestrin, “Training deep nets with sublinear memory cost,” CoRR , vol. abs/1604.06174, 2016. [Online]. Available: http://arxiv.org/abs/1604.06174 [70] K. Papafitsoros and T. Valkonen, “Asymptotic behaviour of total gener-alised variation,” in Scale Space and Variational Methods in Computer Vision , J.-F. Aujol, M. Nikolova, and N. Papadakis, Eds., 2015, pp. 702– 714. [71] C. Crockett and J. A. Fessler, “Bilevel methods for image reconstruc-tion,” Foundations and Trends® in Signal Processing , vol. 15, no. 2-3, pp. 121–289, 2022. [72] K. Papafitsoros, L. Calatroni, and A. Kofler, “Learning spatially varying regularisation parameters of low regularity for image reconstruction,” 2026. [Online]. Available: https://arxiv.org/abs/2608.25127
