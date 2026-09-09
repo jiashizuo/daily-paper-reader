@@ -1,0 +1,1307 @@
+Title: Not Just Oversmoothing: Detecting the Echo Chamber Effect in Graph Neural Networks
+
+URL Source: https://arxiv.org/pdf/2609.06521v1
+
+Published Time: Wed, 09 Sep 2026 01:16:04 GMT
+
+Number of Pages: 28
+
+Markdown Content:
+# Not Just Oversmoothing: Detecting the Echo Chamber Effect in Graph Neural Networks 
+
+Asela Hevapathige 
+
+Department of Mechanical Engineering University of Melbourne Melbourne, Australia 
+
+asela.hevapathige@unimelb.edu.au 
+
+Ahad N. Zehmakan 
+
+School of Computing Australian National University Canberra, Australia 
+
+ahadn.zehmakan@anu.edu.au 
+
+Asiri Wijesinghe 
+
+Data61, CSIRO Canberra, Australia 
+
+asiriwijesinghe.wijesinghe@data61.csiro.au 
+
+Saman Halgamuge 
+
+Department of Mechanical Engineering University of Melbourne Melbourne, Australia 
+
+saman@unimelb.edu.au 
+
+Abstract 
+
+Oversmoothing is a well-known failure mode of Graph Neural Networks (GNNs). However, most existing diagnostics rely on global aggregation measures that fail to capture the heterogeneous dynamics of message passing. Real-world graphs exhibit pronounced community structure, and message passing operates on two timescales, with representations collapsing rapidly within communities and slowly across them. This creates a critical gap in which intra-community representations can become indistinguishable while inter-community separation persists, a failure mode that we refer to as the Echo Chamber Effect . To quantify this effect, we introduce the Echo Chamber Index (ECI), which stratifies pairwise distances by community membership and reveals when global energy diminishes while inter-community separation persists. ECI further shows that feature-retention mechanisms can preserve the echo chamber under the conditions of our theoretical analysis. The consequences depend on label structure: when communities align with classes, the echo chamber can sharpen node classification, whereas when they do not, the same collapse makes classification provably harder. Motivated by this analysis, we propose Community-Aware Split Propagation (CASP), a lightweight plugin that decouples intra- and inter-community aggregation and learns their balance from label structure. CASP improves diverse backbone GNNs across most evaluated homophilic and heterophilic settings. 
+
+1 Introduction 
+
+Graph neural networks (GNNs) generate node representations by iteratively aggregating features from neighboring nodes across multiple layers [1, 2]. As the depth of the network increases, this repeated aggregation tends to drive the representations toward a common vector, a phenomenon known as oversmoothing [3]. Two metrics dominate its diagnosis: Dirichlet energy [4, 5], which sums squared representation differences over edges, and Mean Average Distance (MAD) [6], which arXiv:2609.06521v1 [cs.LG] 6 Sep 2026 0 8 16 24 32 40                                      
+
+> Layers
+> 10 8
+> 10 6
+> 10 4
+> 10 2
+> 10 0
+> SBM ( K = 5 , pin  = 0.08 , pout  = 0.005 )Dirichlet energy
+> Dirichlet energy
+> 0816 24 32 40
+> Layers
+> 10 1
+> 10 0
+> MAD
+> MAD
+> 0816 24 32 40
+> Layers
+> 12345
+> ECI
+> no echo chamber
+> ECI
+> 0816 24 32 40
+> Layers
+> 10 3
+> 10 2
+> 10 1
+> 10 0
+> Coauthor-CS (Louvain communities) Dirichlet energy
+> 0816 24 32 40
+> Layers
+> 10 1
+> 10 0
+> MAD
+> 0816 24 32 40
+> Layers
+> 1.0 1.1 1.2 1.3 1.4 1.5 1.6
+> ECI
+> no echo chamber
+> GCN GPRGNN GCNII APPNP
+
+Figure 1: Layer-wise metrics on an SBM [15] (1500 nodes, 5 communities, intra-community edge probability 0.08, inter-community 0.005) and Coauthor-CS with Louvain [16] communities. averages pairwise feature distances across nodes. Both metrics reduce the representation to a single global scalar, an aggregation that implicitly treats all regions of the graph as equivalent. Real-world networks are rarely uniform. Social, citation, and biological networks exhibit pronounced modularity [7, 8, 9], and on such graphs, message passing operates on two timescales: rapid homogeni-sation within communities and slow mixing across them. Dirichlet energy and MAD aggregate over all edges and all node pairs respectively, treating intra- and inter-community contributions identically. Thus, they may indicate oversmoothing alleviation when meaningful inter-community separation persists, while intra-community representations become indistinguishable. We refer to this state as the echo chamber effect . On modular graphs this region persists across GNNs well beyond the depths typically deployed, which is a blind spot for current diagnostics. This blind spot has consequences for both diagnosis and design. Oversmoothing diagnostics routinely guide depth choices and motivate design decisions such as residual or skip-connection architec-tures [10, 11]. When a diagnostic fails to detect the echo chamber, these choices that rely on it may be misled; consequently, architectural mechanisms may be incorrectly credited with preventing a collapse that has already occurred. To make the echo chamber region detectable, we introduce the 
+
+Echo Chamber Index (ECI), defined as the ratio of cross-community to within-community pairwise distance. ECI separates three regions of message passing on modular graphs: uniform mixing , in which the two distance scales are comparable; an intermediate phase , in which within-community representations have collapsed but communities remain distinguishable; and global oversmooth-ing , in which all pairwise distinctions vanish. As shown in Figure 1, Dirichlet energy and MAD decay monotonically across architectures, while ECI traverses all three regions for a classic GNN such as GCN [2] and remains elevated for oversmoothing-alleviation methods such as APPNP [12], GCNII [13], and GPR-GNN [14]. The echo chamber has task-specific consequences. We illustrate this through node classification, where its effect depends on how communities align with labels. Under homophily, communities coincide with classes, so intra-community collapse compresses within-class variance and improves linear separability. Under heterophily, the same collapse forces same-community nodes of different classes into nearly identical representations, degrading classification. We formalise both directions and propose Community-Aware Split Propagation (CASP), a plugin that grants existing GNNs explicit control over the balance between intra- and inter-community message passing. CASP calibrates the 2(1.) Initial State  (2.) Echo Chamber  (3.) Global Oversmoothing         
+
+> t= 0 τintra <t<τinter t→ ∞
+
+Figure 2: Three regions of GNN message passing: initial state ( 1), echo chamber where intra-community collapse precedes inter-community separation ( 2), and global oversmoothing ( 3). intra/inter-community propagation balance directly from the graph’s label structure, amplifying the echo chamber under homophily and suppressing it under heterophily. 
+
+Our contributions are: 
+
+• We identify and formalise the echo chamber effect, a failure mode of GNN message passing on modular graphs in which intra-community representations collapse while inter-community separation persists, which cannot be detected by standard diagnostics. • We propose ECI, a diagnostic that stratifies pairwise distances by community membership, and prove that Dirichlet energy can vanish while ECI remains bounded away from zero. • We characterise the consequences of the echo chamber for node classification, showing it benefits homophilic settings and harms heterophilic ones, and make the dichotomy quantitative through a Fisher ratio and a classifier-margin bound. • We propose CASP, a computationally efficient plugin that decouples intra- and inter-community aggregation and learns their beneficial balance from label structure. CASP serves as a theory-motivated intervention for validating the practical relevance of ECI. 
+
+2 Preliminaries 
+
+Notations. Let G = ( V, E) be an undirected connected graph with n = |V| nodes and |E| edges. We denote the adjacency matrix by A and the degree matrix by D. Two propagation operators appear in our analysis. The symmetric normalised adjacency ˜A = D−1/2(A + I)D−1/2 is used in standard GCN-style layers [2] and in our empirical experiments. The row-stochastic adjacency ˆA = D−1A
+
+is used in our theoretical analysis: as a Markov operator, its mixing dynamics are analytically tractable [17]. A GCN-style layer takes the form H(k) = σ( ˜AH (k−1) W(k)), which we treat as a representative instance of message passing. Following prior work that simplifies GNN propagation for analytical tractability [18, 19], we work with the linearised iteration H(k) = ˆAH (k−1) in our structural analysis, isolating propagation dynamics from learning. For our theoretical analysis we consider graphs with modular structure, which we model via the stochastic block model (SBM) [15], where intra-block pairs connect with probability pintra 
+
+and cross-block pairs with pinter ≪ pintra across m balanced communities, denoted G ∼
+
+SBM( n, m, p intra , p inter ).
+
+Oversmoothing and its diagnostics. In GNNs, repeated application of ˆA drives node representa-tions toward a common stationary vector, a phenomenon known as oversmoothing [3]. A standard way to quantify this is via Dirichlet energy [4], defined for a feature matrix H ∈ Rn×d with Hi ∈ Rd
+
+the representation of node i as E(H) = 12
+
+P 
+
+> (i,j )∈E
+
+∥Hi/√1 + di − Hj /p1 + dj ∥2, where di is the degree of node i. As depth increases, E(H) → 0 under oversmoothing. The edge-normalised variant ¯E(H) = 1
+
+> |E|
+
+P
+
+> (i,j )∈E
+> Hi√1+ di
+
+− Hj
+
+√1+ dj
+
+> 2
+
+differs only by a constant and allows compari-son across graphs of different sizes. Chen et al.[6] proposed Mean Average Distance (MAD), the 3average pairwise cosine distance between node representations, as a complementary measure. Both metrics aggregate globally, thus representations may have already collapsed within communities while remaining distinct across them, a failure neither can detect. 
+
+3 The Echo Chamber Effect 
+
+In this section, we formalize the echo chamber effect and propose a diagnostic to make it measurable. In a modular graph, message passing occurs through two diffusion processes that operate at vastly different speeds. Information rapidly spreads through dense connections within communities, while it spreads slowly across sparse connections between different communities (see Figure 2). The MAD metric blends these two processes, failing to capture the asymmetry between them. When stratified by community membership, this asymmetry becomes apparent. 
+
+Definition 1 (Community MAD and ECI) . Let C = {C1, . . . , C m} be the community partition, c(i)
+
+the community of node i, and Pintra , Pinter the edge sets within and across communities. The intra-and inter-community mean average distances are: 
+
+MAD (k)intra = 1
+
+|P intra |
+
+X
+
+> (i,j )∈P intra
+
+∥H(k) 
+
+> i
+
+−H(k) 
+
+> j
+
+∥2, MAD (k)inter = 1
+
+|P inter |
+
+X
+
+> (i,j )∈P inter
+
+∥H(k) 
+
+> i
+
+−H(k) 
+
+> j
+
+∥2,
+
+and the Echo Chamber Index (ECI) is: 
+
+ECI (k) = MAD (k)inter 
+
+MAD (k)intra + ν ,
+
+where ν > 0 is a small numerical stabiliser. 
+
+Three regions emerge naturally: Echo Chamber (ECI ≫ 1), where intra-community distances have collapsed while inter-community ones remain large; Uniform Mixing (ECI ≈ 1), where both distance scales decay at comparable rates and no structural asymmetry is present; and Global Oversmoothing (ECI ≈ 0), where all pairwise distinctions vanish. Dirichlet energy and MAD aggregate globally and therefore cannot distinguish among these three states. 
+
+Definition 2 (Echo chamber effect and its window) . The echo chamber effect occurs at depth k when 
+
+MAD (k)intra 
+
+MAD (0) intra 
+
+≪ MAD (k)inter 
+
+MAD (0) inter 
+
+.
+
+The echo chamber window [τintra , τ inter ) captures the depths over which this region persists, where 
+
+τintra = min 
+
+n
+
+k : MAD (k)intra ≤ γintra MAD (0) intra 
+
+o
+
+, τinter = min 
+
+n
+
+k : MAD (k)inter ≤ γinter MAD (0) inter 
+
+o
+
+,
+
+for thresholds γintra , γ inter ∈ (0 , 1) .
+
+We assume τintra < τ inter , meaning that intra-community representations collapse before inter-community ones. This occurs when intra-community edges are denser than inter-community edges and the initial features are not already more homogeneous across communities than within them. Pathological violations are theoretically possible. On a modular graph, the two timescales are determined by both graph structure and the initial feature distribution. Intra-community edges are dense, so within-community representations converge quickly, while inter-community edges are sparse, so cross-community mixing is slow. On G ∼ 
+
+SBM( n, m, p intra , p inter ), the contrast pintra ≫ pinter means that cross-community information flows more slowly than within-community information. As this contrast grows, the echo chamber window widens and can exceed the number of layers used in practice. This establishes a sufficient regime in which practical GNNs may operate inside the echo chamber window throughout much of their aggregation process. 
+
+3.1 The Diagnostic Gap: Why Dirichlet Energy Can Miss Community Separation 
+
+The above discrepancy is not an artefact but follows from the fact that Dirichlet energy and ECI average over different objects. Dirichlet energy measures representation variation along edges, whereas ECI compares intra- and inter-community distances over node pairs. The following results formalise this distinction. The proofs are deferred to the Appendix. 4Lemma 1 (Inter-community Energy Bound) . Let ¯Einter (H) denote the restriction of the normalized Dirichlet energy to inter-community edges. Then 
+
+¯Einter (H) ≤ |E inter ||E| sup 
+
+> (i,j )∈E inter
+
+Hi
+
+√1 + di
+
+− Hj
+
+p1 + dj
+
+> 2
+
+.
+
+The inter-community contribution to Dirichlet energy scales with the fraction of inter-community edges, so even large cross-community differences have negligible effect when such edges are sparse. 
+
+Proposition 1 (Diagnostic gap) . Let G ∼ SBM( n, 2, p intra , ϵp intra ) with balanced communities, where ϵ = pinter /p intra ∈ (0 , 1) . Let c(i) ∈ { 1, 2} denote the community of node i and ¯h(k) 
+
+> c
+
+the centroid of community c at depth k. Suppose that for any node i at some depth k,
+
+H(k) 
+
+> i
+
+= ¯h(k) 
+
+> c(i)
+
++ ξ(k) 
+
+> i
+
+, ∥ξ(k) 
+
+> i
+
+∥ ≤ η, 
+
+and that ∥¯h(k)1 − ¯h(k)2 ∥ ≥ ∆ > 0 with η < ∆/2. Then, in the limit n → ∞ followed by ϵ → 0,
+
+¯E(H(k)) → 0, ECI (k) ≥ ∆ − 2η
+
+2η + ν > 0.
+
+The contribution of inter-community edges to Dirichlet energy scales with their fraction, which vanishes as ϵ → 0, while inter-community pairwise distances remain bounded away from zero, yielding a persistent gap captured by ECI. The condition η < ∆/2 is a sufficient concentration condition for Proposition 1, and it is not assumed to hold for every community pair or at every depth in a trained network. Figure 1 provides empirical confirmation of the diagnostic gap established in Proposition 1 and Lemma 1. Across both the synthetic SBM, with initial features drawn independently from N (0 , I ),and Coauthor-CS, Dirichlet energy and MAD decay towards zero while ECI remains elevated. This demonstrates that small global Dirichlet energy need not imply vanishing inter-community separation. 
+
+3.2 Echo Chamber Permanence Under Feature Retention 
+
+Standard oversmoothing remedies introduce either a residual connection to the input ( Initial Feature Retention , IFR) or a skip to the previous layer ( Previous Layer Retention , PLR). We show that IFR can preserve the echo chamber asymptotically, whereas PLR can produce arbitrarily long but finite echo chamber windows on sufficiently modular graphs. 
+
+Definition 3 (IFR / PLR) . A GNN satisfies IFR if 
+
+H(k) = fk( ˆA, H(0) ) + αkH(0) 
+
+with αk ≥ αmin > 0, where αmin is a uniform lower bound on the residual coefficient across all layers, and 
+
+ηk = sup 
+
+> i,j
+
+∥[fk]i − [fk]j ∥/2
+
+measures the maximum pairwise variation of the propagated component fk at depth k. It satisfies 
+
+PLR if 
+
+H(k) = (1 − βk) ˆAH (k−1) + βkH(k−1) 
+
+with βk ≥ βmin > 0, where βmin is a uniform lower bound on the skip coefficient across all layers. 
+
+IFR subsumes architectures with a fixed residual to H(0) for which inf k αk > 0, while PLR subsumes architectures with skip connections to the preceding layer. 
+
+Theorem 1 (Echo chamber permanence) . Let G ∼ SBM( n, 2, p, εp ) with initial features satisfying 
+
+∥ξ(0)  
+
+> i
+
+∥ ≤ η0, ∥¯h(0) 1 − ¯h(0) 2 ∥ ≥ ∆, and η0 < α min ∆/[2(1 + αmin )] .(a) IFR: for all k with ηk ≤ η0,
+
+ECI (k) ≥ αmin (∆ − 2η0) − 2η0
+
+4η0 + ν > 0.
+
+The echo chamber is permanent : lim inf k→∞ ECI (k) > 0.
+
+5(b) PLR: the inter-community collapse depth satisfies τinter (βmin , ε ) → ∞ as ε → 0. The echo chamber window widens without bound; for any fixed K, ECI (k) > 0 for all k ≤ K when ε is sufficiently small. 
+
+The condition η0 < α min ∆/[2(1+ αmin )] is sufficient rather than universal. We make the architectural correspondence explicit. APPNP satisfies IFR directly: H(k+1) = (1 − α) ˆAH (k) + αH(0) has constant retention weight αmin = α. GCNII, H(k+1) = σ ((1 − αk) ˆAH (k) + αkH(0) )((1 −
+
+βk)I + βkW(k)), is covered only under its linearised, identity-weight form: dropping σ and setting 
+
+βk = log( λ/k + 1) → 0 recovers IFR with weight αk, but this is an approximation to the trained architecture, not an exact match. GPR-GNN reduces to APPNP at γk = α(1 − α)k and is covered only at that fixed-coefficient setting; free γk does not guarantee αmin > 0. JK-Net retains earlier layers via concatenation rather than a per-step residual, so ∥Hcat  
+
+> i
+
+− Hcat  
+
+> j
+
+∥2 ≥ ∥ H(m) 
+
+> i
+
+− H(m) 
+
+> j
+
+∥2 for any retained block m lower-bounds MAD inter but not MAD intra from above, so it does not directly satisfy PLR. The theorem thus gives mechanistic connections to these architectures rather than exact coverage of their complete trained forms. 
+
+3.3 Task-Conditional Consequences: Node Classification 
+
+Operating in the echo chamber reduces intra-community variance and preserves inter-community separation. We consider the implications of this region for node classification, where performance depends on how community structure aligns with class labels. The following theorem formalises this relationship. The proof is provided in the Appendix. 
+
+Theorem 2 (Task-conditional consequence) . Consider node classification on G ∼
+
+SBM( n, m, p intra , p inter ). Suppose 
+
+Hi = ¯hc(i) + ξi,
+
+with ∥ξi∥ ≤ η, ∥¯hc − ¯hc′ ∥ ≥ ∆ > 0 for all c̸ = c′, and η < ∆/2, where FR denotes the Fisher Ratio. (a) Homophily (c(i) = c(j) ⇐⇒ yi = yj ): 
+
+FR( c, c ′) ≥ (∆ − 2η)2
+
+8η2 , FR( c, c ′) := ∥ ¯Hc − ¯Hc′ ∥2
+
+tr(Cov( Hc)) + tr(Cov( Hc′ )) ,
+
+where 
+
+¯Hc = 1
+
+|Cc|
+
+X
+
+> i∈Cc
+
+Hi.
+
+(b) Heterophily (∃ i, j ∈ Cs with yi = a̸ = b = yj ): 
+
+∥Hi − Hj ∥ ≤ 2η, ∥wa − wb∥ ≥ γη ,
+
+for any multiclass linear classifier fc(h) = w⊤ 
+
+> c
+
+h + bc that classifies both i and j correctly with margin γ > 0. Equivalently, if ∥wa − wb∥ ≤ B, then no margin γ > Bη is achievable. 
+
+Under homophily, where communities coincide with classes, as η → 0 the intra-class variance vanishes while inter-class separation remains bounded. The Fisher ratio therefore grows without bound, improving class separability and confirming that the echo chamber can be beneficial under homophily. In contrast, under heterophily, nodes with different labels can belong to the same community and their representations collapse: ∥Hi − Hj ∥ ≤ 2η. Maintaining a fixed margin 
+
+γ > 0 then requires ∥wa − wb∥ ≥ γ/η , demonstrating that the echo chamber makes margin-based classification increasingly difficult as η → 0.
+
+4 Community-Aware Split Propagation (CASP) 
+
+Our theoretical analysis shows that standard propagation can enter an echo chamber region, yet the relative strength of these two effects is fixed by the graph structure. Theorem 2 shows this phenomenon is beneficial under homophily but harmful under heterophily, and the direction depends 6on whether intra- or inter-community edges are more label-consistent. This motivates explicit, data-driven control over the two mixing processes. We do this by decomposing the adjacency matrix and weighting the two components separately. 
+
+Definition 4 (CASP) . Let C = {C1, . . . , C m} be a community partition obtained by any community detection algorithm. We define community-aware split propagation as: 
+
+H(k) = αintra Pintra H(k−1) + αinter Pinter H(k−1) ,
+
+where P is the propagation operator of the backbone GNN and Pintra , Pinter are its restrictions to intra- and inter-community edges, with P = Pintra + Pinter .
+
+For GCN, P = ˜A = D−1/2(A + I)D−1/2 and the layer becomes H(k) = ( αintra ˜Aintra +
+
+αinter ˜Ainter )H(k−1) W(k). We define the propagation ratio r = αintra /α inter , which controls the balance between the two: increasing r strengthens intra-community aggregation, while decreasing 
+
+r promotes cross-community mixing. The high-level architecture of CASP is depicted in Figure 5 (Appendix). 
+
+4.1 Mass-Preserving Parameterisation 
+
+We determine (αintra , α inter ) by requiring CASP to preserve expected aggregation mass. Since 
+
+pi = kintra  
+
+> i
+
+/d i varies across nodes, a per-node constraint cannot be satisfied with shared scalars. Instead, we enforce the constraint in expectation: under the balanced SBM, pi concentrates around its mean p := |E intra |/|E| , so we require 
+
+αintra p + αinter (1 − p) = 1 .
+
+Combining this with the propagation ratio r, which controls the balance between intra- and inter-community aggregation, yields 
+
+αintra = rrp + (1 − p) , αinter = 1
+
+rp + (1 − p) . (1) Increasing r strengthens intra-community aggregation while decreasing r promotes cross-community mixing. We establish three key properties of this parameterisation in Appendix C: (i) at r = 1 ,CASP recovers standard propagation; (ii) αintra increases and αinter decreases monotonically in r,providing stable interpretable control with no abrupt transitions; and (iii) each node aggregates the same expected total mass as under standard propagation for any r > 0, so CASP rebalances the 
+
+source of information without changing its scale . In particular, r > 1 biases aggregation toward intra-community edges, which Theorem 2 shows is beneficial under homophily, while r < 1 promotes cross-community mixing, beneficial under heterophily. 
+
+4.2 Data-Driven Calibration 
+
+The appropriate direction of r depends on whether intra-community edges are more label-consistent than inter-community edges. We estimate this directly from labelled training edges. Specifically, 
+
+hintra = |{ (i, j ) ∈ E tr intra : yi = yj }| |E tr intra | , hinter = |{ (i, j ) ∈ E tr inter : yi = yj }| |E tr inter | ,
+
+and δ = hintra − hinter . We then set r = exp( θδ ) with learnable θ > 0. The exponential ensures 
+
+r > 0 for all δ, maps δ = 0 to r = 1 (recovering standard propagation), and grows or decays symmetrically around this baseline. A positive δ indicates that intra-community edges are more label-consistent, in which case r > 1 emphasises within-community propagation. Conversely, when 
+
+δ < 0, cross-community edges are more informative and r < 1 promotes mixing. 
+
+4.3 Complexity Analysis 
+
+CASP introduces one scalar parameter θ. Preprocessing consists of community detection, edge split-ting, and computing the statistics p and δ. Community detection is performed once as a preprocessing step using the Louvain algorithm with O(|E| ) complexity, followed by O(|E| ) for edge splitting. 
+
+δ is computed directly from labelled training edges in O(|E| ), introducing no additional learned parameters or modules. During training, each layer performs two sparse propagation steps over 
+
+ˆAintra and ˆAinter . Since |E intra | + |E inter | = |E| , the total message-passing cost remains O(|E| d)
+
+per layer up to a constant factor, with memory linear in the number of edges. 75 Experiments 
+
+5.1 Experimental Setup 
+
+We provide experiments on diverse aspects of our work, focusing on the echo chamber effect, the ECI metric, and the CASP plugin. We evaluate CASP on eleven node classification benchmarks: five homophilic [20] and six heterophilic [21, 22] datasets. We augment five backbone GNNs with CASP, selected to cover a broad design spectrum: GCN [2] as the standard message-passing baseline; APPNP [12] as a propagation-decoupled method; MixHop [23] as a multi-hop aggregation model; FAGCN [24] as a spectral architecture; and DirGNN [25] as a direction-aware model. Community detection is performed once as a preprocessing step using the Louvain algorithm. For node classification, we use ten independently generated random 60/20/20 train/validation/test splits following [26, 19], with a distinct seed for each split, and report the mean and standard deviation across the ten runs. Dataset statistics, model hyperparameters, and implementation details are provided in Appendix D. 
+
+5.2 Echo Chamber Across Graph Types 
+
+We validate the echo chamber effect and ECI diagnostic on both synthetic and real-world graphs. We first sweep ϵ = pinter /p intra on SBM graphs to test Proposition 1. As ϵ decreases, ECI peaks grow and the echo chamber window of Definition 2 widens, while at ϵ = 0 .4 ECI stays near unity and the region disappears, confirming that the diagnostic gap is a consequence of modularity rather than architecture. GCN eventually exits the echo chamber at sufficient depth, exhibiting the non-monotonic arc predicted by our two-timescale analysis. APPNP, GCNII, and GPR-GNN instead plateau at elevated ECI and do not return to unity within the evaluated depth range, consistent with persistent echo-chamber behaviour under feature retention. 
+
+Figure 3: SBM sweep ( n = 1500 , m = 5 , E[deg] = 20 ): ECI depth profiles across ϵ = pinter /p intra .Figure 4 extends these findings to real-world graphs. On homophilic graphs, ECI rises and remains elevated throughout, strengthening with modularity Q: Citeseer ( Q = 0 .89 ) and DBLP ( Q = 0 .76 )sustain the largest echo chambers. High-modularity heterophilic graphs, Roman-Empire ( Q = 0 .99 )and Amazon-Ratings ( Q = 0 .97 ), exhibit persistent echo chambers despite their heterophilic label structure, consistent with Theorem 2, which predicts that this region is harmful in this setting. At low modularity (Tolokers, Q = 0 .52 ; Film, Q = 0 .50 ), ECI stays near unity, and on Film, GCN drops below unity, suggesting that inter-community representations become more homogeneous than intra-community ones. Across all graphs, APPNP, GCNII, and GPR-GNN reach moderate ECI plateaus and do not exit within the evaluated depth range, reproducing the finite-depth behaviour observed on the SBM. 
+
+5.3 Node Classification Performance of CASP 
+
+Table 1 reports node classification performance. CASP improves its corresponding backbone on majority of the dataset–model combinations. On homophilic datasets, the gains are consistent with Theorem 2(a): stronger intra-community propagation reduces within-class variance when communities align with labels. Gains are often larger on heterophilic datasets, where CASP promotes cross-community mixing through r < 1. Note that the improvement depends on the backbone: CASP modifies propagation but does not replace the need for an appropriate aggregation architecture. The three observed losses are small relative to the corresponding backbone performance. 8Figure 4: ECI profiles for real-world homophilic (top row) and heterophilic (bottom row) graphs. Table 1: Node classification on homophilic and heterophilic benchmarks. Each base model is paired with its CASP-augmented variant ( ↑ gain, ↓ loss). ROC-AUC (%) is reported for Minesweeper, Tolokers, and Questions; accuracy (%) is reported elsewhere. A subset of baseline results is taken from [26, 19, 27]; the remaining baselines are reproduced using the hyperparameters reported in their original papers. 
+
+Homophilic Heterophilic Method Cora Full Citeseer Pubmed DBLP Photo Film Minesweeper Tolokers Questions Amazon-Ratings Roman-Empire GCN 68.06 ±0.98 76.68 ±1.64 86.74 ±0.47 83.93 ±0.84 89.30 ±0.82 30.26 ±0.79 74.79 ±1.78 79.61 ±0.66 65.47 ±0.88 37.99 ±0.61 71.23 ±0.22 
+
+GCN + CASP 70.62 ±0.56 79.36 ±1.89 89.68 ±0.50 87.06 ±0.87 94.83 ±0.43 37.23 ±2.17 84.39 ±1.52 80.49 ±0.56 76.01 ±1.29 49.57 ±0.95 74.18 ±0.51           
+
+> ↑2.56 ↑2.68 ↑2.94 ↑3.13 ↑5.53 ↑6.97 ↑9.60 ↑0.88 ↑10.54 ↑11.58 ↑2.95
+
+APPNP 70.63 ±0.51 77.89 ±1.07 83.37 ±0.42 85.36 ±0.40 93.74 ±0.42 36.44 ±1.78 62.62 ±1.66 68.98 ±0.96 65.04 ±1.42 43.48 ±0.68 64.98 ±0.44 
+
+APPNP + CASP 70.97 ±0.48 78.28 ±1.56 88.76 ±0.35 84.62 ±0.50 95.13 ±0.49 38.15 ±1.59 63.07 ±1.40 72.43 ±0.89 66.20 ±1.17 47.38 ±1.25 68.73 ±0.34           
+
+> ↑0.34 ↑0.39 ↑5.39 ↓0.74 ↑1.39 ↑1.71 ↑0.45 ↑3.45 ↑1.16 ↑3.90 ↑3.75
+
+MixHop 64.85 ±1.08 70.75 ±2.95 80.75 ±2.29 84.27 ±0.31 94.83 ±0.41 32.22 ±2.34 90.46 ±0.51 74.87 ±0.61 75.90 ±1.10 42.81 ±0.90 81.78 ±0.52 
+
+MixHop + CASP 65.27 ±1.35 74.83 ±3.09 91.13 ±0.43 89.04 ±1.95 94.85 ±0.54 39.42 ±1.90 90.60 ±0.48 75.29 ±0.68 76.30 ±0.99 44.99 ±2.47 81.88 ±0.45           
+
+> ↑0.42 ↑4.08 ↑10.38 ↑4.77 ↑0.02 ↑7.20 ↑0.14 ↑0.42 ↑0.40 ↑2.18 ↑0.10
+
+FAGCN 70.71 ±0.74 83.51 ±0.43 86.08 ±0.33 85.37 ±0.89 93.67 ±0.50 31.59 ±1.37 85.19 ±1.27 79.56 ±0.77 72.22 ±1.76 42.63 ±1.20 68.59 ±1.41 
+
+FAGCN + CASP 72.32 ±0.76 81.47 ±1.57 89.77 ±0.20 85.80 ±1.41 95.09 ±0.44 38.18 ±1.10 85.64 ±0.64 80.18 ±1.06 73.90 ±2.02 45.37 ±1.56 71.43 ±0.80           
+
+> ↑1.61 ↓2.04 ↑3.69 ↑0.43 ↑1.42 ↑6.59 ↑0.45 ↑0.62 ↑1.68 ↑2.74 ↑2.84
+
+DirGNN 67.80 ±0.53 77.71 ±0.78 86.94 ±0.55 81.22 ±0.54 95.38 ±0.32 35.76 ±1.68 81.52 ±0.41 82.64 ±0.75 59.95 ±0.79 46.66 ±0.61 80.08 ±1.07 
+
+DirGNN + CASP 68.88 ±0.82 78.32 ±2.89 90.03 ±0.53 83.93 ±1.82 95.15 ±0.45 40.49 ±1.80 89.77 ±0.56 84.06 ±0.63 75.26 ±1.06 49.09 ±1.19 80.12 ±0.70           
+
+> ↑1.08 ↑0.61 ↑3.09 ↑2.71 ↓0.23 ↑4.73 ↑8.25 ↑1.42 ↑15.31 ↑2.43 ↑0.04
+
+Additional Experiments Appendix E provides additional experiments related to ECI, including robustness to the community detection algorithm, partition noise, initial feature conditions, compari-son with existing metrics, and the empirical validation of theoretical assumptions. It also provides CASP component ablations, robustness to sparse data splits and noisy partitions, depth analysis, comparisons with existing baselines, empirical validation of echo-chamber window modulation, scalability analysis, and sensitivity to the Louvain resolution parameter. 
+
+6 Related Work 
+
+Oversmoothing diagnostics. Oversmoothing in GNNs has been extensively studied since Li et al. [28]. Dirichlet energy [4, 5] and MAD [6] are the dominant diagnostics, but both reduce representations to a scalar, treating all graph regions as homogeneous and failing to distinguish intra-from inter-community convergence. Zhou et al. [29] propose the Group Distance Ratio (GDR), which stratifies distances using class-label-defined groups but requires supervision and primarily serves as a training objective rather than a structural diagnostic. Keriven et al. [30] shows that finite smoothing can contract within-community variation faster than between-community separation. ECI diagnoses this intermediate regime without labels. ECI identifies three regions on modular graphs corresponding 9to the two-timescale propagation process. Although echo chambers and related metrics have been studied in social dynamics to describe ideological homogenisation in online communities [31, 32, 33], our use of the term refers specifically to asymmetric representation collapse during GNN message passing. Several methods mitigate oversmoothing by changing propagation depth or retaining earlier represen-tations. DropEdge [34] randomly removes edges, SkipNode [35] allows selected nodes to bypass convolution, and Shadow-GNN [36] restricts the receptive-field scope independently of network depth. These approaches can slow smoothing or preserve earlier information, but they do not explicitly measure or control the relative rates of intra- and inter-community convergence. 
+
+Community structure and GNN design. Several works incorporate community structure into GNN design. Skryagin et al. [37] dynamically cluster nodes at each layer and normalize within clusters to mitigate oversmoothing. Begga et al. [38] use precomputed partitions to guide aggregation across homophilic and heterophilic settings. Cluster-GCN [39] uses graph partitions for scalable mini-batch training, thereby favouring intra-cluster propagation within each batch. Unlike CASP, its purpose is computational scalability rather than explicit control of the intra/inter-community propagation balance. GDC [40] preprocesses the graph using diffusion-based rewiring, whereas CASP retains the edge set and reweights structurally defined edge classes during propagation. Palowitch et al. [41] and Platonov et al. [22] show that label–community alignment predicts GNN performance more reliably than homophily alone. DiffPool [42] and MinCutPool [43] learn soft community assignments for graph-level tasks. CASP builds on this broader use of community-aware aggregation but uses a label-calibrated parameter to control the relative contributions of intra- and inter-community messages. Its principal role in this work is therefore a theory-motivated intervention for validating and modulating the propagation behaviour identified by ECI, rather than a replacement for the underlying backbone architecture. 
+
+7 Conclusion, Limitations, and Future Work 
+
+This paper formalizes the echo chamber effect in GNNs, where intra-community representations collapse while inter-community separation persists. We introduced ECI to detect this effect and showed that feature-retention mechanisms can preserve it under the conditions of our theoretical analysis. Our analysis demonstrated that the echo chamber can benefit node classification when communities align with classes but harm it when communities contain different classes. We also proposed CASP, a lightweight plugin that decouples intra- and inter-community propagation and learns their balance from label structure. Experiments showed that CASP improves diverse backbones relative to their corresponding unmodified versions across most evaluated settings. Our theoretical analysis assumes a balanced SBM, centroid-concentrated representations, and lin-earised propagation. It therefore does not directly cover the learned weights, nonlinearities, and training dynamics of complete GNN architectures. CASP relies on a fixed preprocessing partition whose quality can affect performance, although our experiments show robustness to substantial partition noise. Its data-driven calibration also requires labelled training edges, which may be scarce in low-label settings. Moreover, CASP modifies propagation but does not replace the representational capabilities of its backbone, so its absolute performance remains backbone-dependent. Extending the theory to more general graph models and trained nonlinear GNNs, jointly learning community structure, and using ECI to guide GNN architecture design are natural directions for future work. 
+
+References   
+
+> [1] Justin Gilmer, Samuel S Schoenholz, Patrick F Riley, Oriol Vinyals, and George E Dahl. Neural message passing for quantum chemistry. In International conference on machine learning , pages 1263–1272. Pmlr, 2017. [2] Thomas N Kipf and Max Welling. Semi-supervised classification with graph convolutional networks. In
+> International Conference on Learning Representations , 2017. [3] T Konstantin Rusch, Michael M Bronstein, and Siddhartha Mishra. A survey on oversmoothing in graph neural networks. arXiv preprint arXiv:2303.10993 , 2023.
+
+10 [4] Chen Cai and Yusu Wang. A note on over-smoothing for graph neural networks. arXiv preprint arXiv:2006.13318 , 2020. [5] Anna Bison and Alessandro Sperduti. Analysis of dirichlet energies as over-smoothing measures. arXiv preprint arXiv:2512.09890 , 2025. [6] Deli Chen, Yankai Lin, Wei Li, Peng Li, Jie Zhou, and Xu Sun. Measuring and relieving the over-smoothing problem for graph neural networks from the topological view. In Proceedings of the AAAI conference on artificial intelligence , volume 34, pages 3438–3445, 2020. [7] Michelle Girvan and Mark EJ Newman. Community structure in social and biological networks. Proceed-ings of the national academy of sciences , 99(12):7821–7826, 2002. [8] Sergio Antonio Alcalá-Corona, Santiago Sandoval-Motta, Jesus Espinal-Enriquez, and Enrique Hernandez-Lemus. Modularity in biological networks. Frontiers in Genetics , 12:701331, 2021. [9] Filippo Radicchi, Santo Fortunato, and Alessandro Vespignani. Citation networks. Models of science dynamics: Encounters between complexity theory and information sciences , pages 233–257, 2011. [10] Xu Zhang, Yonghui Xu, Wei He, Wei Guo, and Lizhen Cui. A comprehensive review of the oversmoothing in graph neural networks. In CCF Conference on Computer Supported Cooperative Work and Social Computing , pages 451–465. Springer, 2023. [11] Dimitrios Kelesis, Dimitris Fotakis, and Georgios Paliouras. Analyzing the effect of residual connections to oversmoothing in graph neural networks. Machine Learning , 114(8):184, 2025. [12] Johannes Gasteiger, Aleksandar Bojchevski, and Stephan Günnemann. Predict then propagate: Graph neural networks meet personalized pagerank. In International Conference on Learning Representations ,2019. [13] Ming Chen, Zhewei Wei, Zengfeng Huang, Bolin Ding, and Yaliang Li. Simple and deep graph convolu-tional networks. In International conference on machine learning , pages 1725–1735. PMLR, 2020. [14] Eli Chien, Jianhao Peng, Pan Li, and Olgica Milenkovic. Adaptive universal generalized pagerank graph neural network. In International Conference on Learning Representations , 2021. [15] Paul W Holland, Kathryn Blackmond Laskey, and Samuel Leinhardt. Stochastic blockmodels: First steps. 
+
+Social networks , 5(2):109–137, 1983. [16] Vincent D Blondel, Jean-Loup Guillaume, Renaud Lambiotte, and Etienne Lefebvre. Fast unfolding of communities in large networks. Journal of statistical mechanics: theory and experiment , 2008(10):P10008, 2008. [17] Kenta Oono and Taiji Suzuki. Graph neural networks exponentially lose expressive power for node classification. In International Conference on Learning Representations , 2020. [18] Felix Wu, Amauri Souza, Tianyi Zhang, Christopher Fifty, Tao Yu, and Kilian Weinberger. Simplifying graph convolutional networks. In International conference on machine learning , pages 6861–6871. Pmlr, 2019. [19] Asela Hevapathige, Asiri Wijesinghe, and Ahad N Zehmakan. Beyond fixed depth: Adaptive graph neural networks for node classification under varying homophily. In Proceedings of the AAAI Conference on Artificial Intelligence , volume 40, pages 21717–21725, 2026. [20] Aleksandar Bojchevski and Stephan Günnemann. Deep gaussian embedding of graphs: Unsupervised inductive learning via ranking. In International Conference on Learning Representations , 2018. [21] Hongbin Pei, Bingzhe Wei, Kevin Chen-Chuan Chang, Yu Lei, and Bo Yang. Geom-gcn: Geometric graph convolutional networks. In International Conference on Learning Representations , 2020. [22] Oleg Platonov, Denis Kuznedelev, Michael Diskin, Artem Babenko, and Liudmila Prokhorenkova. A critical look at the evaluation of gnns under heterophily: Are we really making progress? In The Eleventh International Conference on Learning Representations , 2023. [23] Sami Abu-El-Haija, Bryan Perozzi, Amol Kapoor, Nazanin Alipourfard, Kristina Lerman, Hrayr Harutyun-yan, Greg Ver Steeg, and Aram Galstyan. Mixhop: Higher-order graph convolutional architectures via sparsified neighborhood mixing. In international conference on machine learning , pages 21–29. PMLR, 2019. 
+
+11 [24] Deyu Bo, Xiao Wang, Chuan Shi, and Huawei Shen. Beyond low-frequency information in graph convolutional networks. In Proceedings of the AAAI conference on artificial intelligence , volume 35, pages 3950–3957, 2021. [25] Emanuele Rossi, Bertrand Charpentier, Francesco Di Giovanni, Fabrizio Frasca, Stephan Günnemann, and Michael M Bronstein. Edge directionality improves learning on heterophilic graphs. In Learning on graphs conference , pages 25–1. PMLR, 2024. [26] Jialong Chen, Bowen Deng, Chuan Chen, Zibin Zheng, et al. Graph neural ricci flow: Evolving feature from a curvature perspective. In The Thirteenth International Conference on Learning Representations ,2025. [27] Shibing Mo, Kai Wu, Qixuan Gao, Xiangyi Teng, and Jing Liu. Autosgnn: automatic propagation mechanism discovery for spectral graph neural networks. In Proceedings of the AAAI Conference on Artificial Intelligence , volume 39, pages 19493–19502, 2025. [28] Qimai Li, Zhichao Han, and Xiao-Ming Wu. Deeper insights into graph convolutional networks for semi-supervised learning. In Proceedings of the AAAI conference on artificial intelligence , volume 32, 2018. [29] Kaixiong Zhou, Xiao Huang, Yuening Li, Daochen Zha, Rui Chen, and Xia Hu. Towards deeper graph neural networks with differentiable group normalization. Advances in neural information processing systems , 33:4917–4928, 2020. [30] Nicolas Keriven. Not too little, not too much: a theoretical analysis of graph (over) smoothing. Advances in Neural Information Processing Systems , 35:2268–2281, 2022. [31] Matteo Cinelli, Gianmarco De Francisci Morales, Alessandro Galeazzi, Walter Quattrociocchi, and Michele Starnini. The echo chamber effect on social media. Proceedings of the national academy of sciences ,118(9):e2023301118, 2021. [32] Faisal Alatawi, Paras Sheth, and Huan Liu. Quantifying the echo chamber effect: An embedding distance-based approach. In Proceedings of the International Conference on Advances in Social Networks Analysis and Mining , pages 38–45, 2023. [33] Salsa Della Guitara Putri, Eko Priyo Purnomo, and Tiara Khairunissa. Echo chambers and algorithmic bias: The homogenization of online culture in a smart society. In SHS Web of Conferences , volume 202, page 05001. EDP Sciences, 2024. [34] Yu Rong, Wenbing Huang, Tingyang Xu, and Junzhou Huang. Dropedge: Towards deep graph convolu-tional networks on node classification. International Conference on Learning Representations , 2020. [35] Weigang Lu, Yibing Zhan, Binbin Lin, Ziyu Guan, Liu Liu, Baosheng Yu, Wei Zhao, Yaming Yang, and Dacheng Tao. Skipnode: On alleviating performance degradation for deep graph convolutional networks. 
+
+IEEE Transactions on Knowledge and Data Engineering , 36(11):7030–7043, 2024. [36] Hanqing Zeng, Muhan Zhang, Yinglong Xia, Ajitesh Srivastava, Andrey Malevich, Rajgopal Kannan, Viktor Prasanna, Long Jin, and Ren Chen. Decoupling the depth and scope of graph neural networks. 
+
+Advances in neural information processing systems , 34:19665–19679, 2021. [37] Arseny Skryagin, Felix Divo, Mohammad A Ali, Devendra S Dhami, and Kristian Kersting. Graph neural networks need cluster-normalize-activate modules. Advances in Neural Information Processing Systems ,37:79819–79842, 2024. [38] Ahmed Begga, Waqar Ali, Gabriel Niculescu, Francisco Escolano, Thilo Stadelmann, and Marcello Pelillo. Community-hop: Enhancing node classification through community preference. In Joint IAPR International Workshops on Statistical Techniques in Pattern Recognition (SPR) and Structural and Syntactic Pattern Recognition (SSPR) , pages 21–30. Springer, 2024. [39] Wei-Lin Chiang, Xuanqing Liu, Si Si, Yang Li, Samy Bengio, and Cho-Jui Hsieh. Cluster-gcn: An efficient algorithm for training deep and large graph convolutional networks. In Proceedings of the 25th ACM SIGKDD international conference on knowledge discovery & data mining , pages 257–266, 2019. [40] Johannes Gasteiger, Stefan Weißenberger, and Stephan Günnemann. Diffusion improves graph learning. 
+
+Advances in neural information processing systems , 32, 2019. [41] John Palowitch, Anton Tsitsulin, Brandon Mayer, and Bryan Perozzi. Graphworld: Fake graphs bring real insights for gnns. In Proceedings of the 28th ACM SIGKDD conference on knowledge discovery and data mining , pages 3691–3701, 2022. 
+
+12 [42] Zhitao Ying, Jiaxuan You, Christopher Morris, Xiang Ren, Will Hamilton, and Jure Leskovec. Hierarchical graph representation learning with differentiable pooling. Advances in neural information processing systems , 31, 2018. [43] Filippo Maria Bianchi, Daniele Grattarola, and Cesare Alippi. Spectral clustering with graph neural networks for graph pooling. In International conference on machine learning , pages 874–883. PMLR, 2020. [44] Herman Chernoff. A measure of asymptotic efficiency for tests of a hypothesis based on the sum of observations. The Annals of Mathematical Statistics , pages 493–507, 1952. [45] Diederik P Kingma and Jimmy Ba. Adam: A method for stochastic optimization. International Conference on Learning Representations , 2015. [46] Vincent A Traag, Ludo Waltman, and Nees Jan Van Eck. From louvain to leiden: guaranteeing well-connected communities. Scientific reports , 9(1):5233, 2019. [47] Ulrike Von Luxburg. A tutorial on spectral clustering. Statistics and computing , 17(4):395–416, 2007. [48] Petar Veliˇ ckovi´ c, Guillem Cucurull, Arantxa Casanova, Adriana Romero, Pietro Liò, and Yoshua Bengio. Graph attention networks. In International Conference on Learning Representations , 2018. [49] Will Hamilton, Zhitao Ying, and Jure Leskovec. Inductive representation learning on large graphs. 
+
+Advances in neural information processing systems , 30, 2017. [50] Michaël Defferrard, Xavier Bresson, and Pierre Vandergheynst. Convolutional neural networks on graphs with fast localized spectral filtering. Advances in neural information processing systems , 29, 2016. [51] Susheel Suresh, Vinith Budde, Jennifer Neville, Pan Li, and Jianzhu Ma. Breaking the limit of graph neural networks by improving the assortativity of graphs with local mixing patterns. In Proceedings of the 27th ACM SIGKDD conference on knowledge discovery & data mining , pages 1541–1551, 2021. [52] Sitao Luan, Chenqing Hua, Qincheng Lu, Jiaqi Zhu, Mingde Zhao, Shuyuan Zhang, Xiao-Wen Chang, and Doina Precup. Is heterophily a real nightmare for graph neural networks to do node classification? arXiv preprint arXiv:2109.05641 , 2021. [53] Jiong Zhu, Yujun Yan, Lingxiao Zhao, Mark Heimann, Leman Akoglu, and Danai Koutra. Beyond homophily in graph neural networks: Current limitations and effective designs. Advances in neural information processing systems , 33:7793–7804, 2020. [54] Yujun Yan, Milad Hashemi, Kevin Swersky, Yaoqing Yang, and Danai Koutra. Two sides of the same coin: Heterophily and oversmoothing in graph convolutional neural networks. In 2022 IEEE International Conference on Data Mining (ICDM) , pages 1287–1292. IEEE, 2022. [55] Derek Lim, Felix Hohne, Xiuyu Li, Sijia Linda Huang, Vaishnavi Gupta, Omkar Bhalerao, and Ser Nam Lim. Large scale learning on non-homophilous graphs: New benchmarks and strong simple methods. 
+
+Advances in neural information processing systems , 34:20887–20902, 2021. [56] Xiang Li, Renyu Zhu, Yao Cheng, Caihua Shan, Siqiang Luo, Dongsheng Li, and Weining Qian. Finding global homophily in graph neural networks when meeting heterophily. In International conference on machine learning , pages 13242–13256. PMLR, 2022. [57] Yilun Zheng, Jiahao Xu, and Lihui Chen. Learn from heterophily: Heterophilous information-enhanced graph neural network. In 2025 International Joint Conference on Neural Networks (IJCNN) , pages 1–8. IEEE, 2025. [58] Asela Hevapathige, Ahad N Zehmakan, and Qing Wang. Depth-adaptive graph neural networks via learnable bakry-émery curvature. In Proceedings of the 31st ACM SIGKDD Conference on Knowledge Discovery and Data Mining V. 2 , pages 944–955, 2025. [59] Weihua Hu, Matthias Fey, Marinka Zitnik, Yuxiao Dong, Hongyu Ren, Bowen Liu, Michele Catasta, and Jure Leskovec. Open graph benchmark: Datasets for machine learning on graphs. Advances in neural information processing systems , 33:22118–22133, 2020. [60] Jörg Reichardt and Stefan Bornholdt. Statistical mechanics of community detection. Physical Review E—Statistical, Nonlinear, and Soft Matter Physics , 74(1):016110, 2006. 
+
+13 Appendix 
+
+Table of Contents 
+
+A CASP Architecture Overview . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 14 B Proofs of Main Theoretical Results . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 15 B.1 Proof of Lemma 1 . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 15 B.2 Proof of Proposition 1 . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 15 B.3 Proof of Theorem 1 . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 16 B.4 Proof of Theorem 2 . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 17 C Proofs of CASP Theoretical Properties . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 18 D Experimental Design . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 18 D.1 Dataset Statistics . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 18 D.2 Model Hyperparameters . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 19 D.3 Implementation Details . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 19 E Additional Experiments . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 19 E.1 Ablation Studies on ECI . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 19 E.1.1 Empirical Validation of Theorem 2 . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 20 E.1.2 Robustness to Community Detection . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 20 E.1.3 Effect of Initial Node Features on ECI . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 20 E.1.4 Diagnostic Gap: ECI vs. Existing Metrics . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 21 E.1.5 Empirical Validation of Theoretical Assumptions . . . . . . . . . . . . . . . . . . . . . . . . . . . . 23 E.2 Ablation Studies on CASP . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 24 E.2.1 Component Analysis of CASP . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 24 E.2.2 Robustness to Data Splits and Community Detection . . . . . . . . . . . . . . . . . . . . . . . . . 24 E.2.3 Robustness to Noisy Community Partitions . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 24 E.2.4 Depth Analysis and Oversmoothing Robustness . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 25 E.2.5 Node Classification Performance with Existing Baselines . . . . . . . . . . . . . . . . . . . . . 25 E.2.6 Impact of CASP on ECI and Echo Chamber Window . . . . . . . . . . . . . . . . . . . . . . . . . 27 E.2.7 Scalability Analysis . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 27 E.2.8 Sensitivity to Resolution Parameter in Louvain Algorithm . . . . . . . . . . . . . . . . . . . . 28 
+
+A CASP Architecture Overview 
+
+Figure 5 illustrates the high-level architecture of CASP. Given an input graph, CASP first identifies community structure via the Louvain algorithm as a one-time preprocessing step. Then, message passing procedure is split into two streams: one operating along intra-community edges and one along inter-community edges. The two streams are scaled by weights calibrated directly from the graph’s label structure, allowing CASP to amplify intra-community aggregation under homophily and promote inter-community mixing under heterophily. Pintra H(k−1)   
+
+> Pinter H(k−1)
+> ×αintra
+> ×αinter
+
++        
+
+> (a) Initial Graph (b) Community Identi fi ed
+> Graph
+> (c) Community Aware
+> Split Propagation
+> Intra Community
+> Propagation
+> Inter Community
+> Propagation
+
+H(k)
+
+Figure 5: High-level Architecture of CASP 14 B Proofs of Main Theoretical Results 
+
+In this section we provide proofs for the theoretical results stated in the main text, in order of appearance. 
+
+B.1 Proof of Lemma 1 Lemma 1 (Inter-community Energy Bound) . Let ¯Einter (H) denote the restriction of the normalized Dirichlet energy to inter-community edges. Then 
+
+¯Einter (H) ≤ |E inter ||E| sup 
+
+> (i,j )∈E inter
+
+Hi
+
+√1 + di
+
+− Hj
+
+p1 + dj
+
+> 2
+
+.
+
+Proof. We start by defining: 
+
+fij = Hi
+
+√1 + di
+
+− Hj
+
+p1 + dj
+
+> 2
+
+≥ 0, M = sup 
+
+> (i,j )∈E inter
+
+fij .
+
+Then 
+
+¯Einter (H) = 1
+
+|E| 
+
+X
+
+> (i,j )∈E inter
+
+fij ≤ 1
+
+|E| 
+
+X
+
+> (i,j )∈E inter
+
+M = |E inter ||E| M, 
+
+which proves the claim. 
+
+B.2 Proof of Proposition 1 Proposition 1 (Diagnostic gap) . Let G ∼ SBM( n, 2, p intra , ϵp intra ) with balanced communities, where ϵ = pinter /p intra ∈ (0 , 1) . c(i) ∈ { 1, 2} denotes the community of node i and ¯h(k) 
+
+> c
+
+the centroid of community c at depth k. Suppose that at some depth k,
+
+H(k) 
+
+> i
+
+= ¯h(k) 
+
+> c(i)
+
++ ξ(k) 
+
+> i
+
+, ∥ξ(k) 
+
+> i
+
+∥ ≤ η, 
+
+and that ∥¯h(k)1 − ¯h(k)2 ∥ ≥ ∆ > 0 with η < ∆/2. Then, in the limit n → ∞ followed by ϵ → 0,
+
+¯E(H(k)) → 0, ECI (k) ≥ ∆ − 2η
+
+2η + ν > 0.
+
+Proof. We can write: 
+
+¯E(H(k)) = ¯Eintra (H(k)) + ¯Einter (H(k)).
+
+Step 1: the intra-community contribution vanishes as n → ∞ for fixed ϵ.
+
+Fix (i, j ) ∈ E intra . Since c(i) = c(j), we have ¯h(k) 
+
+> c(i)
+
+= ¯h(k)
+
+> c(j)
+
+, and therefore 
+
+H(k)
+
+> i
+
+√1 + di
+
+− H(k)
+
+> j
+
+p1 + dj
+
+= ¯h(k)
+
+> c(i)
+
+1
+
+√1 + di
+
+− 1
+
+p1 + dj
+
+!
+
++ ξ(k)
+
+> i
+
+√1 + di
+
+− ξ(k)
+
+> j
+
+p1 + dj
+
+.
+
+Hence 
+
+H(k)
+
+> i
+
+√1 + di
+
+− H(k)
+
+> j
+
+p1 + dj
+
+≤ M 1
+
+√1 + di
+
+− 1
+
+p1 + dj
+
++ η
+
+√1 + di
+
++ η
+
+p1 + dj
+
+.
+
+Under SBM degree concentration, for fixed ϵ we have dmin = Ω( np intra ) with high probability by a Chernoff bound [44], so 
+
+1
+
+√1 + di
+
+, 1
+
+p1 + dj
+
+= O(d−1/2min ), 1
+
+√1 + di
+
+− 1
+
+p1 + dj
+
+= O(d−1min ).
+
+15 Therefore each intra-community edge contributes O(d−1/2min )2 = O(d−1min ) to the squared norm, and thus 
+
+¯Eintra (H(k)) = 1
+
+|E| 
+
+X
+
+> (i,j )∈E intra
+
+O(d−1min ) = O(d−1min ) → 0
+
+as n → ∞ .
+
+Step 2: the inter-community contribution vanishes as ϵ → 0.
+
+By Lemma 1, 
+
+¯Einter (H(k)) ≤ |E inter ||E| C0.
+
+For the balanced two-block SBM, |E inter ||E| → ϵ
+
+1 + ϵ
+
+in expectation, and the same scaling holds with high probability by concentration. Hence 
+
+¯Einter (H(k)) = O
+
+ ϵ
+
+1 + ϵ
+
+
+
+→ 0
+
+as ϵ → 0. Combining the two steps yields ¯E(H(k)) → 0 in the sequential limit n → ∞ followed by 
+
+ϵ → 0.
+
+Step 3: ECI stays bounded away from zero. 
+
+For any intra-community pair (i, j ), since c(i) = c(j), H(k) 
+
+> i
+
+− H(k) 
+
+> j
+
+= ξ(k) 
+
+> i
+
+− ξ(k) 
+
+> j
+
+, so ∥H(k) 
+
+> i
+
+−
+
+H(k) 
+
+> j
+
+∥ ≤ 2η, giving MAD (k)intra ≤ 2η. For any inter-community pair (i, j ), by the triangle inequality, 
+
+∥H(k) 
+
+> i
+
+− H(k) 
+
+> j
+
+∥ ≥ ∆ − 2η, giving MAD (k)inter ≥ ∆ − 2η. Therefore 
+
+ECI (k) = MAD (k)inter 
+
+MAD (k)intra + ν ≥ ∆ − 2η
+
+2η + ν > 0,
+
+since η < ∆/2.
+
+B.3 Proof of Theorem 1 Theorem 1 (Echo chamber permanence) . Let G ∼ SBM( n, 2, p, εp ) with initial features satisfying 
+
+∥ξ(0)  
+
+> i
+
+∥ ≤ η0, ∥¯h(0) 1 − ¯h(0) 2 ∥ ≥ ∆, and η0 < α min ∆/[2(1 + αmin )] .(a) IFR: for all k with ηk ≤ η0,
+
+ECI (k) ≥ αmin (∆ − 2η0) − 2η0
+
+4η0 + ν > 0.
+
+The echo chamber is permanent : lim inf k→∞ ECI (k) > 0.(b) PLR: the inter-community collapse depth satisfies τinter (βmin , ε ) → ∞ as ε → 0. The echo chamber window widens without bound; for any fixed K, ECI (k) > 0 for all k ≤ K when ε is sufficiently small. Proof. (a) IFR. Fix k with ηk ≤ η0. For any pair (i, j ):
+
+H(k) 
+
+> i
+
+− H(k) 
+
+> j
+
+= αk
+
+ H(0)  
+
+> i
+
+− H(0) 
+
+> j
+
+ +  [fk]i − [fk]j
+
+. (2) 
+
+Upper bound on MAD (k)intra . For c(i) = c(j): ∥H(0)  
+
+> i
+
+− H(0)  
+
+> j
+
+∥ ≤ 2η0. By (2), αk ≤ 1, and the uniform smoothness condition: 
+
+∥H(k) 
+
+> i
+
+− H(k) 
+
+> j
+
+∥ ≤ 2η0 + 2 ηk ≤ 4η0,
+
+so MAD (k)intra ≤ 4η0.16 Lower bound on MAD (k)inter . For c(i)̸ = c(j): ∥H(0)  
+
+> i
+
+− H(0)  
+
+> j
+
+∥ ≥ ∆ − 2η0. By (2) and the uniform smoothness condition applied to all pairs: 
+
+∥H(k) 
+
+> i
+
+− H(k) 
+
+> j
+
+∥ ≥ αmin (∆ − 2η0) − 2η0,
+
+which is positive by the condition η0 < α min ∆/[2(1 + αmin )] . Hence MAD (k)inter ≥ αmin (∆ −
+
+2η0) − 2η0 > 0.
+
+ECI bound. Combining: 
+
+ECI (k) = MAD (k)inter 
+
+MAD (k)intra + ν ≥ αmin (∆ − 2η0) − 2η0
+
+4η0 + ν > 0.
+
+The bound is independent of k, so lim inf k→∞ ECI (k) > 0.
+
+(b) PLR. The PLR update applies M = (1 − βmin ) ˆA + βmin I per layer. In the n → ∞ limit, ˆA has community-separation eigenvalue λ2 = 1 − 2ε [17], so M has eigenvalue 
+
+μ2 = (1 − βmin )λ2 + βmin = 1 − (1 − βmin ) · 2ε > λ 2.
+
+Under linearised propagation with initial features aligned with the community eigenvector, the inter-community centroid separation satisfies ∥¯h(k)1 − ¯h(k)2 ∥ ≥ μk 
+
+> 2
+
+∆. The inter-community collapse depth is 
+
+τinter =
+
+ log(1 /γ inter )log(1 /μ 2)
+
+
+
+.
+
+As ε → 0, log(1 /μ 2) = (1 − βmin ) · 2ε + O(ε2) → 0, so τinter → ∞ . The intra-community collapse depth τintra is governed by the intra-community spectral gap Θ( pintra ), independent of ε, so the echo chamber window [τintra , τ inter ) widens without bound and ECI (k) > 0 throughout. 
+
+B.4 Proof of Theorem 2 Theorem 2 (Task-conditional consequence) . Consider node classification on G ∼
+
+SBM( n, m, p intra , p inter ). Suppose Hi = ¯hc(i) + ξi with ∥ξi∥ ≤ η, ∥¯hc − ¯hc′ ∥ ≥ ∆ > 0
+
+for all c̸ = c′, and η < ∆/2, where FR denotes the Fisher Ratio. (a) Homophily (c(i) = c(j) ⇐⇒ yi = yj ): 
+
+FR( c, c ′) ≥ (∆ − 2η)2
+
+8η2 , FR( c, c ′) := ∥ ¯Hc − ¯Hc′ ∥2
+
+tr(Cov( Hc)) + tr(Cov( Hc′ )) ,
+
+where ¯Hc = 1
+
+> |Cc|
+
+P 
+
+> i∈Cc
+
+Hi.(b) Heterophily (∃ i, j ∈ Cs with yi = a̸ = b = yj ): 
+
+∥Hi − Hj ∥ ≤ 2η, ∥wa − wb∥ ≥ γη ,
+
+for any multiclass linear classifier fc(h) = w⊤ 
+
+> c
+
+h + bc that classifies both i and j correctly with margin γ > 0. Equivalently, if ∥wa − wb∥ ≤ B, then no margin γ > Bη is achievable. Proof. Both parts follow from Hi = ¯hc(i) + ξi with ∥ξi∥ ≤ η.
+
+(a). Under c(i) = c(j) ⇐⇒ yi = yj , communities coincide with classes, so ¯Hc and Cov( Hc) are computed over Cc. Since Hi = ¯hc + ξi,
+
+Hi − ¯Hc = ξi − ¯ξc,
+
+giving ∥Hi − ¯Hc∥ ≤ 2η and hence tr(Cov( Hc)) ≤ 4η2. Applying the same bound to c′ and summing yields 
+
+tr(Cov( Hc)) + tr(Cov( Hc′ )) ≤ 8η2.
+
+Moreover, ¯Hc − ¯Hc′ = ( ¯hc − ¯hc′ ) + ( ¯ξc − ¯ξc′ ),
+
+17 so ∥ ¯Hc − ¯Hc′ ∥ ≥ ∆ − 2η. Thus 
+
+FR( c, c ′) ≥ (∆ − 2η)2
+
+8η2 .
+
+(b). If i, j ∈ Cs, then Hi − Hj = ξi − ξj , so ∥Hi − Hj ∥ ≤ 2η. Since fc(h) = w⊤ 
+
+> c
+
+h + bc classifies 
+
+i with label a correctly with margin γ, we have in particular: 
+
+(wa − wb)⊤Hi + ( ba − bb) ≥ γ. 
+
+Since fc classifies j with label b correctly with margin γ, we have: 
+
+(wb − wa)⊤Hj + ( bb − ba) ≥ γ. 
+
+Adding these two inequalities, the bias terms cancel: 
+
+(wa − wb)⊤(Hi − Hj ) ≥ 2γ. 
+
+By Cauchy–Schwarz, 
+
+2γ ≤ ∥ wa − wb∥ · ∥ Hi − Hj ∥ ≤ 2η∥wa − wb∥,
+
+which gives ∥wa − wb∥ ≥ γ/η .
+
+C Proofs of CASP Theoretical Properties 
+
+The following propositions establish three key properties of the CASP parameterisation introduced in Section 4: that it recovers standard propagation as a special case, that the propagation ratio r provides monotone and interpretable control over the intra/inter balance, and that the expected aggregation mass is preserved for any r > 0.
+
+Proposition 2 (Baseline recovery) . At r = 1 , αintra = αinter = 1 , so CASP reduces to standard propagation. Proof. Substituting r = 1 into (1) gives αintra = αinter = 1 , so αintra ˆAintra + αinter ˆAinter =ˆA.
+
+Proposition 3 (Monotone interpolation) . αintra increases and αinter decreases monotonically in r,with αintra → 0, αinter → 1/(1 − p) as r → 0, and αintra → 1/p , αinter → 0 as r → ∞ .Proof. Differentiating Equation (1) gives ∂α intra /∂r = (1 − p)/(rp + (1 − p)) 2 > 0 and 
+
+∂α inter /∂r = −p/ (rp + (1 − p)) 2 < 0. The limits follow directly from (1). 
+
+Proposition 4 (Expected mass preservation) . Under the balanced SBM, for any r > 0,
+
+Ei
+
+h
+
+αintra kintra  
+
+> i
+> di
+
++ αinter kinter 
+
+> i
+> di
+
+i
+
+= 1 .
+
+Proof. Under the balanced SBM, E[kintra  
+
+> i
+
+/d i] = p and E[kinter  
+
+> i
+
+/d i] = 1 − p. Substituting (1), 
+
+αintra p + αinter (1 − p) = rp rp + (1 − p) + 1 − prp + (1 − p) = 1 .
+
+D Experimental Design 
+
+D.1 Dataset Statistics 
+
+Table 2 reports statistics for all eleven node classification benchmarks used in our experiments, spanning homophilic and heterophilic settings. 18 Table 2: Dataset statistics.                                                                          
+
+> Type Dataset # Nodes # Edges # Features # Classes Homophilic Cora 2,708 5,429 1,433 7Cora Full 19,793 126,842 8,710 70 Citeseer 3,312 4,732 3,703 6Pubmed 19,717 44,338 500 3DBLP 17,716 105,734 1,639 4Amazon Photo 7,650 119,081 745 8Coauthor-CS 18,333 163,788 6,805 15 ogbn-arxiv 169,343 1,166,243 128 40 Heterophilic Cornell 183 295 1,703 5Wisconsin 251 499 1,703 5Texas 183 309 1,703 5Film 7,600 33,544 932 5Minesweeper 10,000 39,402 72Tolokers 11,758 519,000 10 2Questions 48,921 153,540 301 2Amazon-Ratings 24,492 93,050 300 5Roman-Empire 22,662 32,927 300 18
+
+D.2 Model Hyperparamters 
+
+We perform a grid search over the following hyperparameters: learning rate ∈ { 0.005 , 0.01 , 0.1},weight decay ∈ {5 × 10 −4, 5 × 10 −3}, dropout ∈ {0.1, 0.4, 0.8}, and hidden dimension ∈{64 , 128 , 256 }. We train for up to 1000 epochs with early stopping patience of 200 epochs based on validation loss. The number of layers is varied up to 4. We use a resolution parameter of 1.0 for the Louvain algorithm across all datasets. All models are trained using the Adam optimiser [45]. 
+
+D.3 Implementation Details 
+
+All experiments were performed on a Linux-based server equipped with an NVIDIA A100 GPU. Our implementation uses the following Python libraries: PyTorch (v2.3.1), torchvision (v0.18.1), torchaudio (v2.3.1), torch-geometric (v2.7.0), torch-cluster (v1.6.3), torch-scatter (v2.0.9), and torch-sparse (v0.6.18). 
+
+E Additional Experiments 
+
+E.1 Ablation Studies on ECI 
+
+Figure 6: Validation of Theorem 2 on SBM graphs ( n=1500 , m=5 , E[deg]=20 ). 19 E.1.1 Emperical Validation of Theorem 2 
+
+Figure 6 measures the quantities predicted by Theorem 2 as a function of propagation depth on SBM graphs. Under homophily, the Fisher Ratio rises alongside ECI and plateaus at the same depth, confirming part (a): as intra-community representations collapse, inter-class separation grows unboundedly relative to intra-class variance. Under heterophily, the binary linear SVM weight norm ∥w∥(k) peaks precisely at peak ECI (depth ≈ 7), confirming part (b): classification is hardest exactly when the echo chamber is deepest, as same-community nodes of different classes become indistinguishable and maintaining any fixed margin γ > 0 requires ∥w∥ ≥ γ/ (2 η). The subsequent decay of ∥w∥ beyond the echo chamber peak reflects further representation collapse toward a region where no linear separator exists. 
+
+E.1.2 Robustness to Community Detection 
+
+Figure 7 tests sensitivity of ECI to the choice of community partition, comparing four algorithms: Louvain [16], Leiden [46], spectral clustering [47], and a random baseline. On SBM, Louvain, Leiden, and spectral clustering algorithms recover ECI profiles that are virtually identical to those obtained using the known community memberships (i.e., ground truth) used to generate the graph, confirming that community detection introduces no distortion on well-structured synthetic graphs. On Coauthor-CS, Louvain and Leiden yield nearly identical profiles while spectral clustering yields a moderately lower peak. Random partitions remain flat at unity throughout, confirming that the echo chamber signal is driven by the underlying graph structure rather than the choice of community detection algorithm. Louvain algorithm is used as the default algorithm throughout our experiments due to its computational efficiency. 
+
+Figure 7: ECI under different community partitions (GCN) on SBM and Coauthor-CS. For SBM, ground-truth communities are the planted blocks. 
+
+E.1.3 Effect of Initial Node Features on ECI 
+
+To determine whether the echo chamber effect is driven by graph topology or by the initial node feature distribution, we measure ECI under pure propagation on a fixed SBM graph across four feature conditions: random Gaussian (no structure); community-aligned (features drawn around community centroids); class-aligned (features encode randomly assigned labels, independent of the community); and adversarially misaligned (each node receives the centroid of a different community). Figure 8 shows ECI as a function of propagation depth for each condition. Despite starting from very different initial values, all four conditions converge to the same asymptotic plateau. This is explained by the MAD traces: MAD intra decays substantially faster than MAD inter across all conditions, so their ratio ECI remains elevated even as both approach zero. Crucially, even adversarially misaligned features are dominated by graph topology within a limited number of propagation steps, demonstrating that the asymptotic echo chamber region is primarily determined by graph modularity rather than by the initial feature distribution. Initial features affect only the transient trajectory and the depth at which the echo chamber is entered, not the long-run steady state. 20 Figure 8: ECI under four initial feature conditions on a fixed SBM graph ( n=1500 , m=5 , pintra =0 .08 ,
+
+pinter =0 .005 ). MAD intra decays faster than MAD inter across all conditions, explaining the persistent elevation of ECI even as both approach zero. 
+
+E.1.4 Diagnostic Gap: ECI vs. Existing Metrics 
+
+To demonstrate that ECI captures structural information that existing metrics miss, we conduct two complementary experiments on synthetic SBM graphs ( n = 400 , m = 5 , pintra = 0 .10 ). 
+
+Modularity sweep. Figure 9 sweeps ε = pinter /p intra ∈ { 0.4, 0.1, 0.02 , 0.005 }, progressively strengthening community structure. As ε → 0, MAD and Dirichlet energy decay monotonically to zero, falsely signalling global oversmoothing. ECI and GDR both remain persistently elevated, correctly detecting that inter-community separation is intact, which is the diagnostic gap established in Proposition 1. Embedding modularity saturates early and fails to reflect the progressive widening of the echo chamber window as ε decreases. 
+
+Label–community alignment. Figure 10 fixes ε = 0 .05 and varies the fraction of nodes whose label aligns with their community from 100% (homophilic) to 25% (near-random). ECI remains invariant across all alignment levels since it depends solely on graph topology. GDR, which requires ground-truth labels, collapses toward unity as alignment decreases, becoming uninformative under heterophily. This demonstrates the fundamental limitation of GDR as a structural diagnostic: it conflates label structure with community structure and fails precisely in the settings where the echo chamber is most harmful. ECI avoids this by stratifying distances by community membership rather than class membership, making it reliably detect the echo chamber across all graph and label configurations. 21 0 5 10 15 20 25 30 35 40 Layer depth 1234567
+
+> ECI (proposed)
+
+= 0.4 
+
+0 5 10 15 20 25 30 35 40 Layer depth 
+
+= 0.1 
+
+0 5 10 15 20 25 30 35 40 Layer depth 
+
+= 0.02 
+
+0 5 10 15 20 25 30 35 40 Layer depth 
+
+= 0.005 
+
+0 5 10 15 20 25 30 35 40 Layer depth 0.0 0.2 0.4 0.6 0.8 1.0 1.2 
+
+> MAD
+
+0 5 10 15 20 25 30 35 40 Layer depth 0 5 10 15 20 25 30 35 40 Layer depth 0 5 10 15 20 25 30 35 40 Layer depth 0 5 10 15 20 25 30 35 40 Layer depth 0.000 0.005 0.010 0.015 0.020 0.025 0.030 
+
+> Dirichlet energy
+
+0 5 10 15 20 25 30 35 40 Layer depth 0 5 10 15 20 25 30 35 40 Layer depth 0 5 10 15 20 25 30 35 40 Layer depth 0 5 10 15 20 25 30 35 40 Layer depth 1234567
+
+> GDR
+
+0 5 10 15 20 25 30 35 40 Layer depth 0 5 10 15 20 25 30 35 40 Layer depth 0 5 10 15 20 25 30 35 40 Layer depth 0 5 10 15 20 25 30 35 40 Layer depth 0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 
+
+> Embedding modularity
+
+0 5 10 15 20 25 30 35 40 Layer depth 0 5 10 15 20 25 30 35 40 Layer depth 0 5 10 15 20 25 30 35 40 Layer depth 
+
+Layer-wise metrics on SBM as modularity increases ( n=400, m=5, pintra =0.1) As 0: Dirichlet and MAD vanish ECI, GDR, and structural metrics remain elevated Figure 9: Layer-wise metrics on a synthetic SBM graph across four values of ε.0 10 20 30 40 
+
+Layer depth 
+
+1234
+
+> ECI (proposed)
+
+Alignment = 100% 
+
+0 10 20 30 40 
+
+Layer depth 
+
+Alignment = 75% 
+
+0 10 20 30 40 
+
+Layer depth 
+
+Alignment = 50% 
+
+0 10 20 30 40 
+
+Layer depth 
+
+Alignment = 25% 
+
+0 10 20 30 40 
+
+Layer depth 
+
+1234
+
+> GDR
+
+0 10 20 30 40 
+
+Layer depth 
+
+0 10 20 30 40 
+
+Layer depth 
+
+0 10 20 30 40 
+
+Layer depth 
+
+0 10 20 30 40 
+
+Layer depth 
+
+0.25 0.50 0.75 1.00 1.25 
+
+> MAD
+
+0 10 20 30 40 
+
+Layer depth 
+
+0 10 20 30 40 
+
+Layer depth 
+
+0 10 20 30 40 
+
+Layer depth 
+
+0.01 0.02 
+
+> hlet energy
+
+ECI vs.\ GDR under varying label--community alignment SBM ( n=400, m=5, =0.049999999999999996): ECI tracks graph structure; GDR tracks label structure 
+
+Figure 10: ECI vs. GDR under varying label–community alignment ( ε = 0 .05 ). 22 E.1.5 Empirical Validation of Theoretical Assumptions Representation concentration. Proposition 1 assumes Hi = ¯hc(i) + ξi with ∥ξi∥ ≤ η < ∆/2,where ∆ is the separation between community centroids. We evaluate this condition using 2η95 /∆,where η95 is the 95th percentile of node-to-centroid distances. Values below one indicate that the condition holds. Table 3: Empirical evaluation of the concentration assumption. “Holding” is the percentage of community pairs satisfying η95 < ∆/2. Results are averaged over five seeds. † denotes GCN runs that fail to train, with accuracy between 0.21 and 0.23.                                                                                              
+
+> SBM, i.i.d. SBM, aligned Citeseer Model Layer Median Holding Median Holding Median Holding GCN 20.74 100% 0.40 100% 1.96 9.2% GCN 40.48 100% 0.51 100% 2.07 9.0% GCN †837.9 0% 37.3 0% 32.4 0% GCN †16 37.5 0% 37.4 0% 34.9 0% APPNP 20.85 100% 0.34 100% 1.77 12.0% APPNP 41.01 54% 0.34 100% 1.67 15.4% APPNP 81.26 0% 0.34 100% 1.57 18.6% APPNP 16 1.38 0% 0.35 100% 1.52 21.2% GCNII 20.60 100% 0.38 100% 1.90 8.8% GCNII 40.53 100% 0.39 100% 1.83 12.0% GCNII 80.76 94% 0.36 100% 1.77 12.0% GCNII 16 2.21 0% 0.29 100% 1.79 11.0%
+
+The condition holds broadly in the SBM setting for which the theory is formulated and more selectively on Citeseer. With community-aligned SBM features, it holds at every tested depth except when GCN fails to train. The condition is therefore sufficient rather than universal in trained networks. For a finer depth-wise analysis, Table 4 reports the same quantity for a 16-layer APPNP on the SBM. The condition holds most frequently at layers 2–4, where ECI is also highest, connecting the theoretical regime to the strongest observed echo-chamber region. Table 4: Layer-wise concentration and ECI for 16-layer APPNP on an SBM with i.i.d. features, averaged over five seeds.                                
+
+> Layer Median 2η95 /∆Pairs holding ECI 04.35 0% 1.15 11.06 30% 2.49 20.90 84% 2.96 30.89 92% 3.01 40.98 56% 2.75 51.06 24% 2.57 61.14 6% 2.42 81.25 0% 2.24 16 1.38 0% 2.08
+
+Mass preservation on real graphs. Proposition 4 establishes expected mass preservation under a balanced SBM. To evaluate its applicability to real graphs, we measure each node’s intra-community degree fraction pi = kintra  
+
+> i
+
+/d i and aggregation mass mi = αintra pi + αinter (1 − pi) under the Louvain partition. The mean aggregation mass is approximately one on both datasets, and most nodes remain within 10% of unit mass. Thus, the mass-preserving parameterisation remains a close empirical approximation beyond the balanced SBM setting. 23 Table 5: Per-node intra-community degree fractions and aggregation mass on real graphs. “Within 10%” is the fraction of nodes satisfying |mi − 1| < 0.1.
+
+Dataset Mean pi Std. pi Mean mi Within 10% Roman-Empire 0.995 0.045 1.000 98% Amazon-Ratings 0.979 0.074 0.999 92% 
+
+E.2 Ablation Studies on CASP E.2.1 Component Analysis of CASP 
+
+Table 6 isolates the contribution of each CASP components across a subset of homophilic and heterophilic datasets. Intra-only propagation improves over baseline on homophilic datasets but underperforms on heterophilic ones, and vice versa for inter-only propagation, confirming that neither direction alone is sufficient. The non-mass-preserving variant performs comparably to CASP Full, indicating the mass-preserving parameterisation contributes modest but consistent gains by preventing signal scale distortion. Full CASP achieves the best accuracy in all datasets. Figure 11 shows accuracy as a function of fixed r on Citeseer and Film datasets. On Citeseer, accuracy peaks when r > 1,confirming that stronger intra-community aggregation improves homophilic classification. On Film, the peak occurs at r < 1, confirming that cross-community mixing is beneficial under heterophily. Both optima are consistent with Theorem 1 and validate the data-driven calibration of r.Table 6: Ablation of CASP components                          
+
+> Homophilic Heterophilic Method Citeseer Pubmed Film Amazon-Ratings Baseline (GCN) 76.68 ±1.64 86.74 ±0.47 30.26 ±0.79 37.99 ±0.61
+> Intra-only propagation 78.57 ±2.21 89.14 ±0.46 34.80 ±2.77 46.42 ±1.32
+> Inter-only propagation 77.12 ±1.86 87.83 ±0.35 36.09 ±0.98 48.36 ±1.34
+> Non-mass-preserving 79.03 ±1.08 89.42 ±0.80 37.00 ±1.84 49.19 ±1.44
+> CASP Full 79.36 ±1.89 89.68 ±0.50 37.23 ±2.17 49.57 ±0.95
+
+Figure 11: Accuracy vs fixed r
+
+E.2.2 Robustness to Data Splits and Community Detection Algorithm 
+
+Table 7 and Table 8 evaluate CASP under two robustness conditions. Across three train/validation/test splits ranging from very sparse (2.5/2.5/95) to standard (60/20/20) label regions, CASP consistently improves over both GCN and APPNP on Pubmed and Film, confirming that the data-driven calibration of r remains effective regardless of label availability. Substituting the default Louvain partition with Leiden, spectral clustering, or label propagation yields comparable accuracy, confirming that CASP is robust to the choice of community detection algorithm. Table 7: Robustness of CASP to data splits on Pubmed (homophilic) and Film (heterophilic). Best results are highlighted in bold .
+
+Pubmed Film Method 2.5/2.5/95 48/32/20 60/20/20 2.5/2.5/95 48/32/20 60/20/20 GCN 78.81 ± 0.24 87.38 ± 0.66 86.74 ± 0.47 22.74 ± 2.37 30.59 ± 0.23 30.26 ± 0.79 GCN + CASP 82.53 ± 0.78 89.70 ± 0.33 89.68 ± 0.50 24.76 ± 1.24 32.54 ± 3.36 37.23 ± 2.17 
+
+APPNP 79.97 ± 0.28 85.02 ± 0.09 83.37 ± 0.42 29.74 ± 1.04 34.86 ± 1.32 36.44 ± 1.78 APPNP + CASP 83.18 ± 1.06 88.95 ± 0.48 88.76 ± 0.35 29.91 ± 0.87 37.58 ± 1.67 38.15 ± 1.59 
+
+E.2.3 Robustness to Noisy Community Partitions 
+
+Figure 12 tests sensitivity of ECI and CASP-GCN to errors in community detection by randomly reassigning a fraction ρ ∈ { 0.0, 0.1, . . . , 0.5} of nodes to incorrect communities. ECI degrades 24 Table 8: Robustness of CASP to community detection algorithm on Pubmed (homophilic) and Film (heterophilic).                                 
+
+> Algorithm Pubmed Film
+> GCN (baseline) 86.74 ±0.47 30.26 ±0.79 Louvain 89.68 ±0.50 37.23 ±2.17 Leiden 90.48 ±0.44 34.50 ±1.57 Spectral clustering 90.27 ±0.52 37.08 ±2.60 Label propagation 90.50 ±0.57 36.83 ±2.37
+
+gracefully with ρ: even at ρ=0 .5, the echo chamber signal remains well above unity, confirming the diagnostic is robust to partition noise. Node classification accuracy on Pubmed is flat across all ρ, with no statistically meaningful degradation. The learned r remains consistently above unity throughout, indicating that CASP correctly identifies the homophilic propagation direction even under substantial partition corruption, with noise attenuating the magnitude of r but never reversing its sign.   
+
+> (a) ECI vs depth under noisy partitions on SBM.
+> (b) CASP-GCN accuracy and learned ron Pubmed.
+
+Figure 12: Robustness to noisy community partitions. ECI remains above unity and accuracy is stable even at ρ=0 .5.
+
+E.2.4 Depth Analysis and Oversmoothing Robustness 
+
+Figure 13 evaluates Dirichlet energy and test accuracy as a function of depth on homophilic and het-erophilic datasets. GCN accuracy degrades sharply at the depths where Dirichlet energy approaches zero, exhibiting the standard oversmoothing failure. CASP-GCN sustains significantly higher Dirich-let energy throughout, and its accuracy remains stable well beyond the depths at which GCN collapses. This confirms that CASP reshapes the oversmoothing window rather than merely delaying it: by rebalancing intra- and inter-community propagation according to the graph’s label structure, CASP maintains useful representations at depths where standard GCN has already converged to a trivial solution. 
+
+E.2.5 Node Classification Performance with Existing Baselines 
+
+Table 9 compares CASP with existing node-classification GNNs on homophilic (Cora, Citeseer, and Pubmed) and heterophilic (Film, Cornell, Wisconsin, and Texas) benchmarks. The baselines include general-purpose GNNs: GCN [2], GAT [48], GraphSAGE [49], SGC [18], and GCN-Cheby [50]; and heterophily-oriented architectures: MixHop [23], GCNII [13], WRGAT [51], ACM-GCN [52], H2GCN [53], GPR-GNN [14], GGCN [54], LINKX [55], GloGNN [56], DirGNN [25], HiGNN [57], and BEC-GNN [58]. CASP improves both evaluated backbones across all seven datasets, although the magnitude of improvement depends on the backbone. GCN+CASP remains below stronger heterophily-oriented methods on Cornell, Wisconsin, and Texas, whereas DirGNN+CASP achieves the best results. Overall, CASP provides consistent backbone-relative improvements and is most effective when combined with an architecture suited to the underlying graph structure. 25 Figure 13: Dynamic depth analysis: Dirichlet energy (top) and test accuracy (bottom) vs. depth for GCN and CASP-GCN on Citeseer (homophilic) and Film (heterophilic) datasets. Table 9: Comparison of node classification accuracy (%) using ten random 60/20/20 train/validation/test splits. Values are means and standard deviations across the ten runs. Best results are highlighted in bold . Baseline results are taken from [57]. Methods Cora Citeseer Pubmed Film Cornell Wisconsin Texas GCN 86.90 ± 1.09 76.68 ± 1.64 87.38 ± 0.66 30.26 ± 0.79 57.03 ± 4.67 59.80 ± 6.99 59.46 ± 5.25 GAT 86.06 ± 1.31 75.46 ± 1.72 87.62 ± 0.42 26.28 ± 1.73 58.92 ± 3.32 55.29 ± 8.71 58.38 ± 4.45 GraphSAGE 80.44 ± 1.90 76.04 ± 1.30 88.45 ± 0.50 34.23 ± 0.99 75.95 ± 5.01 81.18 ± 5.56 82.43 ± 6.14 SGC 84.97 ± 1.95 75.66 ± 1.37 87.15 ± 0.47 25.83 ± 1.09 55.41 ± 5.29 57.84 ± 4.83 58.11 ± 6.27 MixHop 86.58 ± 1.12 70.75 ± 2.95 80.75 ± 2.29 32.22 ± 2.34 73.51 ± 6.34 75.88 ± 4.90 77.84 ± 7.73 GCN-Cheby 86.80 ± 1.08 76.25 ± 1.76 88.08 ± 0.52 36.11 ± 1.09 74.32 ± 7.46 79.41 ± 4.46 77.30 ± 4.07 H2GCN 87.71 ± 1.25 76.72 ± 1.50 88.50 ± 0.64 35.86 ± 1.03 82.16 ± 4.80 86.67 ± 4.69 84.86 ± 6.77 ACM-GCN 87.83 ± 0.95 75.56 ± 1.32 89.48 ± 0.58 35.09 ± 1.18 77.57 ± 5.26 83.53 ± 3.83 82.70 ± 6.27 GCNII 86.80 ± 1.08 74.84 ± 1.48 88.27 ± 0.72 33.48 ± 2.05 54.32 ± 9.14 56.86 ± 8.32 61.89 ± 6.43 GPR-GNN 87.42 ± 1.21 75.43 ± 1.47 89.18 ± 0.51 35.47 ± 1.66 74.32 ± 3.66 79.61 ± 5.56 74.86 ± 5.70 GGCN 86.32 ± 0.91 76.65 ± 1.91 88.25 ± 0.43 34.86 ± 0.87 71.35 ± 7.34 74.12 ± 5.37 65.14 ± 8.30 LINKX 77.32 ± 1.68 72.00 ± 1.90 78.39 ± 1.09 27.06 ± 1.22 39.46 ± 17.89 55.88 ± 6.29 52.43 ± 9.21 GloGNN 88.31 ± 1.15 77.41 ± 1.65 89.62 ± 0.35 37.36 ± 1.34 82.16 ± 5.82 82.35 ± 5.11 69.19 ± 11.16 WRGAT 75.47 ± 2.90 76.81 ± 1.89 88.52 ± 0.92 36.53 ± 0.77 81.62 ± 3.90 86.98 ± 3.78 83.62 ± 5.50 DirGNN 86.54 ± 1.66 77.71 ± 0.78 86.94 ± 0.55 35.76 ± 6.31 76.51 ± 6.14 80.50 ± 5.50 76.25 ± 4.68 HiGNN 89.72 ± 1.46 79.30 ± 2.13 89.43 ± 0.53 37.21 ± 1.35 80.00 ± 4.26 85.88 ± 3.18 86.22 ± 4.67 BEC-GNN 88.01 ± 1.56 78.14 ± 1.31 87.00 ± 0.28 34.34 ± 2.08 65.96 ± 9.03 66.25 ± 4.55 68.85 ± 11.02 GCN + CASP 88.72 ± 1.50 79.36 ± 1.89 89.68 ± 0.50 37.23 ± 2.17 59.04 ± 4.75 67.75 ± 9.82 65.08 ± 10.00 DirGNN + CASP 87.06 ± 1.92 78.32 ± 2.89 90.03 ± 0.53 40.49 ± 1.80 87.02 ± 2.77 89.62 ± 3.21 89.51 ± 4.59 
+
+26 E.2.6 Impact of CASP on ECI and Echo Chamber Window 
+
+To empirically validate how CASP modulates the echo chamber effect, we construct a synthetic SBM graph and artificially induce homophilic and heterophilic label structures. Under homophily, node labels are aligned with community membership; under heterophily, labels are deliberately misaligned so that same-community nodes belong to different classes. Figure 14 shows the resulting ECI depth profiles for standard GCN and GCN+CASP. Under homophily, CASP amplifies intra-community aggregation, raising peak ECI and extending the echo chamber window across all propagation depths. This is the intended behavior: a deeper echo chamber compresses within-class variance and improves linear separability. Under heterophily, CASP promotes inter-community mixing, suppressing peak ECI and narrowing the echo chamber window relative to standard GCN. This directly reduces the harmful region in which same-community nodes of different classes become indistinguishable. In both cases, CASP’s data-driven calibration of r from label structure correctly identifies the beneficial direction and adjusts the echo chamber window accordingly, confirming Theorem 2. 0 5 10 15 20 25 30 35 40          
+
+> Layer depth
+> 123456
+> ECI
+> Homophilic
+> 0510 15 20 25 30 35 40
+> Layer depth
+> 1.0 1.5 2.0 2.5 3.0
+> ECI
+> Heterophilic
+> GCN GCN + CASP
+
+Figure 14: Impact of CASP on ECI and the echo chamber window on a synthetic SBM graph (n = 300 , m = 5 , pintra = 0 .08 , pinter = 0 .005 ). 
+
+E.2.7 Scalability Analysis 
+
+We evaluate CASP on two large-scale OGB benchmarks: ogbn-arxiv and ogbn-mag [59]. Ogbn-arxiv comprises 169,343 nodes, 1,166,243 edges, and 128-dimensional input features. For ogbn-mag, we follow the OGB evaluation protocol [59] and use its homogeneous paper-to-paper subgraph, which contains approximately 736K nodes and 5.4M citation edges. Table 10 reports the large-scale node classification results. CASP improves GCN on both datasets. Table 10: Node classification accuracy (%) on large-scale OGB benchmarks. 
+
+Method ogbn-arxiv ogbn-mag GCN 69 .53 ± 0.28 30 .43 ± 0.25 
+
+GCN + CASP 70 .12 ± 0.31 31 .21 ± 0.24 
+
+For the scalability analysis on ogbn-arxiv, we use a four-layer GCN backbone with 256 hidden dimensions. Figure 15 empirically validates the complexity claims in Section 4.3: the per-epoch runtime and peak activation memory of CASP-GCN remain constant-factor multiples of those of GCN. The parameter overhead is negligible because CASP introduces only one additional scalar parameter. Its two propagation streams are independent and can also be parallelised on a GPU. The accuracy improvement confirms that this modest overhead produces a measurable improvement in representation quality. Table 11 reports the one-time Louvain community-detection cost, which is amortised across training runs on the same graph. 27 Figure 15: Runtime, memory, and accuracy comparison between GCN and CASP-GCN on ogbn-arxiv. Table 11: One-time Louvain preprocessing cost on ogbn-arxiv.   
+
+> Dataset Time (s) ogbn-arxiv 24.69
+
+E.2.8 Sensitivity to Resolution Parameter in Louvain Algorithm 
+
+CASP relies on Louvain community detection to partition edges into intra- and inter-community sets, from which p and δ are derived. The resolution parameter γ controls community granularity, where smaller values yield fewer, coarser communities and larger values produce finer partitions. We evaluate CASP-DirGNN across γ ∈ { 0.25 , 0.5, 1, 2, 4} on Pubmed and Amazon-ratings (Table 12). Results are stable across all resolutions on Pubmed, with all values outperforming the baseline by a substantial margin. On Amazon-ratings, γ = 1 achieves the highest accuracy. This is consistent with the role of γ in modularity: γ = 1 corresponds to the standard objective, which balances intra-and inter-community connectivity relative to a random-graph null model [60]. Deviating from this scale ( γ̸ = 1 ) produces coarser or finer partitions, which in our experiments weakens the intra/inter signal and degrades CASP’s calibration. We therefore fix γ = 1 across all experiments without dataset-specific tuning. Table 12: Ablation on Louvain resolution parameter γ. Best result per dataset is highlighted in bold .Baseline is DirGNN.                                            
+
+> Setting Pubmed Amazon-ratings
+> Baseline (no CASP) 86 .94 ±0.55 46 .66 ±0.61
+> γ= 0 .25 90 .55 ±0.49 47 .66 ±0.97
+> γ= 0 .589 .99 ±0.38 47 .21 ±1.40
+> γ= 1 90 .03 ±0.53 49 .09 ±1.19
+> γ= 2 89 .97 ±0.46 47 .36 ±1.37
+> γ= 4 90 .09 ±0.47 46 .70 ±1.45
+
+28
