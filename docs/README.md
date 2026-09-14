@@ -6,27 +6,37 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-09-13
-- 运行时间：2026-09-13 21:30:33 UTC
+- 最新运行日期：2026-09-14
+- 运行时间：2026-09-14 22:12:20 UTC
 - 运行状态：成功
-- 本次总论文数：2
+- 本次总论文数：4
 - 精读区：0
-- 速读区：2
+- 速读区：4
 
 ### 今日简报（AI）
-2026-09-13 日报速读两篇脑影像与脑电分析论文，均获 6.0 分。值得关注的是脑成像区域信号检测的“结构自适应 E 值滤波”方法，以及提升阿尔茨海默病与衰老敏感度的脑电微状态证据感知框架。普通读者可留意这些方法如何让脑部信号检测更精准，后续关注其在临床早筛中的应用验证。
-- 详情：[/202609/13/README](/202609/13/README)
+今日速读4篇医学AI论文，聚焦脑肿瘤分割、阿尔茨海默病诊断与脑电解码三个方向，暂无精读。
+
+最值得看的是两篇7分工作：Uni-Light用不确定性感知知识蒸馏做超轻量脑肿瘤分割，以及融合3D磁共振与临床数据的多模态可解释阿尔茨海默病诊断框架。
+
+普通读者可优先了解"轻量化+可解释"这条主线，关注这类模型能否真正落地到资源有限的临床场景。
+- 详情：[/202609/14/README](/202609/14/README)
 
 ### 精读区论文标签
 - 本次无精读推荐。
 
 ### 速读区论文标签
-1. [Structure-Adaptive E-Value Filter for Detecting Regional Signals in Brain Imaging](/202609/13/2609.07246v1-structure-adaptive-e-value-filter-for-detecting-regional-signals-in-brain-imaging)  
+1. [Uni-Light: An Ultra-Lightweight Framework via Uncertainty-Aware Knowledge Distillation for Brain Tumour Segmentation](/202609/14/2609.06729v2-uni-light-an-ultra-lightweight-framework-via-uncertainty-aware-knowledge-distillation-for-brain-tumour-segmentation)  
+   标签：评分：7.0/10、query:fbn
+   evidence：面向临床神经影像的脑肿瘤MRI分割AI方法
+2. [A Multimodal Explainable Deep Learning Framework for Alzheimer's Disease Diagnosis using 3D Magnetic Resonance Imaging and Clinical Data](/202609/14/2609.12410v1-a-multimodal-explainable-deep-learning-framework-for-alzheimers-disease-diagnosis-using-3d-magnetic-resonance-imaging-and-clinical-data)  
+   标签：评分：7.0/10、query:fbn
+   evidence：融合3D MRI与临床数据的可解释多模态阿尔茨海默病诊断
+3. [FRIST: FMRI Representation Informed Shared-space Training Improves EEG-only Individual-Finger BCI Decoding](/202609/14/2609.12298v1-frist-fmri-representation-informed-shared-space-training-improves-eeg-only-individual-finger-bci-decoding)  
    标签：评分：6.0/10、query:fbn
-   evidence：结构MRI神经影像与痴呆区域检测
-2. [An Evidence-Aware Framework for EEG Microstate Analysis: Improved Sensitivity to Alzheimer's Disease and Ageing](/202609/13/2609.08500v1-an-evidence-aware-framework-for-eeg-microstate-analysis-improved-sensitivity-to-alzheimers-disease-and-ageing)  
+   evidence：fMRI信息引导的EEG手指解码
+4. [Observation-Anchored Selective Assimilation for Longitudinal Tumor-State Proxy Forecasting in Post-Treatment Glioma](/202609/14/2609.12435v1-observation-anchored-selective-assimilation-for-longitudinal-tumor-state-proxy-forecasting-in-post-treatment-glioma)  
    标签：评分：6.0/10、query:fbn
-   evidence：面向阿尔茨海默病与老化的脑电神经影像AI
+   evidence：基于MRI的胶质瘤纵向肿瘤状态代理数字孪生预测
 
 
 <div class="dpr-home-promo-card">
