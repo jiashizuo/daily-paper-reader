@@ -6,37 +6,50 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-09-14
-- 运行时间：2026-09-14 22:12:20 UTC
+- 最新运行日期：2026-09-15
+- 运行时间：2026-09-15 22:35:28 UTC
 - 运行状态：成功
-- 本次总论文数：4
-- 精读区：0
-- 速读区：4
+- 本次总论文数：9
+- 精读区：1
+- 速读区：8
 
 ### 今日简报（AI）
-今日速读4篇医学AI论文，聚焦脑肿瘤分割、阿尔茨海默病诊断与脑电解码三个方向，暂无精读。
-
-最值得看的是两篇7分工作：Uni-Light用不确定性感知知识蒸馏做超轻量脑肿瘤分割，以及融合3D磁共振与临床数据的多模态可解释阿尔茨海默病诊断框架。
-
-普通读者可优先了解"轻量化+可解释"这条主线，关注这类模型能否真正落地到资源有限的临床场景。
-- 详情：[/202609/14/README](/202609/14/README)
+- 今日共生成 9 篇推荐（精读 1 篇，速读 8 篇）
+- 精读：《Nonparametric Correlation Estimator via Solving Cubic Equations and its Application to Brain Functional Connectivity Analysis》（8.0/10）
+- 速读：《The Platonic brain bridge hypothesis: human brain networks as an architectural prior for multimodal large language models》（7.0/10）, 《Assumption-Lean Inference for Spectral Differential Network Analysis of High-Dimensional Time Series》（7.0/10）, 《A Language-Guided Multimodal Foundation Model for Zero-Shot and Multi-Task Brain Signal Analysis》（7.0/10）
+- 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
+- 详情：[/202609/15/README](/202609/15/README)
 
 ### 精读区论文标签
-- 本次无精读推荐。
+1. [Nonparametric Correlation Estimator via Solving Cubic Equations and its Application to Brain Functional Connectivity Analysis](/202609/15/2609.13848v1-nonparametric-correlation-estimator-via-solving-cubic-equations-and-its-application-to-brain-functional-connectivity-analysis)  
+   标签：评分：8.0/10、query:fbn
+   evidence：非参数相关系数估计应用于脑功能连接分析
 
 ### 速读区论文标签
-1. [Uni-Light: An Ultra-Lightweight Framework via Uncertainty-Aware Knowledge Distillation for Brain Tumour Segmentation](/202609/14/2609.06729v2-uni-light-an-ultra-lightweight-framework-via-uncertainty-aware-knowledge-distillation-for-brain-tumour-segmentation)  
+1. [The Platonic brain bridge hypothesis: human brain networks as an architectural prior for multimodal large language models](/202609/15/2609.10947v2-the-platonic-brain-bridge-hypothesis-human-brain-networks-as-an-architectural-prior-for-multimodal-large-language-models)  
    标签：评分：7.0/10、query:fbn
-   evidence：面向临床神经影像的脑肿瘤MRI分割AI方法
-2. [A Multimodal Explainable Deep Learning Framework for Alzheimer's Disease Diagnosis using 3D Magnetic Resonance Imaging and Clinical Data](/202609/14/2609.12410v1-a-multimodal-explainable-deep-learning-framework-for-alzheimers-disease-diagnosis-using-3d-magnetic-resonance-imaging-and-clinical-data)  
+   evidence：以人脑网络作为多模态大模型架构先验
+2. [Assumption-Lean Inference for Spectral Differential Network Analysis of High-Dimensional Time Series](/202609/15/2609.13609v1-assumption-lean-inference-for-spectral-differential-network-analysis-of-high-dimensional-time-series)  
    标签：评分：7.0/10、query:fbn
-   evidence：融合3D MRI与临床数据的可解释多模态阿尔茨海默病诊断
-3. [FRIST: FMRI Representation Informed Shared-space Training Improves EEG-only Individual-Finger BCI Decoding](/202609/14/2609.12298v1-frist-fmri-representation-informed-shared-space-training-improves-eeg-only-individual-finger-bci-decoding)  
+   evidence：面向脑连接时间序列的谱差分网络分析推断
+3. [A Language-Guided Multimodal Foundation Model for Zero-Shot and Multi-Task Brain Signal Analysis](/202609/15/2609.15740v1-a-language-guided-multimodal-foundation-model-for-zero-shot-and-multi-task-brain-signal-analysis)  
+   标签：评分：7.0/10、query:fbn
+   evidence：面向零样本脑信号分析的多模态基础模型
+4. [Learning with Covariance Matrices: Principal Component Analysis Meets Learning with Graphs](/202609/15/2609.10490v2-learning-with-covariance-matrices-principal-component-analysis-meets-learning-with-graphs)  
    标签：评分：6.0/10、query:fbn
-   evidence：fMRI信息引导的EEG手指解码
-4. [Observation-Anchored Selective Assimilation for Longitudinal Tumor-State Proxy Forecasting in Post-Treatment Glioma](/202609/14/2609.12435v1-observation-anchored-selective-assimilation-for-longitudinal-tumor-state-proxy-forecasting-in-post-treatment-glioma)  
+   evidence：在协方差矩阵上运行的图神经网络
+5. [Bayesian Semiparametric Hidden Markov Random Partition Fields for Factor Collapse on Graphs: A Study of Cortical Mapping of Fingertips](/202609/15/2609.13319v1-bayesian-semiparametric-hidden-markov-random-partition-fields-for-factor-collapse-on-graphs-a-study-of-cortical-mapping-of-fingertips)  
    标签：评分：6.0/10、query:fbn
-   evidence：基于MRI的胶质瘤纵向肿瘤状态代理数字孪生预测
+   evidence：fMRI皮层图的统计建模
+6. [AlignUS: MRI-Guided Ultrasound Representation Learning for ALS Classification from Tongue Images](/202609/15/2609.15285v1-alignus-mri-guided-ultrasound-representation-learning-for-als-classification-from-tongue-images)  
+   标签：评分：6.0/10、query:fbn
+   evidence：跨模态蒸馏的神经影像AI用于ALS诊断
+7. [TractSpLearn: Specialized Shared-Manifold Learning for Individualized Detection of Subtle White Matter Alterations in Mild Traumatic Brain Injury](/202609/15/2609.15342v1-tractsplearn-specialized-shared-manifold-learning-for-individualized-detection-of-subtle-white-matter-alterations-in-mild-traumatic-brain-injury)  
+   标签：评分：6.0/10、query:fbn
+   evidence：基于MRI检测脑外伤细微白质改变
+8. [Anatomical Grounding and Leakage-Aware Multimodal Contrastive Learning for Alzheimer's Disease Classification from Structural MRI](/202609/15/2609.15888v1-anatomical-grounding-and-leakage-aware-multimodal-contrastive-learning-for-alzheimers-disease-classification-from-structural-mri)  
+   标签：评分：6.0/10、query:fbn
+   evidence：AI用于阿尔茨海默病MRI分类与解剖锚定
 
 
 <div class="dpr-home-promo-card">
