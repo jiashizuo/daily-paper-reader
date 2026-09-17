@@ -6,29 +6,41 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-09-16
-- 运行时间：2026-09-16 22:26:37 UTC
+- 最新运行日期：2026-09-17
+- 运行时间：2026-09-17 21:43:49 UTC
 - 运行状态：成功
-- 本次总论文数：2
-- 精读区：0
-- 速读区：2
+- 本次总论文数：6
+- 精读区：1
+- 速读区：5
 
 ### 今日简报（AI）
-今天速读2篇EEG论文、精读0篇，两篇速读均为6.0/10分。
-值得关注的两个方向：一是用Transformer加频谱图表示从脑电中检测精神分裂症，二是EEG-Xplain尝试拆解EEG基础模型的"黑箱"。
-普通读者可先从EEG-Xplain入手理解模型可解释性，再顺着前者观察AI辅助精神疾病筛查的落地可能。
-- 详情：[/202609/16/README](/202609/16/README)
+- 今日共生成 6 篇推荐（精读 1 篇，速读 5 篇）
+- 精读：《A Vision-Language Foundation Model for Precise and Comprehensive Brain Tumor Diagnosis from Preoperative Multimodal Data》（8.0/10）
+- 速读：《Multimodal Three-Class Alzheimer's Disease Classification: The MCI Bottleneck》（7.0/10）, 《DTI-Guided Volumetric Spherical Harmonics Regression for Single-to-Multi-Shell dMRI Synthesis》（6.0/10）, 《NeuroTS-Net: Multi-Class Semantic Segmentation of Pediatric Brain Tumors in Multi-Modal MRI》（6.0/10）
+- 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
+- 详情：[/202609/17/README](/202609/17/README)
 
 ### 精读区论文标签
-- 本次无精读推荐。
+1. [A Vision-Language Foundation Model for Precise and Comprehensive Brain Tumor Diagnosis from Preoperative Multimodal Data](/202609/17/2609.16597v1-a-vision-language-foundation-model-for-precise-and-comprehensive-brain-tumor-diagnosis-from-preoperative-multimodal-data)  
+   标签：评分：8.0/10、query:fbn
+   evidence：用于MRI脑肿瘤诊断的AI视觉语言模型
 
 ### 速读区论文标签
-1. [Schizophrenia Detection from EEG Signals: A Transformer Framework with Spectrogram Representation](/202609/16/2609.14015v1-schizophrenia-detection-from-eeg-signals-a-transformer-framework-with-spectrogram-representation)  
+1. [Multimodal Three-Class Alzheimer's Disease Classification: The MCI Bottleneck](/202609/17/2609.17649v1-multimodal-three-class-alzheimers-disease-classification-the-mci-bottleneck)  
+   标签：评分：7.0/10、query:fbn
+   evidence：融合MRI与PET的神经影像AI阿尔茨海默病分类
+2. [DTI-Guided Volumetric Spherical Harmonics Regression for Single-to-Multi-Shell dMRI Synthesis](/202609/17/2609.14312v1-dti-guided-volumetric-spherical-harmonics-regression-for-single-to-multi-shell-dmri-synthesis)  
    标签：评分：6.0/10、query:fbn
-   evidence：基于EEG的脑疾病AI检测
-2. [EEG-Xplain: Decoding Neural Black-Boxes of EEG Foundation Models](/202609/16/2609.15687v1-eeg-xplain-decoding-neural-black-boxes-of-eeg-foundation-models)  
+   evidence：扩散MRI深度学习合成，属神经影像医疗AI
+3. [NeuroTS-Net: Multi-Class Semantic Segmentation of Pediatric Brain Tumors in Multi-Modal MRI](/202609/17/2609.16873v1-neurots-net-multi-class-semantic-segmentation-of-pediatric-brain-tumors-in-multi-modal-mri)  
    标签：评分：6.0/10、query:fbn
-   evidence：面向EEG基础模型的临床神经信号解码可解释性
+   evidence：多模态MRI脑肿瘤深度学习分割，属神经影像医疗AI
+4. [Graphlets as structural fingerprints of complex networks](/202609/17/2609.17445v1-graphlets-as-structural-fingerprints-of-complex-networks)  
+   标签：评分：6.0/10、query:fbn
+   evidence：图元指纹应用于静息态功能连接组
+5. [Generalist-Specialist Mixture-of-Experts for Rare Pathology Detection in Multimodal Imaging](/202609/17/2609.18688v1-generalist-specialist-mixture-of-experts-for-rare-pathology-detection-in-multimodal-imaging)  
+   标签：评分：6.0/10、query:fbn
+   evidence：混合专家深度学习用于多模态医学影像罕见病理检测
 
 
 <div class="dpr-home-promo-card">
