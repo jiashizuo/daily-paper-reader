@@ -6,33 +6,32 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-09-19
-- 运行时间：2026-09-19 21:09:31 UTC
+- 最新运行日期：2026-09-20
+- 运行时间：2026-09-20 21:47:33 UTC
 - 运行状态：成功
-- 本次总论文数：4
+- 本次总论文数：3
 - 精读区：0
-- 速读区：4
+- 速读区：3
 
 ### 今日简报（AI）
-2026-09-19日报成功：4篇均为速读、0篇精读，展示的3篇均6.0分，聚焦脑动力学与医学影像建模。可优先关注脑动力学基础模型的扰动效度、逆向时空疾病进展建模，以及皮层表面MRI到PET的扩散桥翻译。普通读者不妨先读这三篇摘要，重点判断模型验证是否扎实、跨模态翻译是否可靠。
-- 详情：[/202609/19/README](/202609/19/README)
+1）今日速读3篇脑成像论文、精读0篇，三篇均获6.0分。
+2）最值得看的方向是fMRI神经编码模型复现、3D BOLD fMRI序列时序影响，以及Latent Bridge Matching用于多对比脑MRI快速转换。
+3）普通读者可先按兴趣浏览fMRI复现或时序分析，若关注图像转换再读MRI翻译那篇。
+- 详情：[/202609/20/README](/202609/20/README)
 
 ### 精读区论文标签
 - 本次无精读推荐。
 
 ### 速读区论文标签
-1. [Perturbational Validity for Foundation Models of Brain Dynamics: A Controlled Proof-of-Principle Simulation](/202609/19/2609.12710v1-perturbational-validity-for-foundation-models-of-brain-dynamics-a-controlled-proof-of-principle-simulation)  
+1. [Can a Neural Encoding Model Replicate an fMRI Visualization Study?](/202609/20/2609.15685v1-can-a-neural-encoding-model-replicate-an-fmri-visualization-study)  
    标签：评分：6.0/10、query:fbn
-   evidence：脑动力学基础模型的效度评估
-2. [Reverse Spatio-Temporal Disease Progression Modelling](/202609/19/2609.14590v1-reverse-spatio-temporal-disease-progression-modelling)  
+   evidence：使用神经编码模型的fMRI神经影像分析
+2. [Effects of Sequence Timing on the Spatio-Temporal Properties of 3D BOLD fMRI: A Formal Framework and Analysis](/202609/20/2609.20105v1-effects-of-sequence-timing-on-the-spatio-temporal-properties-of-3d-bold-fmri-a-formal-framework-and-analysis)  
    标签：评分：6.0/10、query:fbn
-   evidence：面向阿尔茨海默病的神经影像疾病进展建模
-3. [Bridging Modalities on the Cortex: Surface-based MRI to PET Translation with a Diffusion Bridge](/202609/19/2609.20147v1-bridging-modalities-on-the-cortex-surface-based-mri-to-pet-translation-with-a-diffusion-bridge)  
+   evidence：关于3D BOLD fMRI时空特性的形式化框架
+3. [Fast Cross-Strength Multi-Contrast Brain MRI Translation using Latent Bridge Matching](/202609/20/2609.20341v1-fast-cross-strength-multi-contrast-brain-mri-translation-using-latent-bridge-matching)  
    标签：评分：6.0/10、query:fbn
-   evidence：面向痴呆的皮层MRI到PET翻译
-4. [A Dual-Stream Regulated Reconstruction and Segmentation Network with Hierarchical Artifact-Prior Modeling for Ultra-Low-Field Pediatric Neuroimaging](/202609/19/2609.20562v1-a-dual-stream-regulated-reconstruction-and-segmentation-network-with-hierarchical-artifact-prior-modeling-for-ultra-low-field-pediatric-neuroimaging)  
-   标签：评分：6.0/10、query:fbn
-   evidence：儿科神经影像的深度学习重建与分割，属AI医疗
+   evidence：面向跨场强脑MRI转换的神经影像AI
 
 
 <div class="dpr-home-promo-card">
