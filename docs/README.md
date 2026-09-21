@@ -6,32 +6,22 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-09-20
-- 运行时间：2026-09-20 21:47:33 UTC
+- 最新运行日期：2026-09-21
+- 运行时间：2026-09-21 22:56:30 UTC
 - 运行状态：成功
-- 本次总论文数：3
+- 本次总论文数：0
 - 精读区：0
-- 速读区：3
+- 速读区：0
 
 ### 今日简报（AI）
-1）今日速读3篇脑成像论文、精读0篇，三篇均获6.0分。
-2）最值得看的方向是fMRI神经编码模型复现、3D BOLD fMRI序列时序影响，以及Latent Bridge Matching用于多对比脑MRI快速转换。
-3）普通读者可先按兴趣浏览fMRI复现或时序分析，若关注图像转换再读MRI翻译那篇。
-- 详情：[/202609/20/README](/202609/20/README)
+> 今日无新推荐，系统未产出可展示论文。
+- 详情：[/202609/21/README](/202609/21/README)
 
 ### 精读区论文标签
 - 本次无精读推荐。
 
 ### 速读区论文标签
-1. [Can a Neural Encoding Model Replicate an fMRI Visualization Study?](/202609/20/2609.15685v1-can-a-neural-encoding-model-replicate-an-fmri-visualization-study)  
-   标签：评分：6.0/10、query:fbn
-   evidence：使用神经编码模型的fMRI神经影像分析
-2. [Effects of Sequence Timing on the Spatio-Temporal Properties of 3D BOLD fMRI: A Formal Framework and Analysis](/202609/20/2609.20105v1-effects-of-sequence-timing-on-the-spatio-temporal-properties-of-3d-bold-fmri-a-formal-framework-and-analysis)  
-   标签：评分：6.0/10、query:fbn
-   evidence：关于3D BOLD fMRI时空特性的形式化框架
-3. [Fast Cross-Strength Multi-Contrast Brain MRI Translation using Latent Bridge Matching](/202609/20/2609.20341v1-fast-cross-strength-multi-contrast-brain-mri-translation-using-latent-bridge-matching)  
-   标签：评分：6.0/10、query:fbn
-   evidence：面向跨场强脑MRI转换的神经影像AI
+- 本次无速读推荐。
 
 
 <div class="dpr-home-promo-card">
