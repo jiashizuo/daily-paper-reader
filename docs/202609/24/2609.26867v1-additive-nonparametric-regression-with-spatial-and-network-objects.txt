@@ -1,0 +1,1545 @@
+Title: Additive Nonparametric Regression with Spatial and Network Objects
+
+URL Source: https://arxiv.org/pdf/2609.26867v1
+
+Published Time: Thu, 24 Sep 2026 00:07:50 GMT
+
+Number of Pages: 43
+
+Markdown Content:
+# Additive Nonparametric Regression with Spatial and Network Objects 
+
+Rajarshi Guhaniyogi 1, Pritam Dey 1, Krishnendu Chandra 2,Aaron Scheffler 3, and Bani K. Mallick 1
+
+> 1
+
+Department of Statistics, Texas A&M University, College Station, TX, USA 
+
+> 2
+
+School of Medicine, Indiana University, Indianapolis, IN, USA 
+
+> 3
+
+Division of Biostatistics and Epidemiology, University of California, San Francisco, CA, USA 
+
+Abstract 
+
+This article is motivated by an imaging application from the Adolescent Brain Cognitive Development (ABCD) study, aiming to predict task-based brain activation maps from t-fMRI using cortical metrics from structural MRI (s-MRI) and brain connectivity data from resting-state fMRI (rs-fMRI). Hierar-chical Bayesian modeling is well-suited for integrating diverse imaging data and quantifying prediction uncertainty. However, progress in this field is limited due to challenges in designing joint priors that cap-ture the structures and interconnections between different imaging modalities, along with computational complexity and lack of theoretical assurances. To address these challenges, the article introduces a novel regression framework that treats t-fMRI and s-MRI images as functional data, incorporating additive non-linear effects of both network and functional predictors on the functional response. Specifically, we employ Gaussian process (GP) priors on coefficients related to the functional predictors to capture their intricate functional dependencies with the response. Furthermore, a GP prior is assigned to encapsulate the non-linear nodal effects of the network predictor on the response function. The method is supported by theoretical results on predictive accuracy for the functional response, and is empirically validated through simulation studies and analysis of multi-modal neuroimaging data from the ABCD study. Ad-ditional details regarding model computation, posterior consistency of the proposed model and empirical results are available in the supplementary material. 
+
+Keywords: Additive nonparametric regression; Gaussian process prior; multi-modal neuroimaging data; network model. 
+
+# 1 Introduction 
+
+This article considers localization of tasked-evoked brain activation that can allow researchers to map regions of interest (ROI) associated with cognitive domains, identify biomarkers associated with neurocog-nitive disorders, and map functional regions for neurosurgical planning (Parker Jones et al., 2017). Despite the research and clinical utility of task-based activation maps, several works have found that task-based fMRI (t-fMRI) activation maps have limited reliability and accuracy and thus it is of interest to deter-1arXiv:2609.26867v1 [stat.ME] 22 Sep 2026 Additive Nonparametric Regression with Spatial and Network Objects 
+
+Figure 1: Schematic of the multi-object brain imaging data structure for a sample subject. (a) Structural image encoding ROI-level task activation, (b) Gordon functional atlas parcellation of the brain into functional subnetworks, (c) structural image encoding ROI-level cortical thickness (mm) (d) Network image obtained by calculating the pairwise Pearson correlation for the average within and between subnetworks. Grey circles and lines connect (a, c) structural and (d) network information from images via the (b) parcellated atlas. Thus, the atlas provides an organizing hierarchy that links together structural information (task activation) at the ROI-level with network information indexed by pairs of functional networks (fMRI). 
+
+mine how well individual task mapping can be recovered from more stable features such as morphological features (e.g. cortical thickness and sulcal depth) captured via structural MRI (s-MRI) and resting state connectivity networks captured via fMRI (rs-fMRI) (Weng et al., 2018; Elliott et al., 2020). Resting state connectivity networks has edges describing connectivity among functional nodes (brain subnetworks, e.g. auditory) (Gordon, 2017), and operate at a different scale than t-fMRI and s-MRI, which are defined within spatially indexed ROIs. However, these modalities are topologically linked via the brain’s hierarchical or-ganization (see Figure 1), with ROIs nested within functional nodes (subnetworks). Statistically, this setup is formulated as a regression problem where the spatial t-fMRI activation map is the response, regressed against spatially indexed s-MRI and the brain network. The primary goal is to model this regression to capture non-linear associations and enable robust predictive inference for image responses. The literature on regression models involving images can be divided into three main areas: (a) scalar-on-image regression, (b) image-on-scalar regression, and (c) image-on-image regression. In scalar-on-image regression, images serve as predictors for a scalar outcome, while in image-on-scalar regression, images are the response variable. Both approaches have been extensively studied, with images treated as spatially correlated functions (Goldsmith et al., 2014; Feng et al., 2019; Lin et al., 2024; Roy et al., 2021; Kang et al., 2018), or as tensors and networks (Guhaniyogi et al., 2017; Guha and Rodriguez, 2020; Guha and 2Guhaniyogi, Dey, Chandra, Scheffler, and Mallick 
+
+Guhaniyogi, 2024). A less explored but highly relevant area is image-on-image regression, which focuses on studying associations between imaging modalities, closely aligned with the goals of our application in Section 2. In image-on-image regression, adaptive smoothing and spatially varying coefficient models have been in-troduced, allowing for better integration of neighboring voxel information (Niyogi et al., 2023; Mu et al., 2018). Spatial latent factor models have also been developed to capture complex spatial dependencies (Guo et al., 2022). Although these techniques are effective, they do not account for situations where spatial pre-dictors are defined at ROIs while the network predictor is constructed using nodes that represent brain sub-networks. Since each ROI is nested within a sub-network, this leads to a misalignment between the spatial and network predictors. A second line of research explores multivariate support vector machines for predicting missing spatial or temporal information in fMRI and EEG data (De Martino et al., 2011; Jansen et al., 2012). Recently, deep learning methods, particularly adversarial networks, have been applied to learn mappings between image inputs and output for translation, style transfer, and data augmentation (Huang et al., 2018; Ma et al., 2023). This article introduces Additive Multi-Object Gaussian Process (AMO-GP), a two-stage semi-parametric regression framework to address image-on-image regression, where predictor images include spatially-varying functions and a network. In the first stage, each network edge is modeled as a bi-linear effect of latent vectors corresponding to the two connected nodes to estimate node-specific latent effects. In the second stage, we employ a semi-parametric regression framework, assuming additive effects of various image predictors on the response. The effect of spatially-indexed functional predictors are modeled with spatially varying coefficient functions, while effect of each node from the network predictor are represented through a non-linear function of the estimated latent effects from the first stage. Gaussian process (GP) priors are assigned to the spatially varying coefficients and the function capturing node-specific latent effects to en-able information sharing across ROIs and subjects. An additive framework provides interpretable insights into the influence of each predictor, facilitates regularization, as modeling only additive effects reduces model complexity, particularly when data are limited. Also, the additive structure circumvents the need to specify joint covariance kernels across all predictors. This enables flexible integration of diverse image data while ensuring accurate uncertainty quantification for inference. 3Additive Nonparametric Regression with Spatial and Network Objects 
+
+The rest of the manuscript is organized as follows. Section 2 overviews the multi-modal neuroimaging data and outlines the main scientific questions. Section 3 details model development and the prior, while Section 4 discusses posterior computation. Section 5 presents simulation studies validating AMO-GP, and Section 6 showcases its application to multimodal neuroimaging data. Section 7 concludes the paper. 
+
+# 2 Multi-modal Neuroimaging Data Application 
+
+We explore a clinical application derived from multimodal imaging studies in 9–10 year-old children from the Adolescent Brain Cognitive Development (ABCD) Study, the largest U.S. study on brain development (Casey et al., 2018). The focus is on characterizing the association between task-based activation maps measuring local neuronal activity during tasks, and brain image predictors capturing cortical morphology and resting state connectivity. 
+
+Scientific question of interest: Task-based activation maps are based on fMRI images of local blood-oxygen-level-dependent (BOLD) signals collected on subjects engaged in a task (Ellis and Aizenberg, 2022). Localization of tasked-evoked responses allows researchers to map regions of interest (ROIs) associated with cognitive domains, identify biomarkers associated with neurocognitive disorders, and map functional regions for neurosurgical planning (Parker Jones et al., 2017). Despite the clinical utility of task-based activation maps, several works have found that individual task-based fMRI (t-fMRI) activation maps may display low reliability and thus it is of interest to determine how well task mapping can be recovered from more stable features such as morphological features and resting state connectivity maps (Weng et al., 2018; Elliott et al., 2020). Specifically, even if individual t-fMRI activation maps display low reliability, it may be possible to recover expected associations between t-fMRI signals and more stable neurological markers by analyzing images from multiple subjects. For example, Cole et al. (2016) demonstrated that coordinated task-based activation follows resting state functional connectivity networks which suggests resting state functional networks could be used to help triangulate task activation in the future. Our focus is to model task-based activation in response to a working memory task as a function of structural and network images. Working memory, which underlies the temporary storage and manipulation of information, is critical for cognition and has been extensively studied in relation to cognitive development and neural substrates (Rosenberg, 2020). Specifically, we analyze task-based activation from the working memory task 4Guhaniyogi, Dey, Chandra, Scheffler, and Mallick 
+
+(described below) as a function of cortical morphological features and resting state connectivity, as both have been previously linked to working memory in childhood (Osaka et al., 2021). Most existing models relate t-fMRI activation maps to brain structure or function using features from a single imaging modality. Associations with sMRI have been modeled using regression (Squeglia et al., 2013), deep learning (Ellis and Aizenberg, 2022), and latent factor models (Guo et al., 2022), while rs-fMRI connectivity links have leveraged linear models (Tavor et al., 2016; Cohen et al., 2020), permutation tests (Harrewijn et al., 2020), neural networks (Cohen et al., 2020; Ngo et al., 2022), ensemble methods (Cohen et al., 2020; Langs et al., 2015b), and manifold learning (Langs et al., 2015a). Joint analysis of t-fMRI activation with both s-MRI and rs-fMRI features is rare: vectorized feature approaches (Tavor et al., 2016) do not clarify structural or network contributions, and spatial-network models (Ma et al., 2023) obscure additive effects. Here, we integrate cortical morphology and functional connectivity to predict task activation, and, to our knowledge, no previous structured regression has jointly modeled t-fMRI, s-MRI, and rs-fMRI associations. 
+
+Clinical images and working memory evaluation: We utilized the ABCD Study 5.0 Tabulated Re-lease Data ( http://dx.doi.org/10.15154/8873-zj65 ), focusing on baseline imaging and cognitive mea-sures from a random subsample of 80 children (aged 9–10 years) from a single study site. Sample size is restricted due to computational constraints (see Section 4). The imaging data included: task-based fMRI (t-fMRI) for measuring focal brain activation, sMRI for cortical morphological features, and resting state fMRI (rs-fMRI) for assessing brain activation through neuronal oxygen consumption during rest (Hagler et al., 2019). All images are registered in the template space of the Montreal Neurological Institute (MNI). Working memory was measured using fMRI activation (Figure 1a) of the emotional N-back task using the 2-back vs. 0-back linear contrast described in (Hagler et al., 2019) for 148 spatially indexed ROIs defined by the Destrieux atlas (Destrieux et al., 2010). Morphological features include cortical thickness and sulcal depth which estimate the thickness of the cortex and depths of folds in the cortex, respectively, (Fig-ure 1) and were measured using sMRI and extracted using Freesurfer for the Destrieux atlas (described above) as in (Hagler et al., 2019). Resting state fMRI data was collected for 333 cortical-surface ROIs 5Additive Nonparametric Regression with Spatial and Network Objects 
+
+defined by the Gordon atlas (Gordon, 2017) and ROIs were subsequently grouped into 13 brain subnet-works (auditory, cingulo-opercular, cingulo parietal, default mode, dorsal attention, frontoparietal, none, retrosplenial temporal, salience, sensorimotor-hand, sensorimotor-mouth, ventral attention and visual sub-networks (Gordon, 2017)). A symmetric adjacency matrix was constructed following (Hagler et al., 2019), with rows and columns representing different subnetworks. Matrix entries correspond to Z-scores obtained by Fisher Z-transforming the average Pearson correlation for each pairwise combination of ROIs between subnetworks (Figure 1d). To align the Destrieux and Gordon atlases with differing parcellations, each Destrieux ROI was assigned to a Gordon subnetwork by minimizing the Euclidean distance between their centroids. This enabled cross-modality and subject comparisons. Each Destrieux ROI was thus nested within a Gordon subnetwork (Figure 1b). Centroid matching was used given the ROI-level focus of the analysis, with coordinates obtained via the R package brainGraph (Watson, 2020). The median distance between matched ROIs was 6.6 mm (range: 1.4–17.2 mm), and visual checks confirmed accuracy. This alignment nested 145 Destrieux ROIs within 11 Gordon subnetworks, excluding salience and sensorimotor-mouth networks due to sparse coverage. Atlas selection and alignment sensitivity are discussed in Section 7. 
+
+# 3 Model and Prior Development 
+
+3.1 Multi-object image characterization 
+
+We propose Additive Multi-Object Gaussian Process (AMO-GP) a multi-object framework which jointly captures both spatial and network information. AMO-GP represents each image either as a spatially indexed function or as a network object, linking them through a shared topology. For the ith individual, let Ai denote the undirected brain network, represented by a P ×P symmetric matrix derived from rs-fMRI data. The P nodes correspond to brain subnetworks R1, . . . , RP with the ( p, p ′)-th entry ai, (p,p ′) indicating the strength of association between Rp and Rp′ . The network is symmetric (i.e. ai, (p,p ′) = ai, (p′,p ), for all 1 ≤ p, p ′ ≤ P ) and excludes self-connections ( ai, (p,p ) = 0). Assume Vp ROIs are nested within subnetwork 
+
+Rp. Functional predictors gi,p , wi,p along with the functional response oi,p are defined over these ROIs for 
+
+p = 1 , . . . , P . Specifically, the values for the v = ( v1, . . . , v D)th ROI coordinate are given by gi,p (v), wi,p (v), 6Guhaniyogi, Dey, Chandra, Scheffler, and Mallick 
+
+and oi,p (v), respectively, where D depends on whether the analysis focuses on a cross-section ( D = 2) or the entire brain ( D = 3). 
+
+3.2 Model Framework 
+
+AMO-GP is a two-stage Bayesian approach that blends ideas from manifold regression for networks and non-parametric modeling of regression effects from the functional predictors. A two-stage framework is adopted for computational feasibility and to avoid slow convergence of latent variables. Since the latent scale representation effectively captures the underlying network topology, the two-stage approach in AMO-GP does not result in any noticeable loss in predictive uncertainty when applied to the ABCD data for predicting t-fMRI images. 
+
+3.2.1 Stage 1: Latent scale representation of brain networks 
+
+As it’s first stage, AMO-GP models the undirected network predictor Ai through its edge set ai = {ai, (p,p ′) :1 ≤ p < p ′ ≤ P } for i = 1 , . . . , n . Since the number of edges P (P − 1) /2 grows rapidly with P , we adopt a low-dimensional latent representation to capture network structure. Specifically, we consider 
+
+η−1(E[ai, (p,p ′)|μi, ˜ui,p , ˜ui,p ′ , σ 2
+
+> u
+
+]) = μi + ˜ uTi,p ˜ui,p ′ + ϵi, (p,p ′), ϵi, (p,p ′) ∼ N (0 , σ 2
+
+> u
+
+), (1) where η(·) is a suitable link function. Here, μi is a subject-specific intercept controlling overall network density, and ˜ ui,p ∈ RR is a latent vector for node Rp. The inner product ˜ uTi,p ˜ui,p ′ captures connectivity, reducing the parameter dimension from P (P − 1) /2 to P R . Although methods for selecting (Hoff, 2005; Guhaniyogi and Dunson, 2016) or inferring (Guha and Rodriguez, 2020) R exist, they are computationally intensive. Given the stability of predictive performance across a wide range of R, we fix R in AMO-GP. The model in (1) is closely related to the random dot product graph model (Xie and Xu, 2023). In latent space modeling of a single network, this representation provides a sufficiently general characterization of interconnection structure. We assign a flat prior on each μi and the priors ˜ ui,p i.i.d. 
+
+∼ N (0, IR) and 
+
+σ2 
+
+> u
+
+∼ IG (α, β ), and perform posterior inference via Markov Chain Monte Carlo (MCMC). Since the likelihood in (1) depends on ˜ ui,p ’s only through inner products, these latent variables are identifiable up 7Additive Nonparametric Regression with Spatial and Network Objects 
+
+to orthogonal transformations. We therefore apply a “Procrustean transformation” (Guha and Rodriguez, 2020) to align MCMC samples to a common reference orientation across subjects and treat the mean of the transformed post-burn-in draws as a point estimate bui,p of ui,p . These point estimates are subsequently used as covariates in the second-stage regression. 
+
+3.2.2 Stage 2: Additive Semi-parametric Regression Framework 
+
+In the second stage of AMO-GP, we formulate a non-linear regression function to delineate association between the functional response oi,p (v) and functional predictors gi,p (v), wi,p (v), and the estimated latent node effect bui,p corresponding to the pth node/subnetwork. The unknown regression function fp, v, char-acterizing the association between response and these predictors in the vth ROI of the pth subnetwork, is decomposed into three components, fp, v = f Np + f Gp, v + f Wp, v. Here, f Np , f Gp, v, and f Wp, v represent the non-linear functional effects of bui,p , gi,p (v), and wi,p (v), respectively. More precisely, we model: 
+
+oi,p (v) = f Np (bui,p ) + f Gp, v(gi,p (v)) + f Wp, v(wi,p (v)) + ϵi,p (v), (2) where the idiosyncratic errors are assumed to follow ϵi,p (v) i.i.d. 
+
+∼ N (0 , τ 2 
+
+> p
+
+). In AMO-GP, we assume that 
+
+f Gp, v(gi,p (v)) and f Wp, v(wi,p (v)) are linear but have coefficients that vary for each ROI, i.e., f Gp, v(gi,p (v)) = 
+
+gi,p (v)βp,g (v) and f Wp, v(wi,p (v)) = wi,p (v)βp,w (v). This formulation is an instance of a varying-coefficient model (VCM), a flexible and popular extension of the linear regression model (Guhaniyogi et al., 2023; Guhaniyogi and Sanso, 2020). Under VCM specification for functional predictors equation (2) simplifies: 
+
+oi,p (v) = f Np (bui,p ) + gi,p (v)βp,g (v) + wi,p (v)βp,w (v) + ϵi,p (v). (3) We assign Gaussian process priors independently to estimate βp,g (·), βp,w (·), and f Np (·), each with a mean of 0 and exponential covariance kernels κp,g , κp,w , and κp,N respectively, defined as: 
+
+κp,g (v, v′) = σ2 
+
+> p,g
+
+exp( −θp,g || v − v′|| ), κp,w (v, v′) = σ2 
+
+> p,w
+
+exp( −θp,w || v − v′|| ),κp,N (bui,p , bui′,p ) = σ2 
+
+> p,N
+
+exp( −θp,N || bui,p − bui′,p || ),
+
+(4) 8Guhaniyogi, Dey, Chandra, Scheffler, and Mallick 
+
+where || · || denotes the Euclidean distance between two vectors, and σ2
+
+> p,g
+
+, σ2
+
+> p,w
+
+, and σ2 
+
+> p,N
+
+are variance parameters, while θp,g , θp,w , and θp,N are length-scale parameters. The length-scale parameters control the smoothness of the regression functions. Note, due to the alignment of latent effects bui,p to a common orientation as described in Stage 1, distance based kernels are appropriate for modeling the network effects. The use of GP priors for the mean function allows for flexible modeling of non-linear relationships be-tween the outcome and the covariates. Furthermore, it enables information sharing between ROIs within a subnetwork and between subjects, facilitating accurate inference with uncertainties for the regression function and for prediction of the response image. The exponential kernel for GP is a specific case of the Mat´ ern class of correlation functions with smoothness parameter 1 /2, yielding spatial surfaces that are continuous but not differentiable a priori (Stein, 1999). While it is technically possible to use other Mat´ ern kernels with higher smoothness parameters to obtain smoother functions, the exponential kernel is chosen due to its popularity in spatial analysis. Importantly, methods that perform well with the exponential kernel generally also perform well with Mat´ ern kernels featuring higher smoothness parameters (Stein, 1999). The second stage of AMO-GP can be parallelized across different subnetworks, yielding significant computational benefits. Theoretical properties, in particular the posterior consistency of AMO-GP have been studied in Supplementary Section A. 
+
+# 4 Posterior Computation: Parallel Computation Over Subnetworks 
+
+We will address the posterior computation for the two stages of AMO-GP separately. 
+
+Stage 1. In the empirical studies, we use the identity link for η(·) since the edge weights in the brain network are continuous in the ABCD data. The intrinsic dimensionality is fixed at R = 6, consistent with prior studies showing minimal sensitivity in inference when R is chosen around 5 (Gutierrez et al., 2023). A Gibbs Sampler is implemented (see Section B of the Supplementary materials) for 15,000 iterations, with the first 10,000 discarded as burn-in. Estimates for bui,p are derived from the remaining 5,000 iterations. 
+
+Stage 2. The posterior computation in the second stage of AMO-GP involves elliptical slice sampling for length-scale parameters θp,g , θp,w , and θp,N and Metropolis–Hastings algorithm for the variance parameters 
+
+τ 2 
+
+> p
+
+, σ2
+
+> p,g
+
+, σ2 
+
+> p,w
+
+and σ2 
+
+> p,N
+
+to generate 15000 MCMC samples, discarding the first 10000 as burn-in. Details of 9Additive Nonparametric Regression with Spatial and Network Objects 
+
+the full conditional distributions are available in Section B of the Supplementary materials. 
+
+Parallel computation and computation complexity. The computational complexity of AMO-GP is primarily driven by two factors: updating the varying coefficients ( βp,g (v) : v ∈ R p)T and ( βp,w (v) : v ∈Rp)T across all ROIs for each subnetwork, and updating ( f Np (bu1,p ), . . . , f Np (bun,p )) T for each subnetwork during each MCMC iteration. Since the method allows for parallel processing across different subnetworks, the complexity of updating the varying coefficients and node effects is approximately ∼ max p=1 ,..,P V 3
+
+> p
+
+and ∼ n3, respectively. To ensure feasible computation, we use a moderate sample size, with Section 7 discussing future work to address challenges with larger datasets. All implementations are performed in the R programming language. 
+
+# 5 Simulation Studies 
+
+5.1 Simulated Data Generation 
+
+We consider P = 50 subnetworks and a sample size of n = 100 for both training and test datasets. Each subnetwork contains 12 regions of interest (ROIs), i.e., Vp = 12, for p = 1 , . . . , P . The network predictor is constructed from R = 3 latent components. For each subject i = 1 , . . . , n and subnetwork p = 1 , . . . , P ,we generate a network-level predictor based on latent variables ˜ ui,p , along with two functional predictors 
+
+wi,p (v) and gi,p (v) defined over spatial locations v ∈ [0 , 10] 3. The response image oi,p (v) is generated under four scenarios summarized in Table 1, designed to assess performance under both well-specified (Scenarios 1 and 3) and misspecified (Scenarios 2 and 4) settings. All experiments are repeated over 10 independent replicates. Details are provided in Supplementary Section C. 
+
+5.2 Competitors & Metrics of Comparison 
+
+We evaluate two groups of competing models. The first group, nested competitors , uses subsets of functional and network predictors to predict the outcome image, allowing us to assess each predictor’s contribution to the model. The second group, non-nested competitors , includes all three predictors like AMO-GP but does not account for network topology, spatial associations in functional predictors, or their structural interconnections. 10 Guhaniyogi, Dey, Chandra, Scheffler, and Mallick 
+
+Table 1: Summary of simulation scenarios. 
+
+Scenario Type Data Generating Model Specification 
+
+1 AMO-GP additive model Additive AMO-GP model as in (3) with Gaussian noise; f Np , βp,g (v), and βp,w (v) are independent GPs with exponential kernels with pa-rameters ( σ2 
+
+> p,N
+
+, θ p,N ) = (3 , 6); ( σ2 
+
+> p,g
+
+, θ p,g ) = (3 , 8) and ( σ2
+
+> p,w
+
+, θ p,w ) = (2 , 5) respectively. Error variance is τ 2 
+
+> p
+
+= 0 .01. 2 Misspecified network Replace network effect f Np (˜ ui,p ) in Scenario 1 with PRj=1 sin(˜ ui,p,j ). The varying coefficients will be simulated similar to Scenario 1. 3 Heavy-tailed noise Same as Scenario 1, but replace Gaussian noises with noises ϵi,p (v)’s simulated from Student’s t3 distribution with the scale parameter cho-sen as 0 .01 /3, such that the noise variance becomes 0 .01, same as Sce-nario 1. 4 Non-additive interaction Simulate from oi,p (v) = f Np (˜ ui,p ) + gi,p (v)βp,g (v) + wi,p (v)βp,w (v) + 
+
+ρf Np (˜ ui,p ) gi,p (v)βp,g (v) + ϵi,p (v), where ϵi,p (v) ∼ N (0 , τ ∗2 
+
+> p
+
+), τ ∗2 
+
+> p
+
+=0.01, and ρ = 0 .3 controls the strength of the interaction. The func-tions f Np , βp,g (v), and βp,w (v) are simulated with an identical strategy as in Scenario 1. 
+
+5.2.1 Competing Nested Models 
+
+We consider two nested competitors that use subsets of predictors within the AMO-GP framework. In both cases, Stage 1 is identical to AMO-GP (Section 3.2.1), yielding estimated latent node effects bui,p , while modifications are introduced in Stage 2. The Network model uses only the estimated network features bui,p 
+
+to predict the response image oi,p (v) via a nonlinear regression, whereas the Function & Network model uses one functional predictor gi,p (v) and the estimated network features bui,p in the Stage 2 regression. 
+
+5.2.2 Non-nested Competitors 
+
+As non-nested competitors, we consider Bayesian additive regression trees (BART) (Chipman et al., 1998), a neural network (NN), and a deep kernel learning Gaussian process model (BIRD-GP) (Ma et al., 2023), each using all predictors to model the outcome image without imposing the additive multi-object structure of AMO-GP. BART is implemented using the R package BART , which fits a sum-of-trees model to capture nonlinear effects. The neural network is implemented using the neuralnet R package with a feedforward architecture. For BIRD-GP, we use the publicly available Python implementation provided by the authors, which employs deep kernel learning within a Gaussian process framework. 11 Additive Nonparametric Regression with Spatial and Network Objects 
+
+5.2.3 Metrics of Comparison 
+
+To compare AMO-GP with nested models, we use the posterior predictive loss criterion (PPLC) (Gelfand and Ghosh, 1998). Let boi,p (v) be the predicted response and bσ2
+
+> i,p
+
+(v) the estimated variance. We use 
+
+G(M) = PPp=1 
+
+Pni=1 
+
+P 
+
+> v∈R p
+
+(oi,p (v) − boi,p (v)) 2 and P (M) = PPp=1 
+
+Pni=1 
+
+P
+
+> v∈R p
+
+cσ2i,p (v) to compute ac-curacy and complexity, respectively, with total loss D(M) = G(M) + P (M). We report G(M), P (M), 
+
+D(M) on training data along with the coefficient of determination ( R2) computed on the training set. For out-of-sample evaluation, we use Mean Squared Prediction Error (MSPE) on a test set of n∗ = 100 samples and report the corresponding test R2. Predictive uncertainty is evaluated via coverage and length of 95% intervals, averaged over all ROIs. NN provides only G(M) and MSPE, along with train and test R2, with-out model complexity or predictive intervals. In addition, we assess the accuracy of coefficient estimation for AMO-GP through a coefficient recovery study, with details and full results provided in Section C.6 of the Supplementary Materials. 
+
+5.3 Simulation Results 
+
+Table 2 shows that AMO-GP consistently outperforms the Network and Function & Network models in both accuracy and complexity across scenarios 1–3 — expected given the true model uses all three predictors. In particular, AMO-GP achieves substantially lower values of G(M), P (M), and D(M), indicating both improved predictive fit and reduced effective model complexity. While BART, NN and BIRD-GP account for non-linear effects, they still substantially underperform relative to AMO-GP, with NN faring worse than all others. Scenario 4 marginally favors BIRD-GP over AMO-GP, however they both provide similar performance in this scenario. These results highlight two points: the two-stage approach effectively captures network effects, and performance degrades in Scenario 3 and 4 due to misspecified noise and increased complexity, respectively. Figure 2 summarizes predictive uncertainty via 95% interval coverage and length, evaluated relative to the nominal 95% level. All models exhibit under-coverage on training data, with this effect most pronounced for AMO-GP, which produces very narrow intervals reflecting high model flexibility. This is likely due to optimizing the weakly identifiable kernel parameters in GP, as argued by earlier articles encountering similar phenomena (Van der Wilk et al., 2017). On test data, AMO-GP achieves the highest coverage 12 Guhaniyogi, Dey, Chandra, Scheffler, and Mallick 
+
+Table 2: Average training and test performance of AMO-GP and competing methods over 10 repetitions across all scenarios. For the training data, we report G(M), P (M), D(M) = G(M) + P (M), and R2. For the test data, we report MSPE and    
+
+> R2.P(M) and D(M) are unavailable for Neural Network (NN) and reported as “NA”. Nested 1 includes one functional and network effects, whereas Nested 2 includes only network effects. Boldface indicates the best-performing method in each row.
+
+Metric AMO-GP Function & Network Network BART NN BIRD-GP 
+
+Scenario 1 
+
+G(M) × 10 −3 0.54 32.85 88.28 127.08 146.34 44.43 
+
+P (M) × 10 −3 0.07 3.65 6.87 2.30 NA 2.32 
+
+D(M) × 10 −3 0.61 36.50 95.14 129.38 NA 46.75 
+
+R2 (Train) 1.00 0.78 0.41 0.16 0.03 0.73 MSPE (Test) 3.06 4.81 5.73 6.01 8.25 5.36 
+
+R2 (Test) 0.60 0.38 -0.01 -0.13 -0.02 0.41 
+
+Scenario 2 
+
+G(M) × 10 −3 0.54 106.75 280.85 341.43 380.90 132.84 
+
+P (M) × 10 −3 0.07 9.53 15.75 4.55 NA 10.48 
+
+D(M) × 10 −3 0.61 116.28 296.60 345.98 NA 143.32 
+
+R2 (Train) 1.00 0.75 0.38 0.16 0.09 0.64 MSPE (Test) 1.34 3.56 6.32 6.57 8.59 6.31 
+
+R2 (Test) 0.77 0.33 -0.00 -0.23 0.00 0.34 
+
+Scenario 3 
+
+G(M) × 10 −3 0.52 280.22 445.32 610.95 680.43 314.88 
+
+P (M) × 10 −3 0.07 24.32 29.71 7.61 NA 29.30 
+
+D(M) × 10 −3 0.59 304.54 475.03 618.56 NA 344.18 
+
+R2 (Train) 1.00 0.62 0.33 0.12 0.07 0.56 MSPE (Test) 2.93 4.59 4.93 5.02 6.72 4.60 
+
+R2 (Test) 0.62 0.31 -0.00 -0.12 -0.01 0.46 
+
+Scenario 4 
+
+G(M) × 10 −3 44.18 46.18 104.18 136.90 165.67 39.64 
+
+P (M) × 10 −3 5.16 4.96 7.74 2.98 NA 3.76 
+
+D(M) × 10 −3 49.34 51.14 111.92 139.88 NA 43.40 
+
+R2 (Train) 0.92 0.72 0.37 0.18 0.01 0.95 
+
+MSPE (Test) 4.02 6.75 9.31 9.75 10.99 3.75 
+
+R2 (Test) 0.55 0.34 -0.01 -0.17 -0.01 0.56 
+
+across scenarios ( ≥ 90%), while BART severely under-covers and other methods provide moderate but sub-nominal coverage. In Scenario 3, most models (except BART) produce wider PIs than in Scenarios 1 and 2, reflecting sen-sitivity to error misspecification. BART yields the narrowest intervals across scenarios but suffers from severe under-coverage, indicating poor calibration. Incorporating both functional and network predic-tors improves both predictive accuracy and interval calibration compared to using network information 13 Additive Nonparametric Regression with Spatial and Network Objects 
+
+Figure 2: Box plots of 95% predictive interval coverage and length across all scenarios over 10 independent repetitions for AMO-GP and different competing models. Coverage and length are not available for NN. 
+
+14 Guhaniyogi, Dey, Chandra, Scheffler, and Mallick 
+
+alone. Additional coefficient recovery results (Supplementary Section C.6) show decreasing accuracy under misspecification, especially with heavy-tailed noise and interactions. 
+
+# 6 ABCD Data Analysis 
+
+As detailed in Section 2, the scientific goal is to predict task-based activation maps using structural MRI (cortical thickness and sulcal depth) and resting-state connectivity network from fMRI. The outcome vari-able from the t-fMRI data, and the explanatory variables, representing cortical thickness (CT) and sulcal depth (SD), are appropriately scaled and normalized to facilitate the analysis and generate results for inference. While AMO-GP regression flexibly models relationships across modalities, it is computationally demanding for large samples (see Section 4). Thus, we analyzed neuroimaging data from 80 randomly selected ABCD study subjects, split equally into training and test sets (Section 2). Supplementary Sec-tion D.1 shows trace-plots for the length-scale and variance parameters, confirming satisfactory conver-gence. Model performance is compared to nested and non-nested alternatives described in Sections 5.2.1 and 5.2.2. Nested models include: (i) connectivity network only predictor, (ii) connectivity network and SD predictors, and (iii) connectivity network and CT predictors. Non-nested competitors are BART, NN, and BIRD-GP. To assess the robustness of AMO-GP, we conducted an additional analysis by generating 10 random subsamples of size equal to the original training set (i.e., 40) and fitting AMO-GP to each. We computed the in-sample R2 across all subsamples and subnetworks, with results summarized via boxplots in Supplementary Figure S3. The detailed results provided in Supplementary Section D.2 gives insight into the stability of model performance across different splits. 
+
+6.1 Analysis & Results 
+
+Table 3 compares AMO-GP with nested and non-nested competitors on the ABCD data. AMO-GP, BART, and BIRD-GP achieve the lowest in-sample MSE, followed by the nested competitors and NN. However, BIRD-GP exhibits substantially worse out-of-sample performance, as reflected by its higher MSPE. AMO-GP outperforms both BART and BIRD-GP out-of-sample and shows modest improvement over the nested competitors, which perform comparably overall, suggesting limited additional contribution from CT and SD after accounting for the network predictor. Subnetwork-level comparisons (Table S1 of Supplemen-15 Additive Nonparametric Regression with Spatial and Network Objects 
+
+Table 3: The model fitting statistics, including MSE, MSPE, out-of-sample coverage, and the length of 95% predictive intervals for t-FMRI. Definitions of these metrics can be found in Section 5.2.3. Since coverage and length metrics are not available for the NN model, the corresponding cells are marked as “NA.”                                      
+
+> Metric Proposed Model Nested Competitors Non-Nested Competitors AMO-GP CT & Network SD & Network Network BART NN BIRD-GP MSE 0.37 0.40 0.41 0.42 0.37 0.66 0.37 MSPE 1.50 1.55 1.55 1.56 1.90 6.61 3.93 Coverage (out-of-sample) 88.34% 83.78% 84.07% 83.34% 50.38% NA 44.24% Length of CI (out-of-sample) 2.03 1.90 1.90 1.85 1.18 NA 0.50
+
+tary Section D.3) show modest MSPE improvements from including structural predictors in the auditory, default, retrosplenial temporal, and sensorimotor hand networks. In particular, the default and retrosple-nial temporal networks have been implicated in working memory (Vann et al., 2009; Owen et al., 2005). AMO-GP also achieves the highest out-of-sample coverage (88 .34%), indicating well-calibrated predictive uncertainty, at the cost of wider but more plausible predictive intervals. In contrast, BIRD-GP exhibits substantially lower coverage (44 .24%) along with much shorter predictive intervals, suggesting underes-timation of predictive uncertainty and overconfident predictions. BART similarly shows low coverage (50 .38%), though with moderately wider intervals than BIRD-GP. These results highlight the advantage of the AMO-GP framework in providing more reliable uncertainty quantification. Across subnetworks, R2 (in-sample) values range from approximately 0 .32 (none) to 0 .87 (retrosplenial temporal), with moderate variability across subsamples as indicated by standard deviations between 0 .04 and 0 .11, suggesting stable and consistently performance across subsamples. A detailed analysis of R2 is provided in Section D.2 of Supplementary Materials. Figure 3 displays the varying coefficient functions corresponding to the cortical thickness and sulcal depth s-MRI predictors. In each panel, the top row shows the medial view of the brain and the bottom row the lateral view; the left and right columns correspond to the left and right hemispheres, respectively. Each Destrieux ROI is indicated by solid lines with shading reflecting the value of the varying coefficient function in that region which can be interpreted as the conditional effect of the predictor on the t-fMRI outcome (both outcome and predictors are scaled to have a standard deviation equal to one). Cortical thickness shows a generally negative association with task-based response to a working memory task while controlling for rs-fMRI and sulcal depth, particularly in the parietal region, which could reflect prior evidence that 16 Guhaniyogi, Dey, Chandra, Scheffler, and Mallick 
+
+Figure 3: Varying coefficient functions corresponding to the cortical thickness and sulcal depth s-MRI predictors. In each panel, the top row shows the medial view of the brain while the bottom row shows the lateral view of the brain. Similarly, the left column shows the left hemisphere while the right column shows the right hemisphere. Each ROI in the Destrieux parcellation is indicated by solid lines with shading reflecting the value of the varying coefficient function in that region. 
+
+during development working memory is associated with a thinner parietal cortex (Krogsrud et al., 2021). The exception is the right temporal lobe in which task activation is positively correlated with cortical thickness, an observation which is not well triangulated within the existing literature on working memory. Associations between sulcal depth and task-activation are more mixed: positive associations in the frontal and insula lobes and negative associations in the parietal, temporal, and occipital lobes. The limited work examining sulcal depth as a biomarker of working memory in the prefrontal cortex suggest similarly mixed findings (Yao et al., 2023). The varying coefficient functions in Figure 3 highlight new inferential possibilities enabled by AMO-GP. 
+
+# 7 Conclusion and Future Work 
+
+This article introduces AMO-GP, a Bayesian framework for predictive inference of spatially-indexed func-tional outcomes using both functional and network image predictors. Additive nonlinear effects are modeled with Gaussian process priors on spatial coefficients for functional predictors and node effects for network predictors. AMO-GP enables uncertainty-quantified prediction of brain activation maps from t-fMRI based 17 Additive Nonparametric Regression with Spatial and Network Objects 
+
+on cortical thickness, sulcal depth (s-MRI), and brain connectivity networks (rs-fMRI), establishing one of the first image-on-image regression models to incorporate both functional and network predictors. In the ABCD data analysis, AMO-GP assessed the relative contributions of network and structural images in predicting task-based responses and provided interpretable conditional effects. Two limitations are noted: first, a limited sample size due to computational constraints necessitates cautious interpretation, as is common in neuroimaging studies. Second, the selection and alignment of brain atlases are critical; mismatches—such as structural ROIs spanning multiple subnetworks—may affect prediction accuracy, al-though inference and interpretation remain clear even when ideal nesting is not achieved. With further resources and access to the raw imaging data from the ABCD study, it would be possible to reprocess the imaging data to a single atlas more suited for joint analysis of structural and functional images, e.g. (Glasser et al., 2016), and repeat the analysis, although this lies beyond the scope of this work. While the GP prior offers modeling flexibility, it has computational challenges with large datasets. A promising next step is to develop a Bayesian framework for efficient, distributed GP computation (Guhaniyogi and Sanso, 2020; Guhaniyogi et al., 2023). 
+
+# Acknowledgments 
+
+All computations were done using the R programming language on the Department of Statistics Arseven Computing Cluster at Texas A&M University. 
+
+ABCD Data Acknowledgment 
+
+Data used here were obtained from the Adolescent Brain Cognitive Development ™ (ABCD) Study ( https: //abcdstudy.org ), held in the NIMH Data Archive (NDA). This is a multisite, longitudinal study designed to recruit more than 10,000 children age 9–10 and follow them over 10 years into early adulthood. The ABCD Study is supported by the National Institutes of Health and additional federal partners under award numbers U01DA041048, U01DA050989, U01DA051016, U01DA041022, U01DA051018, U01DA051037, U01DA050987, U01DA041174, U01DA041106, U01DA041117, U01DA041028, U01DA041134, U01DA050988, U01DA051039, U01DA041156, U01DA041025, U01DA041120, U01DA051038, U01DA041148, U01DA041093, U01DA041089, U24DA041123, U24DA041147. A full list of supporters is available at https://abcdstudy. 
+
+18 Guhaniyogi, Dey, Chandra, Scheffler, and Mallick 
+
+org/federal-partners.html . A listing of participating sites and a complete listing of the study investi-gators can be found at https://abcdstudy.org/consortium_members/ . ABCD consortium investigators designed and implemented the study and/or provided data but did not necessarily participate in the anal-ysis or writing of this report. This manuscript reflects the views of the authors and may not reflect the opinions or views of the NIH or ABCD consortium investigators. 
+
+# Supplementary Materials 
+
+Supplementary material provides theoretical results on posterior consistency (Section A), computation details (Section B), additional details and results on simulations (Section C), and additional empirical results on real data analysis (Section D). An R implementation of AMO-GP is available at https:// github.com/pritamdey/AMOGP .
+
+# Data Availability 
+
+The ABCD data repository grows and changes over time. The ABCD data used in this report came from 
+
+https://doi.org/10.15154/8873-zj65 .
+
+# References 
+
+Betty Jo Casey, Tariq Cannonier, May I Conley, Alexandra O Cohen, Deanna M Barch, Mary M Heitzeg, et al. The adolescent brain cognitive development (abcd) study: imaging acquisition across 21 sites. 
+
+Developmental cognitive neuroscience , 32:43–54, 2018. Hugh A Chipman, Edward I George, and Robert E McCulloch. Bayesian CART model search. Journal of the American Statistical Association , 93(443):935–948, 1998. Alexander D Cohen, Ziyi Chen, Oiwi Parker Jones, Chen Niu, and Yang Wang. Regression-based machine-learning approaches to predict task activation using resting-state fMRI. Hum. Brain Mapp. , 41(3): 815–826, February 2020. Michael W Cole, Takuya Ito, Danielle S Bassett, and Douglas H Schultz. Activity flow over resting-state networks shapes cognitive task activations. Nat. Neurosci. , 19(12):1718–1726, December 2016. Federico De Martino, Aline W De Borst, Giancarlo Valente, Rainer Goebel, and Elia Formisano. Predicting eeg single trial responses with simultaneous fMRI and relevance vector machine regression. Neuroimage ,56(2):826–836, 2011. Christophe Destrieux, Bruce Fischl, Anders Dale, and Eric Halgren. Automatic parcellation of human cortical gyri and sulci using standard anatomical nomenclature. Neuroimage , 53(1):1–15, October 2010. 19 Additive Nonparametric Regression with Spatial and Network Objects 
+
+Maxwell L Elliott, Annchen R Knodt, David Ireland, Meriwether L Morris, Richie Poulton, Sandhya Ramrakha, et al. What is the Test-Retest reliability of common Task-Functional MRI measures? new empirical evidence and a Meta-Analysis. Psychol. Sci. , 31(7):792–806, July 2020. David G Ellis and Michele R Aizenberg. Structural brain imaging predicts Individual-Level task activation maps using deep learning. Front Neuroimaging , 1:834883, April 2022. Xiangnan Feng, Tengfei Li, Xinyuan Song, and Hongtu Zhu. Bayesian scalar on image regression with nonignorable nonresponse. Journal of the American Statistical Association , pages 1–24, 2019. Alan E Gelfand and Sujit K Ghosh. Model choice: a minimum posterior predictive loss approach. 
+
+Biometrika , 85(1):1–11, 1998. Matthew F Glasser, Timothy S Coalson, Emma C Robinson, Carl D Hacker, John Harwell, Essa Yacoub, et al. A multi-modal parcellation of human cerebral cortex. Nature , 536(7615):171–178, August 2016. Jeff Goldsmith, Lei Huang, and Ciprian M Crainiceanu. Smooth scalar-on-image regression via spatial Bayesian variable selection. Journal of Computational and Graphical Statistics , 23(1):46–64, 2014. Evan M et. al. Gordon. Precision functional mapping of individual human brains. Neuron , 95(4):791–807.e7, August 2017. Sharmistha Guha and Rajarshi Guhaniyogi. Covariate-dependent clustering of undirected networks with brain-imaging data. Technometrics , 66(3):422–437, 2024. Sharmistha Guha and Abel Rodriguez. Bayesian regression with undirected network predictors with an application to brain connectome data. Journal of the American Statistical Association , (just-accepted (https://doi.org/10.1080/01621459.2020.1772079)):1–34, 2020. Rajarshi Guhaniyogi and David B Dunson. Compressed gaussian process for manifold regression. The Journal of Machine Learning Research , 17(1):2472–2497, 2016. Rajarshi Guhaniyogi and Bruno Sanso. Large multi-scale spatial modeling using tree shrinkage priors. 
+
+Statistica Sinica , 30(4):2023–2050, 2020. Rajarshi Guhaniyogi, Shaan Qamar, and David B Dunson. Bayesian tensor regression. The Journal of Machine Learning Research , 18(1):2733–2763, 2017. Rajarshi Guhaniyogi, Cheng Li, Terrance Savitsky, and Sanvesh Srivastava. Distributed bayesian inference in massive spatial data. Statistical science , 38(2):262–284, 2023. Cui Guo, Jian Kang, and Timothy D Johnson. A spatial bayesian latent factor model for image-on-image regression. Biometrics , 78(1):72–84, 2022. Rene Gutierrez, Aaron Scheffler, Rajarshi Guhaniyogi, Maria Gorno-Tempini, Maria Mandelli, and Giovanni Battistella. Multi-object data integration in the study of primary progressive aphasia. 
+
+https://oaktrust.library.tamu.edu/handle/1969.1/197496 , 2023. Donald J Hagler, Jr et al. Image processing and analysis methods for the adolescent brain cognitive development study. Neuroimage , 202:116091, November 2019. Anita Harrewijn, Rany Abend, Julia Linke, Melissa A Brotman, Nathan A Fox, Ellen Leibenluft, et al. 20 Guhaniyogi, Dey, Chandra, Scheffler, and Mallick 
+
+Combining fMRI during resting state and an attention bias task in children. Neuroimage , 205:116301, January 2020. Peter D Hoff. Bilinear mixed-effects models for dyadic data. Journal of the American Statistical Association ,100(469):286–295, 2005. He Huang, Philip S Yu, and Changhu Wang. An introduction to image synthesis with generative adversarial nets. March 2018. Marije Jansen, Thomas P White, Karen J Mullinger, Elizabeth B Liddle, Penny A Gowland, Susan T Francis, Richard Bowtell, and Peter F Liddle. Motion-related artefacts in EEG predict neuronally plausible patterns of activation in fMRI data. Neuroimage , 59(1):261–270, 2012. Jian Kang, Brian J Reich, and Ana-Maria Staicu. Scalar-on-image regression via the soft-thresholded gaussian process. Biometrika , 105(1):165–184, 2018. Stine K Krogsrud, Athanasia M Mowinckel, Donatas Sederevicius, Didac Vidal-Pi˜ neiro, Inge K Amlien, Yunpeng Wang, et al. Relationships between apparent cortical thickness and working memory across the lifespan - effects of genetics and socioeconomic status. Dev. Cogn. Neurosci. , 51(100997):100997, October 2021. Georg Langs, Polina Golland, and Satrajit S Ghosh. Predicting activation across individuals with Resting-State functional connectivity based Multi-Atlas label fusion. Med. Image Comput. Comput. Assist. Interv. , 9350:313–320, October 2015a. Georg Langs, Polina Golland, and Satrajit S Ghosh. Predicting activation across individuals with Resting-State functional connectivity based Multi-Atlas label fusion. Med. Image Comput. Comput. Assist. Interv. , 9350:313–320, October 2015b. Zikai Lin, Yajuan Si, and Jian Kang. Latent subgroup identification in image-on-scalar regression. The annals of applied statistics , 18(1):468, 2024. Guoxuan Ma, Bangyao Zhao, Hasan Abu-Amara, and Jian Kang. Bayesian Image-on-Image regression via deep kernel learning based gaussian processes. November 2023. Jingru Mu, Guannan Wang, and Li Wang. Estimation and inference in spatially varying coefficient models. 
+
+Environmetrics , 29(1):e2485, 2018. Gia H Ngo, Meenakshi Khosla, Keith Jamison, Amy Kuceyeski, and Mert R Sabuncu. Predicting individual task contrasts from resting-state functional connectivity using a surface-based convolutional network. 
+
+Neuroimage , 248:118849, March 2022. Pratim Guha Niyogi, Martin A Lindquist, and Tapabrata Maiti. A tensor based varying-coefficient model for multi-modal neuroimaging data analysis. arXiv preprint arXiv:2303.16443 , 2023. Mariko Osaka, Mizuki Kaneda, Miyuki Azuma, Ken Yaoi, Tetsuya Shimokawa, and Naoyuki Osaka. Ca-pacity differences in working memory based on resting state brain networks. Sci. Rep. , 11(1):19502, September 2021. Adrian M Owen, Kathryn M McMillan, Angela R Laird, and Ed Bullmore. N-back working memory paradigm: a meta-analysis of normative functional neuroimaging studies. Hum. Brain Mapp. , 25(1): 46–59, May 2005. 21 Additive Nonparametric Regression with Spatial and Network Objects 
+
+O Parker Jones, N L Voets, J E Adcock, R Stacey, and S Jbabdi. Resting connectivity predicts task activation in pre-surgical populations. Neuroimage Clin , 13, 2017. Monica D et. al. Rosenberg. Behavioral and neural signatures of working memory in childhood. J. Neurosci. ,40(26):5090–5104, June 2020. Arkaprava Roy, Brian J Reich, Joseph Guinness, Russell T Shinohara, and Ana-Maria Staicu. Spatial shrinkage via the product independent gaussian process prior. Journal of Computational and Graphical Statistics , 30(4):1068–1080, 2021. Lindsay M Squeglia, Joanna Jacobus, Scott F Sorg, Terry L Jernigan, and Susan F Tapert. Early adolescent cortical thinning is related to better neuropsychological performance. J. Int. Neuropsychol. Soc. , 19(9): 962–970, October 2013. Michael L Stein. Interpolation of spatial data: some theory for kriging . Springer Science & Business Media, 1999. I Tavor, O Parker Jones, R B Mars, S M Smith, T E Behrens, and S Jbabdi. Task-free MRI predicts individual differences in brain activity during task performance. Science , 352(6282):216–220, April 2016. Mark Van der Wilk, Carl Edward Rasmussen, and James Hensman. Convolutional gaussian processes. 
+
+Advances in neural information processing systems , 30, 2017. Seralynne D Vann, John P Aggleton, and Eleanor A Maguire. What does the retrosplenial cortex do? Nat. Rev. Neurosci. , 10(11):792–802, November 2009. Christopher G. Watson. braingraph: Graph theory analysis of brain mri data, 2020. URL https://CRAN. R-project.org/package=brainGraph .Hsu-Huei Weng et al. Accuracy of presurgical functional MR imaging for language mapping of brain tumors: A systematic review and Meta-Analysis. Radiology , 286(2):512–523, February 2018. Fangzheng Xie and Yanxun Xu. Efficient estimation for random dot product graphs via a one-step proce-dure. Journal of the American Statistical Association , 118(541):651–664, 2023. Jewelia K Yao, Willa I Voorhies, Jacob A Miller, Silvia A Bunge, and Kevin S Weiner. Sulcal depth in prefrontal cortex: a novel predictor of working memory performance. Cereb. Cortex , 33(5):1799–1813, February 2023. 22 Guhaniyogi, Dey, Chandra, Scheffler, and Mallick 
+
+# Supplementary Materials for Additive Nonparametric Regression with Spatial and Network Objects 
+
+Abstract 
+
+This supplementary file consists of four sections. Section A introduces the notation and model setup and provides the statement and proof of the posterior consistency result in Theorem 1. Section B presents the full conditional distributions used to implement the Markov Chain Monte Carlo (MCMC) algorithm for model estimation. Section C provides the detailed simulation settings for the simulation studies in Section 5 of the main manuscript. Finally, Section D provides additional results from the ABCD data analysis discussed in Section 6 of the main text. 
+
+# A Posterior Consistency of AMO-GP 
+
+In this section, we prove the posterior consistency for the additive semi-parametric regression framework represented by equation (3) of the main article, assuming a single subject with only one network having n
+
+ROIs such that the D-dimensional ROI co-ordinates take values in a compact set T ⊂ RD. Without loss of generality, we assume T to be [0 , 1] D. Since model represented by equation (3) of the main article is fitted in parallel for different subnetworks, we demonstrate posterior consistency for a specific subnetwork and omit the subscript p, denoting the functional covariates and varying coefficients as g(v), w(v), βg(v)and βw(v), respectively. Additionally, since we showcase our result for a single subject, we set f Np = 0. Hence, f (v) = g(v)βg(v) + w(v)βw(v) denotes the fitted regression function such that for v1, . . . , vn ∈ T 
+
+we have Oi = f (vi) + ϵi. Let us denote the sequences O1, . . . , O n and f (v1), . . . , f (vn) as O1: n and fn
+
+respectively. It is easy to check that O1: n|f ∼ N (fn, τ 2In). For any given regression function f , we denote the conditional distribution and density of O1: n as Pn,f and pn,f respectively. Corresponding to the metric space ( T , || · || ), with || · || being the Euclidean norm, we denote by C(T )the space of continuous functions on T . Since T is compact with respect to the Euclidean norm, any continuous function h on T is also bounded. We denote the supremum norm of any bounded function h
+
+on T by ∥h∥∞ = sup v∈T |h (v)|. For v1, . . . , vn ∈ T and a function h : T → R, the empirical norm ∥h∥n is defined as ∥h∥n =
+
+q 1
+
+> n
+
+Pni=1 h2(vi). Further, let Π denote the induced non-stationary mean-zero Gaussian process prior on the fitted regression function f by assigning respective GP priors on varying coefficients as in equation (4) of the main article, and let ( B, ∥·∥ B) and ( H, ∥·∥ H) denote the respective separable Banach space and reproducing kernel Hilbert space (RKHS) corresponding to Π. We will consider the following assumptions for showing posterior consistency. 23 Additive Nonparametric Regression with Spatial and Network Objects 
+
+(A.1) Fixed design. The co-ordinates v1, . . . , vn ∈ T have been set by the experimenter. (A.2) Continuous functional covariates. The functional covariates g(·) and w(·) are non-zero and continuous on T . This implies that the support of the GP prior Π is included in the space C(T ). (A.3) True regression model. The true regression function f0 is included in C(T ). (A.4) Prior constraint. For any ε > 0, ∃ n (ε) ≥ 1/ε 2 such that ∀ n ≥ n (ε) the following condition holds: Π ( f : ∥f ∥∞ < ε ) ≥ Π ( f : ∥f − f0∥∞ < ε ) ≥ e−nε 2
+
+. (S1) Assumption (A.2) ensures that the GP Π is non-degenerate and has a continuous bounded sample path. Assumption (A.3) ensures that the true regression function f0 is contained in the closure of the RKHS H
+
+within C(T ). As shown in Lemma 5.1 of (van der Vaart et al., 2008), the closure of H is the support of the prior Π and in our case is the full space C(T ). (A.4) will be required to satisfy certain conditions while proving Theorem 1 for posterior consistency as stated below: 
+
+Theorem 1. Suppose the assumptions (A.1)-(A.4) hold and Pn,f 0 denotes the true data generating distri-bution. Then for every ε > 0,
+
+Pn,f 0 [Π ( f : ∥f − f0∥n > ε |O1: n)] → 0 as n → ∞ . (S2) To prove Theorem 1, we first need to develop some lemmata. Let ( V, d ) be a normed space. Then for some Θ ⊂ V , we denote its corresponding δ-packing and δ-covering numbers as M (δ, Θ, d ) and N (δ, Θ, d )respectively. The following is a standard topological result to be applied in proving Lemma 1 stated after it. 
+
+Result 1. For any δ > 0 we have M (2 δ, Θ, d ) ≤ N (δ, Θ, d ) ≤ M (δ, Θ, d ).
+
+Lemma 1. For any δ > 0, suppose that assumption (A.4) is satisfied. Then for every c > 1, δ > 0 and 
+
+n ≥ n (δ), ∃ a set Θn,δ,c such that 
+
+Π (Θ n,δ,c ) ≥ 1 − e−2nδ 2c2
+
+(S3) 
+
+M (6 √2δ, Θn,δ,c , ∥·∥ n) ≤ e12 nδ 2c2
+
+(S4) 24 Guhaniyogi, Dey, Chandra, Scheffler, and Mallick 
+
+Proof. Let Z be the Borel measurable mean-zero Gaussian random element in separable Banach space 
+
+B with RKHS H corresponding to Π. In addition, we denote B1 and H1 to be unit balls in B and H
+
+respectively. For any c > 1, δ > 0 and n ≥ n (δ), set a positive constant 
+
+Kn,δ,c = −2Φ −1(e−2nδ 2c2
+
+) (S5) where Φ denotes the distribution function of the standard normal distribution. Suppose that we have Θn,δ,c = δ1B1 + Kn,δ,c H1 (S6) where δ1 = √2δ. We set ηδ as the solution to the equation Φ( ηδ) = P (Z ∈ δ1B1) = Π ( f : ∥f ∥∞ < δ 1) . (S7) Then, based on assumption (A.4) it is apparent that Φ( ηδ) ≥ e−2nδ 2
+
+≥ e−2nδ 2c2
+
+.
+
+Therefore, we have ηδ + Kn,δ,c ≥ − Φ−1(e−2nδ 2c2
+
+). A simple application of Borell’s inequality (see Theorem 3.1 in (Borell, 1975) or Theorem 5.1 in (van der Vaart et al., 2008)) shows that Π (Θ n,δ,c ) ≥ Φ( ηδ + Kn,δ,c ) ≥ 1 − e−2nδ 2c2
+
+.
+
+Thus, we have proved (S3). Suppose γ1, . . . , γ m are a maximal collection of points in Kn,δ,c H1 such that they are 2 δ1 separated with respect to the norm ∥·∥ B. Then we have m = M (2 δ1, K n,δ,c H1, ∥·∥ B). One may observe that, for j =1, . . . , m , the ∥·∥ B-balls γj + δ1B1 of radius δ1 are mutually disjoint. Further, applying (4.16) of (Kuelbs et al., 1994) or Lemma 5.2 of (van der Vaart et al., 2008) and under assumption (A.4), we can show that 
+
+P (Z ∈ γj + δ1B1) ≥ e− 12 ∥γj ∥2 
+
+> H
+
+Π ( f : ∥f ∥∞ < δ 1) ≥ e− 12 K2 
+
+> n,δ,c
+
+e−2nδ 2c2
+
+. (S8) 25 Additive Nonparametric Regression with Spatial and Network Objects 
+
+Further, note that 1 ≥ P
+
+Z ∈
+
+> m
+
+[
+
+> j=1
+
+(γj + δ1B1)
+
+ =
+
+> m
+
+X
+
+> j=1
+
+P (Z ∈ γj + δ1B1) . (S9) Combining (S8) and (S9) and applying Result 1 we can show that 
+
+N (2 δ1, K n,δ,c H1, ∥·∥ B) ≤ m ≤ e 12 K2 
+
+> n,δ,c
+
+e2nδ 2c2
+
+. (S10) Since any point in Θ n,δ,c is within δ1 distance of some point in Kn,δ,c H1 corresponding to the norm ∥·∥ B,we can show using triangle inequality that any collection of points which is a 2 δ1-cover for Kn,δ,c H1 is also a 3 δ1-cover for Θ n,δ,c . This implies that 
+
+N (3 δ1, Θn,δ,c , ∥·∥ B) ≤ N (2 δ1, K n,δ,c H1, ∥·∥ B) ≤ e 12 K2 
+
+> n,δ,c
+
+e2nδ 2c2
+
+. (S11) As has been reasoned in the proof of Theorem 2.1 in (Van Der Vaart and Van Zanten, 2008), we can show that Kn,δ,c ≤ 20 nδ 2c2. Applying this result and Result 1 to (S11) we get 
+
+M (6 δ1, Θn,δ,c , ∥·∥ B) ≤ N (3 δ1, Θn,δ,c , ∥·∥ B) ≤ e12 nδ 2c2
+
+. (S12) Since our Banach space is ( C(T ), ∥·∥ ∞) and ∥·∥ n ≤ ∥·∥ ∞ we have proved (S4). We have already discussed that O1: n|f ∼ N (fn, τ 2In). To prove posterior consistency since we consider τ
+
+to be given, henceforth without loss of generality, we assume τ = 1. 
+
+Lemma 2. For any δ > 0, n ≥ n (δ) and c ≥ 6√2/5, define a set Θn,δ,c as in Lemma 1. Then, ∃ a test ψ
+
+based on O1: n|f ∼ N (fn, In) such that for every integer j ≥ 1,
+
+Pn,f 0 (ψ) ≤ 9e− 12 nδ 2c2
+
+, (S13) sup   
+
+> f∈Θn,δ,c :∥f−f0∥n≥10 jδc
+
+Pn,f (1 − ψ) ≤ e−100 nj 2δ2c2/8 (S14) 
+
+where f0 is the true response function. Proof. Let us consider κ > 1 and the test ψ discussed in Lemma 13 of (Van Der Vaart and Van Zanten, 2011) and apply it in our present scenario corresponding to the set Θ n,δ,c . Then we have for every integer 26 Guhaniyogi, Dey, Chandra, Scheffler, and Mallick 
+
+j ≥ 1, 
+
+Pn,f 0 (ψ) ≤ 9M (κ/ 2, Θn,δ,c , ∥·∥ )e−κ2/8,
+
+sup   
+
+> f∈Θn,δ,c :∥f−f0∥≥ jκ
+
+Pn,f (1 − ψ) ≤ e−j2κ2/8
+
+where ∥·∥ is the Euclidean norm. Replacing κ with 10 √nδc we get for every integer j ≥ 1, 
+
+Pn,f 0 (ψ) ≤ 9M (5 cδ, Θn,δ,c , ∥·∥ n)e−100 nδ 2c2/8,
+
+sup   
+
+> f∈Θn,δ,c :∥f−f0∥n≥10 jδc
+
+Pn,f (1 − ψ) ≤ e−100 nj 2δ2c2/8.
+
+Thus, we have proved (S14). Since we assumed 5 c ≥ 6√2, applying (S4) of Lemma 1 we get 
+
+M (5 cδ, Θn,δ,c , ∥·∥ n) ≤ e12 nδ 2c2
+
+.
+
+Thus, we have proved (S13). Finally, we are ready to provide the proof of Theorem 1. 
+
+A.1 Proof of Theorem 1 
+
+For any δ > 0, n ≥ n (δ) and c ≥ 6√2/5, define a set Θ n,δ,c as in Lemma 1. Further, consider the test ψ
+
+based on O1: n|f ∼ N (fn, In) discussed in Lemma 2. Define two events A and B such that in the event A,
+
+Z pn,f 
+
+pn,f 0
+
+dΠ( f ) ≥ e−nδ 2c2
+
+Π( f : ∥f − f0∥n < cδ ) (S15) while in the event B,
+
+Z pn,f 
+
+pn,f 0
+
+dΠ( f ) ≥ e−nδ 2(c2+1) . (S16) Using assumption (A.4) we can show that 
+
+e−nδ 2c2
+
+Π( f : ∥f − f0∥n < cδ ) ≥ e−nδ 2c2
+
+Π( f : ∥f − f0∥n < δ ) ≥ e−nδ 2(c2+1) .
+
+27 Additive Nonparametric Regression with Spatial and Network Objects 
+
+Then we can conclude that the event A implies B. Applying Lemma 14 of (Van Der Vaart and Van Zanten, 2011) to the event A we get 
+
+Pn,f 0 (B) ≥ Pn,f 0 (A) ≥ 1 − e−nδ 2c2/8. (S17) Let 1 B be the indicator function for the event B. We can show that (see Proposition 11 of (Van Der Vaart and Van Zanten, 2011)) 
+
+Pn,f 0 [Π( f : ∥f − f0∥n > 10 cδ |O1: n)] ≤ E1 + E2 + E3 + E4
+
+such that 
+
+E1 = Pn,f 0 (ψ),E2 = Pn,f 0 (Bc),E3 = Pn,f 0 [Π( f / ∈ Θn,δ,c |O1: n)1 B] ,E4 = Pn,f 0 [Π( f ∈ Θn,δ,c : ∥f − f0∥n > 10 cδ |O1: n)(1 − ψ)1 B] .
+
+Applying (S13) of Lemma 2 we can show that 
+
+E1 ≤ 9e− 12 nδ 2c2
+
+. (S18) Applying (S17) we can show that 
+
+E2 ≤ e−nδ 2c2/8. (S19) Applying (17) of (Van Der Vaart and Van Zanten, 2011) and (S3) of Lemma 1 we can show that 
+
+E3 ≤ e−nδ 2(c2−1) . (S20) Using (S16) we can show that for any set S
+
+Π( S|O1: n)1 B ≤ enδ 2(c2+1) 
+
+Z
+
+> S
+
+pn,f 
+
+pn,f 0
+
+dΠ( f ). (S21) 28 Guhaniyogi, Dey, Chandra, Scheffler, and Mallick 
+
+Note that Pn,f 0 [( pn,f /p n,f 0 )(1 − ψ)] ≤ Pn,f (1 − ψ). For every integer j ≥ 1, define disjoint sets Θ j,n,δ,c such that Θj,n,δ,c = {f ∈ Θn,δ,c : 10 jδc ≤ ∥ f − f0∥n < 10( j + 1) δc } .
+
+Then for any f ∈ Θj,n,δ,c , applying (S14) of Lemma 2, we have Pn,f (1 − ψ) ≤ e−100 nj 2δ2c2/8. Then using (S21), Fubini’s Theorem and (S14) of Lemma 2 we have 
+
+E4 ≤ enδ 2(c2+1) X
+
+> j≥1
+
+Pn,f 0 (1 − ψ)
+
+Z
+
+> Θj,n,δ,c
+
+pn,f 
+
+pn,f 0
+
+dΠ( f ) ≤ enδ 2(c2+1) X
+
+> j≥1
+
+e−100 nj 2δ2c2/8 ≤ 9e−nδ 2(c2−1) (S22) as 1 /(1 − e−100 nδ 2c2/8) ≤ 1/(1 − e−1/8) ≤ 9. Then combining (S18), (S19), (S20) and (S22) we get the following. 
+
+Pn,f 0 [Π( f : ∥f − f0∥n > 10 cδ |O1: n)] ≤ 20 e−nδ 2(c2−1) /8.
+
+For any ε > 0, choose some c ≥ 6√2/5 and set δ = ε/ 10 c. Then for every n ≥ n (δ) we have 
+
+Pn,f 0 [Π( f : ∥f − f0∥n > ε |O1: n)] ≤ 20 e−nε 2/1600 
+
+as( c2 − 1) /c 2 ≥ 1/2 for any c ≥ 6√2/5. Then, as n → ∞ , we have the desired result. Hence the proof of Theorem 1 is complete. 29 Additive Nonparametric Regression with Spatial and Network Objects 
+
+# B Detailed Computation of Posteriors 
+
+B.1 Conditional Posterior Distributions in Stage 1 of AMO-GP 
+
+Aligning with the notations in Section 3.2.1 of the main manuscript, we have 
+
+AP ×Pi =
+
+
+
+0 ai, (1 ,2) . . . ai, (1 ,P )
+
+ai, (1 ,2) 0 . . . ai, (2 ,P )
+
+... ... ... ...
+
+ai, (1 ,P ) . . . ai, (P −1,P ) 0
+
+
+
+.
+
+Now define 
+
+a    
+
+> P(P−1) 2×1
+> i
+
+=
+
+
+
+ai, (1 ,2) 
+
+...
+
+ai, (1 ,P )
+
+ai, (2 ,3) 
+
+...
+
+ai, (2 ,P )
+
+...
+
+ai, (P −1,P )
+
+
+
+, ϵ    
+
+> P(P−1) 2×1
+> i
+
+=
+
+
+
+ϵi, (1 ,2) 
+
+...
+
+ϵi, (1 ,P )
+
+ϵi, (2 ,3) 
+
+...
+
+ϵi, (2 ,P )
+
+...
+
+ϵi, (P −1,P )
+
+
+
+and w    
+
+> P(P−1) 2×1
+> i
+
+=
+
+
+
+˜uTi, 1 ˜ui, 2
+
+...˜uTi, 1 ˜ui,P 
+
+˜uTi, 2 ˜ui, 3
+
+...˜uTi, 2 ˜ui,P 
+
+...˜uTi,P −1 ˜ui,P 
+
+
+
+.
+
+Then we have 
+
+ai = μi1 P (P −1) 2 ×1 + wi + ϵi, i ∈ { 1, . . . , n } .
+
+Assuming a flat prior for μi (i ∈ { 1, . . . , n }), conditioning on other parameters we have the conditional posterior distribution of μi
+
+f (μi|ai, wi, σ 2
+
+> u
+
+) ∝ N (ai|μi1 + wi, σ 2
+
+> u
+
+I P (P −1) 2
+
+) × 1.
+
+Then a few algebraic steps will show us that μi|ai, wi, σ 2 
+
+> u
+
+∼ N ( 2   
+
+> P(P−1)
+
+1T (ai − wi), 2   
+
+> P(P−1)
+
+σ2
+
+> u
+
+). For the 30 Guhaniyogi, Dey, Chandra, Scheffler, and Mallick 
+
+conditional posterior distribution of σ2 
+
+> u
+
+we have, 
+
+f (σ2
+
+> u
+
+|a, w, μ) ∝ N (a|μ + w, σ 2
+
+> u
+
+I nP (P −1) 2
+
+) × IG (σ2
+
+> u
+
+|α, β )where we assume α = β = 1 and define 
+
+a nP (P −1) 2 ×1 =
+
+
+
+a1
+
+...
+
+an
+
+ , w nP (P −1) 2 ×1 =
+
+
+
+w1
+
+...
+
+wn
+
+ and μ nP (P −1) 2 ×1 =
+
+
+
+μ11
+
+...
+
+μn1
+
+ .
+
+Then a few algebraic steps will show us that σ2
+
+> u
+
+|a, w, μ ∼ IG (α + nP (P −1) 4 , β + ∥a−μ−w∥2 
+
+> 2
+
+), ∥·∥ representing the Euclidean norm. We have ∀ p ∈ { 1, . . . , P } and ∀ i ∈ { 1, . . . , n }, ˜ uR×1 
+
+> i,p
+
+=
+
+
+
+ui,p, 1
+
+...
+
+ui,p,R 
+
+ and define 
+
+a(P −1) ×1 
+
+> i,p
+
+=
+
+
+
+ai, (p, 1) 
+
+...
+
+ai, (p,p −1) 
+
+ai, (p,p +1) 
+
+...
+
+ai, (p,P )
+
+
+
+, U (P −1) ×Ri,p =
+
+
+
+˜uTi, 1
+
+...˜uTi,p −1
+
+˜uTi,p +1 
+
+...˜uTi,P 
+
+
+
+and ϵ(P −1) ×1 
+
+> i,p
+
+=
+
+
+
+ϵi, (p, 1) 
+
+...
+
+ϵi, (p,p −1) 
+
+ϵi, (p,p +1) 
+
+...
+
+ϵi, (p,P )
+
+
+
+.
+
+Then it is easy to see that 
+
+ai,p = μi1(P −1) ×1 + U i,p ˜ui,p + ϵi,p .
+
+For the conditional posterior distribution of ˜ ui,p we have, 
+
+f (˜ ui,p |ai,p , μ i, U i,p , σ 2
+
+> u
+
+) ∝ N (ai,p |μi1(P −1) ×1 + U i,p ˜ui,p , σ 2
+
+> u
+
+IP −1) × N (˜ ui,p |0R×1, IR)Then a few algebraic steps will show us that ˜ ui,p |ai,p , μ i, U i,p , σ 2 
+
+> u
+
+∼ N (ηi,p , Φi,p ) where 31 Additive Nonparametric Regression with Spatial and Network Objects 
+
+Φi,p = ( IR + 1
+
+> σ2
+> u
+
+U Ti,p U i,p )−1 and ηi,p = 1
+
+> σ2
+> u
+
+Φi,p U Ti,p (ai,p − μi1).
+
+B.2 Conditional Posterior Distributions in Stage 2 of AMO-GP 
+
+Aligning with the notations in Section 3.2.2 of the main manuscript, we define 
+
+oVp×1 
+
+> i,p
+
+=
+
+
+
+oi,p (vp, 1)...
+
+oi,p (vp,V p )
+
+ , βVp×1 
+
+> p,g
+
+=
+
+
+
+βp,g (vp, 1)...
+
+βp,g (vp,V p )
+
+ ,
+
+βVp×1 
+
+> p,w
+
+=
+
+
+
+βp,w (vp, 1)...
+
+βp,w (vp,V p )
+
+ , ϵVp×1 
+
+> i,p
+
+=
+
+
+
+ϵi,p (vp, 1)...
+
+ϵi,p (vp,V p )
+
+ ,
+
+GVp×Vp 
+
+> i,p
+
+=
+
+
+
+gi,p (vp, 1). . .
+
+gi,p (vp,V p )
+
+ and W Vp×Vp 
+
+> i,p
+
+=
+
+
+
+wi,p (vp, 1). . .
+
+wi,p (vp,V p )
+
+ .
+
+where vp, 1, . . . , vp,V p represent coordinates corresponding to the Vp ROIs nested within the pth subnetwork. Assuming n subjects corresponding to the training data, we denote 
+
+onV p×1 
+
+> p
+
+=
+
+
+
+o1,p 
+
+...
+
+on,p 
+
+ , f n×1 
+
+> p
+
+=
+
+
+
+f Np (bu1,p )...
+
+f Np (bun,p )
+
+ , ϵnV p×1 
+
+> p
+
+=
+
+
+
+ϵ1,p 
+
+...
+
+ϵn,p 
+
+ ,
+
+GnV p×Vp 
+
+> p
+
+=
+
+
+
+G1,p 
+
+...
+
+Gn,p 
+
+ , W nV p×Vp 
+
+> p
+
+=
+
+
+
+W 1,p 
+
+...
+
+W n,p 
+
+ and LnV p×np =
+
+
+
+1Vp×1
+
+. . .
+
+1Vp×1
+
+ .
+
+Then we have, 
+
+op = Lp fp + Gp βp,g + W p βp,w + ϵp.
+
+Let Σ p,g , Σ p,w and Σ p,N denote the covariance matrices corresponding to exponential covariance kernels 32 Guhaniyogi, Dey, Chandra, Scheffler, and Mallick 
+
+κp,g , κp,w , and κp,N for βp,g , βp,w and fp respectively. Further, let us define the parameter set ∆ = 
+
+n
+
+τ 2 
+
+> p
+
+, θ p,g , σ 2
+
+> p,g
+
+, θ p,w , σ 2
+
+> p,w
+
+, θ p,N , σ 2
+
+> p,N
+
+o
+
+. Note that 
+
+ϵp ∼ N (0nV p×1, τ 2 
+
+> p
+
+InV p ), βp,g |θp,g , σ 2 
+
+> p,g
+
+∼ N (0, Σp,g ),
+
+βp,w |θp,w , σ 2 
+
+> p,w
+
+∼ N (0, Σp,w ), fp|θp,N , σ 2 
+
+> p,N
+
+∼ N (0, Σp,N ) and 
+
+op|∆ ∼ N (0, LpΣp,N LTp + GpΣp,g GTp + W pΣp,w W Tp + τ 2 
+
+> p
+
+InV p ).
+
+Let ζ1, ζ2, ζ3, ζ4 be the logarithmic transformations of the variance parameters τ 2 
+
+> p
+
+, σ2
+
+> p,g
+
+, σ2 
+
+> p,w
+
+and σ2 
+
+> p,N
+
+.To implement the Metropolis–Hastings algorithm we consider the joint conditional posterior distribution of ( ζ1, ζ2, ζ3, ζ4) such that 
+
+f (ζ1, ζ 2, ζ 3, ζ 4|op, θ p,g , θ p,w , θ p,N ) ∝ f (op|∆) × f (ζ1, ζ 2, ζ 3, ζ 4)We denote ς = τ 2 
+
+> p
+
+× σ2 
+
+> p,g
+
+× σ2 
+
+> p,w
+
+× σ2 
+
+> p,N
+
+, assume α1 = α2 = α3 = α4 = 1, γ1 = γ2 = γ3 = γ4 = 2 and have 
+
+f (ζ1, ζ 2, ζ 3, ζ 4) = IG (τ 2 
+
+> p
+
+|α1, γ 1) × IG (σ2
+
+> p,g
+
+|α2, γ 2) × IG (σ2
+
+> p,w
+
+|α3, γ 3) × IG (σ2 
+
+> p,N
+
+|α4, γ 4) × ς. 
+
+For the conditional posterior distribution of fp we have 
+
+f (fp|op, ∆) ∝ N (op|Lpfp, Σp,g,w ) × N (fp|0, Σp,N )where Σ p,g,w = GpΣp,g GTp + W pΣp,w W Tp + τ 2 
+
+> p
+
+InV p . Define Σ p,N,O = (Σ −1 
+
+> p,N
+
++ LTp Σ−1
+
+> p,g,w
+
+Lp)−1. Then a few algebraic steps show us that 
+
+fp|op, ∆ ∼ N (Σ p,N,O LTp Σ−1
+
+> p,g,w
+
+op, Σp,N,O ).
+
+For the conditional posterior distribution of βp,g we have 
+
+f (βp,g |op, ∆) ∝ N (op|Gpβp,g , Σp,N,w ) × N (βp,g |0, Σp,g )where Σ p,N,w = LpΣp,N LTp + W pΣp,w W Tp + τ 2 
+
+> p
+
+InV p . Define Σ p,g,O = (Σ −1 
+
+> p,g
+
++ GTp Σ−1
+
+> p,N,w
+
+Gp)−1. Then a few algebraic steps show us that 33 Additive Nonparametric Regression with Spatial and Network Objects 
+
+βp,g |op, ∆ ∼ N (Σ p,g,O GTp Σ−1
+
+> p,N,w
+
+op, Σp,g,O ).
+
+For the conditional posterior distribution of βp,w we have 
+
+f (βp,w |op, ∆) ∝ N (op|W pβp,w , Σp,N,g ) × N (βp,w |0, Σp,w )where Σ p,N,g = LpΣp,N LTp + GpΣp,g GTp + τ 2 
+
+> p
+
+InV p . Define Σ p,w,O = (Σ −1 
+
+> p,w
+
++ W Tp Σ−1
+
+> p,N,g
+
+W p)−1. Then a few algebraic steps show us that 
+
+βp,w |op, ∆ ∼ N (Σ p,w,O W Tp Σ−1
+
+> p,N,g
+
+op, Σp,w,O ).
+
+Suppose we have m subjects in the test data. Similar to fp corresponding to the training data, let f m×1
+
+> t,p
+
+represent the vector of non-linear functional effects of bui,p for i = 1 , . . . , m corresponding to m subjects in the test data. Corresponding to the kernel κp,N , suppose we denote Σ m×mp,t = V ar (ft,p ) and Σ n×mp,N,t =
+
+Cov (fp, ft,p ). Further, let 
+
+f (n+m)×1 
+
+> s,p
+
+=
+
+ fp
+
+ft,p 
+
+ and Σ(n+m)×(n+m) 
+
+> p,s
+
+=
+
+ Σp,N Σp,N,t 
+
+ΣTp,N,t Σp,t 
+
+ .
+
+Note that fs,p ∼ N (0, Σp,s ). Then a few algebraic steps show us that 
+
+f (ft,p |op, ∆) = N (ft,p |ΣTp,N,t Σ−1 
+
+> p,N
+
+fp, Σp,t − ΣTp,N,t Σ−1 
+
+> p,N
+
+Σp,N,t ) × f (fp|op, ∆) .
+
+34 Guhaniyogi, Dey, Chandra, Scheffler, and Mallick 
+
+# C Detailed Simulation Setup 
+
+This section provides full details of the data-generating mechanisms used in the simulation studies described in Section 5 of the main text to ensure complete reproducibility. 
+
+C.1 Network Model for Stage 1 
+
+We consider P = 50 subnetworks and n = 100 subjects for both training and test datasets. Each subnetwork contains V = 12 regions of interest (ROIs), indexed by spatial coordinates v = ( v1, v 2, v 3) ∈ [0 , 10] 3. For each replicate, ROI locations are independently sampled from a uniform distribution over [0 , 10] 3 and are shared across subjects within each subnetwork. The network predictor is constructed using R = 3 latent components. For each subject i = 1 , . . . , n and subnetwork p = 1 , . . . , P , we generate latent variables ˜ui,p ∼ N (0, I3), μi ∼ N (0 , 1) , ϵi, (p,p ′) ∼ N (0 , 0.01) , p̸ = p′,
+
+independently across all indices. The ( p, p ′)th edge of the network predictor ai, (p,p ′) is then constructed according to: 
+
+ai, (p,p ′) = μi + ˜ uTi,p ˜ui,p ′ + ϵi, (p,p ′). (S23) 
+
+C.2 Functional Predictors for Stage 2 
+
+For each subject i, subnetwork p, and ROI location v, we generate two functional predictors independently as wi,p (v) ∼ N (0 , 1) and gi,p (v) ∼ N (0 , 1), independently across all i, p, v.
+
+C.3 Gaussian Process Specifications 
+
+In scenarios where Gaussian process (GP) priors are used, we generate functions independently across subnetworks. Specifically, for each p, f Np (·) is drawn from a zero-mean GP with exponential covariance kernel κp,N ; and βp,g (v) and βp,w (v) are drawn from zero-mean GPs with kernels κp,g and κp,w , respectively. The covariance kernels of these GPs kernels are all exponential kernels, i.e., κ(x, x′) = σ2 exp ( −θ∥x − x′∥), with the kernel parameters fixed across subnetworks as follows: 
+
+σ∗2 
+
+> p,N
+
+= 3 , θ∗ 
+
+> p,N
+
+= 6 , σ∗2 
+
+> p,g
+
+= 3 , θ∗ 
+
+> p,g
+
+= 8 , σ∗2 
+
+> p,w
+
+= 2 , θ∗ 
+
+> p,w
+
+= 5 .
+
+35 Additive Nonparametric Regression with Spatial and Network Objects 
+
+C.4 Scenario-Specific Data Generation 
+
+For each subject i, subnetwork p, and ROI v, the response oi,p (v) is generated as follows. 
+
+Scenario 1 (Additive Gaussian process model). The response is generated following: 
+
+oi,p (v) = f Np (˜ ui,p ) + gi,p (v)βp,g (v) + wi,p (v)βp,w (v) + ϵi,p (v),
+
+where ϵi,p (v) ∼ N (0 , τ ∗2 
+
+> p
+
+) with τ ∗2 
+
+> p
+
+= 0 .01. 
+
+Scenario 2 (Nonlinear network effect). The response is generated as 
+
+oi,p (v) = 
+
+> 3
+
+X
+
+> j=1
+
+sin(˜ ui,p,j ) + gi,p (v)βp,g (v) + wi,p (v)βp,w (v) + ϵi,p (v),
+
+with ϵi,p (v) ∼ N (0 , τ ∗2 
+
+> p
+
+) and τ ∗2 
+
+> p
+
+= 0 .01. The coefficient functions βp,g (v) and βp,w (v) are generated as in Scenario 1. 
+
+Scenario 3 (Heavy-tailed noise). The response is generated as in Scenario 1, but with heavy-tailed noise, ϵi,p (v) ∼ t3 ·
+
+q
+
+τ ∗2 
+
+> p
+
+/Var( t3), where τ ∗2 
+
+> p
+
+= 0 .01 ensures comparable marginal variance to the Gaussian setting. 
+
+Scenario 4 (Non-additive interaction). The response is generated as 
+
+oi,p (v) = f Np (˜ ui,p ) + gi,p (v)βp,g (v) + wi,p (v)βp,w (v) + ρf Np (˜ ui,p ) gi,p (v)βp,g (v) + ϵi,p (v),
+
+where ϵi,p (v) ∼ N (0 , τ ∗2 
+
+> p
+
+), τ ∗2 
+
+> p
+
+= 0 .01, and ρ = 0 .3 controls the strength of the interaction. 
+
+C.5 Replication Details 
+
+Each scenario is repeated over 10 independent replicates. For each replicate, training and test datasets are generated independently using the same data-generating mechanism but different random seeds. 
+
+C.6 Coefficient Recovery Evaluation 
+
+In addition to predictive performance, we assess the ability of AMO-GP to recover the underlying spatially varying coefficients. Since comparable coefficient estimates are not available for the competing methods, this evaluation is restricted to AMO-GP. 36 Guhaniyogi, Dey, Chandra, Scheffler, and Mallick 
+
+For each subnetwork p = 1 , . . . , P , we quantify estimation accuracy for the functional coefficients βp,g (v)and βp,w (v) using the averaged relative absolute error, 
+
+Eβ = 12P
+
+> P
+
+X
+
+> p=1
+
+
+
+1
+
+|R p|
+
+X
+
+> v∈R p
+
+bβp,g (v) − βp,g (v)
+
+|βp,g (v)| + 1
+
+|R p|
+
+X
+
+> v∈R p
+
+bβp,w (v) − βp,w (v)
+
+|βp,w (v)|
+
+ . (S24) This metric provides a normalized measure of estimation error across spatial locations and subnetworks, allowing comparison across scenarios with varying signal strength. 
+
+Figure S1: Boxplots of the average relative absolute coefficient estimation error for AMO-GP across 10 replicates under four simulation scenarios. Errors increase and become more variable under misspecification (Scenarios 3 and 4), with visible outliers reflecting heavy-tailed noise and interaction effects. Figure S1 summarizes the distribution of Eβ across simulation replicates for all four scenarios. As expected, estimation error is lowest under Scenario 1, where the data-generating mechanism is correctly specified. Scenario 2 exhibits moderate increases in error due to nonlinear misspecification in the network effect. Scenario 3 shows increased variability driven by heavy-tailed noise, while Scenario 4 yields the largest errors due to the presence of non-additive interaction effects not captured by the model. Overall, these results indicate that AMO-GP is able to accurately recover spatially varying coefficients un-der correct specification and mild deviations, but performance degrades as model misspecification becomes more severe. 37 Additive Nonparametric Regression with Spatial and Network Objects 
+
+# D Additional Results for ABCD Data Analysis 
+
+D.1 Traceplots indicating Stage 2 convergence of AMO-GP 
+
+For a representative subsample of size 40 of the ABCD data Figure S2 shows the traceplots for all param-eters corresponding to each subnetwork. Each plot shows satisfactory convergence of the MCMC chain. 
+
+38 Guhaniyogi, Dey, Chandra, Scheffler, and Mallick 
+
+39 Additive Nonparametric Regression with Spatial and Network Objects 
+
+Figure S2: Trace plots of all parameters for the proposed AMO-GP model across subnetworks over 15,000 iterations for a single subsample ( n = 40). Each subnetwork contains 7 parameters, and results are shown for all 11 subnetworks. 40 Guhaniyogi, Dey, Chandra, Scheffler, and Mallick 
+
+D.2 Analysis of in-sample R2 across multiple subsamples 
+
+To assess the robustness of AMO-GP, we performed an additional analysis by generating 10 random subsamples of size equal to the original training set (i.e., 40) and fitting AMO-GP to each. For each fitted subsample, we computed the in-sample R2 across all subnetworks, with results summarized via boxplots in Figure S3. These results provide insight into the stability of model performance across different realizations of the training data. Across subnetworks, mean R2 values range from approximately 0 .32 (none) to 0 .87 (retrosplenial temporal), with moderate variability as indicated by standard deviations between 0.04 and 0 .11. Subnetworks such as retrosplenial temporal (0 .87 ± 0.06), cingulo-parietal (0 .78 ± 0.04), and sensorimotor hand (0 .69 ±0.11) exhibit consistently high R2 values with relatively low dispersion, indicating stable and strong in-sample predictive performance across subsamples. In contrast, subnetworks such as none (0 .32 ± 0.08) and fronto-parietal (0 .35 ± 0.08) show lower mean R2 with comparable variability, suggesting weaker and less stable fits. The remaining subnetworks, including auditory (0 .66 ± 0.11), cingulo-opercular (0 .59 ± 0.09), default (0 .54 ± 0.07), dorsal attention (0 .53 ± 0.09), ventral attention (0 .49 ± 0.07), and visual (0 .58 ± 0.06), demonstrate moderate predictive performance with intermediate variability. Overall, these results indicate that AMO-GP achieves robust and stable performance across subsamples, with clear heterogeneity in predictive strength across functional subnetworks. 
+
+Figure S3: Boxplots of in-sample R2 values across functional subnetworks for AMO-GP, obtained from 10 independent subsamples of size 40. Subnetworks are ordered by median R2.41 Additive Nonparametric Regression with Spatial and Network Objects 
+
+D.3 Mean squared error (in-sample and predictive) for each subnetwork 
+
+Table S1 shows in-sample mean squared error (MSE) and out-of-sample mean squared prediction error (MSPE) for all competing models for each subnetwork in the ABCD data analysis. Table S1: Functional subnetwork-level MSE and MSPE across models. 
+
+Network Metric AMO-GP CT+Net SD+Net Net BART NN BIRD-GP auditory MSE 0.10 0.13 0.13 0.13 0.15 0.36 0.25 MSPE 0.34 0.38 0.38 0.38 0.78 4.67 1.34 cingulo-opercular MSE 0.15 0.17 0.17 0.18 0.18 0.32 0.14 MSPE 0.35 0.37 0.37 0.37 0.66 5.40 0.97 cingulo-parietal MSE 0.06 0.06 0.06 0.07 0.10 0.30 0.58 MSPE 0.45 0.45 0.46 0.45 0.65 5.51 3.90 default MSE 0.14 0.18 0.19 0.22 0.23 0.39 0.20 MSPE 0.72 0.77 0.74 0.79 1.04 5.97 1.58 dorsal attention MSE 0.13 0.14 0.14 0.15 0.16 0.34 0.28 MSPE 0.64 0.64 0.64 0.62 0.88 5.99 1.04 fronto-parietal MSE 0.66 0.67 0.68 0.71 0.67 1.08 0.41 MSPE 4.19 4.16 4.18 4.15 4.60 10.28 15.29 none MSE 1.37 1.39 1.43 1.46 1.09 1.81 0.30 MSPE 4.46 4.47 4.47 4.48 4.85 9.19 10.95 retrosplenial temporal MSE 0.11 0.13 0.14 0.14 0.30 0.58 1.14 MSPE 1.25 1.29 1.27 1.28 1.49 7.23 3.08 sensorimotor hand MSE 0.05 0.06 0.06 0.06 0.11 0.25 0.26 MSPE 0.18 0.20 0.20 0.21 0.49 4.31 0.90 ventral attention MSE 0.17 0.18 0.17 0.19 0.21 0.46 0.35 MSPE 0.93 0.93 0.94 0.93 1.23 5.73 1.76 visual MSE 0.20 0.20 0.20 0.22 0.22 0.39 0.14 MSPE 0.79 0.79 0.80 0.81 1.27 6.15 2.44 
+
+# References 
+
+Christer Borell. The brunn-minkowski inequality in gauss space. Inventiones mathematicae , 30(2):207–216, 1975. James Kuelbs, Wenbo V Li, and Werner Linde. The gaussian measure of shifted balls. Probability Theory and Related Fields , 98(2):143–162, 1994. Aad Van Der Vaart and Harry Van Zanten. Information rates of nonparametric gaussian process methods. 
+
+Journal of Machine Learning Research , 12(6), 2011. 42 Guhaniyogi, Dey, Chandra, Scheffler, and Mallick 
+
+Aad W Van Der Vaart and J Harry Van Zanten. Rates of contraction of posterior distributions based on gaussian process priors. 2008. Aad W van der Vaart, J Harry van Zanten, et al. Reproducing kernel hilbert spaces of gaussian priors. 
+
+IMS Collections , 3:200–222, 2008. 43

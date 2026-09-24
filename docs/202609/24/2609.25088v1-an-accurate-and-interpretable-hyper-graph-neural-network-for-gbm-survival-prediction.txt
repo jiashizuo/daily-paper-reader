@@ -1,0 +1,531 @@
+Title: An Accurate and Interpretable Hyper Graph Neural Network for GBM Survival Prediction
+
+URL Source: https://arxiv.org/pdf/2609.25088v1
+
+Published Time: Wed, 23 Sep 2026 00:10:00 GMT
+
+Number of Pages: 21
+
+Markdown Content:
+AN ACCURATE AND INTERPRETABLE HYPER GRAPH NEURAL NETWORK FOR GBM SURVIVAL PREDICTION 
+
+MUSHAHID INTESUM 
+
+Abstract. Survival prediction for glioblastoma multiforme (GBM) demands models that are both accurate and interpretable, yet existing approaches treat these objectives as com-peting, where performant models sacrifice transparency, while interpretable models accept degraded predictive power. We argue that this trade-off is not inherent. Graph neural net-works offer a structural foundation for extracting interpretable, explainable representations without compromising discriminative ability. Furthermore, current methods typically rely on a single imaging modality, underutilizing the complementary information available across multi-modal MRI and clinical metadata. We propose a multi-modal framework that inte-grates three components to address both objectives simultaneously: (1) a sheaf hypergraph neural network that captures higher-order relationships among tissue patches through direc-tional, asymmetric message passing; (2) a concept bottleneck layer that compresses learned representations into clinically grounded concepts, enforcing ante-hoc interpretability; and (3) an extension sufficiency test (EST) regularizer that penalizes unfaithful explanations during training, ensuring that model explanations genuinely reflect the internal decision process. Clinical and genomic features are incorporated through gated fusion, preserving the dominant prognostic signal of molecular markers while retaining concept-level traceabil-ity. Evaluated on 593 patients from the UPenn-GBM dataset under 5-fold cross-validation, our framework achieves a concordance index of 0.643 with the lowest fold-level variance among all compared models (std = 0.015). To our knowledge, this is the first work to unify sheaf hypergraph convolution, concept bottleneck supervision, and EST regularization for interpretable survival prediction from brain MRI. 
+
+Introduction 
+
+Glioblastoma multiforme (GBM) is the most aggressive primary brain tumor, with a median survival of approximately 14 months under the standard Stupp protocol of maximal surgical resection followed by concurrent temozolomide and radiotherapy [28]. Treatment decisions in GBM are inherently time-sensitive and consequential: the choice between aggressive re-intervention, experimental therapy enrollment, and palliative care depends critically on indi-vidualized prognosis. Accurate survival prediction can inform these decisions, yet clinicians are unlikely to act on predictions they cannot understand, creating a fundamental tension between model performance and clinical trust. Current deep learning models increasingly leverage multi-modal patient data, combining imag-ing, genomic markers, and clinical metadata, to achieve strong predictive performance. How-ever, these predictions are often opaque, offering no insight into which imaging biomarkers, 
+
+Date : September 23, 2026.  
+
+> 1arXiv:2609.25088v1 [cs.AI] 19 Sep 2026 2MUSHAHID INTESUM
+
+tumor characteristics, or molecular features drive the risk assessment. In clinical oncology, where treatment decisions carry significant consequences, understanding why a patient is clas-sified as high-risk is as important as the prediction itself. Regulatory trends, including the EU AI Act and FDA guidelines on clinical decision support, further underscore the need for models that can articulate their reasoning in terms that align with clinical knowledge. GBM presents a particularly compelling case for structured, spatial modeling. The tumor microenvironment is spatially heterogeneous: contrast-enhancing regions indicate blood-brain barrier disruption, FLAIR hyperintensities delineate peritumoral edema, and DTI abnormal-ities reveal white matter infiltration. These tissue properties carry distinct prognostic sig-nificance and interact in complex, multi-way patterns. For instance, the spatial relationship between an enhancing rim, a necrotic core, and surrounding edema collectively characterizes tumor aggressiveness in ways that individual features in isolation cannot capture. Fixed feature vector approaches such as DeepSurv [15] and Cox-nnet [9] collapse this spatial structure into a single vector, discarding the relational information that makes imaging clinically valuable. Graph neural networks offer a natural framework for encoding spatial tissue topology, repre-senting image patches as nodes and their spatial relationships as edges. However, standard pairwise graphs only capture local adjacency and cannot model the higher-order, multi-way interactions among tissue subregions. Hypergraph formulations address this limitation by al-lowing a single hyperedge to connect groups of related nodes, representing multi-way tissue relationships such as co-occurring enhancement patterns across MRI modalities. Methods such as MRePath [26] demonstrate the effectiveness of hypergraph construction for cancer survival prediction, but their learned representations remain opaque, with no mechanism for tracing a prediction back to specific clinical concepts. Concept Bottleneck Models (CBMs) [17] provide a complementary approach by routing pre-dictions through a layer of human-interpretable concept activations. This design provides ante-hoc interpretability: the model must express its reasoning through clinically meaningful intermediate variables. However, this interpretability comes at a cost. Compressing rich embed-dings through a small set of concepts creates an information bottleneck that typically reduces prediction accuracy. Whether this trade-off is acceptable depends on whether downstream components can recover the lost performance. Additionally, existing medical CBMs such as HyperCBM [30] target classification tasks and have not been adapted for survival analysis or integrated with multi-modal clinical fusion. A further challenge lies in the faithfulness of explanations. Post-hoc explanation methods for GNNs, such as GNNExplainer [31], can produce explanations that appear clinically plausible but do not actually reflect the model’s internal reasoning [2]. A clinician acting on an unfaithful explanation is arguably worse off than one with no explanation at all. This motivates training-time mechanisms that ensure explanations are not merely plausible but verified to represent the model’s actual decision process. In this work, we propose a unified framework that addresses these challenges jointly. We com-bine sheaf hypergraph learning, concept bottleneck interpretability, multi-modal clinical fusion, and training-time faithfulness regularization for GBM survival prediction. Our contributions are as follows: AN ACCURATE AND INTERPRETABLE HYPER GRAPH NEURAL NETWORK FOR GBM SURVIVAL PREDICTION 3
+
+(1) We build a sheaf hypergraph concept bottleneck GNN that integrates multi-modal MRI (T1, T2, FLAIR, DTI, Perfusion) with clinical and genomic metadata (IDH1, MGMT, KPS) for GBM survival prediction, with all predictions traceable through 8 clinically grounded imaging concepts. (2) We introduce EST-regularized training that improves both explanation faithfulness and cross-fold stability, reducing fold variance from 0.027 to 0.015 in standard deviation. (3) We conduct a 7-configuration progressive ablation study on 593 UPenn-GBM patients, demonstrating that the concept bottleneck imposes only a −3.7% interpretability cost while clinical fusion provides +18 .2%, the single largest performance gain. (4) We achieve a concordance index of 0 .643 ± 0.015 with fully traceable predictions, where each survival estimate can be decomposed into specific concept activations and modality contributions. To our knowledge, this is the first framework to combine sheaf hypergraph learning, concept bottleneck interpretability, and multi-modal clinical fusion for brain tumor survival prediction with faithful, auditable explanations. 
+
+Related Work 
+
+Neural Survival Models. The Cox proportional hazards model [10] models the hazard func-tion as a log-linear combination of covariates. DeepSurv [15] and Cox-nnet [9] replace the linear predictor with deep networks, enabling nonlinear interactions while preserving the partial like-lihood objective. DeepHit [18] and Nnet-survival [12] adopt discrete-time formulations that directly estimate survival probabilities at predefined intervals, eliminating the proportional hazards assumption. Our framework uses the discrete-time negative log-likelihood, providing calibrated survival estimates at each time bin. However, all of these methods operate on fixed feature vectors and cannot model spatial or relational structure within imaging data. 
+
+Graph and Hypergraph Neural Networks. Graph neural networks model tissue topol-ogy by treating image patches or cells as nodes with spatial edges [5, 35, 24]. Patch-GCN [5] applies graph convolutions over kNN patch graphs for survival prediction, preserving spatial context lost in attention-based MIL methods [14, 20]. Hypergraphs generalize this by allowing edges to connect arbitrary node subsets. HGNN [11] introduced spectral hypergraph convolu-tion, HyperGCN [29] approximates it through Laplacian expansions, and AllSet [8] provides a unified set-function framework. Sheaf neural networks [13, 22] further enrich hypergraph struc-ture with learned restriction maps on each node-hyperedge incidence, enabling heterogeneous message passing. Our SheafHGNN uses this formulation with a dual-space (spatial + feature) hypergraph construction. MRePath [26] is most related, constructing hypergraphs over image patches with cross-modality rebalancing for survival prediction; our framework extends this with concept supervision and faithfulness regularization. 
+
+Concept Bottleneck Models. CBMs [17] route predictions through interpretable concept activations, providing ante-hoc explanations at the cost of an information bottleneck. Concept Embedding Models [34] mitigate this cost by learning richer concept representations. Label-free [23] and post-hoc [33] variants reduce annotation requirements, while interactive CBMs [4] enable test-time concept correction. HyperCBM [30] extends CBMs to hypergraph-structured 4 MUSHAHID INTESUM 
+
+medical data. However, existing medical CBMs target classification rather than survival anal-ysis. Our framework integrates a CBM into a survival pipeline with HECRL for inter-concept refinement. 
+
+Multimodal Fusion and Explainability. Attention-based fusion methods such as MCAT [6] and Porpoise [7] learn cross-modal interactions between pathology and genomics for survival prediction. Our framework uses gated attention fusion [1] between concept-pooled imaging features and clinical covariates. Post-hoc GNN explanation methods identify task-relevant substructures: GNNExplainer [31] learns soft masks over edges, PGExplainer [21] trains parameterized explainers, and SubgraphX [32] searches for important subgraphs via Shapley values. However, Azzolin et al. [2] demon-strate that many GNN explanations fail rigorous faithfulness tests. 
+
+Background 
+
+Graph Neural Networks. Graph Neural Networks (GNNs) operate on graph-structured data through message passing. Given a graph G = ( V, E ) with node features xv , a GNN layer updates each node’s representation by aggregating neighbor information: (1) h(l+1)  
+
+> v
+
+= UPDATE 
+
+
+
+h(l) 
+
+> v
+
+, AGG 
+
+
+
+{h(l) 
+
+> u
+
+: u ∈ N (v)}
+
+ 
+
+After L layers, node representations encode information from their L-hop neighborhood, cap-turing spatial relationships between tissue regions relevant to tumor prognosis. 
+
+Hypergraphs and Sheaf Hypergraphs. A hypergraph H = ( V, E) generalizes standard graphs by allowing each hyperedge e ∈ E to connect arbitrarily many nodes, naturally modeling groups of tissue patches sharing biological properties. Message passing follows a two-step node-to-hyperedge-to-node process [29]: (2) h(l+1)  
+
+> v
+
+= σ
+
+ X
+
+> e∈E (v)
+
+1
+
+|e|
+
+X
+
+> u∈e
+
+W(l)h(l)
+
+> u
+
+
+
+Sheaf hypergraphs [22] extend this with learned linear maps Fv⊴e : Rd → Rd for each node-hyperedge pair, enabling directional and asymmetric information flow. This allows different nodes to contribute different aspects of their representation to the same hyperedge—for exam-ple, a tumor core patch and a peritumoral patch can contribute differently to a shared tissue neighborhood. 
+
+Concept Bottleneck Models. Concept Bottleneck Models (CBMs) [17] route all information through K human-interpretable concepts before prediction. Given input x, a CBM predicts concept values c = f (x) ∈ RK , then computes ˆ y = g(c) solely from these concepts. Since g has AN ACCURATE AND INTERPRETABLE HYPER GRAPH NEURAL NETWORK FOR GBM SURVIVAL PREDICTION 58- fold concepts  
+
+> Concept
+> Bottleneck Layer
+> Multimodal
+> Fusion
+> Survival
+> Prediction
+> MRI Patch
+> Extraction
+> Graph
+> Contruction
+> Sheaf
+> Hypergraph
+> Concept Refinement
+> Train
+> Train + Inference
+
+Figure 1. Architecture overview. Multi-modal MRI patches are encoded into a dual-space sheaf hypergraph, processed by SheafHGNN, compressed through a concept bottleneck (8 concepts), refined by HECRL, and fused with clinical features via gated attention for survival prediction. EST regularization (training only) penalizes prediction shifts when non-explanation nodes are added. no access to raw features, every prediction is inherently traceable through concept activations— providing ante-hoc interpretability, as opposed to post-hoc methods like GNNExplainer [31]. 
+
+Survival Analysis. Survival analysis predicts time-to-event while handling right censoring :patients alive at study end have survival times only known to exceed the observation pe-riod. We adopt a discrete-time formulation that predicts per-bin hazard probabilities ˆhk =
+
+P (event in bin k | survived to bin k), trained with negative log-likelihood loss. Performance is measured by Harrell’s concordance index (C-Index) [27], where 0.5 is random, 1.0 is perfect, and 0.60–0.70 is typical for GBM. 
+
+Explainability and Faithfulness. A faithful explanation identifies the subgraph that ac-curately represents the model’s internal decision process: used as the sole input, it should reproduce the original prediction [2]. We evaluate faithfulness using Sufficiency (whether the explanation subgraph alone reproduces the prediction), Fidelity-minus (prediction shift when retaining only the explanation), and the Extension Sufficiency Test (EST) , which detects anchor-set degeneracy by testing whether non-explanation nodes affect the prediction. We use EST both for evaluation and as a training-time regularizer. 
+
+Methodology 
+
+We present a unified framework for interpretable GBM survival prediction that integrates multi-modal brain MRI, clinical metadata, and genomic markers through a sheaf hypergraph concept bottleneck architecture. The pipeline consists of five stages: (1) data preprocessing and hypergraph construction, (2) sheaf hypergraph message passing, (3) concept bottleneck prediction, (4) multi-modal fusion, and (5) survival prediction. Figure 1 provides an overview of the full pipeline. 
+
+Data Preprocessing. 6 MUSHAHID INTESUM 
+
+MRI Patch Extraction. Given a patient’s multi-modal brain MRI consisting of six modalities (T1-pre, T1-post, T2, FLAIR, DTI, Perfusion), we extract N non-overlapping patches of size 16 × 16 from each axial slice. Each patch is flattened across all modalities to produce a feature vector xi ∈ R1536 (i.e., 6 × 16 × 16 = 1536). Background patches (those with mean intensity below a threshold) are discarded. The remaining patches form the node set V = {v1, . . . , v N }
+
+of the patient graph, where each node corresponds to a localized tissue region. 
+
+Concept Ground Truth Computation. For each patch, we precompute 8 imaging concept values directly from raw intensities without requiring segmentation ground truth. These serve as supervision targets for the concept bottleneck: (1) Enhancement ratio (c1): log(1 + clip(T1-post /(T1-pre + ϵ), 0, 10)), measuring blood-brain barrier breakdown in contrast-enhancing tumor regions. (2) FLAIR z-score (c2): μFLAIR /σ FLAIR within the patch, indicating peritumoral edema. (3) T2 abnormality (c3): T2 and FLAIR interaction term, capturing non-enhancing tumor extent. (4) DTI mean diffusivity (c4): Mean DTI signal within the patch, reflecting white matter disruption. (5) DTI FA proxy (c5): Coefficient of variation of DTI signal, approximating fractional anisotropy as a measure of axonal integrity. (6) Intensity heterogeneity (c6): Standard deviation across all modalities within the patch, capturing intratumoral heterogeneity. (7) Boundary complexity (c7): Left unsupervised (graph-learned), intended to capture tumor margin irregularity through message passing. (8) Spatial location (c8): Normalized z-coordinate, encoding the patch’s depth within the brain volume. All concept values are standardized to zero mean and unit variance across the dataset. 
+
+Clinical Features. We extract 18 clinical features from the UPenn-GBM metadata: age at di-agnosis, gender, IDH1 mutation status, MGMT methylation status, Karnofsky Performance Score (KPS), gross total resection status (GTR), and additional molecular and demographic attributes. Missing values are imputed with median values and accompanied by binary miss-ingness indicator flags. 
+
+Dual-Space Hypergraph Construction. We construct a patient-specific hypergraph H =(V, ET ∪ E F ) using two complementary strategies following MRePath [26]: 
+
+Topological hyperedges . (ET ): For each patch vi, we form a hyperedge containing all patches within a spatial radius of δ = 2 .5 patch-grid units in normalized coordinate space. This captures local tissue neighborhoods where adjacent patches share a spatial context. Hyperedges with fewer than 2 members are discarded and those exceeding 12 members are pruned to the nearest neighbors. AN ACCURATE AND INTERPRETABLE HYPER GRAPH NEURAL NETWORK FOR GBM SURVIVAL PREDICTION 7
+
+Feature hyperedges . (EF ): For each patch vi, we form a hyperedge containing the k =9 patches with highest cosine similarity in concept feature space. This captures non-local structural similarity, allowing distant patches with similar imaging characteristics (e.g., two separate enhancing regions) to share information. The union E = ET ∪E F forms the complete hyperedge set. Type labels are preserved to allow the model to distinguish between spatial and feature-based groupings. The hypergraph is stored as an incidence index I ∈ R2×|E| mapping node indices to hyperedge indices. 
+
+Sheaf Hypergraph Neural Network. 
+
+Patch Encoder. Raw patch features xi ∈ R1536 are projected into a d-dimensional embedding space ( d = 64) using a three-layer MLP with LayerNorm and GELU activations: (3) h(0)  
+
+> i
+
+= PatchEncoder( xi) ∈ Rd
+
+Sheaf Message Passing. We apply L = 3 layers of sheaf hypergraph message passing. Each layer l performs the following: 
+
+Step 1: Vertex to Hyperedge. Node features are transformed through a learned sheaf map 
+
+Fv⊴e and aggregated within each hyperedge by averaging: (4) m(l) 
+
+> e
+
+= 1
+
+|e|
+
+X
+
+> v∈e
+
+F(l)
+
+> v⊴e
+
+h(l)
+
+> v
+
+where F(l) 
+
+> v⊴e
+
+∈ Rd×d is a learned linear map shared across all node-hyperedge pairs within each layer. This sheaf map controls how each node’s features are projected when contributing to a hyperedge, enabling direction-aware information flow. 
+
+Step 2: Hyperedge to Vertex. Hyperedge features are transformed through a second sheaf map Fe⊴v and propagated back to member nodes: (5) ˜h(l) 
+
+> v
+
+= X
+
+> e∈E (v)
+
+F(l) 
+
+> e⊴v
+
+m(l)
+
+> e
+
+Step 3: Sheaf Laplacian Normalization. The aggregated messages are normalized by the inverse square root of node degree and passed through a weight matrix, LayerNorm, and GELU activation: (6) h(l+1)  
+
+> v
+
+= GELU 
+
+
+
+LayerNorm 
+
+
+
+W(l) · D−1/2 
+
+> v
+
+˜h(l)
+
+> v
+
+ 
+
+where Dv is the node degree (number of incident hyperedges). Residual connections are applied between layers when input and output dimensions match. 8 MUSHAHID INTESUM 
+
+Concept Bottleneck. 
+
+Concept Prediction. After L layers of sheaf message passing, node embeddings hv ∈ Rd are passed through a concept predictor that produces 8 concept values per node. The predictor consists of a shared trunk followed by 8 disentangled prediction heads, one per concept: (7) ˆcv,k = ϕk (SharedTrunk( hv )) , k = 1 , . . . , 8where each ϕk is a two-layer MLP. The concept predictions are supervised with MSE loss against the precomputed ground truth values: (8) Lconcept = 1
+
+N · K
+
+> N
+
+X
+
+> v=1
+> K
+
+X
+
+> k=1
+
+ ˆcv,k − c∗
+
+> v,k
+
+2
+
+where K = 7 (concept c7 is excluded from supervision as it is graph-learned). 
+
+HECRL: Inter-Concept Refinement. Following HyperCBM [30], we apply a Hyperedge Concept Refinement Layer (HECRL) that uses multi-head self-attention across the 8 concept dimensions. This captures inter-concept dependencies such as the correlation between high enhancement ratio ( c1) and high FLAIR signal ( c2), which together indicate the edema pattern characteristic of aggressive tumors: (9) ˆc′ 
+
+> v
+
+= MHSA(ˆ cv ) + ˆ cv
+
+The refined concept vectors ˆ c′ 
+
+> v
+
+∈ RK form the bottleneck output. All downstream modules see only these concept values, creating a hard information barrier that ensures prediction traceability. 
+
+Graph Pooling. Node-level concept representations are pooled to a single graph-level embedding using attention-weighted aggregation: (10) g =
+
+> N
+
+X
+
+> v=1
+
+αv · MLP(ˆ c′ 
+
+> v
+
+)where αv = softmax( w⊤ˆc′ 
+
+> v
+
+) are learned attention weights that identify the most diagnostically relevant patches. 
+
+Multi-Modal Fusion. We fuse the graph-level imaging embedding g ∈ Rd with clinical fea-tures using a dynamic weighting scheme inspired by MRePath [26]. AN ACCURATE AND INTERPRETABLE HYPER GRAPH NEURAL NETWORK FOR GBM SURVIVAL PREDICTION 9
+
+Clinical Encoder. Clinical features xclin ∈ R18 are projected into the same latent space as imaging through a two-layer MLP: (11) gclin = ClinicalEncoder( xclin ) ∈ Rd
+
+Dynamic Modality Rebalancing. Per-patient weights are computed using mono-confidence scores that estimate each modality’s standalone reliability: (12) wimg , w clin = softmax (Φ img (g), Φclin (gclin )) where Φ img and Φ clin are learned linear projections. This prevents modality collapse: if clinical data is heavily missing or unreliable for a particular patient, the model automatically upweights imaging, and vice versa. The fused representation is computed as a weighted combination followed by cross-attention alignment: (13) f = wimg · g + wclin · gclin + CrossAttn( g, gclin )
+
+Survival Prediction. 
+
+Survival Head. The fused embedding f ∈ Rd is passed through a three-layer MLP with dropout to produce hazard logits for K = 4 discrete time bins: (14) ˆh = SurvivalHead( f ) ∈ RK
+
+Time bin boundaries are computed from training set event times using quartiles. Hazard probabilities are obtained via ˆhk = σ(ˆhk). 
+
+Loss Function. The total training loss combines survival prediction, concept supervision, and learned task weighting using the Kendall uncertainty framework [16]: (15) Ltotal = 12σ21
+
+LNLL + 12σ22
+
+Lconcept + log( σ1σ2)where log σ21 and log σ22 are learned parameters, and LNLL is the discrete-time negative log-likelihood survival loss described in Section 2.4. 10 MUSHAHID INTESUM 
+
+Pairwise Concordance Ranking Loss. In addition to the NLL loss, we add a pairwise ranking loss that directly optimizes the concordance ordering. For each gradient accumulation step, the current patient’s predicted risk is compared against a buffer of recently seen patients: (16) Lrank = − 1
+
+|P| 
+
+X
+
+> (i,j )∈P
+
+log σ (ri − rj )where P is the set of concordant pairs (patient i died before patient j) and ri = P 
+
+> k
+
+ˆh(i) 
+
+> k
+
+is the cumulative risk score. The ranking loss is added with weight λrank = 0 .5. 
+
+EST Regularization. Following the SE-GNN auditing framework [2], we use the Extension Sufficiency Test not only as an evaluation metric but as a training-time regularizer. After an initial warmup of 3 epochs, we periodically compute the EST loss for a subset of training samples: (17) LEST = ˆh(GR) − ˆh(GR∪S ) 2
+
+where GR is the explanation subgraph (top 20% of nodes by concept activation magnitude) and GR∪S is the explanation extended with a randomly sampled subset S of non-explanation nodes. This penalizes the model when adding non-explanation nodes changes the prediction, encouraging the model to concentrate its reasoning within the explanation subgraph. The EST loss is added to the total loss with weight λEST = 0 .1. 
+
+Experimental Results 
+
+Experimental Setup. 
+
+Dataset. We evaluate on the UPenn-GBM dataset [3], which contains multi-modal brain MRI scans with paired clinical metadata and survival outcomes. After filtering for patients with complete modality coverage (T1-pre, T1-post, T2, FLAIR, and at least one of DTI or Per-fusion), 593 of 630 patients remain. Survival times range from 1 to 4,752 days, with 62% of patients experiencing the event (deceased) and 38% right-censored. 
+
+Training Configuration. We train with AdamW [19] (learning rate 10 −4, weight decay 10 −5)using a sequential learning rate schedule: linear warmup from 10 −6 to 10 −4 over 3 epochs, followed by cosine annealing. Gradient accumulation with step size 4 is used to simulate larger batch sizes given the single-patient-per-step constraint of variable-size graphs. Gradients are clipped to a maximum norm of 1.0. Early stopping with patience of 7 epochs monitors validation C-Index, halting training when the metric fails to improve. Maximum training length is set to 30 epochs. All experiments use stratified 5-fold cross-validation. The embedding dimension is d = 64, and the total model contains approximately 1.07M parameters. AN ACCURATE AND INTERPRETABLE HYPER GRAPH NEURAL NETWORK FOR GBM SURVIVAL PREDICTION 11 
+
+Model Configurations. To isolate the contribution of each architectural component, we define seven experiment configurations that progressively add modules: 
+
+Exp Components 
+
+E1 kNN graph + GNN + SurvivalHead E2 Dual-space hypergraph + SheafHGNN E3 E2 + CBM + HECRL E4 E3 + Multi-modal fusion E5 E4 + Multi-granular tree pooling E6 E4 + EST training-time regularization E7 E4 + TIF Tree + EST Regularizer 
+
+Table 1. Progressive ablation configurations. E1 through E4 build the core pipeline, while E5, E6, and E7 evaluate auxiliary modules. E1 uses a simple kNN graph with standard GNN message passing (no hypergraph, no con-cepts). E2 replaces the kNN graph with the dual-space sheaf hypergraph. E3 adds the concept bottleneck and HECRL. E4 adds clinical fusion. E5 and E6 independently add the TIF tree and EST regularizer on top of E4, while E7 combines both. 
+
+Ablation Study. Table 2 presents the full ablation study across all seven configurations. 
+
+Exp C-Index Std Params 
+
+E1 0.5519 0.012 1,026,992 E2 0.5601 0.016 1,026,992 E3 0.5391 0.019 1,027,281 E4 0.6373 0.027 1,074,963 E5 0.6392 0.041 1,167,131 E6 0.6431 0.015 1,074,963 E7 0.6435 0.023 1,167,131 
+
+Table 2. 5-fold cross-validation results on 593 UPenn-GBM patients. 
+
+Component Contributions. Table 3 quantifies the marginal contribution of each component. 
+
+Step ∆ C-Index Interpretation 
+
+E1 → E2 (+Hypergraph) +0.008 (+1.5%) Sheaf structure captures higher-order relations E2 → E3 (+CBM) −0.021 ( −3.7%) Interpretability bottleneck tax E3 → E4 (+Fusion) +0.098 (+18.2%) Clinical data is the dominant prognostic signal E4 → E5 (+Tree) +0.002 (+0.3%) Tree pooling benefits from wider embedding space E4 → E6 (+EST) +0.006 (+0.9%) EST regularization improves stability E6 → E7 (+Tree) +0.000 (+0.1%) Negligible gain when EST already active 
+
+Table 3. Marginal contribution of each component. Clinical fusion dominates all other deltas. 
+
+Clinical fusion is the dominant component. The E3 → E4 gain of +0.098 (+18.2%) is larger than all other deltas combined. This is consistent with the established prognostic 12 MUSHAHID INTESUM E1 Baseline GNN E2 Sheaf HGNN E3 +CBM +HECRL E4 +Clinical Fusion E5 +Tree Pooling E6 +EST Regularizer E7 Full Model      
+
+> 0.45 0.50 0.55 0.60 0.65 0.70 0.75
+> Concordance Index (C-Index)
+> 0.552 0.560 0.539 0.637 0.621 0.643 0.644
+> +1.5% -3.7% +18.2% +0.3% +0.9% +0.1%
+> Phase 1: Core Pipeline Phase 2: Auxiliary Modules
+> chance
+> Progressive Ablation Study (E1 E7)
+
+Figure 2. Progressive ablation study (E1–E7). Phase 1 builds the core pipeline; Phase 2 evaluates auxiliary modules atop E4. Error bars denote standard deviation across 5 folds. Clinical fusion (E3 →E4) contributes the largest single gain (+18.2%). E6 (red) achieves the best accuracy–stability trade-off. value of IDH1 mutation and MGMT methylation status in GBM [3]. The imaging pipeline provides spatial reasoning and interpretability, while clinical features provide the strongest discriminative signal for survival. 
+
+The concept bottleneck imposes a moderate tax. The E2 → E3 drop of −3.7% reflects the cost of compressing 64-dimensional embeddings through 8 concepts. This is the price of interpretability, where the model discards information that does not map to a clinical concept. We consider this an acceptable trade-off, as the downstream fusion with clinical features more than recovers the lost performance. 
+
+EST regularization improves both performance and stability. E6 achieves a C-Index of 0.6431 with the lowest standard deviation (0.015) among all post-fusion experiments. The EST penalty acts as implicit regularization, preventing the model from relying on spurious correlations that vary across folds. Every fold in E6 achieves a C-Index above 0.62, with no fold collapse observed. 
+
+Tree pooling provides marginal gains but increases variance. E5 slightly outperforms E4 (+0.3%), indicating that hierarchical coarsening captures some useful multi-scale structure. However, E5 exhibits the highest standard deviation (0.041) of all post-fusion experiments, in-dicating that tree pooling introduces fold-level instability. E7 (tree + EST) achieves the highest mean C-Index (0.6435) but provides only a negligible improvement over E6 (0.6431). Given that E6 achieves comparable accuracy with significantly lower variance and fewer parameters, the tree module does not justify its added complexity for this task. AN ACCURATE AND INTERPRETABLE HYPER GRAPH NEURAL NETWORK FOR GBM SURVIVAL PREDICTION 13 
+
+Exp Fold 1 Fold 2 Fold 3 Fold 4 Fold 5 Min Max 
+
+E1 0.540 0.574 0.543 0.553 0.549 0.540 0.574 E4 0.612 0.622 0.681 0.615 0.657 0.612 0.681 E5 0.606 0.639 0.681 0.589 0.681 0.589 0.681 
+
+E6 0.624 0.639 0.661 0.633 0.659 0.624 0.661 
+
+E7 0.626 0.620 0.682 0.629 0.658 0.620 0.682 
+
+Table 4. Per-fold C-Index for selected experiments. E6 shows the tightest spread with no fold below 0.62. 
+
+Per-Fold Analysis. The per-fold results highlight E6’s stability advantage. While E7 achieves the single highest fold (Fold 3: 0.682), E6 compresses its range to 0.624–0.661, with every fold above 0.62. E5 shows the widest spread among post-fusion experiments, with Fold 4 dropping to 0.589. E7 partially inherits this instability from the tree module, despite the stabilizing effect of EST. We believe E6 is the preferred configuration because of its performance stability as it ensures it will perform reliably across different patient populations. 
+
+Training Dynamics. Early stopping triggered in 100% of E6 folds, with training halting between epochs 12 and 25 (mean: 18.8 epochs). This saved approximately 37% of training compute compared to running all 30 epochs. The EST loss, which activates after a 3-epoch warmup, starts at approximately 0.02 and stabilizes around 0.07, indicating that the model gradually learns to produce more faithful explanations as training progresses. Concept correlation (Pearson r between predicted and ground-truth concept values) reaches 0.80 or above by epoch 10 across all folds, indicating that the bottleneck reliably learns the intended clinical concepts regardless of which downstream modules are active. 
+
+Cross-Model Comparison. To contextualize our framework’s performance, we compare our best configurations (E6 and E7) against three standalone baselines evaluated on the same 593-patient cohort under identical 5-fold cross-validation splits. 
+
+Model C-Index Std Params Input Modalities 
+
+DeepSurv [15] 0.6502 0.028 11K Clinical only HyperCBM [30] 0.5346 0.021 1.00M Imaging + concepts MRePath [26] 0.6419 0.021 1.05M Imaging + clinical 
+
+E6 (Ours) 0.6431 0.015 1.07M Imaging + clinical + concepts E7 (Ours) 0.6435 0.023 1.17M Imaging + clinical + concepts 
+
+Table 5. Cross-model comparison on 593 UPenn-GBM patients with 5-fold CV. All models use the same data splits. 
+
+DeepSurv achieves the highest mean C-Index but with the highest variance. Deep-Surv attains 0.6502 using only 18 clinical features and 11K parameters. However, its standard deviation of 0.028 is nearly double that of E6, with per-fold results ranging from 0.607 to 0.695. This instability is expected: a clinical-only model has no mechanism to learn spatial patterns from imaging data, making it sensitive to the distribution of clinical covariates in each fold. 14 MUSHAHID INTESUM 
+
+DeepSurv also provides no interpretability beyond feature-level coefficients and cannot leverage the rich spatial information present in multi-modal MRI. 
+
+MRePath is the strongest graph-based baseline. MRePath achieves 0.6419, demon-strating that hypergraph construction over image patches combined with clinical fusion is an effective strategy for survival prediction. Our E6 configuration matches MRePath’s accuracy (0.6431 vs 0.6419) while providing substantially lower variance (0.015 vs 0.021) and the addi-tional benefit of concept-level traceability through the bottleneck layer. 
+
+HyperCBM underperforms all other models. HyperCBM achieves only 0.5346, which is below even our E1 baseline (0.5519). This is consistent with HyperCBM being designed for classification rather than survival analysis. Without clinical fusion and without a survival-specific loss function, the concept bottleneck alone is insufficient for prognostic prediction. 
+
+Our framework achieves competitive accuracy with superior stability and trace-ability. E6 matches or exceeds all graph-based baselines while maintaining the lowest standard deviation of any model in the comparison. Unlike DeepSurv, which operates on a fixed feature vector, E6 learns from the spatial structure of multi-modal imaging data. Unlike MRePath, E6 routes all predictions through 8 clinically grounded concepts, enabling per-patient decomposi-tion of the survival estimate into specific biological factors. This combination of competitive accuracy, fold-level stability, and concept-level interpretability distinguishes our framework from existing approaches. 
+
+Time-Dependent Discrimination. While the concordance index provides a global measure of discriminative ability, it does not reveal whether a model performs better at specific time horizons. We evaluate time-dependent AUC (td-AUC) at 6, 12, and 18 months, computed using inverse-probability-of-censoring weighting [25]. Results are averaged over the first four folds; Fold 5 is excluded due to insufficient uncensored event coverage at the 18-month horizon. 
+
+Model C-Index td-AUC 6mo td-AUC 12mo td-AUC 18mo 
+
+DeepSurv [15] 0.6502 0.732 0.748 0.703 HyperCBM [30] 0.5346 0.601 0.554 0.519 MRePath [26] 0.6419 0.708 0.725 0.682 
+
+E6 (Ours) 0.6431 0.726 0.737 0.697 
+
+E7 (Ours) 0.6435 0.713 0.724 0.702 
+
+Table 6. Time-dependent AUC at 6, 12, and 18 months post-diagnosis (4-fold average). C-Index values are reproduced from Table 5 for reference. All models show strongest discrimination at the 12-month horizon, which aligns with the median survival of GBM (approximately 14 months). E6 outperforms MRePath at all three time points (+1.8%, +1.2%, +1.5% respectively), with the largest margin at the clinically critical 6-month window where early treatment decisions are made. HyperCBM performs near chance at 18 months (0.519), confirming that concept supervision alone, without clinical fusion, is insufficient for long-horizon prognostication. DeepSurv achieves the highest td-AUC at 12 months (0.748), consistent with its strong C-Index. However, this advantage does not translate to interpretability: DeepSurv provides no mechanism for understanding which spatial or morphological features drive a given prognosis. AN ACCURATE AND INTERPRETABLE HYPER GRAPH NEURAL NETWORK FOR GBM SURVIVAL PREDICTION 15 0 200 400 600 800 1000 1200 1400 1600 1800            
+
+> Time (days)
+> 0.0 0.2 0.4 0.6 0.8 1.0
+> Survival Probability
+> Log-rank p < 0.001
+> (a) E6 (Ours) Risk Stratification
+> Low Risk Medium Risk High Risk 0200 400 600 800 1000 1200 1400 1600 1800
+> Time (days)
+> 0.0 0.2 0.4 0.6 0.8 1.0
+> Survival Probability
+> Log-rank p = 0.516
+> (b) HyperCBM Risk Stratification
+> Low Risk Medium Risk High Risk
+
+Figure 3. Kaplan-Meier risk stratification. (a) E6 produces well-separated survival trajectories across risk tertiles (log-rank p < 0.001). (b) HyperCBM fails to achieve meaningful separation ( p = 0 .516), confirming that concept supervision alone is insufficient for clinically actionable risk grouping. 
+
+Kaplan-Meier Risk Stratification. To assess whether model-predicted risk scores produce clinically meaningful patient groups, we stratify patients into tertiles (low, medium, high risk) based on predicted risk and evaluate separation using the log-rank test. 
+
+Model Fold 1 Fold 2 Fold 3 Fold 4 
+
+DeepSurv < 0.001 < 0.001 < 0.001 0.002 HyperCBM 0.516 0.697 0.774 0.128 MRePath 0.004 0.002 < 0.001 < 0.001 
+
+E6 (Ours) < 0.001 0.001 < 0.001 0.002 
+
+E7 (Ours) 0.002 0.003 < 0.001 < 0.001 
+
+Table 7. Log-rank p-values (high vs low risk tertile) per fold. Values < 0.05 indicate statistically significant survival separation. E6 achieves significant risk stratification ( p < 0.005) across all four evaluated folds, confirm-ing that its predicted risk scores produce groups with genuinely different survival trajectories. MRePath and DeepSurv also achieve consistent significance. HyperCBM fails to produce sig-nificant separation in any fold ( p > 0.1), with predicted risk groups showing no meaningful survival difference. 
+
+Statistical Significance. Table 8 reports paired statistical tests comparing E6 against each model, computed over the 5-fold C-Index values. E6 significantly outperforms HyperCBM (paired t-test p = 0 .002), confirming that the per-formance gap of +0.109 is not attributable to fold variance. The differences between E6 and DeepSurv, MRePath, and E7 are not statistically significant, indicating that these models achieve comparable discriminative performance on this cohort. The Wilcoxon signed-rank test 16 MUSHAHID INTESUM 
+
+Comparison Mean ∆ Paired t-test p Wilcoxon p
+
+E6 vs DeepSurv −0.007 0.562 0.625 E6 vs HyperCBM +0.109 0.002 0.063 E6 vs MRePath +0.001 0.885 1.000 E6 vs E7 −0.001 0.941 1.000 
+
+Table 8. Paired statistical tests between E6 and each comparison model across 5 folds. Bold indicates p < 0.01. does not reach significance for any comparison, which is expected with n = 5 folds, as the minimum achievable Wilcoxon p-value with 5 paired observations is 0.0625. These results underscore that the primary advantage of E6 over DeepSurv and MRePath is not raw predictive accuracy but rather the combination of competitive performance with concept-level traceability and fold-level stability (standard deviation of 0.015 vs 0.028 and 0.021 respec-tively). 
+
+Exp Sufficiency Rejection Mean Suf. Shift Mean EST Shift 
+
+E2 0% 0.65% 0.80% E4 0% 2.52% 0.55% E5 12% 4.10% 0.40% 
+
+E6 0% 2.75% 0.69% 
+
+E7 0% 2.75% 0.74% 
+
+Table 9. Faithfulness audit results. Explanation subgraph is the top 20% of nodes by concept activation magnitude. Rejection threshold is 0.10. 
+
+Faithfulness Evaluation. The faithfulness results reveal a nuanced picture. E5 (with tree) shows 12% sufficiency rejection, meaning its explanation subgraphs are insufficient to reproduce the full prediction for a subset of patients. This is consistent with E5’s fold-level instability: the tree’s hierarchical coarsening restructures the graph in ways that distribute reasoning across the hierarchy rather than concentrating it within the explanation subgraph. E6 (with EST) achieves 0% rejection with a moderate mean sufficiency shift of 2.75%, indicating that its explanations are faithful: the prediction from the explanation subgraph closely matches the full prediction. This is the expected behavior of EST regularization. By penalizing the model during training when non-explanation nodes affect the prediction, EST forces the model to concentrate its reasoning within the explanation subgraph. E7 also achieves 0% rejection, confirming that EST dominates the tree’s effect on explanation quality. The result is a model whose explanations are not just plausible but verified to faithfully represent the internal decision process. 
+
+Concept Evaluation. We evaluate whether the concept bottleneck learns clinically meaning-ful representations by examining concept prediction quality, concept-survival correlation, and concept distributions across the cohort. AN ACCURATE AND INTERPRETABLE HYPER GRAPH NEURAL NETWORK FOR GBM SURVIVAL PREDICTION 17 0.3 0.2 0.1 0.0 0.1 0.2 
+
+Spearman (concept vs. survival) 
+
+> c1: Enhancement c2: FLAIR/Edema c3: T2 Abnormality c4: DTI MD c5: DTI FA c6: Heterogeneity c7: Boundary c8: Spatial Loc.
+> *** **
+
+(a) Concept Survival Correlation                                                         
+
+> p < 0.05 p < 0.10 n.s.
+> Enhance. FLAIR T2 Abn. DTI MD DTI FA Heterog. Boundary Spatial Enhance. FLAIR T2 Abn. DTI MD DTI FA Heterog. Boundary Spatial
+> 1.00 0.14 -0.29 0.09 -0.07 -0.24 0.52 -0.18 0.14 1.00 0.14 -0.26 -0.07 -0.20 -0.54 0.14 -0.29 0.14 1.00 -0.12 -0.07 0.05 -0.47 -0.00 0.09 -0.26 -0.12 1.00 0.53 0.76 0.08 0.52 -0.07 -0.07 -0.07 0.53 1.00 0.71 -0.39 0.61
+> -0.24 -0.20 0.05 0.76 0.71 1.00 -0.19 0.82
+> 0.52 -0.54 -0.47 0.08 -0.39 -0.19 1.00 -0.31 -0.18 0.14 -0.00 0.52 0.61 0.82 -0.31 1.00
+
+(b) Inter-Concept Correlation 
+
+> 1.00
+> 0.75
+> 0.50
+> 0.25
+> 0.00 0.25 0.50 0.75 1.00 Pearson r
+
+Figure 4. Concept analysis. (a) Spearman correlation between each learned concept and patient survival time. DTI MD ( ρ = +0 .142, p = 0 .046) and Boundary ( ρ = −0.242, p = 0 .001) reach statistical significance (red bars). En-hancement approaches significance ( †, p = 0 .061). (b) Inter-concept Pearson correlation matrix reveals expected biological groupings: DTI features (MD, FA) cluster with Heterogeneity ( r > 0.70), while Enhancement and Boundary are positively correlated ( r = 0 .52). 
+
+Concept Learning Quality. Concept correlation (Pearson r between predicted and ground-truth concept values) reaches 0.80 or above by epoch 10 across all folds, indicating that the bottle-neck reliably learns the intended clinical concepts. Table 10 summarizes the learned concept distributions across 200 patients evaluated with the E6 checkpoint. 
+
+Concept Mean Std Min Max 
+
+c1: Enhancement 0.652 0.103 0.059 0.877 c2: FLAIR/Edema 0.664 0.158 −0.028 1.787 c3: T2 Abnormality −0.001 0.006 −0.024 0.042 c4: DTI MD 0.209 0.062 −0.036 0.361 c5: DTI FA 0.972 0.192 0.089 1.189 c6: Heterogeneity 0.146 0.022 0.043 0.198 c7: Boundary 0.338 0.023 0.229 0.409 c8: Spatial Location 0.514 0.015 0.453 0.537 
+
+Table 10. Learned concept distributions across 200 patients (E6 model). Concepts with higher variance (c1, c2, c5) capture patient-level heterogene-ity, while low-variance concepts (c3, c7, c8) encode more uniform tissue prop-erties. Concepts c1 (Enhancement), c2 (FLAIR/Edema), and c5 (DTI FA) exhibit the highest inter-patient variance, reflecting the known heterogeneity of contrast enhancement patterns, edema extent, and white matter integrity across GBM patients. In contrast, c3 (T2 Abnormality) 18 MUSHAHID INTESUM 
+
+shows near-zero mean and minimal variance, suggesting that this concept carries limited dis-criminative information in this cohort. 
+
+Concept-Survival Correlation. Table 11 reports the Spearman rank correlation between each learned concept and actual survival time. 
+
+Concept Spearman ρ p-value 
+
+c1: Enhancement −0.133 0.061 c2: FLAIR/Edema −0.060 0.398 c3: T2 Abnormality +0.060 0.401 c4: DTI MD +0.142 0.046 *c5: DTI FA +0.017 0.810 c6: Heterogeneity +0.118 0.096 c7: Boundary −0.020 0.780 c8: Spatial Location −0.055 0.443 
+
+Table 11. Spearman correlation between learned concepts and survival time (200 patients, E6 model). * denotes p < 0.05. DTI Mean Diffusivity (c4) is the only concept with a statistically significant survival correla-tion ( ρ = +0 .142, p = 0 .046), consistent with its established role in assessing white matter infiltration and treatment-induced tissue damage in GBM [3]. Enhancement (c1) approaches significance ( ρ = −0.133, p = 0 .061), aligning with the clinical observation that stronger con-trast enhancement is associated with more aggressive tumor phenotypes and shorter survival. The generally weak individual concept-survival correlations reflect the dominance of clinical covariates in GBM prognosis. As demonstrated in the ablation study, the E3 → E4 gain of +18.2% confirms that genomic markers (IDH1, MGMT) and clinical factors (KPS, age) carry substantially more prognostic weight than any single imaging-derived concept. The value of the concept bottleneck lies not in replacing clinical features as survival predictors, but in providing a structured, traceable representation of the imaging evidence that complements the clinical signal. Each survival estimate can be decomposed into specific concept activations, enabling clinicians to verify that the model’s spatial reasoning aligns with the observed tumor morphology. 
+
+Limitations and Future Work 
+
+Clinical feature dominance. The E3 → E4 gain of +18.2% confirms that genomic markers remain the dominant prognostic signal in GBM. The concept bottleneck’s role therefore shifts from improving prediction to verifying that the model’s spatial reasoning is clinically grounded, even when clinical covariates drive accuracy. 
+
+Statistical power. With 593 patients across 5 folds, only the E6 vs HyperCBM comparison reaches significance ( p = 0 .002). Larger multi-institutional cohorts and external validation beyond UPenn-GBM are needed to establish definitive model rankings and generalizability. 
+
+Concept granularity. The 8-concept vocabulary covers broad tissue properties, and the near-zero variance of c3 (T2 Abnormality) suggests not all concepts are equally informative. AN ACCURATE AND INTERPRETABLE HYPER GRAPH NEURAL NETWORK FOR GBM SURVIVAL PREDICTION 19 
+
+A finer-grained set informed by neuropathological grading criteria, combined with adaptive concept selection, could capture more nuanced prognostic patterns. 
+
+Scalability and temporal modeling. The single-patient gradient step constraint limits throughput for graphs with 4,000–7,000 nodes. Graph sampling or sparse attention could improve scaling. Additionally, the framework predicts from a single scan; longitudinal mod-eling through temporal hyperedges could capture treatment response and disease progression dynamics. 
+
+Broader baselines. Our comparison covers three re-implemented baselines. Evaluation against transformer-based survival methods and attention-MIL frameworks would provide a more comprehensive performance landscape. 
+
+Conclusion 
+
+We presented a unified framework for interpretable brain tumor survival prediction that com-bines sheaf hypergraph neural networks, concept bottleneck models, hierarchical concept refine-ment, and multi-modal clinical fusion. Through a systematic 7-configuration ablation on 593 UPenn-GBM patients, we isolated the contribution of each component and identified clinical fusion as the dominant factor (+18.2%), with the concept bottleneck imposing a moderate but recoverable accuracy cost ( −3.7%) in exchange for structured interpretability. Our best con-figuration (E6) achieves a C-Index of 0.6431 with the lowest variance (std = 0.015) among all evaluated models, matching graph-based baselines (MRePath: 0.6419) and clinical-only mod-els (DeepSurv: 0.6502) while providing concept-level traceability that neither baseline offers. Time-dependent AUC analysis confirms consistent discrimination at 6, 12, and 18 months, and Kaplan-Meier stratification produces significant risk group separation across all evaluated folds (p < 0.005). The concept bottleneck learns clinically meaningful representations with Pear-son r > 0.80 against ground-truth concept values, and EST regularization ensures that model explanations faithfully reflect the internal decision process (0% sufficiency rejection). The framework demonstrates that accurate survival prediction and concept-level interpretability are not mutually exclusive. By routing predictions through clinically grounded concepts and validating their faithfulness through training-time regularization, we provide a model whose survival estimates can be decomposed into specific biological factors, enabling clinicians to verify alignment between the model’s reasoning and observed tumor characteristics. 
+
+References                
+
+> [1] Arevalo, J., Solorio, T., y G´ omez, M. M., and Gonz´ alez, F. A. Gated multimodal units for information fusion, 2017. [2] Azzolin, S., Teso, S., Lepri, B., Passerini, A., and Malhotra, S. Gnn explanations that do not explain and how to find them, 2026. [3] Bakas, S., Sako, C., Akbari, H., et al. The university of pennsylvania glioblastoma (upenn-gbm) cohort: advanced mri, clinical, genomics, & radiomics. Scientific Data 9 (2022), 453. [4] Chauhan, K., Tiwari, R., Freyberg, J., Shenoy, P., and Dvijotham, K. Interactive concept bottleneck models, 2023. [5] Chen, R. J., Lu, M. Y., Shaban, M., Chen, C., Chen, T. Y., Williamson, D. F. K., and Mahmood, F. Whole slide images are 2d point clouds: Context-aware survival prediction using patch-based graph convolutional networks. In Medical Image Computing and Computer Assisted Intervention – MICCAI 20 MUSHAHID INTESUM
+
+2021 (Cham, 2021), M. de Bruijne, P. C. Cattin, S. Cotin, N. Padoy, S. Speidel, Y. Zheng, and C. Essert, Eds., Springer International Publishing, pp. 339–349. [6] Chen, R. J., Lu, M. Y., Weng, W.-H., Chen, T. Y., Williamson, D. F., Manz, T., Shady, M., and Mahmood, F. Multimodal co-attention transformer for survival prediction in gigapixel whole slide images. In 2021 IEEE/CVF International Conference on Computer Vision (ICCV) (2021), pp. 3995–4005. [7] Chen, R. J., Lu, M. Y., Williamson, D. F. K., Chen, T. Y., Lipkova, J., Shaban, M., Shady, M., Williams, M., Joo, B., Noor, Z., and Mahmood, F. Pan-cancer integrative histology-genomic analysis via interpretable multimodal deep learning, 2021. [8] Chien, E., Pan, C., Peng, J., and Milenkovic, O. You are allset: A multiset function framework for hypergraph neural networks, 2022. [9] Ching, T., Zhu, X., and Garmire, L. X. Cox-nnet: An artificial neural network method for prognosis prediction of high-throughput omics data. PLOS Computational Biology 14 , 4 (04 2018), 1–18. [10] Cox, D. R. Regression models and life-tables. Journal of the Royal Statistical Society: Series B (Method-ological) 34 , 2 (1972), 187–220. [11] Feng, Y., You, H., Zhang, Z., Ji, R., and Gao, Y. Hypergraph neural networks, 2019. [12] Gensheimer, M. F., and Narasimhan, B. A scalable discrete-time survival model for neural networks. 
+
+PeerJ 7 (Jan. 2019), e6257. [13] Hansen, J., and Gebhart, T. Sheaf neural networks, 2020. [14] Ilse, M., Tomczak, J., and Welling, M. Attention-based deep multiple instance learning. In Proceedings of the 35th International Conference on Machine Learning (10–15 Jul 2018), J. Dy and A. Krause, Eds., vol. 80 of Proceedings of Machine Learning Research , PMLR, pp. 2127–2136. [15] Katzman, J. L., Shaham, U., Cloninger, A., Bates, J., Jiang, T., and Kluger, Y. Deepsurv: person-alized treatment recommender system using a cox proportional hazards deep neural network. BMC Medical Research Methodology 18 , 1 (Feb. 2018). [16] Kendall, A., and Gal, Y. What uncertainties do we need in bayesian deep learning for computer vision?, 2017. [17] Koh, P. W., Nguyen, T., Tang, Y. S., Mussmann, S., Pierson, E., Kim, B., and Liang, P. Concept bottleneck models, 2020. [18] Lee, C., Zame, W. R., Yoon, J., and van der Schaar, M. Deephit: A deep learning approach to survival analysis with competing risks. In AAAI (2018). [19] Loshchilov, I., and Hutter, F. Decoupled weight decay regularization, 2019. [20] Lu, M. Y., Williamson, D. F. K., Chen, T. Y., Chen, R. J., Barbieri, M., and Mahmood, F. Data efficient and weakly supervised computational pathology on whole slide images, 2020. [21] Luo, D., Cheng, W., Xu, D., Yu, W., Zong, B., Chen, H., and Zhang, X. Parameterized explainer for graph neural network, 2020. [22] Naddeo, D., Abate, C., Li` o, P., Toschi, N., and Bianchi, F. M. Hierarchical pooling for sheaf neural networks, 2026. [23] Oikarinen, T., Das, S., Nguyen, L. M., and Weng, T.-W. Label-free concept bottleneck models, 2023. [24] Pati, P., Jaume, G., Fernandes, L. A., Foncubierta-Rodr´ ıguez, A., Feroce, F., Anniciello, A. M., Scognamiglio, G., Brancati, N., Riccio, D., Di Bonito, M., De Pietro, G., Botti, G., Goksel, O., Thiran, J.-P., Frucci, M., and Gabrani, M. Hact-net: A hierarchical cell-to-tissue graph neural network for histopathological image classification. In Uncertainty for Safe Utilization of Machine Learning in Medical Imaging, and Graphs in Biomedical Image Analysis (Cham, 2020), C. H. Sudre, H. Fehri, T. Arbel, C. F. Baumgartner, A. Dalca, R. Tanno, K. Van Leemput, W. M. Wells, A. Sotiras, B. Papiez, E. Ferrante, and S. Parisot, Eds., Springer International Publishing, pp. 208–219. [25] P¨ olsterl, S. scikit-survival: A library for time-to-event analysis built on top of scikit-learn. Journal of Machine Learning Research 21 , 212 (2020), 1–6. [26] Qu, M., Yang, G., Di, D., Su, T., Gao, Y., Song, Y., and Fan, L. Multimodal cancer survival analysis via hypergraph learning with cross-modality rebalance, 2025. [27] Schmid, M., Wright, M., and Ziegler, A. On the use of harrell’s c for clinical risk prediction via random survival forests, 2016. [28] Stupp, R., Mason, W. P., van den Bent, M. J., Weller, M., Fisher, B., Taphoorn, M. J., Belanger, K., Brandes, A. A., Marosi, C., Bogdahn, U., Curschmann, J., Janzer, R. C., Ludwin, S. K., Gorlia, T., Allgeier, A., Lacombe, D., Cairncross, J. G., Eisenhauer, E., and Mirimanoff, R. O. 
+
+Radiotherapy plus concomitant and adjuvant temozolomide for glioblastoma. New England Journal of Medicine 352 , 10 (2005), 987–996. AN ACCURATE AND INTERPRETABLE HYPER GRAPH NEURAL NETWORK FOR GBM SURVIVAL PREDICTION 21 
+
+[29] Yadati, N., Nimishakavi, M., Yadav, P., Nitin, V., Louis, A., and Talukdar, P. Hypergcn: A new method of training graph convolutional networks on hypergraphs, 2019. [30] Yang, Y., Xiao, R., Hu, L., Aviles-Rivero, A. I., Wu, Y., Qin, J., and Zhu, L. Learning label-efficient interpretable medical image diagnosis via semi-supervised hypergraph concept bottleneck model, 2026. [31] Ying, R., Bourgeois, D., You, J., Zitnik, M., and Leskovec, J. Gnnexplainer: Generating explanations for graph neural networks, 2019. [32] Yuan, H., Yu, H., Wang, J., Li, K., and Ji, S. On explainability of graph neural networks via subgraph explorations, 2021. [33] Yuksekgonul, M., Wang, M., and Zou, J. Post-hoc concept bottleneck models, 2023. [34] Zarlenga, M. E., Barbiero, P., Ciravegna, G., Marra, G., Giannini, F., Diligenti, M., Shams, Z., Precioso, F., Melacci, S., Weller, A., Lio, P., and Jamnik, M. Concept embedding models: Beyond the accuracy-explainability trade-off, 2022. [35] Zhou, Y., Graham, S., Alemi Koohbanani, N., Shaban, M., Heng, P.-A., and Rajpoot, N. Cgc-net: Cell graph convolutional network for grading of colorectal cancer histology images. In Proceedings of the IEEE/CVF International Conference on Computer Vision (ICCV) Workshops (Oct 2019). 
+
+Independent Researcher 
+
+Email address : intesummushahid@gmail.com
