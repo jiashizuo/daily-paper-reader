@@ -1,0 +1,773 @@
+Title: M^2PFN: End-to-End Disentangled Alignment for Generalizable Multimodal In-Context Learning in Alzheimer's Disease
+
+URL Source: https://arxiv.org/pdf/2609.28836v1
+
+Published Time: Fri, 25 Sep 2026 00:21:57 GMT
+
+Number of Pages: 19
+
+Markdown Content:
+# M2PFN: End-to-End Disentangled Alignment for Generalizable Multimodal In-Context Learning in Alzheimer’s Disease 
+
+Lujia Zhong 1,2, Shuo Huang 1,3, Jianwei Zhang 1,2, Xinyu Nie 1, and Yonggang Shi 1,2,3∗ 
+
+> 1
+
+Stevens Neuroimaging and Informatics Institute, Keck School of Medicine, University of Southern California, Los Angeles, CA 90033, USA 
+
+> 2
+
+Ming Hsieh Department of Electrical and Computer Engineering, Viterbi School of Engineering, University of Southern California, Los Angeles, CA 90089, USA 
+
+> 3
+
+Alfred E. Mann Department of Biomedical Engineering, Viterbi School of Engineering, University of Southern California, Los Angeles, CA 90089, USA 
+
+Abstract 
+
+While various multimodal methods combining imaging and tabular data for Alzheimer’s disease (AD) diagnosis were proposed, they are often limited in generalization across cohorts. In-context learning (ICL) has demonstrated excellent generalization performances and high flexi-bility in foundational tabular models such as TabPFN. To extend TabPFN’s ICL to multimodal AD analysis, the main obstacle is that TabPFN is meta-trained on synthetic tabular priors that do not naturally match the statistical structure of image-derived features. We propose M2PFN, an end-to-end framework that turns this tabular foundation model into a multimodal AD predictor. M2PFN (i) performs differentiable inference through TabPFN’s transformer, back-propagating task gradients into 3D-MRI and tabular encoders; (ii) aligns the two modal-ities into a shared subspace, via disentanglement and a contrastive objective, matched to the ICL engine’s prior; and (iii) folds in a frozen tabular-only prediction through a learnable gated shortcut. Because the ICL engine stays frozen, its in-context mechanism is preserved for test-time generalization, while end-to-end training shapes the encoders into features it can exploit. On ADNI ( n = 2240, three-class CN/MCI/AD), M 2PFN attains 65 .55% macro-F1 and 82 .21% macro-AUC, surpassing a comprehensive set of unimodal and multimodal baselines. By swap-ping only the head for a TabPFN regressor, the same architecture regresses baseline MMSE on a 1250-subject sub-cohort to test MAE 1 .743, outperforming every multimodal baseline. On two external cohorts (OASIS-3 and SCAN) with no retraining, M 2PFN achieves the best AUC and the lowest MMSE MAE across all baselines, and transfers even when the cognitive instrument changes. 
+
+Keywords: Alzheimer’s disease, in-context learning, multimodal fusion, prior-data fitted networks, contrastive learning, MRI. 
+
+## 1 Introduction 
+
+For Alzheimer’s disease (AD) diagnosis and prognosis, the value of multimodal analysis that com-bines complimentary information from imaging and non-imaging tabular data has been well demon-strated [1–7]. Among imaging modalities, structural MRI is the most widely available and routinely acquired in clinical practice. It characterizes neurodegeneration through cortical and hippocampal 
+
+> ∗
+
+Corresponding author: Yonggang Shi ( yshi@loni.usc.edu ). 
+
+1arXiv:2609.28836v1 [cs.CV] 23 Sep 2026 atrophy, which are among the most reliable in vivo markers of cognitive decline. Non-imaging tabular data, including demographic characteristics, clinical history, genetic factors such as APOE genotype, and fluid biomarkers such as CSF amyloid and tau, provide additional information about disease risk and progression that imaging alone cannot reveal. Despite their benefits, most exist-ing multimodal approaches combine imaging and tabular data through task- and dataset-specific fusion architectures with fixed input structures. Consequently, they typically require retraining or extensive fine-tuning when transferred across cohorts with different imaging protocols, scanner vendors, and population characteristics, and struggle to accommodate variation in the number and type of available tabular features, ranging from more than one hundred variables in Alzheimer’s Disease Neuroimaging Initiative (ADNI) [8, 9] to fewer than ten in some external cohorts. These challenges naturally motivate foundation models, which leverage large-scale pretraining to learn transferable representations that can be adapted across downstream tasks and domains. Such capability is particularly desirable for AD analysis, where both imaging distributions and multimodal feature availability vary considerably across clinical cohorts. However, most existing AD prediction models, whether based on convolutional neural networks [10–12], transformers [13–16], or mixture-of-experts architectures [3,4,17–19], remain task-specific, with model parameters optimized for the distributions observed during training. Consequently, they provide limited support for flexible multimodal integration and robust cross-cohort deployment. 
+
+In-context learning (ICL) offers a principled answer to this foundation-model demand. Rather than compressing data into fixed parameters, a pretrained ICL model conditions on a labeled support set supplied at inference time and predicts a query directly through attention over that support, without updating a single weight. Pioneered by large language models [20], ICL has re-peatedly shown strong generalization and rapid adaptation to new tasks and distributions purely by changing the support—a capability structurally unavailable to parametric predictors. For tabular data, this paradigm has already yielded a family of foundation models: prior-data fitted networks (PFNs) such as TabPFN [21] and TabFM [22], meta-trained on large families of synthetic priors, deliver strong, well-calibrated predictions on medium to small-sized datasets typical of clinical co-horts, all off the shelf and with the network frozen. Two obstacles, however, keep this tabular foundation model from multimodal AD analysis. First, no ICL foundation model natively ingests medical imaging or, more generally, multiple modalities; a tabular-only ICL engine therefore leaves most of the AD signal unused. Second, TabPFN is meta-trained on large families of synthetic tabular priors sampled from structural causal models; its learned in-context prior therefore reflects the statistical structure of tabular data-generating processes, not that of image-derived features. Naively extracting image embeddings and feeding them as additional tabular columns yields a representation mismatched to what the engine was trained to exploit, making end-to-end training essential to shape the encoder’s output to the engine’s prior. However, TabPFN’s preprocessing pipeline contains non-differentiable operations that fracture gradient flow, so it cannot be coupled to and jointly trained with the learnable encoder this adaptation demands. We propose M 2PFN, an end-to-end framework that repurposes a frozen, off-the-shelf tabu-lar foundation model for multimodal Alzheimer’s disease analysis. M2PFN preserves the frozen TabPFN in-context learning (ICL) engine as the prediction head and learns multimodal repre-sentations that are directly optimized for in-context reasoning through end-to-end training. By keeping the ICL engine frozen, M 2PFN supports support-set replacement at inference, enabling gradient-free transfer to unseen clinical cohorts without retraining. 
+
+Contributions. Our main contributions are summarized as follows: • We instantiate differentiable prompt tuning through TabPFN by bypassing its non-differentiable preprocessing pipeline and back-propagating gradients through the in-context attention com-2putation. 1
+
+• We introduce a disentangled alignment-based multimodal representation learning strategy that jointly optimizes MRI and tabular features through the frozen ICL engine. • We achieve state-of-the-art performance on ADNI for both three-class CN/MCI/AD classifi-cation and MMSE regression. • We demonstrate robust zero-retraining transfer to two independent external cohorts (OASIS-3 and SCAN) via support-set replacement, achieving the best performance among all gradient-free adaptation baselines. 
+
+## 2 Related Work 
+
+2.1 Multimodal Alzheimer’s Disease Analysis 
+
+AD analysis spans two paradigms: categorical classification (e.g., CN/MCI/AD) and regression of continuous cognitive scores such as MoCA and MMSE. Deep learning for both has progressed from unimodal architectures, such as ResNet [10], DenseNet [11], and transformer-based Swi-nUNETR [14], to multimodal fusion architectures that combine imaging with clinical/tabular features, spanning cross-modal transformers (MulT [16], mmFormer [15]) and mixture-of-experts (MoE) routing across modalities (Flex-MoE [3], MoE++ [18], SwitchGate [17], I2MoE [4], Inter-pretCC [19]); these consistently show that combining MRI with tabular/clinical data outperforms either modality alone. All of these methods stay within the parametric learning paradigm, com-pressing the training distribution into fixed weights and cannot reference labeled exemplars at inference or effectively adapt to a new cohort without retraining or finetuning. 
+
+2.2 In-Context Learning 
+
+In-context learning (ICL) was popularized by large language models, which solve new tasks by conditioning on demonstrations without parameter updates [20], and has since been extended to vision-language models [23]. For tabular data, two main paradigms have emerged: retrieval-based methods that attend to training examples during inference [24,25], and Prior-Data Fitted Networks (PFNs) [26], which meta-learn Bayesian inference over synthetic task distributions. TabPFN [21,27] is the most mature PFN-based model, achieving competitive performance on small-to-medium tabular datasets without test-time optimization, while TabFM [22] further scales this paradigm to larger tabular benchmarks. We build upon TabPFN. However, like existing tabular foundation models, it is designed exclusively for structured tabular inputs and relies on a non-differentiable preprocessing pipeline before the transformer. Consequently, multimodal inputs such as 3D MRI cannot be incorporated into the in-context reasoning process, nor can gradients propagate from the ICL engine back to an imaging encoder for end-to-end representation learning. 
+
+2.3 Prompt Tuning for ICL Engines 
+
+When a large pretrained model cannot be finetuned directly, being expensive to update or easy to collapse on a small dataset, prompt tuning instead optimizes a small set of continuous input 
+
+> 1The differentiable-input path for TabPFN’s regressor used in this work has been contributed by the authors to the official TabPFN library and merged upstream ( https://github.com/PriorLabs/TabPFN/pull/923 ).
+
+33D Vision Encoder 
+
+Tabular Encoder MRI Tokens c
+
+Tabular Tokens Fused Tokens (Query)          
+
+> In-Context Window (Support Set)
+> ... ... ... ... ... M... 84 2682 F... 77 11293
+
+c 
+
+> Sex ... Age APOE ε4 CSF Aβ42
+> Specific
+> Shared
+> Specific
+> Shared
+> Specific
+> Shared
+
+Shared Shared 
+
+Disentangler (b) Disentangler Module (c) Class Prototype Alignment (d) Differentiable TabPFN Backbone (a) Overall architecture of 
+
+> Class Prototype Alignment
+
+Linear Projection TabPFN (Multimodal ICL) TabPFN Transformer 
+
+> Specific Head
+> Shared Head
+
+TabPFN (Tabular ICL) 
+
+Shared 
+
+> Stop-gradient
+
+×
+
+> ×
+> ×
+
+... 
+
+> Support  Non-differentiable Differentiable
+> Token Quantile/Power/... Label
+> Query
+> ...
+> ?
+> ... ...
+
+Shortcut    
+
+> CN CN MCI MCI AD AD
+> Learnable Gate Task Prediction Prediction
+> Trainable Frozen Concatenation Addition Gate
+> PyTorch Z-Norm Feature Shuffle Fingerprint Feat. Remove Constant Categorical Enc. SVD Features Polynomial Feat.
+
+Figure 1: Overview of the proposed M 2PFN framework (§3). (a) Overall architecture. (b) Dis-entangler module for separating modality-specific and shared representations. (c) Class prototype alignment for encouraging cross-modal consistency. (d) Differentiable TabPFN backbone enabling end-to-end gradient propagation through the frozen PFN engine. vectors to steer the frozen model, spanning soft prompts at the input layer [28], deep/prefix vari-ants that inject tunable vectors at every layer [29, 30], and parameter-efficient adapters such as LoRA [31] that learn a low-rank update to the frozen weights. Prompt tuning a PFN, however, needs a gradient path from the engine’s output back to its input, which its non-differentiable pre-processing stack does not provide. A concurrent multimodal PFN, MMPFN [32], works around this architecturally, inserting a multimodal mixer (a multi-head gated MLP with cross-attention pooling) between TabPFN’s feature encoder and its transformer and lightly finetuning that mixer on frozen, precomputed image embeddings; this avoids re-extracting image features during training but prevents end-to-end adaptation of the imaging encoder. We take the opposite stance on what to adapt: the engine’s weights stay frozen, which prevents a foundation model from collapsing on the small data of a clinical cohort, and task gradients instead flow through TabPFN’s transformer into the imaging and tabular encoders, aligning their representations with the inductive biases of TabPFN. 
+
+## 3 Method 
+
+An overview of M 2PFN is shown in Fig. 1. We first formulate multimodal in-context prediction (Sec. 3.1), then describe the alignment-based representation learner (Sec. 3.2), the differentiable TabPFN prediction head (Sec. 3.3), and the gated tabular shortcut (Sec. 3.4). The complete training objective is given in Sec. 3.5. 43.1 Problem Formulation 
+
+Subject i is represented by xi = ( ximg  
+
+> i
+
+, x tab  
+
+> i
+
+), where ximg  
+
+> i
+
+∈ R1×128 ×128 ×128 is a 3D MRI volume and xtab  
+
+> i
+
+∈ Rd contains continuous and ordinal-encoded categorical variables. The task target is denoted by yi: for diagnosis, yi ∈ { 0, 1, 2} corresponds to {CN , MCI , AD }; for cognitive-score regression, yi ∈ R (§4.7). We additionally denote the diagnostic category by ci ∈ { 0, 1, 2} for the prototype-alignment loss below. Thus, ci = yi for classification, whereas ci is an auxiliary diagnosis label for regression. Given a query subject q and a labeled support set DS = {(xj , y j )}j∈S , both tasks are formulated as 
+
+pΘPFN 
+
+> (
+
+yq 
+
+> ∣∣∣
+
+˜hq, {(˜hj , y j )}j∈S 
+
+> )
+
+, (1) where ˜hi ∈ RD′
+
+is the learned multimodal representation supplied to TabPFN, defined in Sec. 3.3, and Θ PFN denotes the pretrained TabPFN parameters. For classification, ˆ yq = arg max c p(yq = c |·); for regression, ˆ yq is the posterior mean of TabPFN’s discretized target distribution. Because the support set enters only as context, DS can be replaced at inference without updating the model parameters, enabling the external support-swap evaluation in §4.8. Our inference path is differentiable with respect to ˜hq and hence the query inputs. The PFN weights Θ PFN remain frozen, while gradients optimize the modality encoders, disentangler, projection, and fusion gate. 
+
+3.2 Alignment-Based Multimodal Representation Learning 
+
+Per-modality encoders. The visual encoder Ev(·; θv) maps ximg  
+
+> i
+
+to uvi ∈ RH , and the tabu-lar encoder Et(·; θt) maps xtab  
+
+> i
+
+to uti ∈ RH , with H = 768 and superscripts v and t denoting visual and tabular modalities. Specifically, Ev is a MONAI [33] 3D ResNet-18 [10] initialized from MedicalNet [34]. Global average pooling produces a 512-dimensional descriptor, followed by Linear+LayerNorm+GELU to obtain uvi . The FT-Transformer [35] used for Et embeds each contin-uous or categorical variable as a token, prepends a learnable [CLS] token, and applies three width-H
+
+transformer blocks with eight attention heads. Its [CLS] output is mapped by Linear+RMSNorm to uti.
+
+Shared/specific disentanglement. For each modality m ∈ { v, t }, two parallel heads trans-form umi into a shared representation smi = Sm(umi ) ∈ RDs and a modality-specific representation 
+
+pmi = Pm(umi ) ∈ RDp . Each head comprises Linear+LayerNorm+GELU, with Ds = Dp = 576 (Fig. 1(b)); their parameters are collectively denoted by ϕ. The heads have the same architecture but separate parameters. Their functional roles are induced by the alignment objective: only svi
+
+and sti are directly aligned, whereas pvi and pti are optimized only through the downstream task loss. 
+
+Class-prototype alignment loss. Instead of aligning individual MRI–tabular pairs with an InfoNCE objective [36, 37], we align class prototypes within the current query minibatch B
+
+(Fig. 1(c)). Let Bc = {i ∈ B : ci = c} and CB = {c : Bc̸ = ∅}. The modality-m prototype for category c is ¯smc = 1
+
+|B c|
+
+> ∑
+> i∈B c
+
+smi , (2) and the alignment loss is 
+
+Lalign = 1
+
+|C B|
+
+> ∑
+> c∈C B
+> [
+
+1 − cos 
+
+> (
+
+¯svc , ¯stc
+
+> )]
+
+, (3) where cos( a, b ) = a⊤b/ (∥a∥2∥b∥2). The number of alignment targets is therefore bounded by the number of diagnostic categories rather than the number of subjects, limiting memorization of 5individual cross-modal pairs. Minimizing Eq. (3) encourages the shared heads to encode diagnosis-consistent cross-modal information, while the specific heads remain free to retain complementary task-relevant information. 
+
+Concatenated representation. Following the ordering in Fig. 1(a), the modality-specific and shared representations are concatenated as 
+
+hCi = [ pvi ; svi ; sti; pti ] ∈ R2( Ds+Dp) = R2304 , (4) where the superscript C denotes concatenation. 
+
+3.3 Differentiable ICL Classification and Regression 
+
+A learnable Linear+LayerNorm projection Proj ψ : R2( Ds+Dp) → RD′
+
+maps the concatenated representation to a compact fused representation: 
+
+hfused  
+
+> i
+
+= Proj ψ(hCi ), D′ = 512 . (5) Given the fused representation hfused  
+
+> q
+
+of query subject q and a cached support context, the multi-modal ICL branch computes 
+
+zmm ,q = TabPFN 
+
+> (
+
+hfused  
+
+> q
+
+,
+
+> {(
+
+sg( hfused  
+
+> j
+
+), y j 
+
+> )}
+> j∈S
+
+; Θ PFN 
+
+> )
+
+, (6) where sg( ·) denotes the stop-gradient operation applied to the support representations, as illustrated in Fig. 1(a), and Θ PFN denotes the frozen TabPFN parameters. For classification, zmm ,q ∈ ∆K−1
+
+is a probability vector over K = 3 diagnostic classes. For regression, the TabPFN classifier is replaced by a TabPFN regressor, and zmm ,q ∈ R denotes the posterior mean of its discretized predictive distribution in standardized target space. The projection is optimized jointly with the modality encoders and disentanglement heads, allowing the task loss to retain the feature directions most useful to the frozen ICL engine. 
+
+Differentiable inference. We bypass TabPFN’s non-differentiable feature preprocessing and retain differentiable PyTorch z-normalization before the transformer, as illustrated in Fig. 1(d). The transformer forward pass remains differentiable even though Θ PFN is frozen. Consequently, the task gradient follows zmm ,q → hfused  
+
+> q
+
+→ hCq → { uvq , u tq}, and updates the trainable front end. No gradient is propagated through the detached support cache. Freezing Θ PFN preserves its meta-learned in-context prior, while adapting its input representation to multimodal AD data, analogous to continuous prompt tuning. 
+
+Per-epoch support refresh. At epoch e, the training set is randomly partitioned into a support subset S(e) and a disjoint query subset Q(e). Support subjects are encoded once using the current front-end parameters, detached, and reused for all query updates in that epoch. For classification, 1 ,400 of 1 ,556 training subjects form the support, leaving 156 queries processed in ten batches of at most 16. For MMSE regression, 859 of 875 subjects form the support, and the remaining 16 queries constitute one ICL episode and one optimizer update. Support caching avoids repeated 3D MRI encoding, although the cached representations become slightly stale as the front end is updated within an epoch. 63.4 Gated TabPFN Shortcut 
+
+The multimodal branch uses both MRI and tabular representations. As shown in Fig. 1(a), we add a frozen tabular-only TabPFN shortcut and blend its output with zmm through a learnable scalar gate. The shortcut provides a calibrated tabular reference, while the multimodal branch learns complementary information from MRI and tabular features. 
+
+TabPFN shortcut. Let ztab ,i ∈ ∆C−1 denote the frozen tabular-only TabPFN prediction for classification. For validation and test subjects, its context is a random subset of the training data (1 ,400 of 1 ,556 subjects). For training subjects, ztab ,i is precomputed by stratified K-fold out-of-fold inference with K = 5: each held-out fold is predicted using the other K − 1 folds as support, so the subject being predicted never appears in its own context. The cache {ztab ,i }i∈D train 
+
+is generated once per random seed and retrieved by subject index during training. For regression, 
+
+ztab ,i ∈ R is the corresponding posterior mean in standardized target space. 
+
+Learnable gating. For each subject, the two branches are combined by 
+
+zfinal ,i = αz mm ,i + (1 − α)ztab ,i , α = σ(ρ), (7) where ρ ∈ R is trainable, σ is the sigmoid, and ρ is initialized to zero so that α = 0 .5. For classification, the three z variables are probability vectors; for regression, they are standardized scalars. Because the shortcut prediction is frozen and detached, 
+
+∂z final ,i 
+
+∂h fused 
+
+> i
+
+= α ∂z mm ,i 
+
+∂h fused 
+
+> i
+
+. (8) Thus, representation gradients pass only through the multimodal branch, whereas ρ is updated by the final task loss and learns the relative contribution of the two predictions. 
+
+3.5 Training Objective 
+
+Let Ω = {θv, θ t, ϕ, ψ, ρ } collect the trainable parameters of the two encoders, four disentangler heads, projection, and gate, respectively. For a query minibatch B, we optimize 
+
+L(Ω) = Ltask + λalign Lalign , (9) where 
+
+Ltask =
+
+> 
+
+− 1
+
+|B| 
+
+> ∑
+> i∈B
+
+log[ zfinal ,i ]yi , classification ,
+
+1
+
+|B| 
+
+> ∑
+> i∈B
+
+SmoothL1 β (zfinal ,i − yzi ) , regression ,
+
+(10) and yzi = ( yi −μy)/σ y is the regression target standardized using training-set statistics. For residual 
+
+e,SmoothL1 β (e) = 
+
+> 
+
+e2
+
+2β , |e| < β, 
+
+|e| − β
+
+2 , otherwise .
+
+(11) All TabPFN parameters Θ PFN remain fixed. We use λalign = 0 .1 and β = 1 unless stated otherwise. 74 Experiments 
+
+4.1 Dataset and Preprocessing 
+
+Experiments are conducted on three public datasets: the Alzheimer’s Disease Neuroimaging Initia-tive (ADNI) [8, 9], the Standardized Centralized Alzheimer’s & Related Dementias Neuroimaging (SCAN) initiative [38], and the Open Access Series of Imaging Studies 3 (OASIS-3) [39]. All T1-weighted MRI volumes are processed with FreeSurfer [40], and the resulting skull-stripped brain images are resampled to 128 ×128 ×128. The accompanying tabular modality comprises 172 features spanning medical history, neurological examination (excluding cognitive tests), demographics, vital signs, APOE genotype, and CSF biomarkers. The three cohorts differ in tabular completeness. ADNI provides the full 172-feature set, whereas OASIS-3 and SCAN provide only 7 and 27 features, respectively. The seven features shared by both cohorts are sex, age, education, handedness, ethnicity, and the two APOE alleles; SCAN additionally supplies race and marital status, three vital signs, nine per-system medical-history indicators, three neurological-exam signs, and CSF amyloid and tau values derived from a coarse two-level status. Available features are coded into their corresponding ADNI slots, and how a missing value is filled depends on the feature type rather than on the cohort: continuous features are mean-imputed, and categorical features are assigned a reserved index whose embedding is learned with the rest of the model. No architectural change is needed, so the same frozen network consumes all three cohorts. A subject enters the classification cohort if a FreeSurfer-reconstructed baseline T1 and a baseline diagnosis that maps onto CN/MCI/AD are both available. In ADNI this retains the 2240 subjects that have both, out of 2962 with a baseline diagnosis. In OASIS-3, the label is the clinician diagnosis recorded at the baseline Uniform Data Set visit, which leaves 1163 of 1195 subjects; the 32 dropped either carry no diagnosis or carry a non-AD dementia with no counterpart in a three-way CN/MCI/AD task. In SCAN, the label is the NACC Uniform Data Set diagnosis [41], and the 34 of 1151 subjects coded impaired-but-not-MCI are dropped for the same reason, leaving 1117. The regression cohort is the subset of the classification cohort carrying a valid baseline cognitive test score for ADNI (1250 of 2240) and SCAN (1097 of 1117), whereas for OASIS-3 it comprises all 1195 subjects with an MMSE score, including the 32 that the three-way diagnosis excludes. The target is the Mini-Mental State Examination (MMSE) for ADNI and OASIS-3 and the Montreal Cognitive Assessment (MoCA) for SCAN. ADNI is partitioned into subject-disjoint training, validation, and test sets following a 70 /15 /15 split (1556 /333 /351 subjects for classification, 875 /185 /190 for regression). All models are trained exclusively on ADNI; OASIS-3 and SCAN are held out and used solely as external test sets. Detailed cohort statistics are reported in Table 1, where rows describe the classification cohort. 
+
+4.2 Implementation Details 
+
+Our model uses the TabPFN-v2.5 checkpoint [21] for both the multimodal in-context head and the tabular shortcut in M 2PFN. Per-layer activation recomputation is enabled within the TabPFN backbone to improve memory efficiency. For classification, we use a learning rate of 5 × 10 −5,weight decay 10 −4, batch size 16, 175 epochs, and a linear warmup ratio of 0 .1. The regression instantiation (§4.7) adopts the same hyperparameter configuration, except that it is trained for 1200 epochs with a batch size of 1. Both instantiations are trained and evaluated with 5 random seeds, and we report the mean ± standard deviation across seeds; a single seed requires approximately 5.5 hours for classification and 23 hours for regression. Statistical comparisons are performed with a paired one-sided Student’s t-test on the per-seed metrics. We report Accuracy, macro F1, macro 8Table 1: Characteristics of the three study cohorts, broken down by diagnostic group. Age is mean ±std ; Sex is shown in female/male; APOE ε4+ is carriers over genotyped subjects. 
+
+n Age (Year) Sex (F/M) APOE ε4+
+
+ADNI 
+
+CN 1000 71 .9±7.7 616 /384 223 /726 MCI 770 73 .0±7.9 354 /416 258 /610 AD 470 74 .8±7.9 217 /253 279 /413 All 2240 72 .9±7.9 1187 /1053 760 /1749 
+
+OASIS-3 
+
+CN 855 67 .0±9.2 497 /358 299 /850 MCI 95 71 .8±6.2 49 /46 41 /94 AD 213 74 .0±7.8 93 /120 133 /211 All 1163 68 .7±9.2 639 /524 473 /1155 
+
+SCAN 
+
+CN 756 71 .9±8.3 502 /254 247 /709 MCI 180 74 .2±7.0 87 /93 70 /152 AD 181 72 .8±8.5 99 /82 88 /140 All 1117 72 .5±8.2 688 /429 405 /1001 
+
+Table 2: Performance on the ADNI test set. Img/Tab indicates which modalities the method consumes. Method Img Tab Acc. (%) F1 (%) AUC (%) Sens. (%) Spec. (%) 
+
+Unimodal Baselines 
+
+ResNet [10] ✓ 46 .91 ±3.90 39 .27 ±3.17 69 .70 ±2.17 46 .55 ±3.22 71 .96 ±2.37 
+
+DenseNet [11] ✓ 46 .06 ±4.89 39 .43 ±4.33 68 .55 ±2.22 45 .39 ±3.85 72 .20 ±3.54 
+
+SE-ResNet [12] ✓ 46 .91 ±4.78 43 .27 ±3.51 62 .86 ±1.04 44 .34 ±0.50 71 .31 ±0.94 
+
+SwinUNETR [14] ✓ 48 .53 ±1.65 42 .32 ±1.34 64 .77 ±0.96 43 .29 ±2.85 71 .89 ±0.51 
+
+XGBoost [42] ✓ 57 .68 ±0.26 54 .51 ±0.39 74 .83 ±0.23 53 .90 ±0.36 77 .40 ±0.09 
+
+AutoGluon [43] ✓ 60 .49 ±1.52 58 .01 ±0.70 77 .77 ±0.18 57 .96 ±1.05 79 .01 ±0.62 
+
+TabPFN-v2.5 [21] ✓ 61 .57 ±0.39 59 .19 ±0.25 78 .84 ±0.04 58 .64 ±0.20 78 .20 ±0.20 
+
+Multimodal Baselines 
+
+InterpretCC [19] ✓ ✓ 61 .88 ±1.77 61 .51 ±2.37 80 .52 ±0.32 63 .65 ±2.67 80 .44 ±1.14 
+
+MoE++ [18] ✓ ✓ 60 .23 ±2.10 60 .32 ±1.84 79 .95 ±0.70 61 .76 ±1.29 79 .61 ±0.82 
+
+SwitchGate [17] ✓ ✓ 60 .23 ±2.41 59 .43 ±3.33 79 .71 ±0.74 62 .12 ±1.96 79 .55 ±1.25 
+
+mmFormer [15] ✓ ✓ 51 .34 ±3.42 49 .84 ±4.54 69 .68 ±4.02 50 .76 ±4.48 74 .91 ±1.68 
+
+MulT [16] ✓ ✓ 60 .63 ±1.18 60 .39 ±0.85 80 .50 ±0.75 62 .54 ±0.95 79 .64 ±0.53 
+
+Flex-MoE [3] ✓ ✓ 62 .91 ±1.85 62 .26 ±1.93 80 .13 ±0.47 63 .94 ±1.59 80 .73 ±1.10 
+
+I2MoE [4] ✓ ✓ 61 .42 ±5.88 60 .49 ±6.37 79 .23 ±0.97 63 .14 ±3.90 80 .36 ±2.09 
+
+MMPFN [32] ✓ ✓ 64 .50 ±0.80 62 .85 ±0.95 81 .14 ±0.45 63 .33 ±0.94 81 .04 ±0.46 
+
+M2PFN (ours) ✓ ✓ 67 .18 ±1.13 65 .55 ±1.26 82 .21 ±0.54 65 .71 ±1.44 82 .33 ±0.64 
+
+AUC (one-vs-rest), Sensitivity, and Specificity for classification, and MAE, Pearson r, and R2 for regression, all computed on the held-out test set. 
+
+4.3 Baselines 
+
+For baselines, we consider three families of methods: unimodal models operating on the MRI vol-ume, unimodal models operating on the tabular data, and multimodal fusion models. All baselines use the standard public implementation of their respective architectures and are trained and evalu-ated on the same splits. To ensure a fair comparison on the imaging side, any multimodal baseline whose released code does not provide a 3D image encoder is equipped with the same MedicalNet-pretrained 3D ResNet-18 vision encoder used by M 2PFN, fine-tuned end-to-end, while retaining its own tabular encoder. For every baseline, we adopt the default hyperparameters specified in the published code. The full list of baselines is as follows: • Unimodal MRI: ResNet-3D [10], DenseNet-3D [11], SE-ResNet-3D [12], SwinUNETR [14]. 9Table 3: Component ablation on the ADNI test set. Each row removes one mechanism from the full recipe. Variant Acc. (%) F1 (%) AUC (%)                     
+
+> Full M 2PFN 67 .18 ±1.13 65 .55 ±1.26 82 .21 ±0.54
+> w/o Disentangled Alignment (DA) 65 .70 ±1.18 64 .36 ±1.72 81 .41 ±0.70
+> w/o End-to-end Training (E2E) 65 .41 ±1.47 64 .29 ±1.37 81 .72 ±1.12
+> w/o DA & E2E 63 .93 ±1.52 62 .33 ±1.66 80 .77 ±1.00
+> w/o Gated TabPFN Shortcut 62 .96 ±1.27 61 .00 ±1.00 79 .30 ±0.93
+> w/o ICL (TabPFN →MLP) 60 .06 ±3.42 59 .32 ±3.74 76 .18 ±2.13
+
+• Unimodal tabular: XGBoost [42], AutoGluon [43], TabPFN-v2.5 [21]. • Multimodal fusion: InterpretCC [19], MoE++ [18], SwitchGate [17], mmFormer [15], MulT [16], Flex-MoE [3], I2MoE [4], MMPFN [32]. 
+
+4.4 Classification on ADNI 
+
+We perform a three-way diagnostic classification experiment on the ADNI dataset. Table 2 summa-rizes the ADNI test-set results. M 2PFN achieves the best performance across all evaluation metrics, including accuracy (67 .18%), macro-F1 (65 .55%), macro-AUC (82 .21%), sensitivity (65 .71%), and specificity (82 .33%). It consistently outperforms both unimodal and multimodal baselines, demon-strating the benefit of integrating MRI with tabular biomarkers. Among the multimodal methods, MMPFN is the strongest competitor, while Flex-MoE and InterpretCC also improve upon tabular-only models but remain behind M 2PFN. Notably, both MMPFN and M 2PFN use the TabPFN ICL engine; the key difference is that MMPFN relies on frozen image embeddings, whereas M 2PFN optimizes the imaging encoder end-to-end through the ICL transformer. The statistically signifi-cant improvement over MMPFN therefore highlights the effectiveness of end-to-end prompt tuning rather than in-context learning alone. 
+
+4.5 Ablation Study 
+
+To assess the contribution of each component of M 2PFN to the final performance, we conduct an ablation study, reported in Table 3. The disentangled alignment module consistently improves both predictive performance and training stability, with its removal causing a modest but significant re-duction in AUC ( p < 0.05). In contrast, the architectural designs contribute more substantially. End-to-end optimization enables gradients from the frozen ICL engine to guide multimodal rep-resentation learning, and jointly removing end-to-end optimization and representation alignment leads to a much larger performance degradation than removing either component alone, indicating that the two are complementary. The frozen TabPFN shortcut further encourages the multimodal branch to learn complementary information beyond what is already captured by the tabular fea-tures, leading to richer multimodal representations and better performance. Finally, replacing the frozen TabPFN heads with trainable MLP classifiers produces the largest performance drop, demonstrating that preserving TabPFN’s pretrained in-context learning capabilities, rather than a conventional parametric classifier, is the largest source of M 2PFN’s performance gain. 
+
+4.6 Subject-level Interpretability 
+
+Within our framework, each query is classified by attending to a labeled support set. The attention assigned to each support subject therefore provides an example-level measure of its contribution to the query prediction. For query q, we obtain the multimodal attention distribution amm  
+
+> q, ·
+
+∈ ∆|S|− 1
+
+10 Case  A Case  B Case  C Case  D Case  E
+
+AD  → AD  S1536  CN  → CN  S2498  MCI  → MCI  S1160  CN  → CN  S1780  MCI  → AD  S1873 
+
+M 68  · APOE  4/4  · Aβ42  414  · pTau  42.3  F 57  · APOE  3/4  · A β42  1203  · pTau  16.2  F 68  · APOE  3/4  · A 4 2 695  · pTau  22.1  M 75  · APOE  3/3  · Aβ42  473  · pTau  34.0  M 87  · APOE  3/4 
+
+3 / 5  = AD 
+
+#1  CN  S2230  2 .89e -3
+
+M 7 8  · APOE  3 / 4  · Aβ 4 2  6 4 1  · pTau  2 8 .8 
+
+4 / 5  = CN 
+
+#1  CN  S0526  6 .91e -3
+
+M 7 8  · APOE  3 /3  · Aβ 4 2  1 5 8 7  · pTau  1 4 .4 
+
+1 / 5  = MCI 
+
+#1  MCI  S2105  2 .66e -3
+
+F 7 2  · APOE  4 /4  · Aβ 4 2  4 8 6  · pTau  4 6 .5 
+
+3 / 5  = CN 
+
+#1  CN  S2664  3 .52e -3
+
+M 7 7  · APOE  2 / 3  · Aβ 4 2  8 9 4  · pTau  2 4 .2 
+
+5 / 5  = AD 
+
+#1  AD  S0374  5 .24e  - 3
+
+F 83  · APOE  3/3  · Aβ42  617  · pTau  43.4 
+
+#2  AD  S1941  2 .6 7 e  - 3
+
+M 7 8  · APOE  3 /4 
+
+#2  CN  S0362  4 .21e -3
+
+F 6 6  · APOE  3 /3  · A β 4 2  1 5 4 5  · pTau  1 8  .1 
+
+#2  AD  S0085  2 .6 3 e  - 3
+
+M 8 3  · APOE  3 / 4  · Aβ 4 2  5 9 6  · pTau  2 2 .1 
+
+#2  AD  S2098  2 .5 3 e  - 3
+
+F 77  · APOE  2/4 
+
+#2  AD  S1618  4 .6 2 e  - 3
+
+M 85  · APOE  3/3 
+
+#3  AD  S0815  2 .6 6 e  - 3
+
+F 7 1  · APOE  3 /4  · Aβ 4 2  6 3 4  · pTau  5 4 .6 
+
+#3  MCI  S0163  4 . 18e -3
+
+F 6 5  · APOE  3 /3  · A β 4 2  2 0 8 5  · pTau  1 8 .4 
+
+#3  AD  S2343  2 .0 6 e  - 3
+
+F 82  · APOE  3/4 
+
+#3  AD  S1324  2 .4 2 e  - 3
+
+F 75  · APOE  3/3 
+
+#3  AD  S2476  4 .2 6 e  - 3
+
+F 79  · APOE  3/4  · Aβ42  481  · pTau  20.4 
+
+#4  MCI  S2834  2 .4 7 e  - 3
+
+M 7 6  · APOE  3 /4  · A β 4 2  6 5 5  · pTau  4 9 .5 
+
+#4  CN  S1868  4 .  15e -3
+
+F 7 3  · APOE  3 /3  · A β 4 2  4 7 7 9  · pTau  3 9 .5 
+
+#4  AD  S2815  2 .0 1 e  - 3
+
+F 7 8  · APOE  3 /4  · Aβ 4 2  7 8 4  · pTau  2 8 .6 
+
+#4  CN  S2086  2 .34e -3
+
+M 6 4  · APOE  3 /4  · Aβ 4 2  8 6 5  · pTau  1 2 .9 
+
+#4  AD  S0118  3 .5 5 e  - 3
+
+F 72  · APOE  4/4  · Aβ42  462  · pTau  26.8 
+
+#5  AD  S2128  2 .4 2 e  - 3
+
+M 74  · APOE  3/4  · Aβ42  382  · pTau  23.2 
+
+#5  CN  S1545  4 .01e -3
+
+F 7 1  · APOE  3 /3  · A β 4 2  1 8 9 1  · pTau  2 3 . 5
+
+#5  AD  S0589  1 .99e -3
+
+M 8 1  · APOE  3 / 4  · Aβ42  568  · pTau  31.2 
+
+#5  CN  S1962  2 .33e -3
+
+M 8 8  · APOE  3 / 3  · Aβ42  1860  · pTau  29.6 
+
+#5  AD  S2278  3 .5 2 e  - 3
+
+M 77  · APOE  3/4  · Aβ42  380  · pTau  27.8 
+
+4 / 5  = AD 
+
+#1  AD  S0244  3 .3 7 e  - 3
+
+F 6 0  · APOE  2 /3  · Aβ 4 2  5 6 4  · pTau  3 8 .9 
+
+1/ 5  = CN 
+
+#1  MCI  S0163  2 .8 6 e  - 3
+
+F 6 5  · APOE  3 /3  · A β 4 2  2 0 8 5  · pTau  1 8 .4 
+
+5 / 5  = MCI 
+
+#1  MCI  S14 38  4 .  12e -3
+
+M 7 3  · APOE  3 /3  · Aβ 4 2  1 1 8 1  · pTau  1 7 .6 
+
+2 / 5  = CN 
+
+#1  AD  S1371  3 .0 2 e  - 3
+
+M 8 2  · APOE  3 / 4  · Aβ 4 2  6 0 1  · pTau  2 4 .2 
+
+3 / 5  = AD 
+
+#1  MCI  S1313  2 .9 8 e  - 3
+
+M 72  · APOE  4/4 
+
+#2  MCI  S2203  2 .9 4 e  - 3
+
+M 7 9  · APOE  4 /4  · A β 4 2  3 7 6  · pTau  4 7 .6 
+
+#2  MCI  S1802  2 .57e -3
+
+M 6 1  · APOE  2 /3  · Aβ 4 2  1 3 3 3  · pTau  1 2 .2 
+
+#2  MCI  S2477  4 .0 4  e-3
+
+F 8 4  · APOE  3 /4  · Aβ 4 2  1 5 5 2  · pTau  3 7 .6 
+
+#2  CN  S2466  2 .98e -3
+
+M 6 6  · APOE  3 /4  · Aβ 4 2  6 8 3  · pTau  1 9 .9 
+
+#2  AD  S1618  2 .9 6 e  - 3
+
+M 85  · APOE  3/3 
+
+#3  AD  S0151  2 .9 4 e  - 3
+
+F 6 3  · APOE  3 /4  · Aβ 4 2  4 1 8  · pTau  1 8 .4 
+
+#3  MCI  S0885  2 .4 6 e  - 3
+
+F 6 1  · APOE  2 /3  · A β 4 2  7 3 3  · pTau  9.2 
+
+#3  MCI  S2497  4 .0 0  e-3
+
+M 7 5  · APOE  3 /3  · Aβ 4 2  1 1 3 9  · pTau  1 2 .1 
+
+#3  CN  S1443  2 .  14e -3
+
+F 8 7  · APOE  3 /3  · A β 4 2  8 7 8  · pTau  2 8 .5 
+
+#3  AD  S0445  2 .5 7 e  - 3
+
+M 72  · APOE  3/4 
+
+#4  AD  S2762  2 .4 7 e  - 3
+
+M 56  · APOE  4/4  · A β 42  418  · pTau  57.6 
+
+#4  MCI  S2838  2 .3 8 e  - 3
+
+F 64  · APOE  3/3  · A β 42  2007  · pTau  22.7 
+
+#4  MCI  S2428  3 .3 1 e  - 3
+
+F 86  · APOE  3/3  · Aβ42  1500  · pTau  34.3 
+
+#4  MCI  S2921  2 . 12e -3
+
+M 7 6  · APOE  3 / 4  · Aβ42  700  · pTau  47.1 
+
+#4  MCI  S1256  2 .3 8 e  - 3
+
+M 86  · APOE  3/4 
+
+#5  AD  S2772  2 .4 0 e  - 3
+
+M 60 
+
+#5  CN  S2782  2 .29e -3
+
+F 5 9  · APOE  3 /4  · A β 4 2  1 2 5 9  · pTau  1 3.6 
+
+#5  MCI  S0100  2 .9 4 e  - 3
+
+F 7 0  · APOE  3 /4  · Aβ 4 2  9 5 6  · pTau  2 6 .3 
+
+#5  MCI  S2169  2 .  11e -3
+
+M 7 6  · APOE  3 /4  · Aβ 4 2  2 2 8  · pTau  5 1 .9 
+
+#5  AD  S1642  2 .3 7 e  - 3
+
+M 86  · APOE  3/4  · A  β42  514  · pTau  43.6 
+
+> S h o r tcu t Tab P F N  M u l ti modal Tab P F N  Q uery
+
+Consensus  Multimodal -dominant  Shortcut -dominant  Complementary  AD -like profile Figure 2: Exemplar reference attribution for five representative ADNI test subjects. Each column corresponds to one query subject. The first row summarizes the ground-truth and predicted diag-nosis together with selected clinical variables (sex, age, APOE genotype, A β42 , and pTau; missing values indicate unavailable biomarkers). The two panels show the top-5 support subjects retrieved by the multimodal TabPFN and the shortcut TabPFN, respectively. Bar length represents the normalized attention weight within each query, and colors denote diagnostic class (CN, MCI, and AD). Subject identifiers are anonymized (S n), and ages above 90 years are reported as 90+ in accordance with the ADNI Data Use Agreement. by extracting the softmax attention weights from each TabPFN layer and head, averaging them over layers and heads, and renormalizing the resulting vector over the support set S. We similarly obtain atab 
+
+q, · ∈ ∆|S|− 1 from the tabular-only TabPFN shortcut. Both branches use the same indexed support set S.Because the final prediction is 
+
+zfinal ,q = αz mm ,q + (1 − α)ztab ,q , (12) we define a branch-weighted unified attribution by 
+
+auni 
+
+q,j = αa mm 
+
+q,j + (1 − α)atab 
+
+q,j , j ∈ S . (13) Since both branch-specific attention vectors lie in the probability simplex and α ∈ [0 , 1], their convex combination satisfies auni 
+
+q, · ∈ ∆|S|− 1. Consequently, entropy, top-k, and effective-support-size analyses remain applicable. The value auni 
+
+q,j represents the relative attention-based attribution of support subject j to query q.Figure 2 visualizes the attribution for five representative test subjects by showing the five most highly attended support subjects from the multimodal and shortcut TabPFN branches. Several representative retrieval patterns emerge. First, Case A illustrates branch consensus: both branches predominantly retrieve AD support subjects and predict AD. Second, Cases B and C show that the two branches provide different evidence across query subjects. In Case B, the multimodal branch predominantly retrieves CN support subjects, whereas the shortcut branch favors MCI subjects; their gated combination correctly predicts CN. In Case C, the shortcut branch predominantly re-trieves MCI support subjects and offsets the multimodal branch’s tendency toward AD. Third, 11 0 100 200 300 400 500 600 700 800    
+
+> # supports removed ( k)
+> 0.4 0.5 0.6 0.7 0.8
+> Macro AUC
+> remove top-kattended remove krandom
+
+Figure 3: Deletion-curve faithfulness test on all 351 ADNI test queries. Removing the top-k most-attended unified supports (red) collapses macro-AUC far faster than removing k random supports (blue; mean ±std over 5 draws). Dotted line: the unablated baseline. Case D illustrates complementary evidence: the multimodal branch retrieves mostly CN support subjects, whereas the shortcut branch retrieves more MCI and AD subjects, and their fusion cor-rectly predicts CN. Finally, Case E presents a representative failure case in which both branches predominantly retrieve AD support subjects for an MCI query, resulting in an AD prediction. These case studies provide insight into the in-context reasoning of M 2PFN. The branch-consensus case suggests that the model predicts by referencing clinically similar support subjects rather than attending uniformly over the context. Cases B–D further indicate that the multimodal and short-cut branches capture complementary information. Although the learned gate α is shared across subjects, the branch predictions and their attended support neighborhoods vary with each query, allowing their fixed weighted combination to integrate different evidence across subjects. The mis-classified Case E remains clinically plausible: the query and most of its highly attended support subjects exhibit AD-like clinical profiles, including advanced age and APOE-ε4 positivity. This suggests that the prediction follows clinically meaningful evidence in the support set rather than arbitrary model behavior. Together, these examples show that M 2PFN provides subject-level in-terpretability by exposing the support subjects most strongly associated with each prediction. In addition to the interpretability experiment, we also validate that this attention reflects causal influence with a leave-one-support-out (LOO) probe. For each query, we drop the top-50 unified-attention support subjects one at a time (plus 50 random controls) and measure the induced change 
+
+|∆zfinal | in the predicted-class posterior, denoted as LOO influence. On a class-stratified 30-query subset, the ratio of mean top-50 influence to mean control is 4 .52 ±1.29 (median 4 .38), with 100% of queries above unity, and the per-query Spearman correlation between attention and LOO influence is 0 .639 (median 0 .647), indicating that highly attended support subjects are also those whose removal most strongly perturbs the prediction. We further validate the attention ranking with a standard deletion-curve faithfulness test on all 351 queries (Fig. 3), showing that ablating the top-
+
+k most-attended supports degrades task performance far faster than ablating k random supports (mean over 5 draws). Removing the top-800 collapses macro-AUC from 0.822 to 0.344, whereas the same number of supports removed at random leaves macro-AUC slightly degraded (0.780), with 12 Table 4: Test-set regression of baseline MMSE on the 1 ,250-subject MMSE sub-cohort of ADNI. 
+
+Method MAE Pearson r R2
+
+InterpretCC [19] 1.925 ±0.039 0.492 ±0.018 0.225 ±0.021 
+
+MoE++ [18] 1.873 ±0.024 0.540 ±0.017 0.277 ±0.022 
+
+SwitchGate [17] 1.980 ±0.095 0.514 ±0.037 0.117 ±0.101 
+
+mmFormer [15] 2.159 ±0.057 0.275 ±0.059 0.021 ±0.061 
+
+MulT [16] 1.868 ±0.042 0.556 ±0.015 0.254 ±0.033 
+
+Flex-MoE [3] 1.899 ±0.053 0.548 ±0.031 0.256 ±0.049 
+
+I2MoE [4] 1.949 ±0.025 0.526 ±0.006 0.194 ±0.014 
+
+MMPFN [32] 1.784 ±0.041 0.601 ±0.014 0.287 ±0.057 
+
+M2PFN (ours) 1.743 ±0.014 0.630 ±0.007 0.343 ±0.006 
+
+the gap widening monotonically in k. Attention therefore focuses each prediction on a small subset of support examples that carries the most informative causal evidence. 
+
+4.7 Generalization to Cognitive Score Regression 
+
+To evaluate whether the proposed framework generalizes beyond categorical diagnosis, we instan-tiate the same architecture for continuous MMSE regression by replacing (i) the TabPFN classifier head with a TabPFN regressor head that emits a scalar mean over the bin-distributional output of TabPFN, and (ii) the cross-entropy task loss with a smooth-L1 (Huber) loss on standardized tar-gets. The disentangler, alignment loss, shortcut branch, and end-to-end training are identical to the classification setup. The target is the baseline Mini-Mental State Examination total score (MMSE; integer scale 0–30, with lower scores indicating greater cognitive impairment), the most widely used cognitive screen in AD research and a standard endpoint for monitoring disease progression. All metrics are reported on the original raw clinical scale (MMSE scores). Table 4 summarizes the MMSE regression results on ADNI. M 2PFN achieves the best perfor-mance across all evaluation metrics, attaining the lowest MAE together with the highest Pearson correlation and coefficient of determination. It consistently outperforms both conventional multi-modal fusion methods and the recent ICL-based MMPFN, while exhibiting lower variance across random seeds. Since both MMPFN and M 2PFN are built upon the same TabPFN-based ICL paradigm, the improvement can be attributed to our end-to-end optimization through the frozen ICL transformer and the proposed disentangled alignment-based multimodal representation learn-ing, rather than to in-context learning alone. These results further demonstrate that the proposed framework generalizes beyond categorical diagnosis and can effectively support continuous cognitive score prediction with only a task-specific prediction head. 
+
+4.8 External Validation on OASIS-3 and SCAN 
+
+To test generalization beyond ADNI, we evaluate the frozen ADNI checkpoints on OASIS-3 [39] and SCAN with no gradient updates , in two modes: zero-shot , where external subjects are predicted from the ADNI support set, and support-swap , where that support set is replaced by available labeled samples of the external cohort. All baselines and our model receive the same labeled sample as support in each setting and is scored on the same held-out test subjects. A parametric baseline cannot accept labels as input, so we use them for the strongest correction available to its output: a class-prior correction for diagnosis [44], and an affine rescaling for regression. The two ICL-based methods can use them as the support set. 13 Table 5: External CN/MCI/AD diagnosis on OASIS-3 and SCAN, as one-vs-rest AUC per class and macro-averaged. OASIS-3 (CN/MCI/AD = 855 /95 /213) SCAN (756 /180 /181) one-vs-rest AUC one-vs-rest AUC Method CN MCI AD macro CN MCI AD macro InterpretCC [19] 0.780 ±.015 0.463 ±.024 0.807 ±.015 0.684 ±.012 0.772 ±.010 0.450 ±.009 0.851 ±.009 0.691 ±.008 
+
+MoE++ [18] 0.758 ±.021 0.450 ±.021 0.794 ±.020 0.668 ±.020 0.783 ±.018 0.451 ±.062 0.851 ±.021 0.695 ±.019 
+
+SwitchGate [17] 0.776 ±.030 0.432 ±.043 0.801 ±.018 0.670 ±.019 0.797 ±.015 0.394 ±.019 0.856 ±.015 0.683 ±.012 
+
+mmFormer [15] 0.735 ±.024 0.554 ±.033 0.758 ±.012 0.682 ±.015 0.697 ±.029 0.515 ±.026 0.747 ±.047 0.653 ±.020 
+
+MulT [16] 0.776 ±.013 0.427 ±.041 0.809 ±.012 0.671 ±.014 0.765 ±.023 0.457 ±.046 0.850 ±.019 0.691 ±.025 
+
+Flex-MoE [3] 0.778 ±.011 0.437 ±.048 0.806 ±.014 0.674 ±.013 0.779 ±.025 0.429 ±.048 0.852 ±.012 0.687 ±.018 
+
+I2MoE [4] 0.787 ±.007 0.466 ±.107 0.774 ±.042 0.676 ±.044 0.780 ±.026 0.404 ±.018 0.841 ±.014 0.675 ±.014 
+
+MMPFN [32] (zero-shot) 0.569 ±.048 0.529 ±.021 0.565 ±.062 0.554 ±.042 0.478 ±.029 0.441 ±.023 0.495 ±.031 0.471 ±.024 
+
+MMPFN [32] (support-swap) 0.768 ±.005 0.605 ±.016 0.791 ±.007 0.721 ±.006 0.819 ±.004 0.735 ±.008 0.817 ±.009 0.790 ±.004 
+
+M2PFN (zero-shot) 0.783 ±.010 0.520 ±.078 0.807 ±.011 0.703 ±.022 0.762 ±.026 0.527 ±.074 0.810 ±.018 0.700 ±.034 
+
+M2PFN (support-swap) 0.797 ±.007 0.607 ±.019 0.822 ±.007 0.742 ±.010 0.837 ±.006 0.734 ±.009 0.853 ±.008 0.808 ±.003 
+
+Table 6: External regression on OASIS-3 (MMSE) and SCAN (MoCA). OASIS-3 (MMSE, same instrument as ADNI) SCAN (MoCA, cross-instrument) Method MAE ↓ r ↑ R2 ↑ MAE ↓ r ↑ R2 ↑
+
+InterpretCC [19] 1.60 ±.03 0.480 ±.022 0.225 ±.016 3.54 ±.10 0.514 ±.037 0.252 ±.035 
+
+MoE++ [18] 1.60 ±.05 0.480 ±.027 0.227 ±.022 3.57 ±.12 0.503 ±.050 0.242 ±.047 
+
+SwitchGate [17] 1.65 ±.06 0.434 ±.076 0.186 ±.056 3.98 ±.08 0.230 ±.127 0.061 ±.039 
+
+mmFormer [15] 1.74 ±.07 0.310 ±.098 0.097 ±.053 3.95 ±.18 0.216 ±.098 0.049 ±.050 
+
+MulT [16] 1.59 ±.04 0.489 ±.033 0.234 ±.027 3.63 ±.23 0.475 ±.072 0.218 ±.075 
+
+Flex-MoE [3] 1.64 ±.07 0.456 ±.061 0.205 ±.050 3.80 ±.22 0.363 ±.102 0.135 ±.072 
+
+I2MoE [4] 1.83 ±.03 0.107 ±.052 0.007 ±.017 4.07 ±.05 0.060 ±.092 0.006 ±.015 
+
+MMPFN [32] (zero-shot) 1.79 ±.06 0.151 ±.136 0.026 ±.040 4.05 ±.10 0.152 ±.059 0.021 ±.019 
+
+MMPFN [32] (support-swap) 1.50 ±.02 0.437 ±.039 0.156 ±.024 3.48 ±.15 0.526 ±.020 0.272 ±.021 
+
+M2PFN (zero-shot) 1.61 ±.01 0.475 ±.010 0.224 ±.009 3.75 ±.11 0.371 ±.038 0.134 ±.032 
+
+M2PFN (support-swap) 1.47 ±.03 0.500 ±.038 0.212 ±.031 3.16 ±.12 0.643 ±.027 0.386 ±.032 
+
+Diagnostic transfer. As shown in Table 5, all methods maintain reasonable discrimina-tion between CN and AD, whereas distinguishing the minority MCI class remains the primary challenge. With support-set replacement, M 2PFN achieves the highest MCI AUC and the best macro-AUC among parametric learning-based methods on both external cohorts, demonstrating the effectiveness of in-context adaptation for cross-cohort diagnosis. Compared with MMPFN, which is also built on TabPFN, M 2PFN maintains substantially stronger zero-shot performance before support replacement and benefits further from support-set adaptation, resulting in signifi-cantly higher macro-AUC; this indicates that end-to-end multimodal representation learning and in-context learning are complementary for robust cross-cohort diagnosis. 
+
+Cognitive-score transfer. As shown in Table 6, M 2PFN achieves the lowest MAE on both OASIS-3 and SCAN, significantly outperforming all baselines. The two cohorts present different transfer scenarios: OASIS-3 shares the same cognitive assessment (MMSE) as ADNI, whereas SCAN requires cross-instrument transfer to MoCA. Consequently, performance differences on OASIS-3 are relatively modest, with several strong baselines achieving comparable correlations. In contrast, SCAN highlights the advantage of in-context adaptation: while rescaling can reduce prediction error, it cannot improve Pearson correlation because the ranking of predictions remains unchanged. By replacing the support set with MoCA-labeled examples, M 2PFN substantially im-proves the correlation and clearly outperforms all competing methods, including the ICL-based MMPFN. These results indicate that effective cross-instrument transfer relies not only on support-set adaptation, but also on learning transferable multimodal representations that remain compatible 14 with the ICL engine. 
+
+## 5 Conclusion 
+
+We presented M 2PFN, an end-to-end multimodal framework that repurposes a frozen TabPFN as the prediction engine for Alzheimer’s disease analysis by enabling end-to-end optimization through its in-context learning (ICL) transformer. Rather than fine-tuning the foundation model, M 2PFN keeps the ICL engine frozen and instead learns multimodal representations that are directly op-timized for in-context reasoning through differentiable prompt tuning. A disentangled alignment-based multimodal representation learner and a gated tabular shortcut further bridge heterogeneous MRI and tabular biomarkers while encouraging complementary information learning. Extensive ex-periments demonstrate that M 2PFN achieves state-of-the-art performance on both three-class AD diagnosis and MMSE regression on ADNI, consistently outperforming strong multimodal baselines. More importantly, preserving the frozen ICL engine enables gradient-free support-set replacement at inference, allowing the same model to transfer effectively to independent clinical cohorts with-out retraining while maintaining superior performance on both classification and cognitive-score prediction tasks. These results demonstrate that combining multimodal representation learning with in-context learning provides an effective paradigm for robust cross-cohort clinical prediction, and highlight the potential of foundation-model-based in-context learning as an alternative to task-specific finetuning for multimodal medical AI. 
+
+## Acknowledgments 
+
+This work was supported by the National Institutes of Health (NIH) under grants R01EB022744, R01AG077578, R01AG064584, S10OD032285, U19AG078109, and P30AG066530. This work used data from the Alzheimer’s Disease Neuroimaging Initiative (ADNI), OASIS-3, and the Standardized Centralized Alzheimer’s and Related Dementias Neuroimaging (SCAN) initiative linked to the National Alzheimer’s Coordinating Center (NACC). The NACC database is funded by NIA/NIH Grant U24 AG072122, and the SCAN initiative by NIA/NIH Grant U24 AG067418; NACC and SCAN data are contributed by the NIA-funded Alzheimer’s Disease Research Centers (ADRCs). 
+
+## References 
+
+[1] Sebastian Pölsterl, Tom Nuno Wolf, and Christian Wachinger. Combining 3D image and tabular data via the dynamic affine feature map transform. In Proc. Int. Conf. Med. Image Comput. Comput.-Assist. Interv. (MICCAI) , pages 688–698, 2021. doi: 10.1007/978-3-030-87240-3_66. [2] Shangran Qiu, Matthew I. Miller, Prajakta S. Joshi, Joyce C. Lee, Chonghua Xue, Yunruo Ni, et al. Multimodal deep learning for Alzheimer’s disease dementia assessment. Nature Commun. , 13(1):3404, June 2022. doi: 10.1038/s41467-022-31037-5. [3] Sukwon Yun, Inyoung Choi, Jie Peng, Yangfan Wu, Jingxuan Bao, Qiyiwen Zhang, Jiayi Xin, Qi Long, and Tianlong Chen. Flex-MoE: Modeling arbitrary modality combination via the flexible mixture-of-experts. In Proc. Adv. Neural Inf. Process. Syst. (NeurIPS) , volume 37, pages 98782–98805, 2024. 15 [4] Jiayi Xin, Sukwon Yun, Jie Peng, Inyoung Choi, Jenna L. Ballard, Tianlong Chen, and Qi Long. I2MoE: Interpretable multimodal interaction-aware mixture-of-experts. In Proc. 42nd Int. Conf. Mach. Learn. (ICML) , volume 267 of Proc. Mach. Learn. Res. , pages 68870– 68888, 2025. [5] Shuo Huang, Lujia Zhong, and Yonggang Shi. Multistage alignment and fusion for multimodal multiclass Alzheimer’s disease diagnosis. In Proc. Int. Conf. Med. Image Comput. Comput.-Assist. Interv. (MICCAI) , pages 375–385, 2025. doi: 10.1007/978-3-032-05182-0_37. [6] Guangqian Yang, Kangrui Du, Zhihan Yang, Ye Du, Eva Yi Wah Cheung, Yongping Zheng, Mo Yang, Zoe Kourtzi, Carola-Bibiane Schönlieb, and Shujun Wang. ADFound: A foundation model for diagnosis and prognosis of Alzheimer’s disease. IEEE J. Biomed. Health Inform. ,29(11):8395–8408, November 2025. doi: 10.1109/JBHI.2025.3576436. [7] Guangqian Yang, Ye Du, Xiaowei Hu, Weiyang Shi, Mo Yang, and Shujun Wang. Tam-ing arbitrary modality missingness and imbalance: A unified graph-MoE framework for Alzheimer’s disease diagnosis. Med. Image Anal. , 113:104222, September 2026. doi: 10.1016/j.media.2026.104222. [8] Susanne G. Mueller, Michael W. Weiner, Leon J. Thal, Ronald C. Petersen, Clifford Jack, William Jagust, John Q. Trojanowski, Arthur W. Toga, and Laurel Beckett. The Alzheimer’s Disease Neuroimaging Initiative. Neuroimaging Clin. N. Amer. , 15(4):869–877, November 2005. doi: 10.1016/j.nic.2005.09.008. [9] Clifford R. Jack, Jr., Matt A. Bernstein, Nick C. Fox, Paul Thompson, Gene Alexander, Danielle Harvey, Bret Borowski, Paula J. Britson, Jennifer L. Whitwell, Chadwick Ward, et al. The Alzheimer’s Disease Neuroimaging Initiative (ADNI): MRI methods. J. Magn. Reson. Imag. , 27(4):685–691, April 2008. doi: 10.1002/jmri.21049. [10] Kaiming He, Xiangyu Zhang, Shaoqing Ren, and Jian Sun. Deep residual learning for image recognition. In Proc. IEEE Conf. Comput. Vis. Pattern Recognit. (CVPR) , pages 770–778, 2016. doi: 10.1109/CVPR.2016.90. [11] Gao Huang, Zhuang Liu, Laurens van der Maaten, and Kilian Q. Weinberger. Densely con-nected convolutional networks. In Proc. IEEE Conf. Comput. Vis. Pattern Recognit. (CVPR) ,pages 2261–2269, 2017. doi: 10.1109/CVPR.2017.243. [12] Jie Hu, Li Shen, and Gang Sun. Squeeze-and-excitation networks. In Proc. IEEE/CVF Conf. Comput. Vis. Pattern Recognit. (CVPR) , pages 7132–7141, 2018. doi: 10.1109/CVPR.2018.00745. [13] Alexey Dosovitskiy, Lucas Beyer, Alexander Kolesnikov, Dirk Weissenborn, Xiaohua Zhai, Thomas Unterthiner, Mostafa Dehghani, Matthias Minderer, Georg Heigold, Sylvain Gelly, et al. An image is worth 16x16 words: Transformers for image recognition at scale. In Proc. Int. Conf. Learn. Represent. (ICLR) , 2021. [14] Yufan He, Vishwesh Nath, Dong Yang, Yucheng Tang, Andriy Myronenko, and Daguang Xu. SwinUNETR-V2: Stronger Swin transformers with stagewise convolutions for 3D medical im-age segmentation. In Proc. Int. Conf. Med. Image Comput. Comput.-Assist. Interv. (MICCAI) ,pages 416–426, 2023. doi: 10.1007/978-3-031-43901-8_40. 16 [15] Yao Zhang, Nanjun He, Jiawei Yang, Yuexiang Li, Dong Wei, Yawen Huang, Yang Zhang, Zhiqiang He, and Yefeng Zheng. mmFormer: Multimodal medical transformer for incomplete multimodal learning of brain tumor segmentation. In Proc. Int. Conf. Med. Image Comput. Comput.-Assist. Interv. (MICCAI) , pages 107–117, 2022. doi: 10.1007/978-3-031-16443-9_11. [16] Yao-Hung Hubert Tsai, Shaojie Bai, Paul Pu Liang, J. Zico Kolter, Louis-Philippe Morency, and Ruslan Salakhutdinov. Multimodal transformer for unaligned multimodal language se-quences. In Proc. 57th Annu. Meeting Assoc. Comput. Linguistics (ACL) , pages 6558–6569, 2019. doi: 10.18653/v1/P19-1656. [17] William Fedus, Barret Zoph, and Noam Shazeer. Switch transformers: Scaling to trillion parameter models with simple and efficient sparsity. J. Mach. Learn. Res. , 23(120):1–39, 2022. [18] Peng Jin, Bo Zhu, Li Yuan, and Shuicheng Yan. MoE++: Accelerating mixture-of-experts methods with zero-computation experts. In Proc. Int. Conf. Learn. Represent. (ICLR) , 2025. [19] Vinitra Swamy, Syrielle Montariol, Julian Blackwell, Jibril Frej, Martin Jaggi, and Tanja Käser. Intrinsic user-centric interpretability through global mixture of experts. In Proc. Int. Conf. Learn. Represent. (ICLR) , 2025. [20] Tom B. Brown, Benjamin Mann, Nick Ryder, Melanie Subbiah, Jared Kaplan, Prafulla Dhari-wal, Arvind Neelakantan, Pranav Shyam, Girish Sastry, Amanda Askell, et al. Language models are few-shot learners. In Proc. Adv. Neural Inf. Process. Syst. (NeurIPS) , volume 33, pages 1877–1901, 2020. [21] Noah Hollmann, Samuel Müller, Lennart Purucker, Arjun Krishnakumar, Max Körfer, Shi Bin Hoo, Robin Tibor Schirrmeister, and Frank Hutter. Accurate predictions on small data with a tabular foundation model. Nature , 637(8045):319–326, January 2025. doi: 10.1038/s41586-024-08328-6. [22] Weihao Kong and Abhimanyu Das. Introducing TabFM: A zero-shot foundation model for tabular data. Google Research Blog, June 2026. Accessed: Jul. 2026. [23] Jean-Baptiste Alayrac, Jeff Donahue, Pauline Luc, Antoine Miech, Iain Barr, Yana Hasson, Karel Lenc, Arthur Mensch, Katherine Millican, Malcolm Reynolds, et al. Flamingo: A visual language model for few-shot learning. In Proc. Adv. Neural Inf. Process. Syst. (NeurIPS) ,volume 35, pages 23716–23736, 2022. [24] Jannik Kossen, Neil Band, Clare Lyle, Aidan N. Gomez, Tom Rainforth, and Yarin Gal. Self-attention between datapoints: Going beyond individual input-output pairs in deep learning. In Proc. Adv. Neural Inf. Process. Syst. (NeurIPS) , volume 34, pages 28742–28756, 2021. [25] Yury Gorishniy, Ivan Rubachev, Nikolay Kartashev, Daniil Shlenskii, Akim Kotelnikov, and Artem Babenko. TabR: Tabular deep learning meets nearest neighbors. In Proc. Int. Conf. Learn. Represent. (ICLR) , 2024. [26] Samuel Müller, Noah Hollmann, Sebastian Pineda Arango, Josif Grabocka, and Frank Hutter. Transformers can do Bayesian inference. In Proc. Int. Conf. Learn. Represent. (ICLR) , 2022. [27] Noah Hollmann, Samuel Müller, Katharina Eggensperger, and Frank Hutter. TabPFN: A transformer that solves small tabular classification problems in a second. In Proc. Int. Conf. Learn. Represent. (ICLR) , 2023. 17 [28] Brian Lester, Rami Al-Rfou, and Noah Constant. The power of scale for parameter-efficient prompt tuning. In Proc. Conf. Empirical Methods Natural Lang. Process. (EMNLP) , pages 3045–3059, 2021. doi: 10.18653/v1/2021.emnlp-main.243. [29] Xiang Lisa Li and Percy Liang. Prefix-tuning: Optimizing continuous prompts for generation. In Proc. 59th Annu. Meeting Assoc. Comput. Linguistics 11th Int. Joint Conf. Natural Lang. Process. (ACL-IJCNLP) , pages 4582–4597, 2021. doi: 10.18653/v1/2021.acl-long.353. [30] Xiao Liu, Yanan Zheng, Zhengxiao Du, Ming Ding, Yujie Qian, Zhilin Yang, and Jie Tang. GPT understands, too. AI Open , 5:208–215, 2024. doi: 10.1016/j.aiopen.2023.08.012. [31] Edward J. Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, Shean Wang, Lu Wang, and Weizhu Chen. LoRA: Low-rank adaptation of large language models. In Proc. Int. Conf. Learn. Represent. (ICLR) , 2022. [32] Wall Kim, Chaeyoung Song, and Hanul Kim. MultiModalPFN: Extending prior-data fitted networks for multimodal tabular learning. In Proc. IEEE/CVF Conf. Comput. Vis. Pattern Recognit. (CVPR) , pages 30357–30367, 2026. [33] M. Jorge Cardoso et al. MONAI: An open-source framework for deep learning in healthcare. arXiv:2211.02701, 2022. [34] Sihong Chen, Kai Ma, and Yefeng Zheng. Med3D: Transfer learning for 3D medical image analysis. arXiv:1904.00625, 2019. [35] Yury Gorishniy, Ivan Rubachev, Valentin Khrulkov, and Artem Babenko. Revisiting deep learning models for tabular data. In Proc. Adv. Neural Inf. Process. Syst. (NeurIPS) , vol-ume 34, pages 18932–18943, 2021. [36] Alec Radford, Jong Wook Kim, Chris Hallacy, Aditya Ramesh, Gabriel Goh, Sandhini Agarwal, Girish Sastry, Amanda Askell, Pamela Mishkin, Jack Clark, et al. Learning transferable visual models from natural language supervision. In Proc. Int. Conf. Mach. Learn. (ICML) , pages 8748–8763, 2021. [37] Junnan Li, Ramprasaath R. Selvaraju, Akhilesh Gotmare, Shafiq Joty, Caiming Xiong, and Steven Chu Hong Hoi. Align before fuse: Vision and language representation learning with momentum distillation. In Proc. Adv. Neural Inf. Process. Syst. (NeurIPS) , volume 34, pages 9694–9705, 2021. [38] National Institute on Aging. SCAN: Standardized Centralized Alzheimer’s and Related De-mentias Neuroimaging, 2020. NIA-funded initiative U24 AG067418; data accessed through the NACC Data Platform. Accessed: Jul. 2026. [39] Pamela J. LaMontagne, Tammie L. S. Benzinger, John C. Morris, Sarah Keefe, Russ Hornbeck, Chengjie Xiong, Elizabeth Grant, Jason Hassenstab, Krista Moulder, Andrei G. Vlassenko, et al. OASIS-3: Longitudinal neuroimaging, clinical, and cognitive dataset for normal aging and Alzheimer disease. medRxiv , December 2019. Preprint. [40] Bruce Fischl. FreeSurfer. NeuroImage , 62(2):774–781, August 2012. doi: 10.1016/j.neuroimage.2012.01.021. 18 [41] Duane L. Beekly, Erin M. Ramos, William W. Lee, Woodrow D. Deitrich, Mary E. Jacka, Joylee Wu, Janene L. Hubbard, Thomas D. Koepsell, John C. Morris, Walter A. Kukull, et al. The National Alzheimer’s Coordinating Center (NACC) database: The Uni-form Data Set. Alzheimer Dis. Assoc. Disord. , 21(3):249–258, July–September 2007. doi: 10.1097/WAD.0b013e318142774e. [42] Tianqi Chen and Carlos Guestrin. XGBoost: A scalable tree boosting system. In Proc. 22nd ACM SIGKDD Int. Conf. Knowl. Discovery Data Mining (KDD) , pages 785–794, 2016. doi: 10.1145/2939672.2939785. [43] Nick Erickson, Jonas Mueller, Alexander Shirkov, Hang Zhang, Pedro Larroy, Mu Li, and Alexander Smola. AutoGluon-Tabular: Robust and accurate AutoML for structured data. arXiv:2003.06505, 2020. [44] Marco Saerens, Patrice Latinne, and Christine Decaestecker. Adjusting the outputs of a clas-sifier to new a priori probabilities: A simple procedure. Neural Comput. , 14(1):21–41, January 2002. doi: 10.1162/089976602753284446. 19
