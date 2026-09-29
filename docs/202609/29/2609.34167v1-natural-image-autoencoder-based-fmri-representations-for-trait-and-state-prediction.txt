@@ -1,0 +1,767 @@
+Title: Natural Image Autoencoder-Based fMRI Representations for Trait and State Prediction
+
+URL Source: https://arxiv.org/pdf/2609.34167v1
+
+Published Time: Tue, 29 Sep 2026 02:50:41 GMT
+
+Number of Pages: 21
+
+Markdown Content:
+Under review 
+
+# NATURAL IMAGE AUTOENCODER -B ASED F MRI R EP -
+
+## RESENTATIONS FOR TRAIT AND STATE PREDICTION 
+
+Juhyeon Park 1,3∗
+
+, Yeonwoo Kim 1, Peter Yongho Kim 2,3∗
+
+, Yansen Wang 3,Mingqing Xiao 3, Dongqi Han 3, Dongsheng Li 3, Taesup Moon 1,2,4†
+
+> 1
+
+IPAI, Seoul National University, 2ECE, Seoul National University, 
+
+> 3
+
+Microsoft Research, 4ASRI / INMC / AIIS, Seoul National University 
+
+{parkjh9229, yeonwoo4, peterkim98, tsmoon }@snu.ac.kr ,
+
+{yansenwang, mingqingxiao, dongqihan, dongsli }@microsoft.com 
+
+ABSTRACT 
+
+Foundation models pre-trained on large-scale fMRI datasets have shown strong downstream performance, but at substantial data and computation cost. To in-vestigate how much fMRI-specific pre-training is actually needed for such per-formance, we introduce FReD, which derives fMRI representations from a frozen Deep Compression AutoEncoder (DCAE) pre-trained exclusively on natural im-ages and pairs them with a task specific readout. For trait prediction, FReD summarizes frame-wise representations by their temporal mean and log-standard deviation and applies linear probing, with late fusion across two normalization schemes. For state prediction, it represents each frame as a single token and models temporal dependencies with a shallow Transformer. Across four resting-state datasets spanning six trait-prediction targets, linear probes on frozen DCAE features generally outperform those on fMRI foundation model representations and remain competitive with fully fine-tuned fMRI foundation models. On three task-fMRI state-prediction tasks, a temporal readout on DCAE features performs comparably to the strongest foundation models evaluated. A Gaussian injection analysis further shows that localized signal changes are recovered more accurately from the frozen DCAE features than from the evaluated foundation-model repre-sentations. Together, these results show that strong performance on current fMRI benchmarks is possible without fMRI-specific representation pre-training, making frozen natural-image features as a useful baseline for assessing its added value. 
+
+1 INTRODUCTION 
+
+Deep learning-based approaches to fMRI signal processing have been widely explored. More re-cently, foundation models pre-trained on large-scale fMRI datasets have demonstrated strong per-formance across a broad range of downstream tasks (Kim et al., 2023; Dong et al., 2024; Xia et al., 2026; Lane et al., 2026; Wang et al., 2026a;b; Yang et al., 2024). Developing such models, however, typically relies on large-scale neuroimaging datasets that are costly to collect and preprocess, while the pre-training itself may also require substantial computational resources. One alternative is to reuse representations learned outside the fMRI domain. TABLeT (Kim et al., 2026), for example, showed that Deep Compression AutoEncoder (DCAE) (Chen et al., 2025), pre-trained exclusively on natural images, can be applied to fMRI data and used for modeling long-range temporal dynamics, suggesting that an encoder trained without any fMRI data may already provide a useful starting point. How far such a frozen representation can go, however, remains unclear. TABLeT considers only volumetric fMRI and represents each frame as multiple tokens so that its Transformer (Vaswani et al., 2017) must model spatial and temporal relationships jointly. It also applies the same tokenization and temporal modeling to every downstream task; a single uniform recipe is appealing, but whether it is adequate has not been tested, since trait and state prediction differ in whether the target varies within a subject. Moreover, it is compared primarily with models 
+
+> ∗
+
+Work done during an internship at Microsoft Research. 
+
+> †
+
+Corresponding author. 
+
+1arXiv:2609.34167v1 [cs.CV] 28 Sep 2026 Under review trained from scratch, leaving open how a frozen off-the-shelf natural-image-based representation fares against fMRI foundation models. In this work, we therefore ask: Can competitive fMRI-based prediction be achieved without any fMRI-specific pre-training? To answer this, we present FReD , which builds fMRI representations from a DCAE pre-trained exclusively on natural images and kept frozen throughout, and adapts only the readout to the structure of the downstream task. Our study spans both trait and state pre-diction, which differ in whether the target is constant or varies within a subject, respectively. We first consider resting-state fMRI-based trait prediction. Because the target is constant over time, we summarize each fMRI sequence using the temporal mean and log-standard deviation of its frame-level DCAE representations and fit a linear predictor. Despite its simplicity, this approach generally outperforms existing fMRI foundation models under linear probing. Fusing the predictions obtained under two complementary normalization schemes goes further, remaining competitive on most tasks even when those are fully fine-tuned. These results show that strong trait prediction can be achieved without fMRI-specific pre-training or end-to-end encoder adaptation. We next consider task-fMRI-based state prediction, where the target changes within a subject. Here, the same order-invariant aggregation performs substantially worse, indicating that temporal infor-mation is important for state decoding. We therefore represent each frame as a single token and model their temporal dependencies with a shallow Transformer while keeping the DCAE frozen. On cognitive task-state decoding (Van Essen et al., 2013) and object-category decoding (Allen et al., 2022), this simple temporal readout perform comparably to the strongest fMRI foundation models. It also outperforms TABLeT while using a 27-fold shorter attention sequence (one token per frame) and 40% fewer trainable parameters. We further examine why such a frozen off-the-shelf representation supports downstream tasks. Our analyses show that a substantial fraction of fMRI variation is captured by the principal directions of the DCAE latent space, and that localized perturbations injected into resting-state fMRI are re-covered more accurately from the frozen DCAE features than from the evaluated foundation-model representations. Together, these results show that the performance of the fMRI foundation models on current popular benchmarks can be matched by a frozen natural-image autoencoder, paired with a task-appropriate readout. We therefore argue that frozen natural-image representations should serve as a baseline for assessing the added value of fMRI-specific pre-training. 
+
+2 PRELIMINARIES 
+
+2.1 FMRI D ATA TYPES & N ORMALIZATION SCHEMES 
+
+Existing fMRI foundation models consider three fMRI data types: volume , cortical flat map , and 
+
+parcellation , which we denote by the superscript r ∈ { V, F, P }. A volumetric fMRI sequence is denoted by XV ∈ RT ×1×D×H×W , where T is the number of temporal frames and D, H, and W
+
+are the spatial dimensions of the volume, and a cortical flat-map sequence by XF ∈ RT ×1×HF ×WF ,where HF and WF are the spatial dimensions of the flat map. Both retain spatial structure without aggregation over predefined regions, whereas a parcellation XP ∈ RT ×NP averages voxel signals within NP predefined regions of interest. Our FReD operates on XV and XF , since both retain the spatial structure required by a 2D image encoder; we consider XP only through the baselines. For XV and XF , we introduce three normalization schemes. Global normalization computes a shared set of statistics over the entire fMRI sequence and applies the same transformation to all temporal frames and spatial coordinates, as commonly adopted by existing fMRI foundation models (Kim et al., 2023; Wang et al., 2026a;b). Coordinate-wise normalization independently standardizes the temporal signal at each spatial coordinate, whereas frame-wise normalization independently standardizes the spatial values within each temporal frame. In our experiments, we consider two normalization schemes: global normalization and coordinate–frame normalization , where the lat-ter sequentially applies coordinate-wise normalization followed by the frame-wise normalization. Throughout this paper, we use normalization subscripts only for XV and XF . We index this choice by n ∈ { g, cf } and write Xrn for r ∈ { V, F }, where Xrg is globally normalized and Xrcf coordinate– frame-normalized; for XP we follow each baseline model’s own convention. 2Under review Linear Predictor Linear Predictor   
+
+> Linear Projection to 896-dim
+> CLS
+> Transformer (4 layers, frame dropout)
+> +
+> Stage 1 : DCAE-based Frame Representation Stage 2 : FReD-Trait Stage 2 : FReD-State
+> Slice & Encode Along Each Axis Group Avg. Flatten & Concat Flatten & Concat Hemisphere-wise Encoding Temporal Aggregation
+> frozen DCAE
+
+Figure 1: Overview of FReD. A frozen DCAE pre-trained on natural images constructs a frame representation for each fMRI frame, for both XV and XF . For trait prediction, the frame repre-sentations are summarized by their temporal mean and log-standard deviation and read out by a linear predictor, and the predictions obtained under the two normalization schemes n ∈ { g, cf } are combined by late fusion. For state prediction, the frame representations obtained under coordinate– frame normalization are projected into a common embedding space and processed by a Transformer. 2.2 FMRI F OUNDATION MODELS & D OWNSTREAM TASKS 
+
+fMRI foundation models. Following the data types in Sec. 2.1, existing fMRI foundation models can be grouped into volume-, cortical flat-map-, and parcellation-based approaches. Volume-based models such as SwiFT (Kim et al., 2023), NeuroSTORM (Wang et al., 2026a), and Omni-fMRI (Wang et al., 2026b) directly process volumetric fMRI. CortexMAE (Lane et al., 2026) instead operates on cortical flat maps. Parcellation-based models, including BrainMASS (Yang et al., 2024), Brain-JEPA (Dong et al., 2024), BrainHarmonix-F (Dong et al., 2025), and Brain-DiT (Xia et al., 2026), operate on ROI-level representations. These models are generally pre-trained on large-scale neuroimaging datasets with self-supervised objectives. 
+
+Downstream tasks. We broadly categorize downstream tasks into trait prediction and state pre-diction , following Lane et al. (2026), depending on whether the target varies within a subject. Trait prediction targets subject-level attributes that remain fixed within a subject, such as age or sex. Since the target does not vary over time, such tasks may be addressed without explicitly modeling tempo-ral dependencies, and representations that capture stable differences between subjects are expected to be informative. State prediction, on the contrary, targets cognitive or stimulus-driven states, such as labels for cognitive tasks (Van Essen et al., 2013) or viewed stimuli (Allen et al., 2022). Here the label changes within a subject, so modeling temporal variations is likely to be important. 
+
+3 FR ED
+
+We present FReD , a framework for constructing and modeling fMRI Re presentations based on a natural-image-pre-trained DCAE. FReD operates on two fMRI data types, XV and XF , and consists of two stages, as illustrated in Fig. 1: DCAE-based frame representation and task-dependent readout. Let Xrn = {Xrn,t }Tt=1 , r ∈ { V, F }, n ∈ { g, cf }, denote an fMRI sequence of representation type r
+
+normalized by scheme n. A frozen DCAE encoder first constructs a representation for each temporal frame Xrn,t . FReD then processes the resulting frame sequence according to the downstream task. For trait prediction, it summarizes the temporal distribution of the frame representations and fits a linear predictor. For state prediction, it collapses each frame to a single token before the Transformer, so that spatial mixing happens in the projection and the Transformer models only temporal structure. This contrasts with TABLeT (Kim et al., 2026), which retains 27 tokens per frame and relies on self-attention to model both spatial and temporal relationships. 3Under review 3.1 DCAE-BASED FRAME REPRESENTATION 
+
+The DCAE (Chen et al., 2025) is a convolutional autoencoder designed to provide highly compressed latent spaces for high-resolution image generation. We use the publicly released 
+
+dc-ae-f32c32-in-1.0 checkpoint without any modification, which downsamples an input im-age by a factor of 32 along each spatial dimension into a 32-channel latent map. The checkpoint is trained only on ImageNet (Deng et al., 2009), and we keep it frozen throughout. 
+
+Frame-wise encoding. We independently encode each fMRI frame with the DCAE. The same encoder is shared across data types, normalization schemes, and temporal frames. Since the encod-ing procedure is identical for both normalization schemes, we omit the subscript n throughout this subsection and write Xrt for a single frame. 
+
+XV case. We follow TABLeT in slicing the volume along the three anatomical axes and en-coding each slice independently with the frozen DCAE, and depart from it in how the resulting latents are assembled into a frame representation. A volumetric fMRI frame is represented as 
+
+XVt ∈ R1×D×H×W , where D = H = W = 96 in our experiments. We slice the volume along the three anatomical axes a ∈ A = {sag , cor , axi }, which yields Nsag = D, Ncor = H, and Naxi = W
+
+two-dimensional slices, respectively. Each axis thus produces 96 slices of size 96 × 96 in our imple-mentation. Each slice is replicated across three channels and independently encoded by the frozen DCAE, yielding ZVa,t ∈ RNa×Cz ×Hz ×Wz , where Cz × Hz × Wz denotes the DCAE latent size per slice, which is 32 × 3 × 3.We then partition the Na slices along each axis into G contiguous, equally sized groups and average the DCAE latents within each group, which gives ¯ZVa,t ∈ RG×Cz ×Hz ×Wz . Without this step a frame representation would have 3NaCz Hz Wz = 82 ,944 dimensions, which is impractical both for a linear probe and for a linear projection into the Transformer; grouping reduces this to 3GC z Hz Wz
+
+while retaining spatial granularity along each axis. Finally, we flatten and concatenate the grouped latents from the three axes to construct the frame representation: 
+
+ZVt = Concat a∈A 
+
+ Flatten  ¯ZVa,t 
+
+ ∈ R3GC z Hz Wz . (1) TABLeT instead keeps the slice and latent-grid positions as 27 separate tokens per frame; grouping and flattening here reduce this to one, which is the change we ablate in Tab. 5. We use G = 3 for trait prediction and G = 24 for state prediction, supported by the sensitivity analysis in Fig. 5. 
+
+XF case. A cortical flat-map frame is represented as XFt ∈ R1×HF ×WF , where (HF , W F ) = (224 , 576) in our experiments. We split the frame along its width into the left- and right-hemisphere maps h ∈ H = {lh , rh }, each of size HF × (WF /2) . Each hemisphere map is replicated across three channels and independently encoded by the frozen DCAE, yielding ZFh,t ∈ RCz ×Hz ×Wz ,
+
+where each hemisphere map has size HF × (WF /2) = 224 × 288 , and the DCAE downsamples each spatial dimension by 32, giving Cz × Hz × Wz = 32 × 7 × 9. We then flatten and concatenate the latents of the two hemispheres to construct the frame representation: 
+
+ZFt = Concat h∈H 
+
+ Flatten  ZFh,t 
+
+ ∈ R2Cz Hz Wz , (2) which has dimension 4,032 in our implementation. Unlike the volumetric case, there is no slice axis to aggregate, and its dimensionality is moderate compared with that of XV . The same flat-map representation is therefore used for both trait and state prediction. 3.2 TASK -DEPENDENT READOUT 
+
+We hereafter write Zrn,t for the frame representation obtained from Xrn,t . Starting from the frame representations Zrn,t , FReD uses statistical aggregation with linear probing for trait prediction (FReD-Trait) and Transformer-based temporal modeling for state prediction (FReD-State). The two differ in how they model temporal information and which normalization schemes they use. 
+
+FReD-Trait. Since trait labels do not vary over time, we compress the temporal dynamics into the element-wise mean and log-standard deviation: 
+
+Srn = Concat 1
+
+T
+
+> T
+
+X
+
+> t=1
+
+Zrn,t , log  Std t(Zrn,t ) + ϵ!
+
+, (3) 4Under review where Std t denotes the element-wise standard deviation over the T frames and ϵ is a small constant for numerical stability. A linear predictor is then fitted on Srn. As the two normalization schemes are expected to retain complementary information, we apply this pipeline independently to Xrg and 
+
+Xrcf , and combine the resulting predictions ˆyrg and ˆyrcf by prediction-level late fusion: 
+
+ˆyr = α ˆyrg + (1 − α) ˆ yrcf , α ∈ [0 , 1] , (4) where α is selected based on the validation set, detailed in Sec. B.2. 
+
+FReD-State. For state prediction, we explicitly model the temporal dependencies among frame representations. Each Zrcf,t is projected into an 896-dimensional embedding by a learnable lin-ear layer, and we prepend a learnable [CLS] token to the resulting sequence. The sequence is processed by a four-layer self-attention Transformer with 1D-RoPE (Su et al., 2024). The backbone follows modern practices, including GQA (Ainslie et al., 2023) and Q/K normalization (Henry et al., 2020) with soft-capped attention logits (Gemma Team et al., 2024). We give the full specification in Tab. 11. The output at the [CLS] token is used for prediction. We additionally apply frame dropout during training as regularization. In contrast to FReD-Trait, we use only coordinate–frame-normalized inputs; we examine this choice empirically in Fig. 3. 
+
+4 EXPERIMENTAL RESULTS 
+
+4.1 EXPERIMENTAL SETTINGS 
+
+Datasets and tasks. We evaluate trait prediction on four resting-state fMRI datasets: ADHD clas-sification using ADHD-200 (Bellec et al., 2017), autism spectrum disorder (ASD) classification using ABIDE-II (Di Martino et al., 2017), mild cognitive impairment (MCI) classification using ADNI (Jack Jr et al., 2008), and prediction of sex, age, and intelligence using HCP-A (Bookheimer et al., 2019). For state prediction, we consider three task-fMRI datasets: viewed-movie binary classification on HBN (Alexander et al., 2017), 21-class cognitive task-state decoding on HCP-Task (Van Essen et al., 2013), and decoding of 24 MS-COCO object categories from NSD (Allen et al., 2022). All splits are constructed at the subject level, and we use the fixed splits provided by BrainMarks (Lane et al., 2026) for HCP-Task and NSD. More details are provided in Sec. B.1. 
+
+Evaluation protocol. The linear-probing experiments in Fig. 2, Tab. 3, and Fig. 6 use 500 inde-pendently sampled 85/15 train–test splits. All other experiments use 70/15/15 train/validation/test splits, 12 splits for the clinical diagnosis tasks, and four splits for HCP-A and HBN; HCP-Task and NSD instead use three random seeds on their fixed splits. We report accuracy (Acc.), AUROC (AUC), and F1 for classification, and mean absolute error (MAE) and Pearson’s correlation ( ρ) for regression, with MAE expressed in units of the standardized target. 
+
+Baselines. We compare FReD against eight fMRI foundation models and TABLeT (Kim et al., 2026): BrainMASS (Yang et al., 2024), Brain-JEPA (Dong et al., 2024), BrainHarmonix-F (BH-F) (Dong et al., 2025), and Brain-DiT (Xia et al., 2026) operate on parcellations; SwiFT (Kim et al., 2023), NeuroSTORM (Wang et al., 2026a), and Omni-fMRI (Wang et al., 2026b) on volumes; and CortexMAE (Lane et al., 2026) on cortical flat maps. Since BrainMASS operates on functional connectivity rather than on the fMRI time series, we report it as a reference line in Figs. 2 and 3 indicating the performance attainable from a basic connectivity-based representation. TABLeT is the most closely related baseline to ours, as it also encodes 2D fMRI slices using a DCAE pre-trained on natural images, but it uses a single data type and modeling scheme across tasks. 4.2 TRAIT PREDICTION 
+
+Linear probing. We first compare the downstream utility of frozen representations. We standard-ize the input features and perform five-fold cross-validation, using LogisticRegressionCV 
+
+from scikit-learn (Pedregosa et al., 2011) for classification and RidgeCV for regression. As shown in Fig. 2, FReD-Trait outperforms the evaluated foundation-model baselines on five of the six tasks under linear evaluation, with ADNI being the only case where the methods perform comparably. These results show that frozen DCAE features, summarized by simple temporal statis-tics under a single normalization scheme, can support strong trait prediction without fMRI-specific 5Under review Brain-JEPA BH-F Brain-DiT SwiFT NeuroSTORM Omni-fMRI CortexMAE FReD-Trait  XV        
+
+> FReD-Trait  XF
+> .60 .65 .70 .75
+> AUC /  .67 .68 .71
+> **
+> ADHD-200
+> Brain-JEPA BH-F Brain-DiT SwiFT NeuroSTORM Omni-fMRI CortexMAE FReD-Trait  XV
+> FReD-Trait  XF
+> .68 .72 .76 .80
+> .74 .75 .76
+> **
+> ABIDE-II
+> Brain-JEPA BH-F Brain-DiT SwiFT NeuroSTORM Omni-fMRI CortexMAE FReD-Trait  XV
+> FReD-Trait  XF
+> .60 .64 .68 .72
+> .68 .68 .67
+> ADNI
+> Brain-JEPA BH-F Brain-DiT SwiFT NeuroSTORM Omni-fMRI CortexMAE FReD-Trait  XV
+> FReD-Trait  XF
+> .80 .88 .96
+> .96 .99 .97
+> * *
+> HCP-A-Sex
+> Brain-JEPA BH-F Brain-DiT SwiFT NeuroSTORM Omni-fMRI CortexMAE FReD-Trait  XV
+> FReD-Trait  XF
+> .60 .70 .80 .90 .88 .92 .84
+> *
+> HCP-A-Age
+> Brain-JEPA BH-F Brain-DiT SwiFT NeuroSTORM Omni-fMRI CortexMAE FReD-Trait  XV
+> FReD-Trait  XF
+> .40 .48 .56 .64
+> .55 .62 .59
+> * *
+> HCP-A-Intel.
+> *
+
+compares FReD-Trait late fusion with the best-performing baseline. Paired-bootstrap 95% CI for is entirely above 0 (500 resamples). 
+
+> Reference
+> BrainMASS
+
+Input 
+
+XP XVg XVcf XFg XFcf XVg, XVcf XFg, XFcf 
+
+Figure 2: Linear-probing results on trait prediction tasks over 500 random splits, reported as AUC/ ρ.Table 1: Comparison of trait prediction performance. All foundation models are fully fine-tuned, TABLeT is trained from scratch, and FReD-Trait uses linear probing. Results are reported as the mean and standard deviation across data splits. Bold and underlined values indicate the best and second-best performance for each metric, respectively. Method Input ADHD-200 ABIDE-II ADNI HCP-A Diagnosis Diagnosis Diagnosis Sex Age Intelligence AUC ↑ F1 ↑ AUC ↑ F1 ↑ AUC ↑ F1 ↑ AUC ↑ F1 ↑ MAE ↓ ρ ↑ MAE ↓ ρ ↑
+
+Brain-JEPA XP .660 ±.00 .606 ±.01 .720 ±.05 .622 ±.04 .693 ±.07 .597 ±.05 .917 ±.00 .829 ±.00 .418 ±.00 .849 ±.00 .681 ±.01 .487 ±.01 
+
+BH-F XP .631 ±.05 .573 ±.06 .697 ±.03 .592 ±.05 .601 ±.06 .452 ±.12 .867 ±.01 .729 ±.10 .435 ±.02 .838 ±.02 .679 ±.04 .498 ±.06 
+
+Brain-DiT XP .648 ±.05 .568 ±.04 .712 ±.04 .535 ±.08 .659 ±.05 .484 ±.14 .923 ±.02 .833 ±.03 .386 ±.01 .877 ±.00 .674 ±.01 .546 ±.01 
+
+SwiFT XVg .664 ±.05 .633 ±.05 .711 ±.03 .606 ±.04 .688 ±.07 .582 ±.06 .946 ±.01 .853 ±.02 .350 ±.03 .897 ±.02 .678 ±.03 .507 ±.02 
+
+NeuroSTORM XVg .658 ±.04 .572 ±.07 .716 ±.03 .606 ±.02 .673 ±.04 .607 ±.02 .974 ±.01 .888 ±.02 .343 ±.02 .906 ±.01 .670 ±.04 .525 ±.05 
+
+Omni-fMRI XVg .676 ±.05 .598 ±.05 .712 ±.03 .586 ±.03 .681 ±.06 .584 ±.06 .975 ±.01 .910 ±.01 .351 ±.01 .894 ±.01 .657 ±.04 .546 ±.05 
+
+CortexMAE XFcf .690 ±.05 .605 ±.06 .735 ±.03 .639 ±.04 .638 ±.05 .540 ±.06 .944 ±.02 .859 ±.02 .508 ±.02 .774 ±.02 .661 ±.05 .539 ±.06 
+
+TABLeT XVg .639 ±.04 .583 ±.06 .713 ±.03 .624 ±.04 .702 ±.05 .602 ±.05 .963 ±.02 .872 ±.05 .362 ±.02 .891 ±.01 .660 ±.04 .549 ±.03 
+
+TABLeT XVcf .624 ±.05 .592 ±.06 .705 ±.03 .588 ±.04 .620 ±.07 .564 ±.06 .946 ±.02 .860 ±.04 .398 ±.01 .871 ±.01 .667 ±.05 .513 ±.04 
+
+FReD-Trait XVg , XVcf .686 ±.05 .604 ±.05 .743 ±.03 .629 ±.04 .690 ±.04 .591 ±.05 .995 ±.00 .956 ±.03 .320 ±.01 .917 ±.01 .633 ±.06 .607 ±.05 
+
+FReD-Trait XFg , XFcf .717 ±.03 .607 ±.05 .747 ±.03 .615 ±.05 .679 ±.05 .541 ±.04 .969 ±.00 .884 ±.00 .476 ±.02 .828 ±.01 .655 ±.03 .576 ±.04 
+
+pre-training. Late fusion of the predictions obtained under the two normalization schemes (blue diamond and pink triangle) further improves performance generally, indicating that Xrg and Xrcf re-tain complementary information relevant to trait prediction. The selected fusion weights vary across tasks, suggesting that the preferred normalization scheme is itself task-dependent; we report their distribution in Sec. C.2. One may argue that this comparison is confounded by the dimensionality of the representations, which is larger for FReD-Trait than for the foundation models. To address this, we adopt dimension reduction and find its performance to remain robust, as detailed in Sec. C.1. 
+
+Can fine-tuning yield better performance than FReD-Trait? We next investigate whether fine-tuning existing fMRI foundation models on individual downstream tasks improves their perfor-mance. For each foundation model, we follow its original fine-tuning protocol and search at least eight learning rates per dataset, with the full search ranges reported in Sec. B. In addition, we eval-uate partial fine-tuning, in which only the final few layers of the pre-trained encoder are updated. The full fine-tuning results are reported in Tab. 1, and the partial fine-tuning results in Sec. C.3. Despite adapting the entire pre-trained encoder to each downstream task, the fully fine-tuned foun-dation models remain broadly competitive with FReD-Trait rather than consistently surpassing it. Moreover, we additionally observe that fine-tuning itself does not yield consistent improvements over linear probing on the matched splits, as detailed in Sec. C.4. These results show that a frozen off-the-shelf representation paired with simple temporal aggregation can provide a competitive al-ternative to task-specific adaptation of fMRI foundation models. 4.3 STATE PREDICTION 
+
+Insights from the HBN-Movie task. We first consider a relatively simple state prediction task, where the model predicts which of two movies a participant was watching from the corresponding fMRI sequence. As shown in Fig. 3, the volume-based foundation models, SwiFT, NeuroSTORM, and Omni-fMRI, perform only slightly above chance on XVg under both linear probing and full fine-tuning, whereas linear probing on XVcf consistently yields better performance. We further find that SwiFT and NeuroSTORM do not substantially improve even when fully fine-tuned on XVcf ,and that among the volume-based models only Omni-fMRI benefits from doing so. The effect is even more pronounced for the DCAE-based models, TABLeT and FReD-Trait, whose performance 6Under review Brain-JEPA BH-F Brain-DiT SwiFT NeuroSTORM Omni-fMRI CortexMAE TABLeT FReD-Trait FReD-State          
+
+> 0.6 0.7 0.8 0.9 1.0
+> AUC  BrainMASS reference = .90
+> .63 .72 .72 .71.74 .90 .63 .71 .62 .63.63 .74 .62 .69 .61 .78 .60 .93 .94 1.0 .61 .99 .67 .85 .85 .63 .87 .87 1.0 1.0
+> Eval.
+> LP FT/TFS
+> Input
+> XPXVgXVcf XFgXFcf XVg,XVcf XFg,XFcf
+
+Figure 3: HBN-Movie task results with four splits. Table 2: Results on state prediction tasks. 
+
+Bold and underlined values indicate the best and second-best performance, respec-tively. FT: Full fine-tuning, TFS: Train from scratch. Method Input Eval HBN-Movie HCP-Task NSD AUC ↑ F1 ↑ Acc. ↑ Acc. ↑                              
+
+> Omni-fMRI XVcf FT .928 ±.03 .838 ±.02 94 .5±0.221 .5±0.9
+> CortexMAE XFcf FT .997 ±.00 .959 ±.01 99.2 ±0.129 .8±0.5
+> TABLeT XVcf TFS .990 ±.01 .948 ±.03 94 .2±0.223 .9±1.0
+> FReD-State XVcf TFS .998 ±.00 .973 ±.01 97 .4±0.129 .5±0.2
+> FReD-State XFcf TFS .997 ±.00 .971 ±.01 98 .8±0.230.0 ±0.65% 10% 20% 30% 40% 50% 60% 70% 80% 90% 100% 0.0 0.2 0.4 0.6 0.8 1.0
+> Explained variance
+
+XV  
+
+> ImageNet (3 × 96 × 96) HCP-A XVg
+> median (min--max) HCP-A XVcf
+> median (min--max)
+> 5% 10% 20% 30% 40% 50% 60% 70% 80% 90% 100%
+
+XF  
+
+> ImageNet (3 × 224 × 288) HCP-A XFg
+> HCP-A XFcf
+
+Fraction of PCA components retained 
+
+(a) 0.25 0.50 0.75 1.00 2.00 3.00 4.00 
+
+p (%)      
+
+> 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0
+> Localization accuracy  FReD XV,G= 24 NeuroSTORM · repeat SwiFT · repeat Omni-fMRI · repeat CortexMAE · repeat FReD XF
+> NeuroSTORM · timeseries SwiFT · timeseries Omni-fMRI · timeseries CortexMAE · timeseries
+
+(b) 
+
+Figure 4: (a) Fraction of variance explained by the leading ImageNet principal directions, as a function of the fraction of components retained, shown separately for XV (left) and XF (right). Each panel includes an ImageNet reference computed on held-out ImageNet latents at the corresponding DCAE input resolution; a curve close to the ImageNet reference indicates a similar concentration of variance along the leading ImageNet principal directions. For XV , the curves are medians over the three anatomical slicing axes and the bands span their minimum and maximum. (b) Four-way localization accuracy as a function of the injected percent signal change, averaged over the three spatial scales σ; chance accuracy is 25%. improves substantially on coordinate-frame-normalized inputs. Coordinate-frame normalization is thus critical for state prediction, which motivates its exclusive use in FReD-State. Although FReD-Trait performs strongly on trait prediction, it underperforms TABLeT on HBN-Movie. We attribute this to the fact that FReD-Trait compresses an entire fMRI sequence into its temporal mean and log-standard deviation and thus discards the temporal ordering of the frame rep-resentations, which may help distinguishing stimulus-induced states in this task. Statistical temporal aggregation with linear probing is therefore insufficient to capture within-subject variability, which motivates the temporal modeling in FReD-State. By explicitly modeling the temporal interactions among frame representations, FReD-State outperforms FReD-Trait by a large margin and becomes competitive with the strongest foundation models, indicating that DCAE latents retain sufficient information for state prediction once paired with an appropriate temporal architecture. 
+
+More challenging tasks. We next consider two harder state prediction tasks, 21-class cognitive task-state decoding on HCP-Task and 24-class object-category decoding on NSD. For these evalua-tions, we include Omni-fMRI and CortexMAE that clearly outperformed BrainMASS (Yang et al., 2024) on HBN-Movie, along with TABLeT, the most closely related DCAE-based baseline. As shown in Tab. 2, FReD-State outperforms Omni-fMRI and TABLeT by clear margins on both tasks, while performing comparably to CortexMAE. Between the two data types, XF performs better on HCP-Task and comparably on NSD. With XF , FReD-State matches the strongest flat-map baseline. 
+
+5 ANALYSES 
+
+5.1 DOES THE DCAE L ATENT SPACE ACCOMMODATE F MRI V ARIATION ?We first examine how much fMRI variation is captured by the principal directions of DCAE repre-sentations learned from natural images. We fit a PCA basis on DCAE latents from ImageNet test 7Under review images and measure the fraction of fMRI variance explained by the leading k ImageNet principal directions, ∥HV 1: k∥2 
+
+> F
+
+/∥H∥2 
+
+> F
+
+, where V1: k contains the leading k ImageNet principal directions and 
+
+H denotes the standardized latents of the domain being evaluated, centered by its own mean. Since the DCAE latent size depends on the input resolution, we compare each fMRI representation against an ImageNet reference computed at the matching resolution: 3 × 96 × 96 for volumetric slices and 
+
+3 × 224 × 288 for hemisphere maps. The detailed setup can be found in Sec. B.3. As shown in Fig. 4(a), every fMRI representation falls below its ImageNet reference when only a small fraction of principal directions is retained, indicating that the directions explaining the largest variation in natural images account for a smaller fraction of fMRI variation. The gap gradually narrows as more components are included, and by 60% of the basis the retained ImageNet directions explain roughly 0.72 –0.85 of the variance across the fMRI representations. Flat-map representations remain closer to their corresponding ImageNet reference than volumetric slices. Overall, these results show that a substantial fraction of fMRI variation is recoverable from the ImageNet-derived basis, which supports using DCAE pre-trained with natural images to obtain fMRI representations. 5.2 ARE LOCALIZED SIGNAL CHANGES ACCESSIBLE FROM DCAE R EPRESENTATIONS ?Downstream tasks may depend on small, spatially localized changes in the fMRI signal, and whether such changes survive a 32 × spatial compression is not obvious. We therefore inject controlled Gaussian perturbations of varying amplitude into resting-state HCP-A fMRI and evaluate whether their locations can be recovered from each frozen representation using a linear probe. At one of four fixed cortical centers, we add an isotropic Gaussian profile of width σ, restricted to the cortical mask, modulated by a canonical double-gamma hemodynamic response and scaled so that the added signal at the center equals a requested percent signal change p of the local baseline. We sweep 
+
+p ∈ [0 .25 , 4]% and σ ∈ { 2, 3, 4}. After injection we match the global statistics of each sequence to those of its clean counterpart, so that no probe can exploit a shift in intensity or variance. Afour-way linear probe is then fitted on the frozen representations over four different splits and asked which center was perturbed. Each representation is given the frame at which the response peaks: FReD encodes it directly, while the foundation models, which require a temporal input, receive the same volume repeated across their window ( repeat ) or, as an additional condition, the full injected sequence ( timeseries ). The DCAE features are reduced to 768 dimensions by PCA, matching the largest foundation-model feature dimension. Full details are given in Sec. B.4. As shown in Fig. 4(b), all representations remain near chance at the weakest perturbation and im-prove monotonically as the injected signal becomes stronger. Both FReD variants stay above every foundation-model representation at every amplitude, with XV the strongest throughout and XF
+
+second; CortexMAE is the closest baseline, and neither input condition consistently outperforms the other across the foundation models. Information about localized signal changes therefore remains linearly accessible from the frozen DCAE features, even though the encoder has never been trained on fMRI. However, we note that this spatial-localization probe only measures the accessibility of perturbation, not the general representation quality. 5.3 TASK -DEPENDENT NORMALIZATION AND READOUT 
+
+Table 3: Linear probing results over 500 random splits on HBN-Movie/Sex. Method Input HBN-Movie HBN-Sex AUC ↑ F1 ↑ AUC ↑ F1 ↑          
+
+> FReD-Trait XVg.667 ±.03 .614 ±.04 .882 ±.04 .741 ±.06
+> FReD-Trait XVcf .863 ±.03 .787 ±.03 .822 ±.04 .657 ±.06
+
+Normalization. Since HBN is a task-fMRI dataset, one may ask whether the sensitivity to normalization observed in Sec. 4.3 stems from the dataset itself rather than from the type of prediction task. We therefore add a trait prediction task on the same dataset, sex predic-tion of each subject, which let us compare the two task types under an identical data distribution. As shown in Tab. 3, HBN-Movie is far more sensitive to the choice of normalization than HBN-Sex; we assert the sensitivity therefore follows the prediction task rather than the dataset. Table 4: FReD-State performance on trait prediction tasks. Bold values indicate the best performance. LP: Linear probing, TFS: Train from scratch. Method Input Eval ADHD-200 HCP-A Diagnosis Intelligence AUC ↑ F1 ↑ MAE ↓ ρ ↑                            
+
+> FReD-Trait XVg,XVcf LP .686 ±.05 .604 ±.05 .633 ±.06 .607 ±.05
+> FReD-Trait XFg,XFcf LP .717 ±.03 .607 ±.05 .655 ±.03 .576 ±.04
+> FReD-State XVgTFS .663 ±.05 .584 ±.07 .652 ±.03 .564 ±.03
+> FReD-State XVcf TFS .637 ±.05 .570 ±.06 .664 ±.06 .556 ±.05
+> F
+
+Readout. We showed that FReD-Trait is ineffec-tive for state prediction, which motivated the tem-poral modeling in FReD-State. This raises the con-verse question of whether FReD-State is better for 8Under review trait prediction. As shown in Tab. 4, FReD-State does not improve over FReD-Trait for trait predic-tion tasks. Explicit temporal modeling therefore ap-pears to matter specifically where temporal dynam-ics are relevant to the target, whereas simple tempo-ral aggregation suffices for trait prediction. 5.4 COMPONENT -WISE ABLATIONS ADHD-200 ABIDE-II ADNI HCP-A-Sex HCP-A-Age HCP-A-Intel. 0.005 
+
+> 0.000 0.005 0.010 0.015 0.020 0.025 0.030
+> performance
+> XV
+> XF
+
+(a) 1 2 3 4 6 
+
+> Number of groups ( G)
+> 0.5 0.6 0.7 0.8 0.9 1.0
+> AUC /
+> ADHD-200 ABIDE-II ADNI HCP-A-Sex HCP-A-Age HCP-A-Intel.
+
+(b) 1 2 3 4 6 8 12 16 24 32 48 96   
+
+> Number of groups ( G)
+> 0.93 0.94 0.95 0.96 0.97 0.98
+> HCP-Task accuracy
+> HCP-Task NSD 0.22 0.24 0.26 0.28 0.30 0.32
+> NSD accuracy
+
+(c) 
+
+Figure 5: (a) Effect of the log-standard deviation feature on trait prediction, measured as the AUC or ρ difference against replacing it with a zero vector. (b) Trait prediction performance as a function of the number of groups G. (c) State prediction accuracy as a function of G.
+
+Log-standard deviation features. We ablate the log-standard deviation feature by replacing it with a zero vector, which keeps the input dimensionality and parameter count unchanged. As shown in Fig. 5(a), the log-standard deviation feature generally improves performance, although the mag-nitude of the effect varies across tasks. 
+
+Number of groups G. We next vary the number of groups G, which controls how much spatial granularity along each slicing axis is retained in the frame representation. Trait prediction is largely insensitive to G and remains stable even with a single group per axis (Fig. 5(b)). State prediction, in contrast, degrades substantially when G is too small, but is stable across a moderate range (Fig. 5(c)). Table 5: Comparison between TABLeT and FReD-State, trained from scratch. Method Input Param. HCP-Task NSD ACC ACC TABLeT XVcf 129.5M 94 .2±0.2 23 .9±1.0         
+
+> TABLeT with ¯ZVa,t XVcf 145.4M 94 .7±0.327 .5±0.4
+> FReD-State XVcf 78.2M 97.4 ±0.129.5 ±0.2
+
+From TABLeT to FReD-State. Finally, we identify where the improvement of FReD-State over TABLeT comes from. Since TABLeT operates on volumetric fMRI, we conduct this ablation with XV . The two mod-els differ in their tokenization and in architectural and regularization choices. To isolate the former, we replace TABLeT’s tokenization with ours, constructing a single token per frame from group-averaged DCAE latents, while keeping its temporal Transformer. As reported in Tab. 5, this intermediate model already improves performance over the original TABLeT. Moving from this intermediate model to FReD-State yields further gains while reducing the param-eter count. Because this second step introduces several architectural and regularization changes simultaneously, we attribute the additional gain to these remaining changes jointly rather than to any single component, detailed in Sec. D. 
+
+6 CONCLUSION AND LIMITATIONS 
+
+We asked how much fMRI-specific representation pre-training is necessary for strong downstream prediction. We studied this question using a frozen DCAE pre-trained exclusively on natural images with task-matched readouts. For trait prediction, temporal mean and log-standard deviation followed by a linear predictor achieve performance competitive with fully fine-tuned fMRI foundation mod-els. For state prediction, a shallow Transformer over one token per frame performs comparably to the strongest foundation models, while using a smaller readout and a shorter attention sequence than TABLeT. These results show that strong performance on current benchmarks can be achieved with-out fMRI-specific representation pre-training, and establish frozen natural-image representations as a baseline against which the benefits of large-scale fMRI pre-training should be measured. 9Under review However, several questions remain open. The Gaussian injection analysis is synthetic and spatially localized, so it speaks to linear accessibility rather than to downstream ranking. Relatedly, we do not resolve when each data type should be preferred, although we observe that XF tends to be stronger on state prediction whereas XV recovers injected perturbations far more accurately and leads on the HCP-A phenotype tasks. We also treat the encoder as fixed throughout, and do not explore whether adapting it to fMRI could further improve performance. Despite this, our results show that a frozen natural-image autoencoder can produce strong representations for fMRI, and suggest that the benefit of fMRI-specific pre-training should be demonstrated against such baselines rather than assumed. AI USE STATEMENT 
+
+In this work, we used generative AI tools for providing feedback on research methodology or ex-periments, implementing methods, and assisting with translation. We have not used generative AI tools for proposing or refining hypotheses, supporting qualitative or thematic data analysis, and in-terpreting results. Generating synthetic data sets, helping develop theoretical models or conceptual frameworks, formulating mathematical claims, providing critical ingredients for proving mathemat-ical claims, assisting in the writing of proofs, and cleaning and reformat dataset are not applicable to this work. Additionally, we used generative AI tools for modifying scientific figures or images, creating or editing software code, drafting parts of a research paper, editing a research paper to improve read-ability. All AI-assisted outputs were carefully reviewed by the authors. In particular, the authors created the initial versions of all scientific figures and images themselves and used LLM-based tools only to improve their visual clarity and presentation. In addition, the authors independently veri-fied LLM-generated code and tested it for correctness. The authors also independently reviewed all LLM-generated drafts, using them only as starting points before revising and finalizing the text themselves. and write a final script by own. We take full responsibility for the final content of this work, including all text, claims, code, figures, and other artifacts produced with the assistance of generative AI. ETHICS STATEMENT 
+
+This work relies exclusively on publicly available, open-source fMRI datasets. We did not collect any new human-subject data or interact directly with study participants. Therefore, no additional ethical approval was required for this study. REPRODUCIBILITY STATEMENT 
+
+We provide detailed experimental settings in Sec. B. We plan to release our code, preprocessing scripts, and data splits after the review process, subject to the licenses and access policies of the original datasets. 
+
+REFERENCES 
+
+Joshua Ainslie, James Lee-Thorp, Michiel De Jong, Yury Zemlyanskiy, Federico Lebr´ on, and Sumit Sanghai. Gqa: Training generalized multi-query transformer models from multi-head check-points. In Proceedings of the 2023 Conference on Empirical Methods in Natural Language Pro-cessing (EMNLP) , pp. 4895–4901, 2023. Lindsay M Alexander, Jasmine Escalera, Lei Ai, Charissa Andreotti, Karina Febre, Alexander Man-gone, Natan Vega-Potler, Nicolas Langer, Alexis Alexander, Meagan Kovacs, et al. An open resource for transdiagnostic research in pediatric mental health and learning disorders. Sci. Data. ,4(1):170181, 2017. Emily J Allen, Ghislain St-Yves, Yihan Wu, Jesse L Breedlove, Jacob S Prince, Logan T Dowdle, Matthias Nau, Brad Caron, Franco Pestilli, Ian Charest, et al. A massive 7t fmri dataset to bridge cognitive neuroscience and artificial intelligence. Nat. Neurosci. , 25(1):116–126, 2022. Ulzee An, Moonseong Jeong, Simon Austin Lee, Aditya Gorla, Yuzhe Yang, and Sriram Sankarara-man. Raptor: Scalable train-free embeddings for 3D medical volumes leveraging pretrained 2D 10 Under review foundation models. In Proceedings of the 42nd International Conference on Machine Learning (ICML) , pp. 1462–1482, 2025. Pierre Bellec, Carlton Chu, Francois Chouinard-Decorte, Yassine Benhajali, Daniel S Margulies, and R Cameron Craddock. The neuro bureau adhd-200 preprocessed repository. Neuroimage ,144:275–286, 2017. Susan Y Bookheimer, David H Salat, Melissa Terpstra, Beau M Ances, Deanna M Barch, Randy L Buckner, Gregory C Burgess, Sandra W Curtiss, Mirella Diaz-Santos, Jennifer Stine Elam, et al. The lifespan human connectome project in aging: an overview. Neuroimage , 185:335–348, 2019. Junyu Chen, Han Cai, Junsong Chen, Enze Xie, Shang Yang, Haotian Tang, Muyang Li, and Song Han. Deep compression autoencoder for efficient high-resolution diffusion models. In Interna-tional Conference on Learning Representations (ICLR) , 2025. Jia Deng, Wei Dong, Richard Socher, Li-Jia Li, Kai Li, and Li Fei-Fei. Imagenet: A large-scale hier-archical image database. In 2009 IEEE Conference on Computer Vision and Pattern Recognition (CVPR) , pp. 248–255, 2009. Adriana Di Martino, David O’connor, Bosi Chen, Kaat Alaerts, Jeffrey S Anderson, Michal Assaf, Joshua H Balsters, Leslie Baxter, Anita Beggiato, Sylvie Bernaerts, et al. Enhancing studies of the connectome in autism using the autism brain imaging data exchange ii. Sci. Data. , 4(1):170010, 2017. Zijian Dong, Ruilin Li, Yilei Wu, Thuan T Nguyen, Joanna S Chong, Fang Ji, Nathanael R Tong, Christopher L Chen, and Juan H Zhou. Brain-jepa: Brain dynamics foundation model with gra-dient positioning and spatiotemporal masking. In Advances in Neural Information Processing Systems (NeurIPS) , pp. 86048–86073, 2024. Zijian Dong, Ruilin Li, Joanna Chong, Niousha Dehestani, Yinghui Teng, Yi Lin, Zhizhou Li, Yichi Zhang, Yapei Xie, Leon Ooi, et al. Brain harmony: a multimodal foundation model unifying morphology and function into 1d tokens. In Advances in Neural Information Processing Systems (NeurIPS) , pp. 122100–122127, 2025. Oscar Esteban, Christopher J Markiewicz, Ross W Blair, Craig A Moodie, A Ilkay Isik, Asier Erra-muzpe, James D Kent, Mathias Goncalves, Elizabeth DuPre, Madeleine Snyder, et al. fmriprep: a robust preprocessing pipeline for functional mri. Nat. Methods. , 16(1):111–116, 2019. Oscar Esteban, Rastko Ciric, Karolina Finc, Ross W Blair, Christopher J Markiewicz, Craig A Moodie, James D Kent, Mathias Goncalves, Elizabeth DuPre, Daniel EP Gomez, et al. Analysis of task-based functional mri data preprocessed with fmriprep. Nat. Protoc. , 15(7):2186–2202, 2020. Gemma Team, Morgane Riviere, Shreya Pathak, Pier Giuseppe Sessa, Cassidy Hardin, Surya Bhu-patiraju, L´ eonard Hussenot, Thomas Mesnard, Bobak Shahriari, Alexandre Ram´ e, et al. Gemma 2: Improving open language models at a practical size. arXiv preprint arXiv:2408.00118 , 2024. Alex Henry, Prudhvi Raj Dachapally, Shubham Shantaram Pawar, and Yuxuan Chen. Query-key normalization for transformers. In Findings of the Association for Computational Linguistics: EMNLP 2020 , pp. 4246–4253, 2020. Gao Huang, Yu Sun, Zhuang Liu, Daniel Sedra, and Kilian Q Weinberger. Deep networks with stochastic depth. In European Conference on Computer Vision (ECCV) , pp. 646–661, 2016. Clifford R Jack Jr, Matt A Bernstein, Nick C Fox, Paul Thompson, Gene Alexander, Danielle Har-vey, Bret Borowski, Paula J Britson, Jennifer L. Whitwell, Chadwick Ward, et al. The alzheimer’s disease neuroimaging initiative (adni): Mri methods. J. Magn. Reson. Imaging. , 27(4):685–691, 2008. Peter Kim, Junbeom Kwon, Sunghwan Joo, Sangyoon Bae, Donggyu Lee, Yoonho Jung, Shinjae Yoo, Jiook Cha, and Taesup Moon. Swift: Swin 4d fmri transformer. In Advances in Neural Information Processing Systems (NeurIPS) , pp. 42015–42037, 2023. 11 Under review Peter Yongho Kim, Juhyeon Park, Jungwoo Park, Jubin Choi, Jungwoo Seo, Jiook Cha, and Taesup Moon. Can natural image autoencoders compactly tokenize fmri volumes for long-range dynam-ics modeling? In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , pp. 35321–35330, 2026. Connor Lane, Mihir Tripathy, Leema Krishna Murali, Ratna Sagari Grandhi, Shamus Sim Zi Yang, Sam Gijsen, Debojyoti Das, Manish Ram, Utkarsh Kumar Singh, Cesar Kadir Torrico Villanueva, YUXIANG WEI, Will Beddow, Gianfranco Cortes, Suin Cho, Daniel Z Kaplan, Ben-jamin Warner, Tanishq Mathew Abraham, and Paul Steven Scotti. Scaling vision transformers for functional MRI with flat maps. In Forty-third International Conference on Machine Learning (ICML) , 2026. Han Liu, Bogdan Georgescu, Yanbo Zhang, Youngjin Yoo, Michael Baumgartner, Riqiang Gao, Jianing Wang, Gengyan Zhao, Eli Gibson, Dorin Comaniciu, and Sasa Grbic. Revisiting 2d foundation models for scalable 3d medical image classification. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , pp. 30021–30031, 2026. Jorge Nocedal and Stephen J. Wright. Numerical Optimization . Springer Series in Operations Research and Financial Engineering. Springer, New York, NY, second edition, 2006. ISBN 978-0-387-30303-1. doi: 10.1007/978-0-387-40065-5. Juhyeon Park, Peter Yongho Kim, Jungwoo Park, Jubin Choi, Jungwoo Seo, Jiook Cha, and Taesup Moon. Processing fMRI brain signals using latents from natural image autoencoders. In NeurIPS 2025 Workshop on Foundation Models for the Brain and Body , 2025. Fabian Pedregosa, Ga¨ el Varoquaux, Alexandre Gramfort, Vincent Michel, Bertrand Thirion, Olivier Grisel, Mathieu Blondel, Peter Prettenhofer, Ron Weiss, Vincent Dubourg, et al. Scikit-learn: Machine learning in python. J. Mach. Learn. Res. , 12:2825–2830, 2011. Noam Shazeer. Glu variants improve transformer. arXiv preprint arXiv:2002.05202 , 2020. Jianlin Su, Murtadha Ahmed, Yu Lu, Shengfeng Pan, Wen Bo, and Yunfeng Liu. Roformer: En-hanced transformer with rotary position embedding. Neurocomputing , 568:127063, 2024. David C Van Essen, Stephen M Smith, Deanna M Barch, Timothy EJ Behrens, Essa Yacoub, Kamil Ugurbil, Wu-Minn HCP Consortium, et al. The wu-minn human connectome project: an overview. Neuroimage , 80:62–79, 2013. Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones, Aidan N Gomez, Łukasz Kaiser, and Illia Polosukhin. Attention is all you need. In Advances in neural information processing systems (NeurIPS) , 2017. Cheng Wang, Yu Jiang, Zhihao Peng, Chenxin Li, Chang-bae Bang, Lin Zhao, Wanyi Fu, Jinglei Lv, Jorge Sepulcre, Carl Yang, et al. Towards a general-purpose foundation model for functional mri analysis. Nat. Biomed. Eng. , pp. 1–12, 2026a. Mo Wang, Wenhao Ye, Junfeng Xia, Junxiang Zhang, Xuanye Pan, Minghao Xu, Haotian Deng, Hongkai Wen, and Quanying Liu. Omni-fMRI: A universal atlas-free fMRI foundation model. In 
+
+Forty-third International Conference on Machine Learning (ICML) , 2026b. Junfeng Xia, Wenhao Ye, Xuanye Pan, Xinke Shen, Mo Wang, and Quanying Liu. Brain-dit: A uni-versal multi-state fmri foundation model with metadata-conditioned pretraining. arXiv preprint arXiv:2604.12683 , 2026. Yanwu Yang, Chenfei Ye, Guinan Su, Ziyao Zhang, Zhikai Chang, Hairui Chen, Piu Chan, Yue Yu, and Ting Ma. Brainmass: Advancing brain network analysis for diagnosis with large-scale self-supervised learning. IEEE Trans. Med. Imaging. , 43(11):4004–4016, 2024. 12 Under review 
+
+## Natural Image Autoencoder-Based fMRI Representations for Trait and State Prediction 
+
+## Appendix 
+
+A RELATED WORK 
+
+A.1 UTILIZING NATURAL IMAGE PRIOR FOR MEDICAL IMAGING 
+
+The limited availability and diversity of medical imaging data have long posed challenges for learn-ing generalizable representations directly from the medical domain. In contrast, foundation models pre-trained on large-scale natural image datasets benefit from substantially richer and more diverse visual supervision, yielding robust representations. Motivated by this discrepancy, recent studies have investigated transferring such pre-trained representations to medical imaging, rather than train-ing modality-specific foundation models solely on medical data. Natural-image priors have proven effective even for volumetric medical data despite considerable domain and dimensionality gaps. Raptor (An et al., 2025) leverages a frozen 2D foundation model pre-trained on natural images to extract representations from orthogonal slices of 3D medical vol-umes and compresses the resulting features through random projections. This training-free approach demonstrates that representations learned from natural images can effectively support diverse down-stream tasks on 3D medical data. AnyMC3D (Liu et al., 2026) further extends this direction to 3D medical image classification, adapting a pre-trained 2D foundation model using lightweight task-specific LoRA modules and attention-based slice aggregation. Notably, it shows that properly adapted general-purpose models can match or even outperform medical-specific foundation models across diverse 3D classification tasks. More recently, TABLeT (Kim et al., 2026; Park et al., 2025) employs a pre-trained 2D natural-image autoencoder as an off-the-shelf tokenizer for fMRI volumes, transforming high-dimensional 3D brain images into compact tokens for modeling long-range tem-poral dynamics. Together, these studies highlight the potential of transferring rich visual priors learned from natural images to medical imaging, offering an alternative to costly domain-specific pre-training under limited medical data. 
+
+B IMPLEMENTATION DETAILS 
+
+B.1 DATASETS 
+
+Table 6: Summary of the datasets used for trait prediction (top) and state prediction (bottom). The numbers of subjects and samples represent the totals after preprocessing. Duration indicates the tem-poral duration of each sample. Trait prediction datasets contain one sample per subject, whereas state prediction datasets contain multiple samples per subject. Dx denotes diagnosis classification; Task21 denotes 21-class cognitive task-state decoding; and COCO24 denotes 24-class object-category de-coding. The majority-class proportion is omitted for regression tasks. Dataset Target Subjects Samples Duration # Classes Majority (%) ADHD-200 ADHD Dx 430 430 300 s 2 56.3 ABIDE-II ASD Dx 616 616 300 s 2 56.3 ADNI MCI Dx 464 464 300 s 2 59.5 HCP-A Sex 1,069 1,069 382.4 s 2 57.1 HCP-A Age, Intelligence 1,069 1,069 382.4 s – –HBN-Movie Movie 428 856 200 s 2 50.0 HCP-Task Task21 604 26,995 16 s 21 16.9 NSD COCO24 8 47,589 16 s 24 6.8 The detailed description of each dataset is provided in Tab. 6. 13 Under review 
+
+Preprocessing. For ADHD-200 (Bellec et al., 2017), ABIDE-II (Di Martino et al., 2017), ADNI (Jack Jr et al., 2008), and HBN (Alexander et al., 2017), we perform minimal preprocessing using fMRIPrep (Esteban et al., 2019; 2020). For ADHD-200, ABIDE-II, and ADNI, we addition-ally regress out nuisance signals using cosine basis functions, six rigid-body motion parameters, and anatomical CompCor components. For HCP-A, we use the minimally processed data provided by Bookheimer et al. (2019), and for HCP-Task and NSD, the preprocessed data provided by Brain-Marks (Lane et al., 2026). We then resample all fMRI data to match the TR each foundation model was pre-trained with. 
+
+Data splits. For ADHD-200, ABIDE-II, and ADNI, we perform stratified sampling to preserve the distributions of acquisition sites and diagnostic labels across the splits, and for HCP-A we pre-serve the distributions of sex, age, and intelligence. HBN is split randomly, whereas for HCP-Task and NSD we use the fixed splits provided by BrainMarks (Lane et al., 2026). All splits are con-structed at the subject level, so that no subject appears in more than one split. For the linear-probing experiments in Fig. 2, Tab. 3, and Fig. 6, we evaluate each method over 500 independently sampled train–test splits, assigning 85% of the data to training and the remaining 15% to testing. All other experiments use a 70/15/15 train/validation/test ratio, repeated over 12 splits for the clinical diagno-sis tasks and four splits for HCP-A and HBN-Movie; HCP-Task and NSD instead use three random seeds on their fixed splits. B.2 TRAINING AND EVALUATION 
+
+DCAE. We use the unmodified dc-ae-f32c32-in-1.0 checkpoint provided by Chen et al. (2025) in all experiments, and keep it frozen throughout. 
+
+Windowing. For the XV - and XF -based models, training uses randomly sampled consecutive frames. At evaluation time, following Kim et al. (2023; 2026), we average the model outputs (log-its) over all windows starting from the first frame. For linear probing, we follow the protocol of BrainMarks (Lane et al., 2026), which uses the window-averaged embedding. If inputs are shorter than a model’s expected temporal sequence length, we pad the input with the per-coordinate mean, following Lane et al. (2026). 
+
+Late fusion. We select α without using the test set at any stage. For experiments with an 85/15 train/test split, α is selected using out-of-fold predictions obtained from five-fold cross-validation on the training set. For experiments with a 70/15/15 train/validation/test split, it is selected on the validation set. Because the search is one-dimensional, we first evaluate the selection criterion on a uniform grid over 
+
+α ∈ [0 , 1] with a step size of 0.1. For smooth criteria, such as mean absolute error and weighted cross-entropy, the best-performing grid point is used to initialize an SLSQP (Nocedal & Wright, 2006) refinement, yielding a continuous value of α. For rank-based criteria such as AUROC, we use the best grid point directly. 
+
+Shared settings. For neural-network training, unless stated otherwise, all experiments use the following settings. • Target normalization : For regression tasks, we z-normalize the target values using the mean and standard deviation computed from the training split. • Optimizer : AdamW with a cosine decay learning rate schedule and weight decay 
+
+10 −2. We use fp16 mixed precision, BCEWithLogitsLoss for binary classifica-tion, and L1Loss for regression. For ADHD-200, ABIDE-II, and ADNI, we enable the 
+
+pos-weight option to account for class imbalance. For HCP-Task and NSD, we use 
+
+CrossEntropyLoss .• Hyperparameter search : We select hyperparameters per model on the validation set, using validation loss for ADHD-200, ABIDE-II, and ADNI (so that pos-weight is reflected), AUROC for HCP-A-Sex and HBN-Movie, accuracy for HCP-Task and NSD, and MAE for HCP-A-Age and HCP-A-Intelligence. For every model and dataset, we search at least eight learning rates on a log-uniform grid within the range listed below. 14 Under review • Early stopping : We report the early-stopped model for all methods except SwiFT, for which we report the final epoch, as we observed its training to be stable. 
+
+Brain-JEPA 
+
+• Learning rate : Selected from [1 × 10 −6, 3 × 10 −4].• Batch size : 16. • Epochs : 50. 
+
+BrainHarmonix-F 
+
+• Learning rate : Selected from [3 × 10 −8, 5 × 10 −3].• Batch size : 8. • Epochs : 50. 
+
+Brain-DiT 
+
+• Learning rate : Selected from [1 × 10 −6, 3 × 10 −4].• Batch size : 2. • Epochs : 20. 
+
+SwiFT 
+
+• Learning rate : Selected from [3 × 10 −8, 9 × 10 −5].• Batch size : 8. • Epochs : 30. • Window size : 20. • TR : 0.72s 
+
+NeuroSTORM 
+
+• Learning rate : Selected from [3 × 10 −8, 9 × 10 −5].• Batch size : 8. • Epochs : 30. • Window size : 20. • TR : 0.72s 
+
+Omni-fMRI 
+
+• Learning rate : Selected from [3 ×10 −8, 9×10 −5] for trait prediction, [3 ×10 −8, 5×
+
+10 −4] for HBN-Movie, and [3 × 10 −7, 5 × 10 −4] for HCP-Task and NSD. The learning rate of the prediction head is set to 10 × the base learning rate. • Batch size : 8 for trait prediction and HBN-Movie, and 16 for HCP-Task and NSD. • Epochs : 30. • Window size : 40. • TR : 0.8s 
+
+CortexMAE 
+
+• Learning rate : Selected from [3 ×10 −8, 9×10 −5] for trait prediction, [3 ×10 −8, 9×
+
+10 −6] for HBN-Movie, and [3 × 10 −8, 9 × 10 −5] for HCP-Task and NSD. • Batch size : 8 for trait prediction and HBN-Movie, and 64 for HCP-Task and NSD. • Epochs : 30. • Window size : 16. • TR : 1s. 
+
+TABLeT 
+
+• Learning rate : Selected from [5 × 10 −9, 5 × 10 −6] for trait prediction and HBN-Movie, and [7 × 10 −6, 2 × 10 −4] for HCP-Task and NSD. • Batch size : 4 for trait prediction and HBN-Movie, and 16 for HCP-Task and NSD. 15 Under review • Epochs : 30 for trait prediction and HBN-Movie, 50 for HCP-Task, and 15 for NSD. • Window size : We use full frames. • TR : 0.8s for trait prediction and HBN, 1s for HCP-Task and NSD. 
+
+FReD-Trait 
+
+• Hyperparameters : We use scikit-learn’s default search space. • TR : 0.8s for trait prediction and HBN. 
+
+FReD-State 
+
+• Learning rate : Selected from [1 ×10 −6, 1×10 −4] for HBN-Movie, and [7 ×10 −6, 2×
+
+10 −4] for HCP-Task and NSD. For the trait prediction tasks in Sec. 5.3, the learning rate is selected from [5 × 10 −9, 5 × 10 −6] matched with TABLeT’s search space. • Batch size : 8 for trait prediction and HBN-Movie, and 16 for HCP-Task and NSD. • Epochs : 50 for trait prediction, HBN-Movie, and HCP-Task, and 15 for NSD. • Window size : We use full frames. • TR : 0.8s for trait prediction and HBN, 1s for HCP-Task and NSD. B.3 PCA A NALYSIS DETAILS 
+
+We extract DCAE latents from 100k ImageNet test images and from HCP-A, using only the first temporal frame of each fMRI sequence to keep the computation tractable. For HCP-A we consider 
+
+Xrn with r ∈ { V, F } and n ∈ { g, cf }: for XVn we take the center sagittal, coronal, and axial slices, evaluate each axis separately, and report their median and range in Fig. 4(a), and for XFn we treat the two hemispheres as independent samples. The ImageNet latents are randomly split into 80k samples for standardization and PCA fitting and 20k held-out samples for evaluation. B.4 GAUSSIAN INJECTION EXPERIMENTS 
+
+The experiment uses all HCP-A subjects and a 16 s analysis window sampled at TR = 0 .8 s, giving 
+
+T = 20 frames. Since the procedure is identical for every subject, we describe it for a single subject and omit the subject index. 
+
+Injection centers. The four centers are shared across every model, p, σ , and data split. They are selected from the intersection of the cohort-wide anatomical support and a cortical atlas mask 
+
+C, subject to a minimum distance of 8 voxels from the outer support boundary and a minimum pairwise separation of 12 voxels. In native LAS-oriented MNI152 2-mm voxel indices they are 
+
+c1 = (60 , 39 , 34) , c2 = (20 , 47 , 33) , c3 = (31 , 30 , 34) , and c4 = (24 , 38 , 43) , with a realized minimum pairwise distance of 13.93 voxels. 
+
+Signal injection. Let Xt(v) denote the clean BOLD value at voxel v in frame t, in the native MNI volume and before any normalization. For center cj , spatial scale σ, and percent signal change p,the injected frame is 
+
+Xinj  
+
+> t
+
+(v) = Xt(v) + bj p 
+
+> 100
+
+h(t) Aj,σ (v), (5) which adds a fixed spatial profile Aj,σ , modulated by a fixed time course h and scaled by an ampli-tude bj · p/ 100 . The clean condition leaves Xt unchanged. The three factors are defined below. 
+
+Spatial profile. Aj,σ is an isotropic Gaussian centered at cj , restricted to the cortical atlas mask 
+
+C and to the subject’s anatomical support (foreground) M :
+
+Aj,σ (v) = exp 
+
+
+
+− ∥v − cj ∥22
+
+2σ2
+
+
+
+C(v) M (v). (6) The perturbation is thus confined to cortex: both the centers and the Gaussian tails are restricted to 
+
+C.
+
+Amplitude and the definition of PSC. bj is the local baseline intensity at cj , taken as the mean of the temporal-mean image X(v) = 1
+
+> T
+
+PTt=1 Xt(v) over the nonzero supported voxels in the 16 Under review Brain-JEPA BH-F Brain-DiT SwiFT NeuroSTORM Omni-fMRI CortexMAE FReD-Trait  XV RP768 FReD-Trait  XF RP768                    
+
+> .60 .64 .68 .72 .76
+> AUC /  .67 .68 .69
+> **
+> ADHD-200
+> Brain-JEPA BH-F Brain-DiT SwiFT NeuroSTORM Omni-fMRI CortexMAE FReD-Trait  XV RP768 FReD-Trait  XF RP768
+> .68 .72 .76 .74 .73 .72
+> ABIDE-II
+> Brain-JEPA BH-F Brain-DiT SwiFT NeuroSTORM Omni-fMRI CortexMAE FReD-Trait  XV RP768 FReD-Trait  XF RP768
+> .60 .64 .68 .72
+> .68 .68 .66
+> ADNI
+> Brain-JEPA BH-F Brain-DiT SwiFT NeuroSTORM Omni-fMRI CortexMAE FReD-Trait  XV PCA768 FReD-Trait  XF PCA768
+> .80 .88 .96
+> .96 .99 .97
+> * *
+> HCP-A-Sex
+> Brain-JEPA BH-F Brain-DiT SwiFT NeuroSTORM Omni-fMRI CortexMAE FReD-Trait  XV PCA768 FReD-Trait  XF PCA768
+> .60 .70 .80 .90 .88 .92 .84
+> *
+> HCP-A-Age
+> Brain-JEPA BH-F Brain-DiT SwiFT NeuroSTORM Omni-fMRI CortexMAE FReD-Trait  XV PCA768 FReD-Trait  XF PCA768
+> .42 .48 .54 .60
+> .55 .54 .55
+> *
+> HCP-A-Intel.
+> *compares FReD-Trait late fusion with the best-performing baseline. Paired-bootstrap 95% CI for is entirely above 0 (500 resamples).
+> Reference
+> BrainMASS
+> Input
+> XPXVgXVcf XFgXFcf XVg,XVcf XFg,XFcf
+
+Figure 6: Linear-probing results over 500 random train-test splits after reducing the FReD-Trait features to 768 dimensions, reported as AUC for classification and ρ for regression. RP768 and PCA768 denote Gaussian random projection and PCA, respectively. 
+
+7 × 7 × 7 neighborhood Nj centered on it, bj = |N j |−1 P
+
+v∈N j X(v). Since Aj,σ (cj ) = 1 and 
+
+max t h(t) = 1 , the added signal at the Gaussian center and at the frame where the response peaks is exactly p percent of bj , before the global-statistics matching described below. 
+
+Time course. h(t) is a canonical SPM hemodynamic response convolved with a 4 s boxcar 1[0 ,4) 
+
+and normalized to unit peak, 
+
+h(t) ∝ 1[0 ,4) ∗  GammaPDF( · ; 6 , 1) − 16 GammaPDF( · ; 16 , 1)  , max 
+
+t h(t) = 1 . (7) 
+
+Removing global-intensity shortcuts. After injection we match the mean and standard deviation of the modified sequence to those of its clean counterpart, computed jointly over all frames and all voxels in M :
+
+bXinj 
+
+t (v) = Xinj 
+
+t (v) − μinj 
+
+σinj + ϵ (σclean + ϵ) + μclean , v ∈ M, (8) with values outside M reset to zero afterwards. The matched sequence is then coordinate–frame normalized, yielding XVcf .
+
+Frozen representations. For NeuroSTORM, SwiFT, Omni-fMRI, and CortexMAE we extract two frozen representations. The repeat condition fills the model’s temporal input with the frame at which h(t) peaks, removing genuine temporal evolution while preserving the peak spatial pertur-bation, whereas the timeseries condition adapts the full injected sequence to each checkpoint’s temporal sampling and input length. The two FReD variants use the peak frame only, since the DCAE encodes frames independently and the repeat condition is its natural counterpart. For XVcf we compute ZVcf,t following Eq. (1) with G = 24 , and for XFcf we project the matched volume to the fsLR surface and compute ZFcf,t 
+
+following Eq. (2), in both cases at the peak frame. Both are reduced to 768 dimensions by PCA fitted on the training subjects only, matching the largest foundation-model feature dimension. 
+
+Probing protocol. Each subject contributes one injected sample at each of the four centers, giving 4,276 balanced samples scored by accuracy against a chance level of 25%. We use four predefined subject-disjoint 70/15/15 train/validation/test splits and fit a LogisticRegression probe from scikit-learn. 
+
+C ADDITIONAL EXPERIMENTAL RESULTS 
+
+C.1 DIMENSION -REDUCED LINEAR PROBING 
+
+The frame representations of FReD-Trait are higher-dimensional than those of the foundation mod-els, which could by itself account for its linear-probing performance in Sec. 4.2. To assess this effect, we reduce the FReD-Trait features to 768 dimensions, matching the dimensionality of CortexMAE, and repeat the same 500-split protocol. The reduction method depends on the sample size: with 17 Under review 85% of the data used for training, the clinical datasets provide only 365–523 training samples, so a 768-component PCA is not defined and we use Gaussian random projection instead. For HCP-A, where 908 training samples are available, we use PCA. As shown in Fig. 6, the competitiveness of FReD-Trait is largely preserved at matched dimensional-ity. On ADHD-200, HCP-A sex, and HCP-A age, the reduced representations remain significantly better than the strongest baseline. Performance does drop on ABIDE-II and HCP-A intelligence, where the reduced features fall to the level of the best baselines, indicating that part of the mar-gin on these tasks may come from the larger feature dimension. Overall, however, FReD-Trait remains competitive with fully fine-tuned foundation models after reducing its features to the largest foundation-model feature dimension, so its linear-probing performance cannot be attributed to di-mensionality alone. C.2 LATE FUSION WEIGHT DISTRIBUTION 0.0 0.2 0.4 0.6 0.8 1.0  
+
+> ADHD-200 ABIDE-II ADNI HCP-A-Sex HCP-A-Age HCP-A-Intel.
+> FReD-Trait ( XV)FReD-Trait ( XF)
+
+Figure 7: Distribution of the late-fusion weight α
+
+over the 500 train-test splits, shown separately for FReD-Trait with XV and XF . Larger α places more weight on the globally normalized branch, and the dashed line marks equal weighting. White markers indicate the mean. We analyze the fusion weight α selected for each task, where larger α favors the glob-ally normalized branch and smaller α the coordinate–frame-normalized one. As shown in Fig. 7, the selected weights vary substantially across tasks. ASD classification and intelli-gence prediction consistently favor coordinate– frame normalization under both data types, whereas ADHD and ADNI diagnosis and the HCP-A sex and age tasks place at least as much weight on the globally normalized branch. The distributions are broad for the clinical di-agnosis tasks and much narrower for the HCP-A tasks, mirroring their split-to-split variabil-ity. Across all tasks, however, the mean weight rarely approaches 0 or 1, suggesting that both normalization schemes can contribute comple-mentary information. These results highlight normalization as an important component of the downstream pipeline: the two schemes retain com-plementary information, and their relative utility varies across tasks. C.3 PARTIAL FINE -TUNING 
+
+Table 7: Partial fine-tuning results on trait prediction tasks. Each foundation model is partially fine-tuned, while FReD-Trait uses linear probing on frozen features. Results are reported as the mean and standard deviation across 12 data splits for the clinical diagnosis tasks and four splits for HCP-A. 
+
+Bold and underlined values indicate the best and second-best performance for each metric. Method Input ADHD-200 ABIDE-II ADNI HCP-A Diagnosis Diagnosis Diagnosis Sex Age Intelligence AUC ↑ F1 ↑ AUC ↑ F1 ↑ AUC ↑ F1 ↑ AUC ↑ F1 ↑ MAE ↓ ρ ↑ MAE ↓ ρ ↑                                                                                                                         
+
+> Brain-JEPA XP.662 ±.04 .595 ±.03 .721 ±.03 .572 ±.06 .674 ±.04 .527 ±.07 .905 ±.02 .817 ±.01 .454 ±.01 .830 ±.01 .704 ±.04 .429 ±.05
+> BH-F XP.662 ±.05 .617 ±.03 .710 ±.03 .593 ±.05 .614 ±.06 .421 ±.10 .896 ±.01 .781 ±.01 .430 ±.02 .839 ±.01 .677 ±.04 .502 ±.05
+> Brain-DiT XP.650 ±.03 .604 ±.04 .704 ±.04 .558 ±.09 .668 ±.05 .562 ±.04 .936 ±.03 .856 ±.01 .408 ±.02 .863 ±.01 .674 ±.02 .517 ±.02
+> SwiFT XVg.654 ±.06 .618 ±.04 .705 ±.03 .588 ±.04 .699 ±.07 .613 ±.08 .945 ±.02 .839 ±.02 .391 ±.02 .866 ±.01 .683 ±.03 .500 ±.03
+> NeuroSTORM XVg.647 ±.04 .583 ±.06 .706 ±.03 .599 ±.04 .652 ±.05 .575 ±.07 .959 ±.01 .868 ±.02 .423 ±.02 .847 ±.01 .686 ±.05 .500 ±.05
+> Omni-fMRI XVg.655 ±.05 .591 ±.04 .706 ±.03 .598 ±.03 .668 ±.06 .591 ±.07 .958 ±.01 .859 ±.02 .392 ±.01 .862 ±.01 .676 ±.05 .514 ±.02
+> CortexMAE XFcf .681 ±.04 .618 ±.05 .732 ±.03 .623 ±.03 .645 ±.06 .555 ±.06 .928 ±.02 .811 ±.02 .558 ±.05 .720 ±.06 .653 ±.04 .539 ±.05
+> FReD-Trait XVg,XVcf .686 ±.05 .604 ±.05 .743 ±.03 .629 ±.04 .690 ±.04 .591 ±.05 .995 ±.00 .956 ±.03 .320 ±.01 .917 ±.01 .633 ±.06 .607 ±.05
+> FReD-Trait XFg,XFcf .717 ±.03 .607 ±.05 .747 ±.03 .615 ±.05 .679 ±.05 .541 ±.04 .969 ±.00 .884 ±.00 .476 ±.02 .828 ±.01 .655 ±.03 .576 ±.04
+
+To examine whether the trends in Tab. 1 also hold under partial fine-tuning, we fine-tune only the final layer (one last block) of each foundation model together with its prediction head, freezing all remaining layers, except for Brain-DiT. For Brain-DiT, we consider the last four blocks because 18 Under review the downstream representation aggregates hidden states from the 13th, 15th, and 16th blocks of the backbone, with the 13th block defining the earliest layer involved in downstream feature extraction. As shown in Tab. 7, partial fine-tuning also fails to consistently outperform FReD-Trait across tasks. C.4 LINEAR PROBING RESULTS WITH MATCHED SPLITS FOR FOUNDATION MODELS 
+
+Table 8: Comparison of trait prediction performance. Each foundation model is evaluated both by linear probing on its frozen features and by full fine-tuning, while FReD-Trait uses linear probing. Results are reported as the mean and standard deviation across data splits. Bold and underlined values indicate the best and second-best performance for each metric, respectively. LP and FT denote linear probing and full fine-tuning, respectively. Method Input Eval ADHD-200 ABIDE-II ADNI HCP-A Diagnosis Diagnosis Diagnosis Sex Age Intelligence AUC ↑ F1 ↑ AUC ↑ F1 ↑ AUC ↑ F1 ↑ AUC ↑ F1 ↑ MAE ↓ ρ ↑ MAE ↓ ρ ↑
+
+Brain-JEPA XP LP .660 ±.04 .589 ±.04 .728 ±.03 .623 ±.04 .693 ±.03 .564 ±.05 .892 ±.03 .785 ±.04 .516 ±.01 .773 ±.01 .715 ±.05 .407 ±.05 
+
+Brain-JEPA XP FT .660 ±.00 .606 ±.01 .720 ±.05 .622 ±.04 .693 ±.07 .597 ±.05 .917 ±.00 .829 ±.00 .418 ±.00 .849 ±.00 .681 ±.01 .487 ±.01 
+
+BH-F XP LP .669 ±.03 .616 ±.02 .731 ±.03 .608 ±.03 .601 ±.05 .432 ±.07 .872 ±.01 .759 ±.02 .434 ±.00 .840 ±.00 .677 ±.04 .520 ±.05 
+
+BH-F XP FT .631 ±.05 .573 ±.06 .697 ±.03 .592 ±.05 .601 ±.06 .452 ±.12 .867 ±.01 .729 ±.10 .435 ±.02 .838 ±.02 .679 ±.04 .498 ±.06 
+
+Brain-DiT XP LP .624 ±.04 .563 ±.04 .675 ±.03 .547 ±.03 .644 ±.05 .553 ±.06 .925 ±.02 .828 ±.03 .423 ±.02 .852 ±.01 .675 ±.03 .514 ±.05 
+
+Brain-DiT XP FT .648 ±.05 .568 ±.04 .712 ±.04 .535 ±.08 .659 ±.05 .484 ±.14 .923 ±.02 .833 ±.03 .386 ±.01 .877 ±.00 .674 ±.01 .546 ±.01 
+
+SwiFT XVg LP .651 ±.05 .606 ±.05 .705 ±.03 .603 ±.04 .708 ±.05 .598 ±.05 .913 ±.02 .801 ±.03 .437 ±.02 .837 ±.01 .683 ±.03 .485 ±.03 
+
+SwiFT XVg FT .664 ±.05 .633 ±.05 .711 ±.03 .606 ±.04 .688 ±.07 .582 ±.06 .946 ±.01 .853 ±.02 .350 ±.03 .897 ±.02 .678 ±.03 .507 ±.02 
+
+NeuroSTORM XVg LP .645 ±.05 .599 ±.05 .697 ±.02 .595 ±.03 .701 ±.06 .600 ±.05 .924 ±.02 .828 ±.02 .460 ±.02 .822 ±.01 .696 ±.05 .473 ±.05 
+
+NeuroSTORM XVg FT .658 ±.04 .572 ±.07 .716 ±.03 .606 ±.02 .673 ±.04 .607 ±.02 .974 ±.01 .888 ±.02 .343 ±.02 .906 ±.01 .670 ±.04 .525 ±.05 
+
+Omni-fMRI XVg LP .657 ±.04 .609 ±.03 .702 ±.03 .602 ±.04 .674 ±.04 .588 ±.04 .969 ±.01 .873 ±.04 .388 ±.02 .875 ±.01 .645 ±.04 .552 ±.03 
+
+Omni-fMRI XVg FT .676 ±.05 .598 ±.05 .712 ±.03 .586 ±.03 .681 ±.06 .584 ±.06 .975 ±.01 .910 ±.01 .351 ±.01 .894 ±.01 .657 ±.04 .546 ±.05 
+
+CortexMAE XFcf LP .677 ±.03 .613 ±.04 .730 ±.02 .612 ±.03 .652 ±.05 .569 ±.06 .947 ±.01 .858 ±.02 .536 ±.02 .739 ±.02 .655 ±.04 .553 ±.05 
+
+CortexMAE XFcf FT .690 ±.05 .605 ±.06 .735 ±.03 .639 ±.04 .638 ±.05 .540 ±.06 .944 ±.02 .859 ±.02 .508 ±.02 .774 ±.02 .661 ±.05 .539 ±.06 
+
+FReD-Trait XVg , XVcf LP .686 ±.05 .604 ±.05 .743 ±.03 .629 ±.04 .690 ±.04 .591 ±.05 .995 ±.00 .956 ±.03 .320 ±.01 .917 ±.01 .633 ±.06 .607 ±.05 
+
+FReD-Trait XFg , XFcf LP .717 ±.03 .607 ±.05 .747 ±.03 .615 ±.05 .679 ±.05 .541 ±.04 .969 ±.00 .884 ±.00 .476 ±.02 .828 ±.01 .655 ±.03 .576 ±.04 
+
+The linear-probing comparison in Fig. 2 uses 500 randomly sampled splits, whereas the fine-tuning results in Tab. 1 use the 12 or four splits described in Sec. 4.1, so the two are not directly comparable. To compare the two adaptation strategies on identical partitions, we additionally linear-probe every foundation model on the same splits used for fine-tuning. From Tab. 8, it can be observed that fine-tuning is not uniformly better: linear probing is ahead on ADNI for SwiFT and NeuroSTORM, on ABIDE-II and ADHD-200 for BrainHarmonix-F, and on intelligence regression for Omni-fMRI and CortexMAE, while fine-tuning helps most consistently on the HCP-A sex and age tasks. Adapting the entire pre-trained encoder therefore does not reliably extract more from these representations than a linear readout does, and neither protocol brings the foundation models past FReD-Trait on most tasks. C.5 FULL RESULTS OF FIG . 2 AND FIG . 3 We present full results of Fig. 2 and Fig. 3 in Tab. 9 and Tab. 10, respectively. Table 9: Full results of Fig. 2. Bold and underlined values indicate the best and second-best perfor-mance for each metric, respectively. Method Input ADHD-200 ABIDE-II ADNI HCP-A Diagnosis Diagnosis Diagnosis Sex Age Intelligence AUC ↑ F1 ↑ AUC ↑ F1 ↑ AUC ↑ F1 ↑ AUC ↑ F1 ↑ MAE ↓ ρ ↑ MAE ↓ ρ ↑
+
+BrainMASS XP .638 ±.06 .552 ±.07 .695 ±.04 .596 ±.05 .637 ±.07 .533 ±.07 .823 ±.03 .699 ±.04 .635 ±.03 .628 ±.04 .679 ±.04 .493 ±.06 
+
+Brain-JEPA XP .655 ±.04 .589 ±.04 .720 ±.03 .619 ±.04 .684 ±.06 .561 ±.07 .874 ±.03 .763 ±.04 .502 ±.03 .784 ±.02 .712 ±.04 .418 ±.06 
+
+BH-F XP .662 ±.03 .631 ±.02 .740 ±.03 .621 ±.04 .619 ±.07 .453 ±.09 .883 ±.03 .770 ±.04 .420 ±.02 .854 ±.02 .682 ±.04 .507 ±.05 
+
+Brain-DiT XP .633 ±.04 .586 ±.03 .698 ±.03 .577 ±.04 .651 ±.06 .542 ±.07 .925 ±.02 .823 ±.03 .419 ±.02 .855 ±.02 .680 ±.04 .501 ±.06 
+
+SwiFT XVg .649 ±.04 .600 ±.04 .703 ±.03 .600 ±.04 .678 ±.06 .577 ±.07 .905 ±.02 .797 ±.03 .424 ±.02 .852 ±.02 .679 ±.04 .491 ±.05 
+
+NeuroSTORM XVg .630 ±.04 .587 ±.04 .712 ±.03 .602 ±.04 .668 ±.06 .562 ±.07 .918 ±.02 .805 ±.03 .445 ±.02 .837 ±.02 .687 ±.04 .490 ±.05 
+
+Omni-fMRI XVg .654 ±.04 .598 ±.05 .723 ±.03 .612 ±.04 .654 ±.06 .551 ±.07 .960 ±.01 .875 ±.03 .386 ±.02 .877 ±.01 .655 ±.04 .545 ±.05 
+
+CortexMAE XFcf .670 ±.04 .618 ±.05 .727 ±.04 .595 ±.05 .654 ±.06 .568 ±.06 .949 ±.02 .856 ±.03 .529 ±.03 .754 ±.03 .665 ±.04 .540 ±.05 
+
+FReD-Trait XVg .678 ±.04 .603 ±.05 .744 ±.03 .630 ±.05 .680 ±.06 .571 ±.07 .988 ±.01 .948 ±.02 .328 ±.02 .914 ±.01 .644 ±.04 .582 ±.04 
+
+FReD-Trait XVcf .676 ±.04 .612 ±.05 .746 ±.04 .625 ±.05 .676 ±.06 .571 ±.07 .985 ±.01 .931 ±.02 .348 ±.02 .900 ±.01 .616 ±.04 .616 ±.04 
+
+FReD-Trait XVg , XVcf .682 ±.04 .609 ±.05 .749 ±.03 .628 ±.05 .681 ±.06 .563 ±.07 .992 ±.01 .961 ±.02 .312 ±.02 .922 ±.01 .616 ±.04 .619 ±.04 
+
+FReD-Trait XFg .687 ±.04 .617 ±.05 .718 ±.03 .618 ±.04 .666 ±.06 .551 ±.07 .935 ±.02 .833 ±.03 .509 ±.03 .780 ±.02 .695 ±.04 .491 ±.05 
+
+FReD-Trait XFcf .704 ±.04 .593 ±.07 .754 ±.03 .618 ±.05 .674 ±.06 .560 ±.08 .945 ±.02 .855 ±.03 .491 ±.03 .792 ±.02 .648 ±.04 .565 ±.05 
+
+FReD-Trait XFg , XFcf .708 ±.04 .612 ±.06 .755 ±.03 .617 ±.04 .672 ±.06 .555 ±.07 .972 ±.01 .896 ±.03 .448 ±.02 .844 ±.02 .641 ±.04 .589 ±.05 
+
+19 Under review Table 10: Full results of Fig. 3. LP rows are highlighted in yellow; FT and TFS denote fine-tuning and training from scratch, respectively. Bold and underlined values indicate the best and second-best distinct performance for each metric, respectively. Method Eval. Input HBN-Movie AUC ↑ F1 ↑
+
+BrainMASS LP XP .895 ±.02 .793 ±.02 
+
+Brain-JEPA LP XP .631 ±.02 .610 ±.04 
+
+Brain-JEPA FT XP .716 ±.10 .656 ±.08 
+
+BH-F LP XP .724 ±.04 .647 ±.05 
+
+BH-F FT XP .707 ±.18 .673 ±.16 
+
+Brain-DiT LP XP .739 ±.03 .675 ±.04 
+
+Brain-DiT FT XP .897 ±.13 .691 ±.13 
+
+SwiFT LP XVg .630 ±.04 .599 ±.02 
+
+SwiFT LP XVcf .708 ±.02 .663 ±.00 
+
+SwiFT FT XVg .619 ±.05 .590 ±.06 
+
+SwiFT FT XVcf .633 ±.06 .602 ±.04 
+
+NeuroSTORM LP XVg .632 ±.04 .597 ±.04 
+
+NeuroSTORM LP XVcf .739 ±.02 .692 ±.05 
+
+NeuroSTORM FT XVg .620 ±.06 .538 ±.08 
+
+NeuroSTORM FT XVcf .690 ±.09 .659 ±.08 
+
+Omni-fMRI LP XVg .615 ±.03 .591 ±.03 
+
+Omni-fMRI LP XVcf .783 ±.03 .713 ±.02 
+
+Omni-fMRI FT XVg .596 ±.06 .561 ±.10 
+
+Omni-fMRI FT XVcf .928 ±.03 .838 ±.02 
+
+CortexMAE LP XFcf .939 ±.02 .852 ±.06 
+
+CortexMAE FT XFcf .997 ±.00 .959 ±.01 
+
+TABLeT TFS XVg .609 ±.05 .499 ±.19 
+
+TABLeT TFS XVcf .990 ±.01 .948 ±.03 
+
+FReD-Trait LP XVg , XVcf .849 ±.03 .780 ±.03 
+
+FReD-Trait LP XVg .672 ±.03 .623 ±.04 
+
+FReD-Trait LP XVcf .852 ±.03 .784 ±.03 
+
+FReD-Trait LP XFg , XFcf .871 ±.02 .808 ±.01 
+
+FReD-Trait LP XFg .629 ±.03 .580 ±.04 
+
+FReD-Trait LP XFcf .871 ±.02 .802 ±.01 
+
+FReD-State TFS XVcf .998 ±.00 .973 ±.01 
+
+FReD-State TFS XFcf .997 ±.00 .971 ±.01 
+
+D ARCHITECTURAL COMPARISON BETWEEN TABL ET AND FR ED-S TATE 
+
+Tab. 11 lists the differences between TABLeT and FReD-State with XV in full. Both models take the same DCAE latent tensor and the same downstream loss, so every difference below concerns how those latents are turned into a sequence and how that sequence is modeled. The ablation in Tab. 5 isolates the contribution of tokenization, while the remaining architectural and regularization changes are evaluated jointly. 
+
+Tokenization. The two models differ in whether the slice axis is aggregated before or after the temporal Transformer. TABLeT keeps three slice blocks and the 3 × 3 latent grid as separate tokens, giving 27 tokens per frame and a sequence of length 27 T +1 , so the Transformer must resolve spatial and temporal structure jointly. FReD-State instead averages within slice groups and flattens all axes, groups, channels, and spatial positions into a single vector per frame, which a linear layer projects to the model width. The sequence is therefore T + 1 tokens long, and spatial mixing happens in the projection rather than in self-attention. This reduces the number of self-attention token pairs significantly and lets the Transformer allocate its capacity to temporal structure alone. 
+
+Transformer backbone. FReD-State uses a third of the depth, four blocks instead of twelve, and adopts several standard modernizations: RMSNorm in place of LayerNorm, SwiGLU (Shazeer, 2020) feed-forward blocks in place of a ReLU MLP, and Q/K normalization (Henry et al., 2020) 20 Under review Table 11: Architectural comparison between TABLeT and FReD-State with XV . Both models receive the same DCAE latent tensor and use the same downstream loss; T denotes the number of input fMRI frames. 
+
+Component TABLeT FReD-State with XV
+
+Input representation and tokenization 
+
+DCAE latent input x ∈ RT ×3×96 ×32 ×3×3 Same input tensor Intra-frame aggregation No slice averaging. Three contiguous 32-slice blocks are formed per axis, and corresponding features from the three anatomical axes are concatenated at each latent-grid position. Contiguous slice-group averaging with 
+
+G = 24 groups per axis ( 96 → 24 ), followed by concatenation of all axes, groups, channels, and spatial locations into one frame vector. Tokens per frame 3 slice blocks × 3 × 3 spatial positions 
+
+= 27 1 whole-frame token Pre-projection feature width 
+
+3,072 20 ,736 
+
+Frame projection LN(3072) → Linear(3072 , 896) →
+
+LN(896) LN(20736) →
+
+Linear(20736 , 896) → LN(896) 
+
+Sequence length with 
+
+> CLS
+
+27 T + 1 T + 1 
+
+Temporal Transformer backbone 
+
+Transformer depth 12 blocks 4 blocks Model and FFN widths dmodel = 896 , dff = 4864 dmodel = 896 , dff = 4864 
+
+Grouped-query attention 
+
+14 query heads, 2 key/value heads; head dimension 64 16 query heads, 2 key/value heads; head dimension 56 
+
+Attention formulation Scaled dot-product GQA Q/K RMS normalization and soft-capped attention logits, 
+
+10 tanh( ℓ/ 10) , before softmax Positional encoding One-dimensional RoPE One-dimensional RoPE Transformer normalization Pre-norm LayerNorm Pre-norm RMSNorm Feed-forward network Vanilla two-layer MLP with ReLU: 
+
+896 → 4864 → 896 
+
+SwiGLU with separate gate and value projections and a SiLU gate: 
+
+896 → 4864 → 896 
+
+Readout Learned [CLS] token followed by a linear task head Learned [CLS] token followed by a linear task head 
+
+Regularization and computational scale 
+
+Frame dropout None Training-only frame-token dropout with p = 0 .5
+
+Stochastic depth None Drop-path probability increases linearly from 0 to 0.1 across the four blocks Trainable parameters 129 ,533 ,333 (129 .53 M) 78 ,225 ,493 (78 .23 M; 39 .6% fewer) 
+
+with soft-capped attention logits (Gemma Team et al., 2024). Model and feed-forward widths are unchanged, and both models use a learned [CLS] token with rotary position embeddings (Su et al., 2024). 
+
+Regularization. Since a frame is now a single token, dropping frames during training is a natural regularizer, and we drop frame tokens with p = 0 .5 while never dropping the [CLS] token. We additionally use stochastic depth (Huang et al., 2016) with a drop-path probability increasing linearly from 0 to 0.1 across the four blocks. Together these changes reduce the trainable parameter count from 129.5M to 78.2M, a 39.6% re-duction, while improving accuracy on both HCP-Task and NSD (Tab. 5). 21
