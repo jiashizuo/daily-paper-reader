@@ -1,0 +1,1491 @@
+Title: FAST-Brain: A Flow-Aligned Spatio-Temporal Surrogate Brain Model
+
+URL Source: https://arxiv.org/pdf/2609.34354v1
+
+Published Time: Tue, 29 Sep 2026 03:55:46 GMT
+
+Number of Pages: 21
+
+Markdown Content:
+# FAST-Brain: A Flow-Aligned Spatio-Temporal Surrogate Brain Model 
+
+Shucheng Liu 
+
+University of North Carolina at Chapel Hill 
+
+shucheng@unc.edu 
+
+Chengchun Shi 
+
+London School of Economics and Political Science 
+
+c.shi7@lse.ac.uk 
+
+Kai Zhang 
+
+University of North Carolina at Chapel Hill 
+
+zhangk@email.unc.edu 
+
+Hongtu Zhu 
+
+University of North Carolina at Chapel Hill 
+
+htzhu@email.unc.edu 
+
+## Abstract 
+
+Modeling resting-state functional magnetic resonance imaging (rs-fMRI) data is crucial for un-derstanding brain-wide neural activity. However, traditional methods struggle to capture complex temporal dynamics over long horizons, to account for the brain’s anatomical spatial structure, and to model high-dimensional ambient signals that lie on a low-dimensional intrinsic subspace. We propose FAST-Brain, a unified flow-aligned spatio-temporal surrogate brain model that addresses all three challenges. At its core is a flow-aligned generative framework that directly predicts the clean blood-oxygen-level-dependent (BOLD) signal, paired with a graph convolutional network that captures spatial structural constraints and a Transformer that models long-range temporal dependen-cies. Theoretically, we show that under a low-dimensional subspace assumption, the approximation error of our model scales with the intrinsic dimension rather than the ambient dimension, which justifies our direct modeling of the BOLD signal. Extensive experiments on synthetic and Human Connectome Project datasets demonstrate that FAST-Brain achieves state-of-the-art performance in recovering functional connectivity, effective connectivity, and the implicit low-dimensional signal subspace. 
+
+## 1 Introduction 
+
+The brain is a complex network of interconnected regions of interest (ROIs) that jointly support cognition and behavior [Park and Friston, 2013, Deco et al., 2021, Zhu et al., 2023]. Resting-state functional magnetic resonance imaging (rs-fMRI) provides a non-invasive window into brain-wide blood-oxygen-level-dependent (BOLD) dynamics and inter-regional dependencies [Biswal et al., 1995, Van Den Heuvel and Pol, 2010, Calhoun et al., 2014, Lindquist et al., 2025, Kang et al., 2026]. Recent data-driven methods aim to learn the generative process of BOLD signals to construct high-fidelity surrogate brain models, or digital twins [Thomas et al., 2022, Lu et al., 2023, Dong et al., 2024, Luo et al., 2025]. Such models can reproduce realistic neural dynamics and functional dependencies, and infer effective interactions among brain regions through non-invasive computation [Friston, 2011, Luo et al., 2025]. However, existing models suffer from three limitations. First, many models struggle to capture long-range temporal dependencies . Existing surrogate models rely on recurrent neural networks (RNNs) or multilayer perceptrons [Tu et al., 2019, Perich et al., 2020, Luo et al., 2025], which fail to model the high-dimensional, long-horizon temporal structure of BOLD signals. Second, existing models insufficiently account for the spatial structure of brain dynamics. Cross-regional interactions are shaped by anatomical topology, including white-matter structural connectivity, fiber lengths, and macroscopic functional network organization [Hagmann et al., 2008, Honey et al., 2009]. While several studies incorporate structural connectivity or white-matter information into fMRI analysis [Zhu et al., 2014, Wein et al., 2022, Han et al., 2024], these approaches rely on a single spatial constraint. Few existing models jointly integrate multiple complementary spatial 
+
+Preprint. arXiv:2609.34354v1 [cs.LG] 28 Sep 2026 Input Data and Conditioning   
+
+> rs-fMRI BOLD Time Series (ROIs x Time) XR∈NxT
+
+1 2 3 54BAHistorical window Future target window 
+
+tt-S+ 1 t+ 1 t+P = 0 
+
+> =
+
+1... ...  
+
+> ROIs (N) Time
+
+(P)(1) (2) (3) (0, I)
+
+> Structural Priors
+
+G = G ，G ，G    
+
+> (1) (2) (3)
+> G，G，G
+
+{{  
+
+> G: Structural (1) Connectivity G: Fiber Length (2)
+> NNNN
+
+NNNNNN  
+
+> Graph G: Whole (3) Brain Network Historical BOLD sequence Clean future BOLD Gaussian noise ∈∈
+> t
+
+HtY 
+
+> Flow-Aligned Noisy Interpolation
+> Sample Gaussian noise
+> ~
+
+N
+
+> ROIS (N)
+> Time
+
+( P)
+
+> ROIS (N)
+> Time
+
+( P)
+
+> ROIS (N)
+> Time
+
+( P)
+
+> Time
+
+( P)
+
+> Flow-aligned interpolation Noisy future segment gradually moves from noise to clean signal We do NOT predict noise or velocity directly. We predict the clean future BOLD signal
+> FAST-Brain Model
+
+Ht Zτ   
+
+> Temporal Transformer Branch
+> Input: noisy future tokens History tokens + time embedding Cross-Attention RoPE Positional Encoding Output: global temporal trend
+> Spatial Multi-Graph GCN Branch
+> Input: noisy future tokens Spatial Priors Output: structural residual correction
+> Direct Clean-Signal Prediction & Recovered Flow
+> Model output (direct clean BOLD prediction) Analytically recovered velocity (for training) (small constant) The training remains flow-aligned, while the neural network predicts clean data.
+> Generate Surrogate Brain Dynamics & Evaluation Outputs
+> Generated clean future BOLD sequence Downstream Outputs Functional Connectivity (FC) Low Dimensional Subspace Effective Connectivity (EC) PC2 PC3 PC1 Future Self-Attention Layer Future Self-Attention Layer
+> =
+
+0.5 Figure 1: Model architecture of FAST-Brain. The framework integrates flow-aligned clean-signal prediction with a temporal Transformer and a spatial multi-graph GCN to generate surrogate BOLD dynamics for downstream connectivity and subspace analysis. priors like structural connectivity, fiber lengths, and functional network modules into the signal generation process. Moreover, brain dynamics are not simple deterministic transitions but complex stochastic systems driven by latent cognitive states and intrinsic noise [Deco et al., 2013, Breakspear, 2017], causing standard temporal models to smooth out variability and accumulate errors over long horizons. Third, existing diffusion- and flow-based fMRI generators do not fully exploit the intrinsic low-dimensional structure 
+
+of brain signals. These models parameterize high-dimensional denoising residuals or velocity fields [Tew et al., 2025, 2026], yet rs-fMRI signals—though observed in a high-dimensional ROI-time space—are believed to concentrate near a low-dimensional subspace shaped by anatomical and dynamical constraints [Vincent et al., 2010, Lindquist et al., 2025, Gallego et al., 2017, Pezon et al., 2024]. Learning targets in the ambient space can obscure this structure and reduce sample efficiency. To address all three limitations, we propose FAST-Brain , a Flow-Aligned Spatio-Temporal surrogate Brain model. FAST-Brain integrates three components (Figure 1): (i) a flow-aligned generative framework that directly predicts clean BOLD signals rather than noise or velocity; (ii) a Transformer [Vaswani et al., 2017] that captures long-range temporal dependencies via history-conditioned cross-attention; and (iii) a graph convolutional network [GCN; Kipf and Welling, 2016, Geng et al., 2019] that embeds structural connectivity, fiber lengths, and functional network membership as spatial priors. Directly predicting the clean signal—rather than a noise or velocity residual—enables the model to exploit the low-dimensional geometry of BOLD signals, improving both learning efficiency and fidelity [Li and He, 2025]. We provide theoretical justification for our design. Under a low-dimensional subspace assumption on fMRI signals, we prove that the Bayes-optimal denoiser depends on the noisy observation only through its low-dimensional projection, and that the approximation error of our model scales with the intrinsic dimension d rather than the ambient ROI dimension N . In contrast, noise or velocity-based prediction targets do not admit the same factorization, retaining dependence on the full ambient space. Empirically, extensive experiments on synthetic datasets (RNN and SDDEs) and the real Human Connectome Project (HCP) dataset demonstrate that FAST-Brain achieves state-of-the-art performance in recovering functional connectivity, effective connectivity, and the intrinsic low-dimensional signal geometry. On the HCP data, FAST-Brain raises functional connectivity correlation from 0.726 to 0.938 and reduces MAE from 0.199 to 
+
+0.073 relative to the strongest baseline. 22 Related Work 
+
+Our work intersects three lines of research: generative modeling for time series, direct data prediction for image generation, and spatio-temporal modeling of brain dynamics. We review each in turn and clarify how FAST-Brain advances beyond the current frontier. 
+
+Generative Models for Time Series. Early conditional generative models for time-series relied on variational autoencoders (VAEs) [Desai et al., 2021, Orlichenko et al., 2024] and generative adversarial networks (GANs) [Xu et al., 2020, Tan et al., 2024], which struggle with training stability and mode diversity respectively. Diffusion-based models subsequently emerged as a more principled alternative, achieving stable generation through iterative denoising [Ho et al., 2020, Kong et al., 2020, Tashiro et al., 2021]; representative models include SSSD [Alcaraz and Strodthoff, 2022], TimeDiff [Shen and Kwok, 2023], and Diffusion-TS [Yuan and Qiao, 2024]. More recently, flow matching has reformulated generation as learning a continuous velocity field that transports a simple prior to the data distribution [Lipman et al., 2022, Tamir et al., 2024], enabling faster and more direct deterministic sampling than stochastic differential equation (SDE)-based diffusion. FlowTS extends this paradigm to conditional time-series modeling [Hu et al., 2024], and recent work has applied flow matching to fMRI generation [Tew et al., 2026]. Despite this progress, all of these models—whether diffusion- or flow-based—parameterize noise or velocity fields in the full ambient space, which, as we argue below, is ill-suited to signals concentrated on a low-dimensional subspace. 
+
+Direct Data Prediction for Image Generation. A growing body of work in image-domain generative modeling suggests that directly predicting the clean data target, rather than noise or velocity, is more effective when the signal lies near a low-dimensional manifold. Methods such as EDM [Karras et al., 2022], SiD2 [Hoogeboom et al., 2025], and JiT [Li and He, 2025] demonstrate consistent gains from this reparameterization in high-dimensional image generation. The intuition is straightforward: the clean signal inherits the low-dimensional structure of the data distribution, whereas noise and velocity targets do not, making them harder to learn in high-dimensional ambient spaces. Despite these advances in imaging, direct data prediction has received little attention in structured time-series generation, and has not been explored for fMRI signals whose dynamics are constrained by anatomical organization. FAST-Brain fills this gap. 
+
+Spatio-temporal Modeling of Brain Dynamics. Classical whole-brain models include mechanistic simulators such as The Virtual Brain [Sanz Leon et al., 2013] and dynamical systems frameworks [Breakspear, 2017], as well as connectivity inference methods such as dynamic causal modeling (DCM) [Friston et al., 2014] and Granger causality (GC) [Granger, 1969]. While these approaches offer interpretability, they rely on predefined generative assumptions or linear dependencies, limiting their ability to capture nonlinear spatio-temporal dynamics at scale [Li et al., 2018]. Data-driven surrogate brain models and digital twins have emerged as a more flexible alternative, learning brain dynamics directly from observed fMRI data [Tu et al., 2019, Lu et al., 2023, Luo et al., 2025]. However, existing data-driven models either neglect anatomical spatial priors or fail to exploit the intrinsic low-dimensional structure of fMRI signals—the two gaps that FAST-Brain directly addresses through its graph-guided spatial decoder and flow-aligned clean-signal prediction framework. 
+
+## 3 Preliminaries 
+
+We introduce the problem setup for rs-fMRI modeling and review flow matching, the generative framework underlying FAST-Brain. 
+
+Problem Setup. We consider the problem of modeling rs-fMRI dynamics. For a given subject, the observed data consist of BOLD time series recorded across N pre-defined regions of interest (ROIs) over T acquisition time points, organized into a matrix X ∈ RN ×T , where each row corresponds to one ROI and each column to one time point. Beyond the BOLD observations, we have access to three subject-level anatomical information that summarize the brain’s structural organization. First, a structural connectivity matrix SC ∈ RN ×N , where SC ij encodes the strength of the white-matter connection between ROIs i and j. Second, a fiber length matrix L ∈ RN ×N , where Lij is the average fiber length between the same pair. Third, a coarse functional partition ci ∈ { 1, . . . , C } that assigns each ROI to one of 
+
+C macroscopic functional networks. Both SC and L are normalized to [0 , 1] . We treat SC , L, and {ci} collectively as time-invariant spatial priors that encode biophysically grounded constraints on inter-regional interactions, and denote them by G. How these priors enter the model is described in Section 4.2. Our goal is to learn how BOLD activity evolves over time, conditional on its recent history and these spatial priors. We adopt a sliding-window formulation: at each time index t, the history window Ht = Xt−S+1: t ∈ RN ×S collects the past S time points, and the future target window Yt = Xt+1: t+P ∈ RN ×P contains the next P time points to be generated. Training the model reduces to learning the conditional distribution p(Yt | Ht, G) over future BOLD trajectories. Once trained, the model is rolled out autoregressively to produce surrogate BOLD sequences of arbitrary 3length, from which downstream quantities such as functional connectivity (FC) and effective connectivity (EC) can be derived. 
+
+Flow Matching Flow matching [Lipman et al., 2022] learns a continuous-time vector field that transports a simple prior distribution toward the target data distribution. We briefly review the framework as it applies to our setting. Let Yt ∈ RN ×P denote the future BOLD segment to be generated, and let ϵ ∼ N (0 , I ) be a noise sample of the same dimension drawn from a standard Gaussian prior. Flow matching defines a transport process indexed by τ ∈ [0 , 1] ,connecting noise to data via a linear interpolation Zτ = τ Y t + (1 − τ )ϵ, so that Zτ ∼ pnoise at τ = 0 and Zτ ∼ pdata at 
+
+τ = 1 [Tu et al., 2019, Lipman et al., 2022, Hu et al., 2024]. The corresponding flow velocity is V = dZ τ /dτ = Yt − ϵ. 
+
+Standard flow matching learns a parametric velocity field Vθ by minimizing the mean squared error against this target velocity, LFM = Eτ, Y t, ϵ 
+
+∥Vθ (Zτ , τ ) − V ∥2. At inference, a BOLD sequence is generated by integrating the learned ODE dZ τ /dτ = Vθ (Zτ , τ ), Z 0 ∼ pnoise , from τ = 0 to 1 using a standard numerical solver, yielding a clean sample 
+
+Z1 ≈ Yt.In FAST-Brain, we build on this framework but replace velocity prediction with direct clean-signal prediction, a design choice we motivate theoretically and empirically in Section 4. 
+
+## 4 Method 
+
+We propose FAST-Brain, a flow-aligned spatio-temporal surrogate brain model for rs-fMRI generation. The model has two core components: (i) a flow-aligned direct data prediction framework that predicts clean BOLD signals rather than noise or velocity, and (ii) a spatio-temporal network architecture that combines a history-conditioned Transformer for long-range temporal dependencies with a GCN that injects anatomical spatial priors G as a residual correction. Together, these components address the three limitations identified in Section 1. The complete pipeline is visualized in Figure 1. Compared with step-by-step autoregressive models, our multi-step generation design reduces exposure bias, in which small prediction errors compound over the rollout horizon [Bengio et al., 2015]. 
+
+4.1 Flow-Aligned Direct Data Prediction Motivation. Standard flow matching parameterizes a velocity field Vθ (Zτ , τ ) that lives in the full ambient N × P
+
+space. For rs-fMRI signals, which are believed to concentrate near a low-dimensional subspace [Gallego et al., 2017, Chen et al., 2023, Pezon et al., 2024], this is inefficient: the velocity target contains components off the signal subspace that carry no information about brain dynamics, making the network harder to learn in high-dimensional ROI regimes. We therefore replace velocity prediction with direct clean-signal prediction, building on analogous findings in image-domain generative modeling [Karras et al., 2022, Li and He, 2025, Hoogeboom et al., 2025]. We show in Section 4.3 that this choice is not merely heuristic: the Bayes-optimal denoiser inherits the same low-dimensional structure as the signal itself. 
+
+Framework. Given the historical context Ht and spatial priors G, let Yt ∈ RN ×P denote the clean future BOLD target. We retain the flow matching interpolation path Zτ = τ Y t + (1 − τ )ϵ, ϵ ∼ N (0 , I ), with target velocity V = Yt − ϵ.Rather than predicting V (or ϵ) directly, FAST-Brain parameterizes the clean signal, bYt = Fθ (Zτ , τ, H t, G), where the architecture of Fθ is detailed in Section 4.2. The velocity field is then recovered analytically as bVθ = ( bYt −
+
+Zτ )/max(1 − τ, τ 0), τ0 = 0 .05 , where τ0 is a small clipping constant that prevents division by zero near τ = 1 .Substituting into the flow matching objective yields the FAST-Brain training loss, 
+
+LFAST = E
+
+"
+
+Fθ (Zτ , τ, H t, G) − Zτ
+
+max(1 − τ, τ 0) − (Yt − ϵ)
+
+> 22
+
+#
+
+. (1) This formulation preserves the flow-aligned training objective while anchoring all predictions in the data space. The training time τ follows a logit-normal schedule, consistent with standard practice [Li and He, 2025]. Algorithms 1 and 2 summarize the full training and sampling procedures. 
+
+4.2 Spatio-Temporal Network Architecture 
+
+We implement Fθ as the sum of two complementary decoders, 
+
+Fθ (Zτ , τ, H t, G) = Dtemp (Zτ , τ, H t) + Dspat (Zτ , G), (2) 4Algorithm 1 Training 
+
+Require: Dataset D, priors G, clip τ0, parameters θ
+
+1: for each mini-batch (Ht, Y t) ∼ D do 
+
+2: Sample ϵ ∼ N (0 , I ) and s from normal distribution; set τ = σ(s)
+
+3: Zτ ← τ Y t + (1 − τ )ϵ
+
+4: bYt ← Fθ (Zτ , τ, H t, G)
+
+5: bVθ ← ( bYt − Zτ )/ max(1 − τ, τ 0)
+
+6: LFAST ← ∥ bVθ − (Yt − ϵ)∥22
+
+7: end for 
+
+8: return trained θ⋆
+
+Algorithm 2 Sampling 
+
+Require: History Ht, priors G, steps K = 20 , clip τ0
+
+1: Sample Z0 ∼ N (0 , I ) in RN ×P ,set ∆τ ← 1/K 
+
+2: for i = 0 , . . . , K − 1 do 
+
+3: τi ← i/K 
+
+4: bYi ← Fθ (Zi, τ i, H t, G)
+
+5: bVi ← ( bYi − Zi)/ max(1 − τi, τ 0)
+
+6: Zi+1 ← Zi + ∆ τ bVi
+
+7: end for 
+
+8: return bYt ← ZK
+
+where Dtemp captures history-dependent temporal evolution and Dspat injects time-invariant anatomical structure as a residual correction. The additive decomposition is intentional: it allows the two branches to be trained in a curriculum fashion, as described below. 
+
+Temporal Decoder. Dtemp (Zτ , τ, H t) models the large-scale temporal trend of the future signal conditioned on the historical window, implemented as a history-conditioned Transformer [Vaswani et al., 2017]. The future noisy signal 
+
+Zτ , augmented with a time embedding of τ , serves as queries, while the historical window Ht serves as keys and values in a multi-head cross-attention layer. Rotary position embeddings [Su et al., 2024] are applied to the query and key representations before attention is computed, encoding relative temporal position without requiring absolute positional tokens. The cross-attention output passes through residual connections, layer normalization, and two self-attention layers, allowing the P future time points to interact with one another across the forecast horizon. 
+
+Spatial Decoder. Dspat (Zτ , G) injects anatomical constraints as a residual correction on top of the temporal trend. We encode the three spatial priors as graph adjacency matrices, 
+
+G(1)  
+
+> ij
+
+= SC ij , G(2)  
+
+> ij
+
+= 1 − Lij , G(3)  
+
+> ij
+
+= 1(ci = cj ), (3) where G(1) captures direct anatomical coupling strength, G(2) assigns larger weights to shorter fiber pathways (since 
+
+L is normalized to [0 , 1] ), and G(3) encodes shared functional-network membership. For each G(m), we form the symmetrically normalized Laplacian 
+
+L(m) = I − (D(m))−1/2 G(m) (D(m))−1/2, (4) where D(m) is the corresponding degree matrix. To capture higher-order structural interactions, we fuse the three Laplacians via a learnable polynomial, 
+
+˜L(m) =
+
+> K−1
+
+X
+
+> k=0
+
+αm,k (L(m))k, (5) with learnable coefficients αm,k . Node features are then updated through Lg GCN layers, 
+
+Z(ℓ+1) = σ
+
+> M
+
+X
+
+> m=1
+
+˜L(m)Z(ℓ)W (ℓ) + b(ℓ)
+
+!
+
+, ℓ = 0 , . . . , L g − 1, (6) where Z(0) = Zτ ∈ RN ×P is the initialization, and W (ℓ) ∈ RPℓ×Pℓ+1 is a feature transformation shared across all nodes. We use Lg = 2 layers in all experiments. 
+
+Curriculum initialization. The final projection layer of Dspat is zero-initialized, so the spatial branch contributes nothing at the start of training. This implements a lightweight curriculum: the model first learns the global temporal trend through Dtemp , then progressively incorporates structural corrections from Dspat as training proceeds. The additive structure in Eq. (2) ensures that Dtemp is never destabilized by the spatial branch during early optimization. 
+
+4.3 Theoretical Guarantees on Low-Dimensional Subspaces Setup and motivation. Resting-state fMRI signals are believed to concentrate near a low-dimensional subspace shaped by brain anatomy [Gallego et al., 2017, Chen et al., 2023, Pezon et al., 2024]. A natural question is whether our direct clean-signal prediction strategy can exploit this structure more efficiently than noise- or velocity-based 5parameterizations. We answer this affirmatively: under a low-dimensional subspace assumption, the Bayes-optimal denoiser depends on the noisy observation only through its intrinsic projection, and the approximation error of our model scales with the intrinsic dimension d rather than the ambient ROI dimension N . Noise- and velocity-based targets, by contrast, do not admit the same factorization. 
+
+Reduction to a weighted prediction loss. We first observe that, over τ ∈ [τ0, 1 − τ0], the FAST-Brain loss (1) is equivalent to a weighted squared loss for predicting Yt directly. Substituting Zτ = τ Y t + (1 − τ )ϵ and rearranging, 
+
+LFAST = E
+
+h
+
+(1 − τ )−2 Fθ (Zτ , τ, H t, G) − Yt
+
+> 22
+
+i
+
+. Therefore, for each fixed (Zτ =Z, τ, H t=h, G=g), the Bayes-optimal predictor under this objective is the conditional mean 
+
+F ∗(Z, τ, h, g ) := EYt | Zτ = Z, H t = h, G = g. (7) The main result below characterizes the structure of F ∗ and shows that a neural network approximating it incurs an error governed by d, not N .We impose three regularity conditions. 
+
+Assumption 1 (Low-dimensional signal subspace) . The future signal Yt lies almost surely in a d-dimensional subspace, with d ≪ N . Specifically, Yt = AS t a.s., where St ∈ Rd×P is a latent coefficient matrix and A ∈ RN ×d is an orthonormal basis satisfying A⊤A = Id. We write Z′ 
+
+> τ
+
+= A⊤Zτ ∈ Rd×P for the projected noisy state, with conditional density p′  
+
+> τ|h,g
+
+.
+
+Assumption 2 (Regularity of the latent denoiser) . The conditioning spaces H ⊂ Rmh and G ⊂ Rmg are compact. For every (τ, h, g ) ∈ [τ0, 1 − τ0] × H × G , the conditional density p′  
+
+> τ|h,g
+
+is positive and continuously differentiable in Z′ ∈ Rd×P . The latent denoiser f (Z′, τ, h, g ) := 1
+
+> τ
+
+ Z′ + (1 − τ )2∇ log p′  
+
+> τ|h,g
+
+(Z′) is jointly continuous on 
+
+[−R, R ]d×P × [τ0, 1 − τ0] × H × G for every R > 0.
+
+Assumption 3 (Linear growth and uniform integrability) . There exist constants C0, C 1 > 0 such that 
+
+∥f (Z′, τ, h, g )∥F ≤ C0 + C1∥Z′∥F for all (Z′, τ, h, g ). Moreover, Z′ 
+
+> τ
+
+is uniformly square-integrable conditional on 
+
+(Ht=h, G=g): lim R→∞ sup τ,h,g E∥Z′ 
+
+> τ
+
+∥2 
+
+> F
+
+1{∥ Z′ 
+
+> τ
+
+∥F > R } | Ht = h, G = g = 0 .
+
+Assumption 1 formalizes the widely held belief that rs-fMRI signals have intrinsic low-dimensional structure [Gallego et al., 2017, Pezon et al., 2024]. Assumption 2 requires the latent conditional density to be smooth, which is standard for score-based analyses [Chen et al., 2023]. Assumption 3 imposes mild linear growth and tail conditions on the latent denoiser. 
+
+Theorem 1 (Low-dimensional approximation of the Bayes-optimal denoiser) . Fix τ0 ∈ (0 , 1/2) . Under Assumptions 1– 3, the Bayes-optimal denoiser F ∗ defined in (7) admits the low-dimensional factorization 
+
+F ∗(Z, τ, h, g ) = A f (A⊤Z, τ, h, g ), (8) 
+
+where f is the latent denoiser defined in Assumption 2. Moreover, for every ε > 0, there exists a ReLU feedforward neural network fθ : Rd×P × [τ0, 1 − τ0] × H × G → Rd×P such that the induced predictor FA,θ (Z, τ, h, g ) := 
+
+Af θ (A⊤Z, τ, h, g ) satisfies 
+
+sup  
+
+> τ∈[τ0,1−τ0]
+> h∈H , g ∈G
+
+FA,θ (·, τ, h, g ) − F ∗(·, τ, h, g ) L2(Pτ |h,g ) ≤ √dP + 1 ε. (9) 
+
+Interpretation. Equation (8) shows that F ∗ depends on the noisy observation Zτ ∈ RN ×P only through its low-dimensional projection A⊤Zτ ∈ Rd×P . The approximation bound (9) then follows from the factorization of F ∗
+
+through the low-dimensional projection. Thus, the approximation problem is governed by the intrinsic dimension d
+
+rather than the ambient ROI dimension N .By contrast, noise- and velocity-based prediction targets involve the full noisy signal Zτ ∈ RN ×P and do not admit the factorization (8). Concretely, the induced velocity v∗(Zτ , τ, h, g ) = ( F ∗(Zτ , τ, h, g ) − Zτ )/(1 − τ ) contains the term 
+
+−Zτ /(1 − τ ), which lives in the full ambient space and carries no signal about brain dynamics. Approximating such targets therefore retains dependence on N , making learning harder as the number of ROIs grows. In summary, Theorem 1 provides a rigorous justification for our design choice: direct clean-signal prediction reduces the effective dimensionality of the learning problem from the ambient ROI dimension N to the intrinsic signal dimension d,enabling more efficient learning of brain dynamics. 65 Experiments 
+
+Data . We evaluate FAST-Brain on two synthetic datasets, RNN [Luo et al., 2025] and SDDEs [Sanz Leon et al., 2013], and one real rs-fMRI dataset, HCP [Van Essen et al., 2013]. For the RNN dataset, structural connectivity is defined by fiber length and large-scale network information. This dataset contains 20 ROIs and 8000 time points. The SDDEs dataset is generated by stochastic delay differential equations with stochastic delay effects and more complex temporal coupling, and contains 66 ROIs and 3000 time points. The HCP dataset contains 360 ROIs and 4280 time points. Details of data generation are provided in the Appendix. For all datasets, the first 80% of the sequence samples are used for training. 
+
+Baseline Algorithms . We compare FAST-Brain against both fMRI-domain and general time-series prediction algo-rithms. The fMRI-domain baselines include NPI [Luo et al., 2025] and DSFM [Tew et al., 2026], while the general time-series baselines include TimeDiff [Shen and Kwok, 2023], SSSD [Alcaraz and Strodthoff, 2022], DiffusionTS [Yuan and Qiao, 2024], and FlowTS [Hu et al., 2024]. 
+
+Metrics . Functional connectivity (FC) measures statistical dependence between ROI activities over time. We estimate FC between two regions i and j by 
+
+FC ij =
+
+PTt=1 (Xi,t − ¯Xi)( Xj,t − ¯Xj )
+
+qPTt=1 (Xi,t − ¯Xi)2
+
+qPTt=1 (Xj,t − ¯Xj )2
+
+,
+
+where ¯Xi is the temporal mean of ROI i. For all datasets, we evaluate FC using Pearson correlation and mean absolute error (MAE) from the generated and reference FC matrices. Effective connectivity (EC) measures how activity in one region influences the future activity of another. Following Luo et al. [2025], we estimate EC by applying a perturbation to ROI i and measuring the delayed response at ROI 
+
+j: EC i→j = Et
+
+ bY (i, +δ) 
+
+> t+T,j
+
+− bYt+T,j 
+
+
+
+/δ, yielding an EC matrix in RN ×N . For EC evaluation on synthetic data with known ground-truth directed interactions, we report correlation, AUROC [Fawcett, 2006], and AUPRC [Saito and Rehmsmeier, 2015]. Correlation measures the agreement between estimated and ground-truth EC strengths, AUROC evaluates how well the estimated EC scores distinguish true directed links from non-links, and AUPRC summarizes precision-recall performance, which is particularly informative for sparse connectivity graphs. Beyond FC and EC, we evaluate the conditional generation quality of each algorithm using CRPS [Matheson and Winkler, 1976], QICE [Han et al., 2022], ProbCorr [Ni et al., 2021], and Conditional FID [Yue et al., 2022]. Here, CRPS assesses the discrepancy between the predicted conditional distribution and the observed future signal. QICE evaluates calibration by measuring whether the true observations fall into generated quantile intervals at the expected frequencies. ProbCorr measures how well generated samples preserve the correlation structure of real signals. Conditional FID measures distributional similarity in a learned time-series representation space by extracting features from real and generated sequences using a pretrained TS2Vec encoder and comparing their conditional feature distributions. Their detailed definitions are given in the Appendix. We also report metrics that measure the unconditional generation quality, including Discriminative Score, Predictive Score, Context-FID, and Correlational Score [Yoon et al., 2019, Yuan and Qiao, 2024]. For all the aforementioned evaluations, each trained generator is conditioned on an initial historical window and used to predict the next 24 time steps (i.e., P = 24 ). The generated sequence is then fed back autoregressively until the generated sequence reaches the same length as the test sequence. All reported metrics are computed from these generated sequences. Each experiment is repeated 10 times, and we report the mean and standard error of each metric. Table 1: Functional connectivity recovery across three datasets. 
+
+Dataset Metric NPI TimeDiff SSSD DiffusionTS FlowTS DSFM FAST-Brain RNN Correlation ↑ 0.547 ±0.073 0.431 ±0.003 0.822 ±0.010 0.824 ±0.006 0.846 ±0.005 0.695 ±0.008 0.938 ±0.006 
+
+MAE ↓ 0.322 ±0.075 0.364 ±0.003 0.050 ±0.002 0.062 ±0.001 0.059 ±0.001 0.087 ±0.004 0.028 ±0.002 
+
+SDDEs Correlation ↑ 0.789 ±0.009 0.821 ±0.000 0.890 ±0.001 0.886 ±0.018 0.830 ±0.008 0.642 ±0.008 0.975 ±0.009 
+
+MAE ↓ 0.332 ±0.006 0.311 ±0.000 0.170 ±0.001 0.169 ±0.012 0.275 ±0.003 0.304 ±0.004 0.115 ±0.023 
+
+HCP Correlation ↑ 0.634 ±0.074 0.344 ±0.002 0.186 ±0.002 0.474 ±0.004 0.726 ±0.008 0.692 ±0.035 0.938 ±0.005 
+
+MAE ↓ 0.212 ±0.030 0.386 ±0.001 0.402 ±0.000 0.201 ±0.027 0.280 ±0.005 0.199 ±0.032 0.073 ±0.008 
+
+Functional Connectivity. Table 1 shows that FAST-Brain consistently achieves the highest FC correlation and lowest MAE relative to the ground-truth signals across all three datasets. This indicates that the generated signals preserve 7both the global connectivity topology, as measured by correlation, and the absolute FC strengths, as measured by MAE. The improvement is especially pronounced on the real HCP dataset, where FAST-Brain increases the best baseline correlation from 0.726 to 0.938 and reduces MAE from 0.199 to 0.073. These suggest that combining flow-aligned temporal generation with spatial brain constraints yields more faithful surrogate brain models. Table 2: Effective connectivity analysis on RNN dataset. 
+
+Method Correlation ↑ AUROC ↑ AUPRC ↑
+
+NPI 0.065 ±0.063 0.466 ±0.061 0.093 ±0.020 
+
+TimeDiff 0.013 ±0.046 0.487 ±0.053 0.102 ±0.023 
+
+SSSD 0.828 ±0.005 0.851 ±0.005 0.736 ±0.005 
+
+DiffusionTS 0.716 ±0.021 0.848 ±0.030 0.600 ±0.049 
+
+FlowTS 0.851 ±0.004 0.916 ±0.006 0.810 ±0.007 
+
+DSFM -0.006 ±0.022 0.462 ±0.028 0.093 ±0.010 
+
+FAST-Brain 0.956 ±0.000 0.999 ±0.000 0.995 ±0.000 
+
+Effective Connectivity. Table 2 shows that FAST-Brain recovers the ground-truth effective connectiv-ity more accurately than all baselines on synthetic RNN data. It achieves the highest correlation, AU-ROC, and AUPRC, with considerable gains over the strongest baseline FlowTS. NPI performs less competitively in this setting, likely because its au-toregressive one-step prediction approach makes it difficult to capture long-range dynamical vari-ations accumulated over extended horizons. The near-perfect AUROC and AUPRC scores indicate that FAST-Brain can accurately identify directed interactions induced by the underlying dynamical system. Since evaluating these scores requires the ground truth, our EC analysis is restricted to the synthetic data. 
+
+Conditional Generation. We further compare the conditional generation quality of FAST-Brain against general time-series models on the RNN dataset. As shown in Table 3, FAST-Brain achieves the best performance on all four metrics, obtaining the lowest CRPS, QICE, ProbCorr, and Conditional FID among all compared methods. These results indicate that FAST-Brain produces more accurate probabilistic forecasts, better-calibrated predictive intervals, more faithful correlation structure, and closer alignment with the real conditional distribution under the same historical context. Table 3: Conditional generation quality on the RNN dataset. 
+
+Metric NPI TimeDiff SSSD DiffusionTS FlowTS DSFM FAST-Brain CRPS ↓ 0.248 ±0.002 0.213 ±0.000 0.217 ±0.000 0.158 ±0.000 0.168 ±0.000 0.176 ±0.000 0.154 ±0.000 
+
+QICE ↓ 0.160 ±0.000 0.140 ±0.001 0.144 ±0.000 0.011 ±0.000 0.069 ±0.000 0.007 ±0.000 0.005 ±0.000 
+
+ProbCorr ↓ 0.317 ±0.004 0.314 ±0.000 0.264 ±0.000 0.266 ±0.000 0.280 ±0.000 0.305 ±0.001 0.261 ±0.000 
+
+Conditional FID ↓ 3.516 ±0.040 8.384 ±1.238 2.522 ±0.012 1.916 ±0.002 2.020 ±0.002 2.812 ±0.387 1.856 ±0.003 
+
+Table 4: Ablation study on functional connectivity recovery. 
+
+Dataset Metric FAST-Brain w/o GCN ϵ-pred. v-pred. RNN Corr ↑ 0.938 ±0.006 0.932 ±0.006 0.928 ±0.011 0.919 ±0.014 
+
+MAE ↓ 0.028 ±0.002 0.029 ±0.002 0.028 ±0.002 0.032 ±0.003 
+
+SDDEs Corr ↑ 0.975 ±0.009 0.827 ±0.002 0.862 ±0.004 0.822 ±0.004 
+
+MAE ↓ 0.115 ±0.023 0.305 ±0.001 0.130 ±0.004 0.292 ±0.003 
+
+HCP Corr ↑ 0.938 ±0.005 0.867 ±0.015 0.799 ±0.009 0.856 ±0.014 
+
+MAE ↓ 0.073 ±0.008 0.133 ±0.017 0.313 ±0.004 0.209 ±0.017 
+
+Ablation Study. As discussed earlier, FAST-Brain consists of three main in-gredients: a GCN for encoding spatial constraints, a Transformer for captur-ing long-range temporal dependencies, and a direct prediction strategy that predicts the clean BOLD signal. To assess the contributions of the spatial constraints and the direct clean-signal prediction objective, we conduct abla-tion studies on all three datasets. We compare the full FAST-Brain model with three variants: one that removes the GCN module, denoted by w/o GCN ; one that replaces direct clean-signal prediction with the conventional DDPM noise-prediction objective, denoted by ϵ-prediction ; and one that replaces it with standard velocity prediction in flow matching [Lipman et al., 2022], denoted by v-prediction .Table 4 reports functional connectivity recovery for these variants. The full FAST-Brain model consistently achieves the best performance across all three datasets, indicating that both the direct clean-signal prediction objective and the graph-based spatial priors contribute to accurate FC recovery. The benefit of directly predicting clean BOLD signals is especially evident on the higher-dimensional SDDEs and HCP datasets, where replacing this objective with ϵ-prediction or v-prediction leads to noticeably worse performance. This observation is consistent with our theoretical result that the Bayes-optimal denoiser depends on the noisy observation only through its intrinsic low-dimensional projection. Removing the GCN module further degrades performance, particularly on SDDEs and HCP, demonstrating that anatomical and network-level priors provide useful structural guidance. Together, these results show that FAST-Brain benefits from leveraging both low-dimensional clean-signal structure and biologically informed spatial constraints. 8Figure 2: Latent-space and value-distribution analyses on the SDDEs dataset. 
+
+Latent-space analysis. We further visual-ize the generated SDDEs samples using PCA [Abdi and Williams, 2010] and t-SNE [Van der Maaten and Hinton, 2008] to assess whether different parameteriza-tions preserve the intrinsic signal geome-try. Specifically, we compare FAST-Brain, which predicts the clean signal, with ϵ-prediction, which predicts noise, and v-prediction, which predicts velocity. We also visualize the kernel density estimate (KDE) of the marginal signal-value dis-tribution and compare it with that of the ground-truth samples. Figure 2 shows that 
+
+ϵ-prediction produces a smaller and mis-aligned ring in the PCA space, while v-prediction produces more dispersed sam-ples and an over-smoothed marginal dis-tribution. In contrast, FAST-Brain closely matches the ground-truth circular manifold in both PCA and t-SNE and better pre-serves the bimodal KDE shape. This sug-gests that FAST-Brain recovers both the latent trajectory structure and the signal-value distribution more faithfully. These empirical results support our theoretical finding that direct clean-signal prediction can better recover the low-dimensional signal than noise or velocity prediction. 
+
+## 6 Conclusion 
+
+We presented FAST-Brain, a flow-aligned spatio-temporal surrogate brain model for resting-state fMRI generation. FAST-Brain directly predicts clean BOLD signals while incorporating graph-based anatomical priors and handling long-range temporal dependencies, enabling more faithful recovery of functional connectivity, effective connectivity, and low-dimensional signal geometry. Although this work focuses exclusively on neuroimaging, it raises an interesting question for future work: whether direct clean-signal prediction combined with graph-guided structural priors can also benefit other structurally constrained spatio-temporal systems, such as traffic, climate, weather, or power-grid dynamics. In addition, our theory characterizes the low-dimensional structure of the Bayes-optimal denoiser and the approximation error of the proposed model, but a finite-sample statistical learning analysis remains open. Deriving nonasymptotic bounds on statistical estimation errors would further clarify when and why direct clean-signal prediction improves high-dimensional spatio-temporal generation. 
+
+## References 
+
+Hervé Abdi and Lynne J Williams. Principal component analysis. Wiley interdisciplinary reviews: computational statistics , 2(4):433–459, 2010. Juan Miguel Lopez Alcaraz and Nils Strodthoff. Diffusion-based time series imputation and forecasting with structured state space models. arXiv preprint arXiv:2208.09399 , 2022. Samy Bengio, Oriol Vinyals, Navdeep Jaitly, and Noam Shazeer. Scheduled sampling for sequence prediction with recurrent neural networks. Advances in neural information processing systems , 28, 2015. Bharat Biswal, F. Zerrin Yetkin, Victor M. Haughton, and James S. Hyde. Functional connectivity in the motor cortex of resting human brain using echo-planar mri. Magnetic Resonance in Medicine , 34(4):537–541, 1995. doi: 10.1002/mrm.1910340409. Michael Breakspear. Dynamic models of large-scale brain activity. Nature neuroscience , 20(3):340–352, 2017. Vince D Calhoun, Robyn Miller, Godfrey Pearlson, and Tulay Adalı. The chronnectome: time-varying connectivity networks as the next frontier in fmri data discovery. Neuron , 84(2):262–274, 2014. 9Minshuo Chen, Kaixuan Huang, Tuo Zhao, and Mengdi Wang. Score approximation, estimation and distribution recovery of diffusion models on low-dimensional data. In International Conference on Machine Learning , pages 4672–4712. PMLR, 2023. Gustavo Deco, Adrián Ponce-Alvarez, Dante Mantini, Gian Luca Romani, Patric Hagmann, and Maurizio Corbetta. Resting-state functional connectivity emerges from structurally and dynamically shaped slow linear fluctuations. 
+
+Journal of Neuroscience , 33(27):11239–11252, 2013. Gustavo Deco, Diego Vidaurre, and Morten L Kringelbach. Revisiting the global workspace orchestrating the hierarchical organization of the human brain. Nature human behaviour , 5(4):497–511, 2021. Abhyuday Desai, Cynthia Freeman, Zuhui Wang, and Ian Beaver. Timevae: A variational auto-encoder for multivariate time series generation. arXiv preprint arXiv:2111.08095 , 2021. Zijian Dong, Ruilin Li, Yilei Wu, Thuan Tinh Nguyen, Joanna Su Xian Chong, Fang Ji, Nathanael Ren Jie Tong, Christopher Li Hsian Chen, and Juan Helen Zhou. Brain-jepa: Brain dynamics foundation model with gradient positioning and spatiotemporal masking. arXiv preprint arXiv:2409.19407 , 2024. doi: 10.48550/arXiv.2409.19407. URL https://arxiv.org/abs/2409.19407 .Bradley Efron. Tweedie’s formula and selection bias. Journal of the American Statistical Association , 106(496): 1602–1614, 2011. Tom Fawcett. An introduction to roc analysis. Pattern recognition letters , 27(8):861–874, 2006. Karl J. Friston. Functional and effective connectivity: A review. Brain Connectivity , 1(1):13–36, 2011. doi: 10.1089/ brain.2011.0008. Karl J Friston, Joshua Kahan, Bharat Biswal, and Adeel Razi. A dcm for resting state fmri. Neuroimage , 94:396–407, 2014. Juan A Gallego, Matthew G Perich, Lee E Miller, and Sara A Solla. Neural manifolds for the control of movement. 
+
+Neuron , 94(5):978–984, 2017. Xu Geng, Yaguang Li, Leye Wang, Lingyu Zhang, Qiang Yang, Jieping Ye, and Yan Liu. Spatiotemporal multi-graph convolution network for ride-hailing demand forecasting. In Proceedings of the AAAI conference on artificial intelligence , volume 33, pages 3656–3663, 2019. Clive WJ Granger. Investigating causal relations by econometric models and cross-spectral methods. Econometrica: journal of the Econometric Society , pages 424–438, 1969. Patric Hagmann, Leila Cammoun, Xavier Gigandet, Reto Meuli, Christopher J Honey, Van J Wedeen, and Olaf Sporns. Mapping the structural core of human cerebral cortex. PLoS biology , 6(7):e159, 2008. Kaiqiao Han, Yi Yang, Zijie Huang, Xuan Kan, Yang Yang, Ying Guo, Lifang He, Liang Zhan, Yizhou Sun, Wei Wang, and Carl Yang. BrainODE: Dynamic brain signal analysis via graph-aided neural ordinary differential equations. In 
+
+2024 IEEE EMBS International Conference on Biomedical and Health Informatics (BHI) . IEEE, 2024. Xizewen Han, Huangjie Zheng, and Mingyuan Zhou. Card: Classification and regression diffusion models. Advances in Neural Information Processing Systems , 35:18100–18115, 2022. Jonathan Ho, Ajay Jain, and Pieter Abbeel. Denoising diffusion probabilistic models. Advances in neural information processing systems , 33:6840–6851, 2020. Christopher J Honey, Olaf Sporns, Leila Cammoun, Xavier Gigandet, Jean-Philippe Thiran, Reto Meuli, and Patric Hagmann. Predicting human resting-state functional connectivity from structural connectivity. Proceedings of the National Academy of Sciences , 106(6):2035–2040, 2009. Emiel Hoogeboom, Thomas Mensink, Jonathan Heek, Kay Lamerigts, Ruiqi Gao, and Tim Salimans. Simpler diffusion: 1.5 fid on imagenet512 with pixel-space diffusion. In Proceedings of the Computer Vision and Pattern Recognition Conference , pages 18062–18071, 2025. Yang Hu, Xiao Wang, Zezhen Ding, Lirong Wu, Huatian Zhang, Stan Z Li, Sheng Wang, Jiheng Zhang, Ziyun Li, and Tianlong Chen. Flowts: Time series generation via rectified flow. arXiv preprint arXiv:2411.07506 , 2024. Jian Kang, Thomas Nichols, Lexin Li, Martin A Lindquist, and Hongtu Zhu. Statistical opportunities in neuroimaging. 
+
+arXiv preprint arXiv:2602.12974 , 2026. Tero Karras, Miika Aittala, Timo Aila, and Samuli Laine. Elucidating the design space of diffusion-based generative models. Advances in neural information processing systems , 35:26565–26577, 2022. Thomas N Kipf and Max Welling. Semi-supervised classification with graph convolutional networks. arXiv preprint arXiv:1609.02907 , 2016. 10 Zhifeng Kong, Wei Ping, Jiaji Huang, Kexin Zhao, and Bryan Catanzaro. Diffwave: A versatile diffusion model for audio synthesis. arXiv preprint arXiv:2009.09761 , 2020. Songting Li, Yanyang Xiao, Douglas Zhou, and David Cai. Causal inference in nonlinear systems: Granger causality versus time-delayed mutual information. Phys. Rev. E , 97:052216, May 2018. doi: 10.1103/PhysRevE.97.052216. URL https://link.aps.org/doi/10.1103/PhysRevE.97.052216 .Tianhong Li and Kaiming He. Back to basics: Let denoising generative models denoise. arXiv preprint arXiv:2511.13720 , 2025. Martin A Lindquist, Brian Caffo, Jian Kang, Sean Simpson, Marco Pinto, Chee-Ming Ting, Ali Shojaie, Michele Guindani, and Hernando Ombao. Statistics, data science, and the connectome. Statistics and Data Science in Imaging , 2(1):2569894, 2025. Yaron Lipman, Ricky TQ Chen, Heli Ben-Hamu, Maximilian Nickel, and Matt Le. Flow matching for generative modeling. arXiv preprint arXiv:2210.02747 , 2022. Wenlian Lu, Longbin Zeng, Xin Du, Wenyong Zhang, Shitong Xiang, Huarui Wang, Jiexiang Wang, Mingda Ji, Yubo Hou, Minglong Wang, Yuhao Liu, Zhongyu Chen, Qibao Zheng, Ningsheng Xu, and Jianfeng Feng. Digital twin brain: a simulation and assimilation platform for whole human brain. arXiv preprint arXiv:2308.01241 , 2023. doi: 10.48550/arXiv.2308.01241. URL https://arxiv.org/abs/2308.01241 .Zixiang Luo, Kaining Peng, Zhichao Liang, Shengyuan Cai, Chenyu Xu, Dan Li, Yu Hu, Changsong Zhou, and Quanying Liu. Mapping effective connectivity by virtually perturbing a surrogate brain. Nature Methods , 22(6): 1376–1385, 2025. doi: 10.1038/s41592-025-02654-x. James E Matheson and Robert L Winkler. Scoring rules for continuous probability distributions. Management science ,22(10):1087–1096, 1976. Hao Ni, Lukasz Szpruch, Marc Sabate-Vidales, Baoren Xiao, Magnus Wiese, and Shujian Liao. Sig-wasserstein gans for time series generation. In Proceedings of the Second ACM International Conference on AI in Finance , pages 1–8, 2021. Anton Orlichenko, Gang Qu, Ziyu Zhou, Anqi Liu, Hong-Wen Deng, Zhengming Ding, Julia M. Stephen, Tony W. Wilson, Vince D. Calhoun, and Yu-Ping Wang. A demographic-conditioned variational autoencoder for fmri distribution sampling and removal of confounds. bioRxiv , 2024. doi: 10.1101/2024.05.16.594528. Hae-Jeong Park and Karl Friston. Structural and functional brain networks: from connections to cognition. Science ,342(6158):1238411, 2013. Matthew G Perich, Charlotte Arlt, Sofia Soares, Megan E Young, Clayton P Mosher, Juri Minxha, Eugene Carter, Ueli Rutishauser, Peter H Rudebeck, Christopher D Harvey, et al. Inferring brain-wide interactions using data-constrained recurrent neural network models. BioRxiv , pages 2020–12, 2020. Louis Pezon, Valentin Schmutz, and Wulfram Gerstner. Linking neural manifolds to circuit structure in recurrent networks. bioRxiv , pages 2024–02, 2024. Takaya Saito and Marc Rehmsmeier. The precision-recall plot is more informative than the roc plot when evaluating binary classifiers on imbalanced datasets. PloS one , 10(3):e0118432, 2015. Paula Sanz Leon, Stuart A Knock, M Marmaduke Woodman, Lia Domide, Jochen Mersmann, Anthony R McIntosh, and Viktor Jirsa. The virtual brain: a simulator of primate brain network dynamics. Frontiers in neuroinformatics , 7: 10, 2013. Lifeng Shen and James Kwok. Non-autoregressive conditional diffusion models for time series prediction. In 
+
+International Conference on Machine Learning , pages 31016–31029. PMLR, 2023. Jianlin Su, Murtadha Ahmed, Yu Lu, Shengfeng Pan, Wen Bo, and Yunfeng Liu. Roformer: Enhanced transformer with rotary position embedding. Neurocomputing , 568:127063, 2024. Ella Tamir, Najwa Laabid, Markus Heinonen, Vikas Garg, and Arno Solin. Conditional flow matching for time series modelling. In ICML 2024 Workshop on Structured Probabilistic Inference {\ &} Generative Modeling , 2024. Yee-Fan Tan, Junn-Yong Loo, Chee-Ming Ting, Fuad Noman, Raphaël C-W Phan, and Hernando Ombao. Brainfc-cgan: A conditional generative adversarial network for brain functional connectivity augmentation and aging synthesis. In 
+
+ICASSP 2024-2024 IEEE International Conference on Acoustics, Speech and Signal Processing (ICASSP) , pages 1511–1515. IEEE, 2024. Yusuke Tashiro, Jiaming Song, Yang Song, and Stefano Ermon. Csdi: Conditional score-based diffusion models for probabilistic time series imputation. Advances in neural information processing systems , 34:24804–24816, 2021. 11 Hwa Hui Tew, Junn Yong Loo, Yee-Fan Tan, Xinyu Tang, Hernando Ombao, Fuad Noman, Raphaël C.-W. Phan, and Chee-Ming Ting. T2i-diff: fmri signal generation via time-frequency image transform and classifier-free denoising diffusion models. In Medical Image Computing and Computer Assisted Intervention – MICCAI 2025 , pages 640–650. Springer, 2025. Hwa Hui Tew, Junn Yong Loo, Leong Fang Yu, Julia K. Lau, Ding Fan, Hernando Ombao, Raphael CW Phan, Chee Pin Tan, and Chee-Ming Ting. Functional MRI time series generation via wavelet-based image transform and spectral flow matching for brain disorder identification. In The Fourteenth International Conference on Learning Representations , 2026. URL https://openreview.net/forum?id=Dgphd9qizu .Armin W. Thomas, Christopher Re, and Russell A. Poldrack. Self-supervised learning of brain dynamics from broad neuroimaging data. arXiv preprint arXiv:2206.11417 , 2022. doi: 10.48550/arXiv.2206.11417. URL https: //arxiv.org/abs/2206.11417 .Tao Tu, John Paisley, Stefan Haufe, and Paul Sajda. A state-space model for inferring effective connectivity of latent neural dynamics from simultaneous eeg/fmri. Advances in Neural Information Processing Systems , 32, 2019. Martijn P Van Den Heuvel and Hilleke E Hulshoff Pol. Exploring the brain network: a review on resting-state fmri functional connectivity. European neuropsychopharmacology , 20(8):519–534, 2010. Laurens Van der Maaten and Geoffrey Hinton. Visualizing data using t-sne. Journal of machine learning research , 9 (11), 2008. David C Van Essen, Stephen M Smith, Deanna M Barch, Timothy EJ Behrens, Essa Yacoub, Kamil Ugurbil, Wu-Minn HCP Consortium, et al. The wu-minn human connectome project: an overview. Neuroimage , 80:62–79, 2013. Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones, Aidan N Gomez, Łukasz Kaiser, and Illia Polosukhin. Attention is all you need. Advances in neural information processing systems , 30, 2017. Pascal Vincent, Hugo Larochelle, Isabelle Lajoie, Yoshua Bengio, Pierre-Antoine Manzagol, and Léon Bottou. Stacked denoising autoencoders: Learning useful representations in a deep network with a local denoising criterion. Journal of machine learning research , 11(12), 2010. Simon Wein, A. Schüller, Ana M. Tomé, Wilhelm M. Malloni, Mark W. Greenlee, and Elmar W. Lang. Forecasting brain activity based on models of spatiotemporal brain dynamics: a comparison of graph neural network architectures. 
+
+Network Neuroscience , 6(3):665–701, 2022. doi: 10.1162/netn_a_00252. Tianlin Xu, Li Kevin Wenliang, Michael Munn, and Beatrice Acciaio. Cot-gan: Generating sequential data via causal optimal transport. Advances in neural information processing systems , 33:8798–8809, 2020. Jinsung Yoon, Daniel Jarrett, and Mihaela Van der Schaar. Time-series generative adversarial networks. Advances in neural information processing systems , 32, 2019. Xinyu Yuan and Yan Qiao. Diffusion-ts: Interpretable diffusion for general time series generation. arXiv preprint arXiv:2403.01742 , 2024. Zhihan Yue, Yujing Wang, Juanyong Duan, Tianmeng Yang, Congrui Huang, Yunhai Tong, and Bixiong Xu. Ts2vec: Towards universal representation of time series. In Proceedings of the AAAI conference on artificial intelligence ,volume 36, pages 8980–8987, 2022. Dajiang Zhu, Tuo Zhang, Xi Jiang, Xintao Hu, Hanbo Chen, Ning Yang, Jinglei Lv, Junwei Han, Lei Guo, and Tianming Liu. Fusing dti and fmri data: a survey of methods and applications. NeuroImage , 102:184–191, 2014. Hongtu Zhu, Tengfei Li, and Bingxin Zhao. Statistical learning methods for neuroimaging data analysis with applications. 
+
+Annual review of biomedical data science , 6(1):73–104, 2023. 12 A Proof of Theorem 1 
+
+Proof. We divide the proof into four steps. 
+
+Step 1: Structural form of the Bayes-optimal denoiser. Fix (τ, h, g ) ∈ [τ0, 1 − τ0] × H × G . By Assumption 1, we have 
+
+Yt = AS t a.s. ,
+
+where St ∈ Rd×P and A⊤A = Id. Recall that 
+
+Zτ = τ Y t + (1 − τ )ε, 
+
+where ε ∈ RN ×P has i.i.d. standard Gaussian entries and is independent of (Yt, H t, G).Let 
+
+PA(Z) := AA ⊤Z, P⊥(Z) := ( IN − AA ⊤)Z
+
+denote the orthogonal projections onto span( A) and its orthogonal complement, respectively [Chen et al., 2023]. Since 
+
+Yt = AS t, we have 
+
+PA(Yt) = Yt, P⊥(Yt) = 0 .
+
+Therefore, 
+
+PA(Zτ ) = PA
+
+ τ Y t + (1 − τ )ε
+
+= τ P A(Yt) + (1 − τ )PA(ε)= τ Y t + (1 − τ )PA(ε),
+
+and similarly 
+
+P⊥(Zτ ) = P⊥
+
+ τ Y t + (1 − τ )ε
+
+= τ P ⊥(Yt) + (1 − τ )P⊥(ε)= (1 − τ )P⊥(ε).
+
+Because ε is isotropic Gaussian, the two Gaussian components PA(ε) and P⊥(ε) are independent. Hence, conditionally on (Ht = h, G = g), the conditional density of Zτ factorizes into the density of its on-subspace component and the density of its orthogonal component. Writing 
+
+Z′ := A⊤Z ∈ Rd×P ,
+
+we may write 
+
+pτ |h,g (Z) = p′  
+
+> τ|h,g
+
+(A⊤Z) p⊥ 
+
+> τ
+
+(P⊥Z),
+
+where p⊥ 
+
+> τ
+
+denotes the Gaussian density of the orthogonal component. Taking logarithms and differentiating with respect to Z, we obtain 
+
+∇Z log pτ |h,g (Z) = ∇Z log p′  
+
+> τ|h,g
+
+(A⊤Z) + ∇Z log p⊥ 
+
+> τ
+
+(P⊥Z).
+
+For the first term, by the chain rule, 
+
+∇Z log p′  
+
+> τ|h,g
+
+(A⊤Z) = A∇ log p′  
+
+> τ|h,g
+
+(A⊤Z).
+
+For the second term, since P⊥(Zτ ) is centered Gaussian with covariance (1 − τ )2I on the orthogonal component, its score is 
+
+∇Z log p⊥ 
+
+> τ
+
+(P⊥Z) = − 1(1 − τ )2 P⊥(Z) = − 1(1 − τ )2 (Z − AA ⊤Z).
+
+Therefore, 
+
+∇Z log pτ |h,g (Z) = A∇ log p′  
+
+> τ|h,g
+
+(A⊤Z) − 1(1 − τ )2 (Z − AA ⊤Z).
+
+On the other hand, under the Gaussian perturbation model 
+
+Zτ | Yt ∼ N (τ Y t, (1 − τ )2I),
+
+13 Tweedie’s formula [Efron, 2011] yields 
+
+∇Z log pτ |h,g (Z) = − 1(1 − τ )2
+
+
+
+Z − τ E[Yt | Zτ = Z, H t = h, G = g]
+
+
+
+= − 1(1 − τ )2
+
+ Z − τ F ∗(Z, τ, h, g ).
+
+Rearranging gives 
+
+F ∗(Z, τ, h, g ) = 1
+
+τ
+
+
+
+Z + (1 − τ )2∇Z log pτ |h,g (Z)
+
+
+
+.
+
+Substituting the score decomposition above, we obtain 
+
+F ∗(Z, τ, h, g ) = 1
+
+τ
+
+
+
+Z + (1 − τ )2A∇ log p′  
+
+> τ|h,g
+
+(A⊤Z) − (Z − AA ⊤Z)
+
+
+
+= 1
+
+τ
+
+
+
+AA ⊤Z + (1 − τ )2A∇ log p′  
+
+> τ|h,g
+
+(A⊤Z)
+
+
+
+= A
+
+ 1
+
+τ
+
+
+
+A⊤Z + (1 − τ )2∇ log p′  
+
+> τ|h,g
+
+(A⊤Z)
+
+
+
+.
+
+Now define 
+
+f (Z′, τ, h, g ) := 1
+
+τ
+
+
+
+Z′ + (1 − τ )2∇ log p′  
+
+> τ|h,g
+
+(Z′)
+
+
+
+.
+
+Then 
+
+F ∗(Z, τ, h, g ) = Af (A⊤Z, τ, h, g ).
+
+This proves the representation formula and shows that the Bayes-optimal denoiser depends only on the low-dimensional projection A⊤Z.
+
+Step 2: Reduction of the approximation problem to the latent space. Let 
+
+fθ : Rd×P × [τ0, 1 − τ0] × H × G → Rd×P
+
+be any measurable map, and define the induced predictor 
+
+FA,θ (Z, τ, h, g ) := Af θ (A⊤Z, τ, h, g ).
+
+Since A⊤A = Id, the map M 7 → AM preserves the Frobenius norm. Indeed, for any M ∈ Rd×P ,
+
+∥AM ∥2 
+
+> F
+
+= tr  (AM )⊤(AM )
+
+= tr( M ⊤A⊤AM )= tr( M ⊤M )= ∥M ∥2 
+
+> F
+
+.
+
+Applying this identity with M = fθ (A⊤Z, τ, h, g ) − f (A⊤Z, τ, h, g ), we get 
+
+∥FA,θ (Z, τ, h, g ) − F ∗(Z, τ, h, g )∥2 
+
+> F
+
+= ∥A(fθ (A⊤Z, τ, h, g ) − f (A⊤Z, τ, h, g )) ∥2
+
+> F
+
+= ∥fθ (A⊤Z, τ, h, g ) − f (A⊤Z, τ, h, g )∥2 
+
+> F
+
+.
+
+Now let Zτ ∼ Pτ |h,g and define Z′ 
+
+> τ
+
+:= A⊤Zτ . Then Z′ 
+
+> τ
+
+∼ P ′  
+
+> τ|h,g
+
+. Hence 
+
+∥FA,θ (·, τ, h, g ) − F ∗(·, τ, h, g )∥2   
+
+> L2(Pτ|h,g )
+
+= E∥FA,θ (Zτ , τ, h, g ) − F ∗(Zτ , τ, h, g )∥2 
+
+> F
+
+| Ht = h, G = g
+
+= E∥fθ (Z′ 
+
+> τ
+
+, τ, h, g ) − f (Z′ 
+
+> τ
+
+, τ, h, g )∥2 
+
+> F
+
+| Ht = h, G = g .
+
+Therefore, it suffices to approximate the latent-space denoiser f in L2(P ′  
+
+> τ|h,g
+
+), uniformly over (τ, h, g ).
+
+Step 3: Tail control and choice of the truncation radius. Fix ε > 0. For R > 0, define 
+
+CR := [ −R, R ]d×P .
+
+14 By Assumption 3, 
+
+∥f (Z′, τ, h, g )∥F ≤ C0 + C1∥Z′∥F for all (Z′, τ, h, g ).
+
+If Z′ ∈ C R, then ∥Z′∥F ≤ √dP R , and therefore 
+
+∥f (Z′, τ, h, g )∥F ≤ C0 + C1
+
+√dP R =: BR.
+
+In particular, every coordinate of f (Z′, τ, h, g ) belongs to [−BR, B R] whenever Z′ ∈ C R.Now let fθ be any approximating map satisfying the global bound 
+
+∥fθ (Z′, τ, h, g )∥F ≤ √dP B R for all (Z′, τ, h, g ).
+
+Define 
+
+I2(τ, h, g ) := E∥fθ (Z′ 
+
+> τ
+
+, τ, h, g ) − f (Z′ 
+
+> τ
+
+, τ, h, g )∥2 
+
+> F
+
+1{Z′  
+
+> τ/∈C R}
+
+| Ht = h, G = g .
+
+Using ∥a − b∥2 
+
+> F
+
+≤ 2∥a∥2 
+
+> F
+
++ 2 ∥b∥2 
+
+> F
+
+, we get 
+
+I2(τ, h, g ) ≤ 2 E∥fθ (Z′ 
+
+> τ
+
+, τ, h, g )∥2 
+
+> F
+
+1{Z′  
+
+> τ/∈C R}
+
+| Ht = h, G = g
+
++ 2 E∥f (Z′ 
+
+> τ
+
+, τ, h, g )∥2 
+
+> F
+
+1{Z′  
+
+> τ/∈C R}
+
+| Ht = h, G = g .
+
+For the first term, by the global bound on fθ ,
+
+E∥fθ (Z′ 
+
+> τ
+
+, τ, h, g )∥2 
+
+> F
+
+1{Z′  
+
+> τ/∈C R}
+
+| Ht = h, G = g ≤ dP B 2 
+
+> R
+
+P(Z′ 
+
+> τ
+
+/∈ C R | Ht = h, G = g).
+
+Hence 
+
+I2(τ, h, g ) ≤ 2dP B 2 
+
+> R
+
+P(Z′ 
+
+> τ
+
+/∈ C R | Ht = h, G = g)+ 2 E∥f (Z′ 
+
+> τ
+
+, τ, h, g )∥2 
+
+> F
+
+1{Z′  
+
+> τ/∈C R}
+
+| Ht = h, G = g .
+
+Since Z′ 
+
+> τ
+
+/∈ C R implies ∥Z′ 
+
+> τ
+
+∥F > R , we further obtain 
+
+I2(τ, h, g ) ≤ 2dP B 2 
+
+> R
+
+P(∥Z′ 
+
+> τ
+
+∥F > R | Ht = h, G = g)+ 2 E∥f (Z′ 
+
+> τ
+
+, τ, h, g )∥2 
+
+> F
+
+1{∥ Z′   
+
+> τ∥F>R }
+
+| Ht = h, G = g .
+
+By the uniform square-integrability condition in Assumption 3, define 
+
+TR := sup  
+
+> τ∈[τ0,1−τ0], h ∈H , g ∈G
+
+E∥Z′ 
+
+> τ
+
+∥2 
+
+> F
+
+1{∥ Z′   
+
+> τ∥F>R }
+
+| Ht = h, G = g .
+
+Then TR → 0 as R → ∞ .Since {∥ Z′ 
+
+> τ
+
+∥F > R } implies ∥Z′ 
+
+> τ
+
+∥2 
+
+> F
+
+≥ R2, we have 
+
+P(∥Z′ 
+
+> τ
+
+∥F > R | Ht = h, G = g) ≤ 1
+
+R2 E∥Z′ 
+
+> τ
+
+∥2 
+
+> F
+
+1{∥ Z′   
+
+> τ∥F>R }
+
+| Ht = h, G = g ≤ TR
+
+R2 .
+
+Moreover, by Assumption 3, 
+
+∥f (Z′, τ, h, g )∥2 
+
+> F
+
+≤ 2C20 + 2 C21 ∥Z′∥2 
+
+> F
+
+.
+
+Therefore, 
+
+E∥f (Z′ 
+
+> τ
+
+, τ, h, g )∥2 
+
+> F
+
+1{∥ Z′   
+
+> τ∥F>R }
+
+| Ht = h, G = g
+
+≤ 2C20 P(∥Z′ 
+
+> τ
+
+∥F > R | Ht = h, G = g) + 2 C21 E∥Z′ 
+
+> τ
+
+∥2 
+
+> F
+
+1{∥ Z′   
+
+> τ∥F>R }
+
+| Ht = h, G = g
+
+≤
+
+ 2C20
+
+R2 + 2 C21
+
+
+
+TR.
+
+Substituting these estimates into the bound for I2(τ, h, g ) gives 
+
+I2(τ, h, g ) ≤ 2dP B 2
+
+> R
+
+TR
+
+R2 + 2 
+
+ 2C20
+
+R2 + 2 C21
+
+
+
+TR.
+
+Since BR = C0 + C1
+
+√dP R , the ratio B2
+
+> R
+
+/R 2 is uniformly bounded for R ≥ 1. Hence, there exists a constant K > 0,independent of (τ, h, g ), such that 
+
+I2(τ, h, g ) ≤ KT R.
+
+15 Because TR → 0, we conclude that 
+
+lim  
+
+> R→∞
+
+sup 
+
+> τ,h,g
+
+I2(τ, h, g ) = 0 .
+
+Therefore, we may choose R∗ > 0 large enough such that 
+
+sup 
+
+> τ,h,g
+
+I2(τ, h, g ) ≤ ε2
+
+for every approximating map fθ satisfying 
+
+∥fθ (Z′, τ, h, g )∥F ≤ √dP B R∗ .
+
+Step 4: Approximation on the compact region and conclusion. Let 
+
+SR∗ := CR∗ × [τ0, 1 − τ0] × H × G .
+
+By Assumption 2, the function f is jointly continuous on the compact set SR∗ . Hence, by the universal approximation theorem for ReLU networks, there exists a ReLU feedforward neural network 
+
+gθ : Rd×P × [τ0, 1 − τ0] × H × G → Rd×P
+
+such that 
+
+sup 
+
+> (Z′,τ,h,g )∈S R∗
+
+∥gθ (Z′, τ, h, g ) − f (Z′, τ, h, g )∥∞ ≤ ε. 
+
+Now define the scalar clipping map 
+
+ΠBR∗ (x) := max {− BR∗ , min( x, B R∗ )},
+
+and define fθ coordinatewise by 
+
+[fθ (Z′, τ, h, g )] ij := Π BR∗ ([ gθ (Z′, τ, h, g )] ij ).
+
+Since ΠBR∗ can be represented exactly by ReLU operations, fθ is still a ReLU feedforward neural network. By construction, 
+
+∥fθ (Z′, τ, h, g )∥F ≤ √dP B R∗ for all (Z′, τ, h, g ),
+
+so the tail estimate derived in Step 3 applies to this fθ .Moreover, for every (Z′, τ, h, g ) ∈ S R∗ , each coordinate of f (Z′, τ, h, g ) lies in [−BR∗ , B R∗ ]. Since ΠBR∗ is the metric projection onto this interval, for any y ∈ [−BR∗ , B R∗ ] and any x ∈ R,
+
+|ΠBR∗ (x) − y| ≤ | x − y|.
+
+Applying this coordinatewise with y = [ f (Z′, τ, h, g )] ij and x = [ gθ (Z′, τ, h, g )] ij , we obtain 
+
+∥fθ (Z′, τ, h, g ) − f (Z′, τ, h, g )∥F ≤ ∥ gθ (Z′, τ, h, g ) − f (Z′, τ, h, g )∥F
+
+for all (Z′, τ, h, g ) ∈ S R∗ . Since the output has dP coordinates and the uniform coordinatewise error is at most ε, it follows that 
+
+sup 
+
+> (Z′,τ,h,g )∈S R∗
+
+∥fθ (Z′, τ, h, g ) − f (Z′, τ, h, g )∥2 
+
+> F
+
+≤ dP ε 2.
+
+Define 
+
+I1(τ, h, g ) := E∥fθ (Z′ 
+
+> τ
+
+, τ, h, g ) − f (Z′ 
+
+> τ
+
+, τ, h, g )∥2 
+
+> F
+
+1{Z′   
+
+> τ∈C R∗}
+
+| Ht = h, G = g .
+
+Since the integrand is bounded by dP ε 2 on CR∗ , we have 
+
+I1(τ, h, g ) ≤ dP ε 2.
+
+Together with the tail estimate from Step 3, 
+
+I2(τ, h, g ) ≤ ε2.
+
+Hence, by the reduction established in Step 2, 
+
+∥FA,θ (·, τ, h, g ) − F ∗(·, τ, h, g )∥2   
+
+> L2(Pτ|h,g )
+
+= I1(τ, h, g ) + I2(τ, h, g )
+
+≤ dP ε 2 + ε2
+
+= ( dP + 1) ε2.
+
+Taking square roots yields 
+
+∥FA,θ (·, τ, h, g ) − F ∗(·, τ, h, g )∥L2(Pτ |h,g ) ≤ √dP + 1 ε. 
+
+Finally, taking the supremum over τ ∈ [τ0, 1 − τ0], h ∈ H , and g ∈ G , we obtain 
+
+sup  
+
+> τ∈[τ0,1−τ0], h ∈H , g ∈G
+
+∥FA,θ (·, τ, h, g ) − F ∗(·, τ, h, g )∥L2(Pτ |h,g ) ≤ √dP + 1 ε. 
+
+This completes the proof. 16 Figure 3: Qualitative visualization of functional connectivity recovery on the RNN, SDDEs, and HCP datasets. From left to right, the columns correspond to RNN, SDDEs, and HCP. The top row shows empirical FC matrices, and the bottom row shows FC matrices generated by FAST-Brain. 
+
+## B Qualitative FC Visualization 
+
+Figure 3 provides a qualitative comparison between empirical FC matrices and FC matrices recovered from FAST-Brain generated sequences. From left to right, the three columns correspond to the RNN, SDDEs, and HCP datasets, with empirical FC matrices shown in the top row and generated FC matrices shown in the bottom row. FAST-Brain recovers the localized and network-structured connectivity patterns in the RNN dataset, suggesting that the model can learn the underlying coupling information induced by the synthetic dynamical system. For the more complex SDDEs and high-dimensional HCP datasets, FAST-Brain still preserves the major FC organization, including block-like structures, off-diagonal dependencies, and global correlation patterns. These visual results are consistent with the quantitative FC results in Table 1, further supporting that FAST-Brain generates surrogate BOLD sequences with faithful functional connectivity structure even in high-dimensional settings. 
+
+## C Dataset Generation 
+
+C.1 RNN Dataset 
+
+We simulate a brain network consisting of N = 20 nodes partitioned into K = 4 functional communities, where 
+
+ci ∈ { 1, ..., K } denotes the network assignment of node i. The nodes are spatially embedded with coordinates xi ∈ R3,and the Fiber Length matrix L is derived from Euclidean distances adjusted by a cross-hemispheric penalty δ, defined as 
+
+Lij = || xi − xj || 2 + δ · I(hemi i̸ = hemi j ),
+
+Using this, the Structural Connectivity matrix SC (fiber count) is generated via a distance-dependent stochastic block model. The expected connection intensity is determined by 
+
+λij = S · Bcicj · exp( −αL ij ),
+
+where S is a scaling factor, B is the network affinity matrix, and α is an exponential spatial decay, yielding SC ij ∼
+
+P oisson (λij ). The brain activity is then modeled using an RNN with a state vector x(t) ∈ RN . The neural dynamics follow the stochastic differential equation 
+
+dx (t) = [ −x(t) + SC h (x(t))] dt + σdξ (t)
+
+17 , where h(·) = tanh( ·) and ξ(t) is an N -dimensional Gaussian noise process. To simulate these continuous dynamics, we employ Euler discretization to obtain the update rule x(t + ∆ t) = x(t) + [ −x(t) + SC h (x(t))]∆ t + σ√∆tZ (t),with Z(t) ∼ N (0 , I N ).
+
+C.2 SDDEs Dataset 
+
+The signal transmission delay Γij and the effective coupling weight Wij (scaled by global coupling G) dictate the network input: 
+
+Γij = Kij 
+
+cWij = G · (Aij ⊙ WSC,ij )
+
+Ii(t) = 
+
+> N
+
+X
+
+> j=1
+
+Wij Vj (t − Γij ) + ξi(t)
+
+where c is the conduction velocity, ⊙ is the Hadamard product, and ξi(t) ∼ N (0 , σ 2) is the baseline Gaussian white noise. The local neural activity (latent state) for each node i is driven by a Generic 2D Oscillator, yielding a system of Stochastic Delay Differential Equations (SDDEs): 
+
+dV i(t) = η · τ −f V i(t)3 + eV i(t)2 + gV i(t) + αW i(t) + γI i(t) dt dW i(t) = ητw
+
+cV i(t)2 + bV i(t) − βW i(t) + α2
+
+ dt 
+
+where Vi(t) represents the excitatory Local Field Potential (LFP), Wi(t) is the slow inhibitory recovery variable, and 
+
+{η, τ, f, e, g, α, γ, τ w, c, b, β, α 2} are fixed non-linear system parameters. The continuous macroscopic observation yi(t) is obtained via convolution of the high-frequency latent state Vi(t) with the first-order Volterra Hemodynamic Response Function (HRF) kernel h(t):
+
+h(t) = 13 exp 
+
+
+
+− 0.5t
+
+0.8
+
+ sin( ωt )
+
+ω , with ω =
+
+r 10.4 − 14 × 0.82
+
+yi(t) = ( Vi ∗ h)( t) = 
+
+Z t
+
+> 0
+
+Vi(s)h(t − s)ds 
+
+The discrete fMRI BOLD measurement matrix B ∈ RM ×N is obtained by down-sampling yi(t) at a given Repetition Time ( T R ): 
+
+Bm,i = yi(m · T R ), m ∈ { 1, 2, . . . , M }
+
+C.3 HCP dataset 
+
+For the real rs-fMRI experiments, we use the same HCP data setting as NPI [Luo et al., 2025], following their HCP-MMP 360-ROI representation and preprocessing protocol. 
+
+## D Implementation Details 
+
+All FAST-Brain experiments and ablations use the same implementation, with only dataset-specific configurations changed. We split each time series chronologically: the first 80% of the temporal samples are used for training, and the remaining temporal segment is reserved for rolling evaluation. Sliding windows are constructed within the corresponding split. The model conditions on a history window and predicts a future block of length P = 24 . The history length is set to S = 60 for RNN and SDDEs, and to S = 10 for HCP. For RNN and SDDEs, each node signal is independently min-max normalized to [−1, 1] before window construction. For HCP, the first 30 frames of each REST session are discarded, the first 360 Glasser ROIs are retained, and each session is standardized independently before window construction. In the structural branch, we use normalized graph powers up to order K = 2 . During sampling, the flow ODE is solved using explicit Euler discretization with 20 steps. All the experiments are completed on a single NVIDIA H100 GPU. 18 E Evaluation 
+
+E.1 Definitions of Evaluation Metrics 
+
+For completeness, we provide the definitions of the first eight evaluation metrics reported in our evaluation output. These metrics are grouped into two parts: unconditional generation metrics and conditional generation metrics. Specifically, the unconditional generation metrics are Discriminative Score , Predictive Score , Context-FID , and Correlational Score ;the conditional generation metrics are CRPS , QICE , ProbCorr , and Conditional FID .Let {X(i)}ni=1 denote real samples and { eX(i)}ni=1 denote generated samples. In conditional evaluation, let H(b) be the historical context for block b, let Y (b) ∈ RN ×P be the corresponding true future sequence, and let 
+
+bY (b, 1) , . . . , bY (b,S ) ∈ RN ×P
+
+be S stochastic predictions generated under the same condition H(b), where P is the prediction horizon and N is the number of ROIs. 
+
+Conditional generation. Continuous Ranked Probability Score (CRPS) [Matheson and Winkler, 1976]. CRPS evaluates the overall probabilistic accuracy of conditional forecasts. For a scalar target y and predictive cumulative distribution function F ,CRPS is defined as 
+
+CRPS( F, y ) = 
+
+Z ∞−∞ 
+
+ F (z) − 1{z ≥ y}2 dz. 
+
+In our implementation, the predictive distribution is represented empirically by S stochastic samples. For empirical samples by1, . . . , byS , CRPS admits the equivalent form 
+
+CRPS = 1
+
+S
+
+> S
+
+X
+
+> s=1
+
+|bys − y| − 12S2
+
+> S
+
+X
+
+> s=1
+> S
+
+X
+
+> s′=1
+
+|bys − bys′ |.
+
+We average this quantity over all forecasted entries across blocks, horizons, and ROIs. Lower values indicate better calibrated and sharper probabilistic forecasts. 
+
+Quantile Interval Coverage Error (QICE) [Han et al., 2022]. QICE measures the calibration of predictive intervals. For each target entry, we form K quantile bins from the empirical predictive distribution and record into which bin the true observation falls. Let rk be the empirical proportion of true observations falling into bin k, and let the ideal proportion be 1/K . Then 
+
+QICE = 1
+
+K
+
+> K
+
+X
+
+> k=1
+
+rk − 1
+
+K .
+
+A smaller QICE means that the empirical coverage of predictive quantiles is closer to the nominal uniform target, hence the predictive distribution is better calibrated. 
+
+Probabilistic Correlation Score (ProbCorr) [Ni et al., 2021]. ProbCorr measures how well the model preserves correlation structure in conditional stochastic forecasts. For each block b, let C(b)true be the correlation matrix of the true future sequence Y (b), and let C(b,s )pred be the correlation matrix of the s-th generated future sample bY (b,s ). We define 
+
+ProbCorr = 1
+
+B
+
+> B
+
+X
+
+> b=1
+
+1
+
+S
+
+> S
+
+X
+
+> s=1
+
+1
+
+N 2 C(b,s )pred − C(b)true 1
+
+.
+
+Thus, ProbCorr is the average entrywise absolute difference between predicted and true correlation matrices, further averaged over all stochastic samples and all conditional blocks. Lower values indicate better preservation of conditional correlation structure. 
+
+Conditional FID [Yue et al., 2022]. Conditional FID evaluates alignment between real and generated conditional sequence distributions. For each context block H(b), we concatenate the context with the true future Y (b) to form a real conditional sequence, and concatenate the same context with each sampled prediction bY (b,s ) to form generated conditional sequences. These sequences are embedded by a representation encoder ϕ(·), producing real features with mean and covariance (μrc , Σrc ) and generated features with mean and covariance (μgc , Σgc ). The metric is 
+
+Conditional FID = ∥μrc − μgc ∥22 + Tr 
+
+
+
+Σrc + Σ gc − 2(Σ rc Σgc )1/2
+
+.
+
+19 A smaller value indicates that the generated futures, when paired with the same history, better match the real conditional distribution in representation space. 
+
+Unconditional generation. Discriminative Score. [Yoon et al., 2019] This metric measures how easily generated samples can be distinguished from real samples. We train a binary classifier D(·) on real and generated sequences, with labels 1 for real samples and 0 for generated samples. Let Acc denote the classification accuracy on a held-out set. The discriminative score is defined as 
+
+DS = |Acc − 0.5| .
+
+If generated samples are indistinguishable from real samples, then the classifier cannot do better than random guessing and DS approaches 0. A smaller value therefore indicates better generation quality. 
+
+Predictive Score. [Yoon et al., 2019] This metric evaluates whether generated data preserve temporal predictive structure. A predictor fpred is trained on generated sequences to forecast the next-step or target future values, and is then evaluated on real sequences. If x(i)  
+
+> T+1
+
+denotes the true target and bx(i)  
+
+> T+1
+
+= fpred (x(i)1: T ) denotes the prediction, then the predictive score is computed by mean absolute error: 
+
+PS = 1
+
+n
+
+> n
+
+X
+
+> i=1
+
+x(i)  
+
+> T+1
+
+− bx(i)  
+
+> T+1
+
+.
+
+Lower values indicate that the generated data better preserve the forecasting-relevant temporal structure. 
+
+Context-FID. [Yuan and Qiao, 2024] This metric compares real and generated sequences in a learned contextual feature space. Let ϕ(·) be the embedding extracted from a sequence encoder, and let μr , Σr and μg , Σg be the empirical means and covariance matrices of the real and generated embeddings, respectively. The Fréchet distance between the two Gaussian approximations is 
+
+Context -FID = ∥μr − μg ∥22 + Tr 
+
+
+
+Σr + Σ g − 2(Σ r Σg )1/2
+
+.
+
+A smaller value means that the generated sequences are closer to the real ones in contextual representation space. 
+
+Correlational Score. [Yuan and Qiao, 2024] This metric measures whether the pairwise dependency structure is preserved. For each sample, we compute its ROI-wise correlation matrix, and then compare the average correlation matrix of generated samples with that of real samples. Let Cr and Cg denote the corresponding average correlation matrices. The correlational score is defined as 
+
+CS = 1
+
+N 2 ∥Cr − Cg ∥1,
+
+that is, the mean absolute entrywise deviation between the two correlation matrices. Lower values indicate better preservation of dependence structure. 
+
+E.2 Other Results Conditional Generation. Tables 5 and 6 report additional conditional generation results on SDDEs and HCP. On HCP, FAST-Brain achieves the best performance across all four metrics, including CRPS, QICE, ProbCorr, and Conditional FID. This indicates that FAST-Brain improves probabilistic accuracy, calibration, correlation preservation, and feature-level distributional alignment in real high-dimensional rs-fMRI data. On SDDEs, FAST-Brain also achieves the best CRPS and QICE, showing strong marginal probabilistic accuracy and calibration. For the remaining SDDEs metrics, FAST-Brain is competitive but not the best: TimeDiff obtains the lowest ProbCorr, while FlowTS achieves the lowest Conditional FID. This may reflect the stochastic delay effects, strong temporal coupling, and periodic structure in SDDEs. Some baselines may better fit local periodic patterns or feature-level statistics, leading to advantages on specific conditional metrics. In contrast, FAST-Brain prioritizes direct clean-signal recovery with spatial priors, which leads to stronger global FC recovery and latent-geometry preservation in the main experiments, even when individual conditional metrics are not uniformly optimal. Table 5: Conditional generation metrics in SDDEs. 
+
+Metric NPI TimeDiff SSSD DiffusionTS FlowTS DSFM FAST-Brain CRPS ↓ 0.213 ±0.002 0.253 ±0.000 0.340 ±0.000 0.263 ±0.001 0.411 ±0.001 0.240 ±0.000 0.198 ±0.003 
+
+QICE ↓ 0.160 ±0.000 0.125 ±0.000 0.035 ±0.000 0.023 ±0.000 0.105 ±0.000 0.152 ±0.000 0.019 ±0.002 
+
+ProbCorr ↓ 0.310 ±0.006 0.215 ±0.000 0.422 ±0.000 0.238 ±0.001 0.539 ±0.001 0.247 ±0.000 0.248 ±0.003 
+
+Conditional FID ↓ 6.788 ±0.348 4.302 ±0.043 19.256 ±0.066 3.741 ±0.010 3.520 ±0.005 9.174 ±1.367 5.841 ±0.049 
+
+20 Table 6: Conditional generation metrics in HCP. 
+
+Metric NPI TimeDiff SSSD DiffusionTS FlowTS DSFM FAST-Brain CRPS ↓ 0.710 ±0.017 0.829 ±0.000 0.580 ±0.000 0.640 ±0.000 0.634 ±0.002 0.566 ±0.002 0.559 ±0.002 
+
+QICE ↓ 0.160 ±0.000 0.155 ±0.000 0.008 ±0.001 0.123 ±0.000 0.095 ±0.001 0.028 ±0.000 0.027 ±0.000 
+
+ProbCorr ↓ 0.464 ±0.006 0.485 ±0.000 0.566 ±0.000 0.494 ±0.000 0.551 ±0.001 0.553 ±0.001 0.450 ±0.001 
+
+Conditional FID ↓ 81.185 ±1.924 72.006 ±1.618 21.527 ±0.193 15.274 ±0.013 15.909 ±0.102 31.333 ±1.290 13.882 ±0.071 
+
+Unconditional Generation. Although FAST-Brain is trained as a conditional future generator, unconditional generation metrics are computed by rolling the model forward autoregressively to produce full-length sequences without using future observations. Tables 7–9 summarize unconditional generation results across RNN, SDDEs, and HCP. FAST-Brain shows strong overall performance, achieving the best Discriminative Score and Correlational Score on all three datasets. This indicates that the generated sequences are consistently more realistic and better preserve the temporal correlation structure of real brain signals. FAST-Brain also obtains the best Context-FID on RNN and SDDEs, suggesting improved alignment between generated and real feature distributions in both synthetic settings. On HCP, FAST-Brain remains highly competitive on Context-FID and substantially outperforms most baselines in Discriminative Score and Correlational Score. Although FlowTS achieves slightly better Predictive Score and Context-FID on HCP, FAST-Brain provides stronger overall sample realism and correlation preservation. These results suggest that direct clean-signal prediction with spatial priors helps constrain generated trajectories toward structurally faithful brain dynamics, especially in terms of global temporal dependence and connectivity-related statistics. Table 7: Unconditional generation metrics in RNN. 
+
+Metric NPI TimeDiff SSSD DiffusionTS FlowTS DSFM FAST-Brain Discriminative Score ↓ 0.330 ±0.138 0.360 ±0.145 0.165 ±0.092 0.200 ±0.097 0.115 ±0.063 0.100 ±0.081 0.085 ±0.059 
+
+Predictive Score ↓ 0.230 ±0.006 0.211 ±0.002 0.211 ±0.002 0.213 ±0.002 0.208 ±0.001 0.211 ±0.002 0.209 ±0.003 
+
+Context-FID ↓ 1.722 ±0.666 1.508 ±0.493 0.234 ±0.052 0.253 ±0.072 0.154 ±0.021 0.619 ±0.060 0.121 ±0.029 
+
+Correlational Score ↓ 0.380 ±0.102 0.217 ±0.003 0.054 ±0.001 0.058 ±0.003 0.055 ±0.001 0.067 ±0.002 0.038 ±0.001 
+
+Table 8: Unconditional generation metrics in SDDEs. 
+
+Metric NPI TimeDiff SSSD DiffusionTS FlowTS DSFM FAST-Brain Discriminative Score ↓ 0.270 ±0.149 0.250 ±0.175 0.350 ±0.143 0.310 ±0.158 0.340 ±0.174 0.370 ±0.078 0.120 ±0.108 
+
+Predictive Score ↓ 0.248 ±0.011 0.283 ±0.006 0.510 ±0.023 0.399 ±0.030 0.550 ±0.011 0.442 ±0.020 0.334 ±0.020 
+
+Context-FID ↓ 10.344 ±0.303 13.530 ±0.786 23.649 ±3.418 10.998 ±2.183 15.747 ±0.696 42.045 ±3.913 6.532 ±0.806 
+
+Correlational Score ↓ 0.531 ±0.006 0.418 ±0.001 0.379 ±0.002 0.360 ±0.038 0.480 ±0.002 0.398 ±0.009 0.329 ±0.015 
+
+Table 9: Unconditional generation metrics in HCP. 
+
+Metric NPI TimeDiff SSSD DiffusionTS FlowTS DSFM FAST-Brain Discriminative Score ↓ 0.287 ±0.115 0.338 ±0.113 0.262 ±0.098 0.275 ±0.109 0.300 ±0.083 0.263 ±0.118 0.200 ±0.115 
+
+Predictive Score ↓ 0.746 ±0.019 0.776 ±0.008 0.795 ±0.010 0.796 ±0.010 0.692 ±0.006 0.702 ±0.012 0.740 ±0.034 
+
+Context-FID ↓ 66.432 ±9.314 93.019 ±6.584 70.196 ±2.164 85.045 ±5.285 58.411 ±4.880 82.183 ±9.055 59.574 ±3.787 
+
+Correlational Score ↓ 0.258 ±0.053 0.361 ±0.001 0.339 ±0.001 0.242 ±0.020 0.282 ±0.002 0.210 ±0.015 0.162 ±0.004 
+
+21
