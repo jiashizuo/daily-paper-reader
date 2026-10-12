@@ -174,7 +174,7 @@ research.mount(root, { getProfiles: () => profiles, getConfig: () => ({}), hasUn
   assert.ok(manager.includes('新增研究方向'));
   const displayCard = manager.split('<div class="dpr-display-card">', 2)[1].split('</div>', 1)[0];
   assert.ok(!displayCard.includes('dpr-sq-open-chat-btn'), '三个页签共用的新增按钮不在词条卡片内');
-  const css = fs.readFileSync('app/app.css', 'utf8');
+  const css = fs.readFileSync('app/app.css', 'utf8').replace(/\r\n/g, '\n');
   assert.ok(css.includes('#arxiv-search-panel.is-topic-tab #arxiv-search-panel-main {\n  order: 3;'), '专题页共享词条面板位于任务区下方');
   assert.ok(css.includes('.dpr-topic-starter-card:has(input:checked)'), '大礼包有独立选中高亮');
   assert.ok(!css.includes('.dpr-topic-starter-card {\n  min-height:'), '大礼包与其他模式卡片保持同高');

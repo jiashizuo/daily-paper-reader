@@ -150,6 +150,7 @@ async function testWorkflowReturnsDispatchResultBeforeMonitoring() {
       return response(200, { default_branch: 'main', fork: true });
     };
     const code = fs.readFileSync('app/workflows.runner.js', 'utf8')
+      .replace(/\r\n/g, '\n')
       .replace(/\n  return \{\n/, '\n  return {\n    dispatchAndMonitor, setUi: (s,r) => {statusEl=s;runsEl=r;},\n');
     vm.runInContext(code, context);
     const api = context.window.DPRWorkflowRunner;

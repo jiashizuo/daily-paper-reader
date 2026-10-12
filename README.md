@@ -144,7 +144,7 @@
 
 ### 1) 🔑 准备大模型 API Key
 
-当前 README 默认以 **学校词元计划 API** 为示例，建议先按默认配置跑通。
+当前 README 默认以 **DeepSeek 官方 API** 为示例，建议先按默认配置跑通。
 
 - 🌐 打开 [DeepSeek 平台](https://platform.deepseek.com/)
 - 📝 完成注册 / 登录
