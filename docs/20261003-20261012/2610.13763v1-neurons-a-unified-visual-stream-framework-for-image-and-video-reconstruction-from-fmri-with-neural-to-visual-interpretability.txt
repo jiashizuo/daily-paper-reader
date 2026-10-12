@@ -1,0 +1,3889 @@
+NEURONS++: A Unified Visual-Stream Framework
+for Image and Video Reconstruction from fMRI
+with Neural-to-Visual Interpretability
+Haonan Wang, Yuchen Wang, Jingyu Lu, Qixiang Zhang, Lehan Wang, Xuanqi Huang, and Xiaomeng Li
+Abstract—Decoding visual experience from fMRI is important
+for understanding human perception and developing brain-
+computer interfaces. Recent generative decoding methods can
+reconstruct plausible images and videos, but visual plausibility
+alone does not ensure that the output is faithfully grounded in
+brain activity. In this work, we propose NEURONS++, a visual-
+stream fMRI reconstruction framework for both static image
+and dynamic video reconstruction. Compared with our con-
+ference version NEURONS, NEURONS++ extends the paradigm
+from video-only reconstruction to visual-stream reconstruc-
+tion for both images and videos, and replaces parallel task
+conditioning with serial cortex-inspired decoding. The model
+first uses image-fMRI pretraining to obtain a stable spatial-
+semantic initialization, and then performs subject-specific fine-
+tuning for image and video reconstruction separately. The se-
+rial design organizes fMRI-derived representations into explicit
+spatial, semantic, language-level, and temporal cues. Exten-
+sive experiments show that NEURONS++ achieves state-of-the-
+art video reconstruction and competitive image reconstruction
+across standard benchmarks. Beyond reconstruction fidelity,
+neural-to-visual analyses indicate that NEURONS++ exhibits
+qualitative directional controllability under neural perturba-
+tion, that its fMRI encoder read-out is sensitive to stimulus-
+relevant cortical features, and that it supports ROI-guided
+semantic modulation. Code and model weights are available at:
+https://github.com/xmed-lab/NeuronsPlusPlus.
+Index Terms—Brain-computer interface, fMRI-to-image recon-
+struction, fMRI-to-video reconstruction, diffusion model.
+1.
+INTRODUCTION
+Decoding visual experience from human brain activity is
+a fundamental problem in cognitive neuroscience and brain-
+computer interfaces. Early studies have shown that fMRI
+responses contain rich information about perceived and imag-
+ined visual content, ranging from object categories to natural
+images and movies [1]–[3]. With the rapid development of
+vision-language models and generative priors, recent fMRI-
+based visual reconstruction methods have achieved increas-
+ingly realistic outputs. For static image reconstruction, modern
+methods typically map fMRI responses into CLIP [4], Stable
+Diffusion [5], or related latent spaces to synthesize natural
+images [6]–[9]. These methods demonstrate that large-scale
+visual priors can compensate for the sparsity and noise of
+fMRI signals and recover rich semantic and perceptual content
+from brain activity.
+Haonan Wang, Yuchen Wang, Jingyu Lu, Qixiang Zhang, Lehan Wang,
+Xuanqi Huang, and Xiaomeng Li are with The Hong Kong University of
+Science and Technology. Yuchen Wang, Jingyu Lu and Xiaomeng Li are also
+with Shenzhen Loop Area Institute, Shenzhen, China.
+Corresponding author: Xiaomeng Li. E-mail: eexmli@ust.hk.
+Despite this progress, three fundamental limitations remain.
+First, existing methods are generally developed under sep-
+arated reconstruction settings: image decoders emphasize
+spatial details and object semantics [6]–[13], whereas video
+decoders focus on motion and temporal continuity [14]–[18].
+This separation does not reflect continuous visual experience
+and prevents the relatively clean spatial-semantic supervision
+of image-fMRI data from supporting dynamic visual decoding.
+Second, at the representation level, current methods also
+suffer from disconnected neural-to-visual representations.
+Although recent approaches model low-level structure, high-
+level semantics, and temporal dynamics [13], [18], [19], these
+signals are often aligned implicitly or aggregated as indepen-
+dent conditioning cues rather than organized into a connected
+decoding hierarchy. Consequently, it remains difficult to trace
+how different levels of neural information contribute to the
+reconstructed output. Third, fMRI reconstruction still faces
+unverified neural grounding. A visually plausible output
+may be dominated by generative priors rather than faithfully
+reflecting stimulus-relevant brain activity, especially when
+ground-truth stimuli are unavailable, as in imagined visual
+decoding or communication for patients with severe motor
+impairment [20].
+To overcome these limitations, unlike previous methods
+that treat fMRI-to-image and fMRI-to-video reconstruction as
+separate tasks, we introduce a novel fMRI-to-visual-stream
+reconstruction setting and develop a novel framework, NEU-
+RONS++, to realize it. To bridge the separated reconstruc-
+tion settings, we formulate images as single-frame visual
+streams and videos as multi-frame visual streams under a
+common neural-to-visual formulation, enabling multi-subject
+image-fMRI pretraining to provide stable spatial-semantic
+grounding and video-fMRI adaptation to extend the learned
+representation to temporally evolving visual experience. To
+build a connected representation hierarchy, we develop a
+novel Serial Visual Decoupler that progressively transforms
+neural activity into spatial object structure, object-level seman-
+tics, scene-level language, and coarse temporal appearance,
+forming a brain-inspired and traceable neural-to-cue pathway
+rather than independent generation conditions. To verify neu-
+ral grounding beyond visual fidelity, we conduct delta-fMRI
+perturbation, ROI ablation, and ROI amplification experiments,
+showing that the decoded content changes directionally under
+graded neural perturbations, is sensitive to stimulus-relevant
+cortical features, and can be modulated through region-specific
+neural interventions.
+1
+arXiv:2610.13763v1  [cs.CV]  9 Oct 2026
+
+
+man? woman? 
+bed? window? 
+tree? sky?
+A woman sitting on 
+a bed looking out a 
+window at palm 
+trees
+Key Object 
+Segmentation
+Concepts 
+Recognition
+Scene
+Description
+Blurry Video 
+Reconstruction
+NEURONS++
+Visual Stimuli
+(Videos)
+Human Visual Cortex
+V1
+V2
+SPL
+V3
+V5
+OPA
+PPA
+ITC
+V4
+edges •
+shapes •
+contours •
+object recognition •
+face recognition •
+… •
+scenes •
+environments •
+… •
+motion information •
+dynamic visual •
+information   
+spatial perception •
+… •
+CLIP Text 
+Features
+CLIP Vision 
+Features
+Previous Methods
+Brain Model
+align
+align
+Implicit
+- Explicit tasks
+a
+Neurons++
+Neurons
+b
+Technical 
+Difference
+Decoding Video
+Only
+Decoding Image 
+and Video
+CR
+SD
+KOS
+BVR
+Enc
+CR
+SD
+KOS
+BVR
+Enc
+Paradigm 
+Difference
+Beyond Reconstruction: Neural-to-Visual Interpretability
+Delta-fMRI 
+perturbation
+ROI 
+ablation
+ROI 
+ampliﬁcation
+NEURONS++ captures temporal dynamics
+α=-0.5
+α=+0.5
+Matched Spearman ρ signiﬁcantly 
+higher than Mismatched baseline.
+Original
+Amplify ROI
+NEURONS++ learns stimulus-relevant ROI features
+GT
+Origin Recon
+Face regions ↑
+Place regions ↑
+NEURONS++ supports ROI-guided semantic control
+Parallel
+Serial
+c
+Fig. 1.
+Overview and motivation of NEURONS++. (a) Existing approaches often rely on implicit latent-space alignment or independently aggregated visual
+cues, leaving the neural-to-visual hierarchy weakly structured. (b) NEURONS++ connects static and dynamic reconstruction through a visual-stream formulation
+and progressively transforms neural activity into structured visual cues through a brain-inspired Serial Visual Decoupler. (c) Delta-fMRI perturbation, ROI
+ablation, and ROI amplification provide evidence of directional controllability, stimulus-relevant cortical sensitivity, and region-selective semantic modulation.
+We evaluate NEURONS++ on fMRI-to-image and fMRI-
+to-video benchmarks, where it achieves state-of-the-art or
+competitive performance across low-level, semantic-level, and
+spatiotemporal metrics.
+Compared with our conference version NEURONS [18], this
+journal extension makes three main scientific contributions:
+• We establish a new visual-stream formulation that con-
+nects static image reconstruction and dynamic video
+reconstruction under a common neural-to-visual setting.
+• We introduce a novel brain-inspired Serial Visual De-
+coupler that organizes spatial, semantic, language-level,
+and temporal cues into a progressive neural-to-visual
+hierarchy.
+• We provide experimental evidence that the decoded con-
+tent is directionally controllable, sensitive to stimulus-
+relevant cortical activity, and modulated by region-
+specific neural interventions.
+Together, these advances move fMRI reconstruction beyond
+task-specific visual generation toward structured and verifiable
+neural visual decoding.
+2.
+RELATED WORK
+2.1.
+fMRI-to-Image Reconstruction
+Reconstructing visual stimuli from fMRI has been widely
+studied for understanding neural visual representations and
+developing brain-computer interface systems. Early studies
+mainly focused on decoding visual categories or reconstruct-
+ing simple visual patterns from brain activity [1]. With the
+emergence of large-scale fMRI-image datasets, especially the
+Natural Scenes Dataset (NSD) [21], fMRI-to-image recon-
+struction has rapidly advanced from low-level image recovery
+to natural image generation. Recent diffusion-based methods
+substantially improve reconstruction quality by aligning fMRI
+representations with vision-language models and using gener-
+ative priors for image synthesis [6]–[9], [11], [13], [22]–[27].
+These methods typically map fMRI signals into CLIP [4],
+Stable Diffusion [5], or related latent spaces. To preserve
+low-level spatial details, several methods introduce additional
+control signals such as blurry reconstructions, contours, or
+masks [8], [9], [23], [25]. To improve high-level semantic
+alignment, other methods leverage captions, category labels, or
+text embeddings [7]–[9]. Cross-subject reconstruction methods
+further attempt to reduce subject-specific data requirements
+by aligning fMRI representations across individuals through
+shared latent spaces or functional alignment [7], [10], [12],
+[28]–[30]. Despite these advances, existing fMRI-to-image
+methods are designed for static visual stimuli. They are usually
+optimized for spatial fidelity, object identity, and image-level
+semantics, but do not explicitly model temporal evolution,
+motion, or scene transitions. As a result, they cannot directly
+handle dynamic visual experiences such as videos.
+2.2.
+fMRI-to-Video Reconstruction
+Compared with static image reconstruction, fMRI-to-video
+reconstruction is more challenging because it requires recover-
+ing object motion, temporal consistency, and scene transitions
+from slow BOLD signals. Early studies explored dynamic
+visual decoding with handcrafted features or low-resolution
+reconstruction strategies [3], [14], [15]. Recent methods im-
+prove video reconstruction by aligning fMRI representations
+with vision-language embeddings and using generative video
+priors [16], [17], [30]. These methods typically follow a two-
+stage paradigm: mapping fMRI signals into CLIP or related
+2
+
+
+latent spaces, and then synthesizing videos with diffusion-
+based generative models [5], [31], [32]. Recent state-of-the-
+art methods further introduce more structured guidance for
+video reconstruction. SemVideo [19] uses hierarchical se-
+mantic guidance, including static anchors, motion narratives,
+and holistic summaries, to improve object consistency and
+temporal coherence. NEURONS [18] introduces cortex-inspired
+explicit tasks to decompose fMRI-to-video reconstruction into
+multiple visual cues. However, these methods remain video-
+specific and do not connect static image reconstruction with
+dynamic video reconstruction under a shared visual-stream
+formulation. In addition, the explicit cues in NEURONS are
+mainly aggregated in parallel, which limits their ability to form
+a progressive neural-to-visual pathway.
+2.3.
+Neural-to-Visual Interpretability
+Most generative brain decoding methods are primarily eval-
+uated by reconstruction quality, including pixel-level similar-
+ity, semantic retrieval, feature similarity, or temporal consis-
+tency. These metrics are useful for measuring output fidelity,
+but they do not directly verify whether the generated content
+is faithfully grounded in brain activity. This issue becomes
+more important as powerful diffusion priors can hallucinate
+plausible visual details even when neural evidence is weak or
+incomplete. Several existing methods improve controllability
+or introduce intermediate visual cues, such as masks, captions,
+concepts, or blurry reconstructions [8], [9], [18], [19], [23].
+However, these cues are usually used as auxiliary conditions
+for generation, rather than as objects of neural-to-visual verifi-
+cation. In contrast, NEURONS++ formulates image and video
+reconstruction as unified fMRI-to-visual-stream decoding, uses
+serial cortex-inspired decoding to progressively recover spa-
+tial, semantic, language-level, and temporal cues, and further
+examines brain-grounding through delta-fMRI perturbation,
+ROI ablation, and ROI amplification.
+3.
+METHOD
+3.1.
+fMRI-to-Visual-Stream Problem Formulation
+We formulate fMRI-to-image and fMRI-to-video recon-
+struction as an fMRI-to-visual-stream decoding problem.
+Given an fMRI response xc corresponding to a perceived
+visual stimulus, the target visual stream is denoted as Yc =
+{Ic,t}Tc
+t=1, where Ic,t is the t-th visual frame and Tc is the
+temporal length of the visual stream. When Tc = 1, the task
+corresponds to static image reconstruction; when Tc > 1,
+the task corresponds to video reconstruction. This formulation
+unifies image and video decoding at the level of visual-stream
+representation, without assuming that all image and video
+datasets are jointly trained by a single decoder. Here, “uni-
+fied” refers to a common visual-stream formulation, shared
+architectural design, and consistent inference interface for both
+image and video reconstruction. Because fMRI responses are
+highly subject- and dataset-dependent, we perform subject-
+specific adaptation for each target dataset while keeping the
+same decoding formulation and module design.
+For video datasets, each video is split into short clips accord-
+ing to the temporal resolution of fMRI. In our implementation,
+each clip contains F frames, i.e., Tc = F, and a single visual
+stream is represented as Yc ∈RF ×C×H×W , where F = 6
+unless otherwise specified. For image datasets, we set Tc = 1,
+so the same formulation naturally reduces to single-frame
+reconstruction. The goal of NEURONS++ is to learn fMRI-
+derived representations that can be instantiated for both single-
+frame image generation and multi-frame video generation.
+Notation. Throughout the paper, the subscript c denotes an
+individual visual stream, i.e., a single fMRI–stimulus sample;
+the sample indices i, j used in the interpretability analyses
+follow the same convention, i.e., xi ≡xc=i. We present
+the forward pass for a single stream, and all forward-pass
+tensors are written without a batch axis: ei
+c ∈RNtok×D, ev
+c ∈
+RTc×Ntok×D, zk
+c ∈RTc×Ntok×D, and ˆRc ∈RTc×C×H′×W ′
+all refer to one stream. The mini-batch index is introduced
+only where it is actually needed—in the contrastive objective
+and in the batch-averaged losses—as a superscript (b) with
+b ∈{1, . . . , B} and ·(b) ≡·c=b (e.g., ˆR(b) is the prediction
+for the b-th stream of the batch). We write C (italic) for the
+latent channel dimension, indexed by γ to avoid collision with
+the sample subscript c, and reserve the boldface symbol Cc for
+the concept-label vector of the recognition target in Eq. (16);
+these are distinct quantities. Finally, Ntok denotes the number
+of CLIP visual tokens, which is separate from the candidate-
+class count N of the N-way recognition metrics defined in
+Supplementary §G.
+3.2.
+Overview of NEURONS++
+Our conference model, NEURONS [18] (Fig. 3), introduced
+a cortex-inspired fMRI-to-video reconstruction framework that
+decomposes decoding into four explicit sub-tasks: key ob-
+ject segmentation, concept recognition, scene description, and
+blurry video reconstruction. Building on the visual-stream for-
+mulation introduced in §3.1, NEURONS++ extends NEURONS
+from video-only reconstruction to both single-frame image
+reconstruction and multi-frame video reconstruction under a
+shared architectural template. Image and video datasets are
+adapted separately at the subject level, while multi-subject
+image-fMRI pretraining provides a shared spatial-semantic ini-
+tialization for both settings. As shown in Fig. 2, NEURONS++
+consists of three components. First, a brain encoding module
+maps voxel responses into visual and textual embeddings
+aligned with vision-language foundation models (§3.3). Sec-
+ond, a Serial Visual Decoupler converts the inherited tasks into
+a progressive decoding process, producing spatial, semantic,
+language-level, and temporal cues (§3.4). Third, a unified
+visual-stream inference pipeline uses these cues for either
+single-frame image reconstruction or multi-frame video re-
+construction (§3.5). The construction of decoupled task labels
+follows NEURONS and is described in Supplementary §A.
+3.3.
+Multi-Subject Pretraining & Subject-Specific Adaptation
+NEURONS++ is trained in two stages to transfer spatial-
+semantic representations from image-fMRI data to static and
+dynamic visual-stream reconstruction. In the first stage, the
+trainable model components are pretrained on image-fMRI
+3
+
+
+A woman 
+looking out 
+a window
+fMRI Voxels
+Image / 
+Video 
+Stimuli
+𝒟!"#(#)
+𝒟$%$(#)
+𝒟#&'(#)
+Concepts
+Scenario
+Obj. Low-level
+ℒ!"#
+ℒ$%$
+ℒ#&'
+𝒟(&!(#)
+woman
+man? woman? 
+bed? window? 
+tree? sky?
+woman, bed, 
+window, tree
+A woman sitting on a 
+bed looking out a 
+window at palm trees
+ℒ(&!
+VAE
+Mot. & Color
+S0
+Serial Visual 
+Decoupler
+S1
+S2
+S3
+CLIP Text 
+Encoder
+Qwen
+CLIP Vision 
+Encoder
+Text Feature
+…
+Decoupled 
+Tasks 
+Construction
+(Fig. 2)
+ℒ!"#
+ℒ#&'
+ℬ(#)
+…
+Vision Feature
+NEURONS++ Framework
+Multi-Subject Pretraining (MSP) & Subject-Specific Adaptation (SSA)
+Serial Visual Decoupler
+Temporal 
+self-attention
+LayerNorm
+GEGLU FFN
+Temporal 
+self-attention
+LayerNorm
+TemporalTransformerBlock
+Linear Projection
+LP
+Temporal
+Transformer
+Block
+S1
+Vision Feature
+Temporal
+Transformer
+Block
+Temporal
+Transformer
+Block
+LP
+LP
+S2
+S3
+S0
+ℬ(#)
+𝒫)*+($)
+Diffusion 
+Prior
+MLP
+ℳ(#)
+Vision
+Embedding
+Text Feature
+…
+…
+Vision Feature
+Control
+Net
+Pretrained 
+T2V 
+Diffusion
+as latent
+unCLIP
+A woman sitting 
+on a bed looking 
+out a window at 
+palm trees
+condition
+Top-1 
+class
+Unified Visual-Stream Inference
+𝒟#&'(#)
+𝒟!"#(#)
+𝒟$%$(#)
+𝒟(&!(#)
+Pretrained 
+I2I 
+Diffusion
+Video Reconstruction
+Image Reconstruction
+𝒫$($)
+MSP
+SSA
+images
+videos
+images
+S0
+S1
+S2
+S3
+Fig. 2.
+Overall framework of NEURONS++. The brain encoding module maps fMRI voxels into visual and textual embeddings aligned with foundation-
+model spaces. NEURONS++ is trained through multi-subject pretraining (MSP) on image-fMRI data and subject-specific adaptation (SSA) on target image
+or video datasets. The Serial Visual Decoupler progressively decodes explicit visual cues through four stages: key object segmentation, concept recognition,
+scene description, and blurry visual-stream reconstruction. During inference, these decoded cues condition an unCLIP-based keyframe reconstruction process,
+followed by either a pretrained image-to-image diffusion model for image reconstruction or a pretrained text-to-video diffusion model for video reconstruction.
+A woman sitting on a 
+bed looking out a 
+window at palm trees
+fMRI ℱ
+ℬ(#)
+𝒫!"#(#)
+MRI Video Embedding
+…
+MRI Text Feature
+Video Embedding
+…
+Text Feature
+Video Alignment
+Text Alignment
+CLIP Text
+Qwen
+fMRI
+Voxels
+ℬ(#)
+Video Stimulation
+𝒟!"#(#)
+𝒟$%$(#)
+𝒟&#(#)
+Concepts
+Scenario
+Obj. 
+Low-level
+ℒ!"#
+ℒ$%$
+ℒ#&'
+𝒟&'(#)
+woman
+man? woman? bed? 
+window? tree? sky?
+woman, bed, 
+window, tree
+A woman sitting on a 
+bed looking out a 
+window at palm trees
+ℒ(&!
+VAE
+Mot. & Color
+Diffusion 
+Prior
+MLP
+ℳ(#)
+…
+MRI text Embedding
+MRI Video Embedding
+𝒟!"#(#)
+𝒟$%$(#)
+Cross Attention
+Query
+Key
+Value
+man? woman? 
+bed? window? 
+tree? sky?
+A woman sitting on a 
+bed looking out a 
+window at palm trees
+VAE Decoder 
+𝒟&#(#)
+𝒟&'(#)
+NEURONS - Decoupler
+Decoupled 
+Tasks 
+Construction
+(Fig. 2)
+CLIP Vision
+NEURONS - Decoupler
+NEURONS
+NEURONS - Brain Model
+NEURONS - Brain Model
+Progressive learning
+𝒫$(#)
+Video 
+Embedding
+ ℱ
+Vision
+Embedding
+Fig. 3.
+Overview of the conference version NEURONS [18]. In this journal
+version, we inherit the decoupled task construction while extending the
+setting from video-only reconstruction to visual-stream reconstruction and the
+architecture from parallel task aggregation to serial visual decoding.
+data across eight subjects. This multi-subject pretraining pro-
+vides a stable spatial-semantic initialization because static
+image stimuli offer cleaner supervision for object identity,
+spatial layout, and scene semantics. In the second stage, the
+pretrained weights are loaded for subject-specific adaptation
+on each target image or video dataset.
+The brain encoding module maps voxel responses into vi-
+sual and textual embeddings for visual-stream reconstruction.
+Given a preprocessed fMRI response xc ∈RV , the brain en-
+coder applies a ridge regression module ridge(·) that reduces
+the voxel dimension, followed by a residual-MLP backbone
+Bθ(·) (the MindEye2-style encoder [8]), yielding the neural
+representation hc = Bθ(ridge(xc)). Throughout, Bθ denotes
+the residual-MLP backbone only, excluding the ridge stage.
+The detailed architecture is provided in Supplementary §B.1.
+To align the fMRI-derived representation with foundation-
+model spaces, we project hc into both visual and textual
+embeddings. An image-level projection head Pi(·) maps hc
+into visual tokens, ei
+c = Pi(hc), where ei
+c ∈RNtok×D, Ntok
+denotes the number of visual tokens, and D is the feature
+dimension. This image-level head, the backbone, and the ridge
+map compose into the read-out f = Pi ◦Bθ ◦ridge that we
+probe in the interpretability analysis (§6.2). A temporal pro-
+jection module Pvid(·) then expands the image-level represen-
+tation into a visual-stream representation, ev
+c = Pvid(ei
+c; Tc),
+where ev
+c ∈RTc×Ntok×D. For image reconstruction, Tc = 1;
+for video reconstruction, Tc > 1. In parallel, a text projection
+head produces an fMRI-derived text embedding et
+c = Pt(hc).
+Following the MindEye2-style design [8], a diffusion prior
+M(·) additionally maps the pooled fMRI-derived visual em-
+bedding into the CLIP visual-embedding space used by the
+downstream generative prior, and is trained with a diffusion-
+prior loss Lprior. Here M(·) denotes the diffusion-prior mod-
+ule, and its internal noise-prediction network—the network
+actually optimized by Lprior in Eq. (3)—is denoted ϵψ(·).
+We use M(·) when referring to the prior as a module (Fig. 2)
+and ϵψ(·) for its trained noise predictor.
+Let ϕv(Ic,t) ∈RNtok×D denote the CLIP visual-token
+representation of frame Ic,t. For a visual stream Yc, we define
+4
+
+
+the frame-wise target visual representation as
+Φv(Yc) = {ϕv(Ic,t)}Tc
+t=1 ∈RTc×Ntok×D.
+(1)
+During contrastive alignment, both the predicted visual-stream
+embedding ev
+c and the target representation Φv(Yc) are mean-
+pooled over the temporal and token dimensions before apply-
+ing the BiMixCo objective. Concretely, for a single stream
+Pool(·) : RTc×Ntok×D →RD averages over the Tc temporal
+positions and the Ntok tokens, leaving only the feature axis.
+For a single visual stream,
+¯ev
+c =
+1
+TcNtok
+Tc
+X
+t=1
+Ntok
+X
+n=1
+ev
+c,t,n ∈RD,
+¯Φv(Yc) =
+1
+TcNtok
+Tc
+X
+t=1
+Ntok
+X
+n=1
+ϕv(Ic,t)n ∈RD.
+(2)
+where ev
+c,t,n ∈RD is the feature vector at temporal position
+t and token n, and ϕv(Ic,t)n ∈RD is the n-th CLIP token of
+frame Ic,t. Over a mini-batch of B visual streams, the pooled
+embeddings stack into RB×D before the contrastive objective
+is applied. Let Φt(Sc) denote the target text embedding
+extracted by the CLIP text encoder, where Sc is the scene
+description generated during decoupled task construction. The
+embedding-alignment objective combines the visual and tex-
+tual CLIP alignment losses with the diffusion-prior loss:
+Lenc = LCLIPv
+ ¯ev
+c, ¯Φv(Yc)
+
++ λtLCLIPt
+ et
+c, Φt(Sc)
+
++ λpLprior,
+(3)
+where λt and λp balance the text-alignment and diffusion-
+prior terms. Following [8], [17], LCLIPv and LCLIPt are
+implemented with the BiMixCo contrastive objective, which
+combines MixCo augmentation and bidirectional contrastive
+learning. The diffusion-prior loss Lprior trains the prior net-
+work ϵψ(·) to denoise the target CLIP visual embedding
+conditioned on the fMRI-derived embedding, i.e., Lprior =
+Ec, s, ϵ
+
+∥ϵ −ϵψ(˜es
+y,c, s, ex,c)∥2
+2
+
+, where ex,c = ¯ev
+c is the
+pooled fMRI-derived visual embedding, ey,c = ¯Φv(Yc) is
+the pooled CLIP visual target, ˜es
+y,c = √¯αs ey,c + √1 −¯αs ϵ
+is the step-s noised target, and ϵ ∼N(0, I) is the injected
+noise. The cumulative noise schedule ¯αs follows the standard
+DDPM definition and is specified in Supplementary §B.1. The
+resulting visual and textual embeddings are then fed into the
+Serial Visual Decoupler.
+3.4.
+Serial Visual Decoupler
+The Serial Visual Decoupler transforms the fMRI-derived
+visual-stream embedding into explicit visual cues through a
+progressive decoding process. Unlike the conference version,
+where the four task heads operate in parallel, NEURONS++
+organizes them serially: low-level object structure is decoded
+first, followed by object-level concepts, scene-level language
+description, and finally coarse visual-stream reconstruction.
+This design encourages later stages to inherit previously de-
+coded information while retaining access to the original fMRI-
+derived visual representation.
+Given the visual-stream embedding ev
+c, we initialize z−1
+c
+=
+ev
+c and apply four temporal-transformer stages S0–S3. Each
+stage updates the representation as
+zk
+c = Vk(zk−1
+c
+, ev
+c) = zk−1
+c
++ TTBk(zk−1
+c
+) + LPk(ev
+c), (4)
+where TTBk(·) is a temporal transformer block and LPk(·) is
+a linear projection. All stage representations preserve the shape
+of the input visual-stream embedding, zk
+c ∈RTc×Ntok×D.
+The four stages are associated with four explicit visual cues:
+z0
+c →key object segmentation,
+z1
+c →concept recognition,
+z2
+c →scene description,
+z3
+c →blurry visual-stream reconstruction.
+(5)
+These supervision targets are inherited from NEURONS and are
+constructed as described in Supplementary §A. The task-head
+architectures and loss definitions are provided in Supplemen-
+tary §B.2. The decoupling objective is
+Ldec = Lseg + Lcls + Ltxt + Lrec.
+(6)
+During multi-subject pretraining and subject-specific adapta-
+tion, the full trainable model is optimized with
+L = Lenc + λdecLdec,
+(7)
+where Lenc is the embedding-alignment objective and λdec
+balances neural embedding alignment with explicit visual-cue
+decoding. Implementation details and loss weights are reported
+in Supplementary §C.
+3.5.
+Unified Visual-Stream Inference
+During inference, NEURONS++ reconstructs visual streams
+through the serial decoding process. Given a test fMRI re-
+sponse xc, the brain encoding module first produces visual
+and textual embeddings, which are then passed to the Serial
+Visual Decoupler. The decoupler progressively predicts four
+explicit cues: a key object mask, a concept set, a scene
+description, and a blurry visual-stream reconstruction. These
+cues provide spatial, semantic, language-level, and temporal
+guidance for final generative reconstruction. We first recon-
+struct a keyframe using an unCLIP-based image generation
+pipeline [33]. The keyframe is conditioned on the fMRI-
+derived visual embedding, the decoded scene description, and
+the predicted key object mask. The binary key object mask
+is rescaled to [0.5, 1] and used as a soft spatial condition,
+emphasizing the salient object while preserving background
+context. For image reconstruction, the keyframe is further
+refined by a pretrained SDXL-based image-to-image diffu-
+sion model, producing the final single-frame visual-stream
+reconstruction; the specific checkpoint and img2img settings
+are reported in Supplementary §C. For video reconstruction,
+the keyframe is expanded into a multi-frame visual stream
+using a pretrained text-to-video diffusion model [31]. The
+video generator is conditioned on the reconstructed keyframe,
+decoded scene description, predicted concepts, object mask,
+and blurry visual-stream reconstruction. In this way, image and
+video reconstruction share the same neural-to-cue decoding
+5
+
+
+TABLE I
+UNIFIED QUANTITATIVE COMPARISON ACROSS FMRI-TO-VIDEO AND FMRI-TO-IMAGE RECONSTRUCTION BENCHMARKS. CC2017 AND HCP REPORT
+VIDEO RECONSTRUCTION METRICS, WHILE NSD REPORTS IMAGE RECONSTRUCTION METRICS. VIDEO METRICS ARE REPORTED AS PERCENTAGES.
+RESULTS ON CC2017 AND HCP ARE AVERAGED OVER THREE SUBJECTS; NSD RESULTS ARE AVERAGED OVER SUBJECTS 1, 2, 5, AND 7. ‘±’ DENOTES
+PER-SAMPLE STANDARD DEVIATION ACROSS POOLED TEST CLIPS FOR VIDEO DATASETS. ✗INDICATES THAT THE METHOD DOES NOT SUPPORT THE
+CORRESPONDING MODALITY, WHILE – INDICATES THAT THE METRIC IS NOT REPORTED FOR AN OTHERWISE COMPATIBLE MODALITY. FOR NSD IMAGE
+RECONSTRUCTION, WE REPORT A COMPACT SUBSET OF REPRESENTATIVE LOW- AND HIGH-LEVEL METRICS IN THE MAIN TABLE; THE FULL SET OF NSD
+METRICS IS REPORTED IN SUPPLEMENTARY TABLE A. BOLD AND UNDERLINED VALUES INDICATE THE BEST AND SECOND-BEST PERFORMANCE WITHIN
+EACH METRIC, RESPECTIVELY. ASTERISKS MARK METRICS ON WHICH NEURONS++ SIGNIFICANTLY IMPROVES OVER THE COMPARISON BASELINE:
+SEMVIDEO ON CC2017 AND NEURONS ON HCP (∗p<0.05, ∗∗p<0.01, ∗∗∗p<0.001).
+Method
+fMRI-to-Video (CC2017)
+fMRI-to-Video (HCP)
+fMRI-to-Image (NSD)
+Semantic-level
+ST-level
+Semantic-level
+ST-level
+Low-Level
+High-Level
+2-way↑
+50-way↑
+CLIP-pcc↑
+2-way↑
+50-way↑
+CLIP-pcc↑
+PixCorr↑Alex(5)↑Incep↑Eff↓
+Wen [3] [Cereb. Cortex’18]
+–
+16.6%±2%
+–
+–
+–
+–
+✗
+✗
+✗
+✗
+Wang [14] [Cereb. Cortex’22]
+77.3%±3%
+–
+40.2%±41%
+–
+–
+–
+✗
+✗
+✗
+✗
+MinD-Video [16] [NeurIPS’24]
+83.9%±3%
+19.7%±2%
+40.8%±46%
+76.9%±2%
+–
+49.9%±3%
+✗
+✗
+✗
+✗
+NeuroClips [17] [NeurIPS’25]
+83.4%±3%
+22.0%±1%
+73.8%±17%
+–
+–
+–
+✗
+✗
+✗
+✗
+CineNeuron [34] [CVPR’26]
+85.0%±2%
+24.0%±2%
+–
+–
+–
+–
+✗
+✗
+✗
+✗
+MindCross [35] [AAAI’26]
+83.0%±2%
+21.0%±2%
+76.2%±2%
+–
+–
+–
+✗
+✗
+✗
+✗
+MindAnimate [36] [ICLR’25]
+–
+–
+–
+77.8%±2%
+–
+51.1%±5%
+✗
+✗
+✗
+✗
+NEURONS [18] [ICCV’25]
+86.3%±3%
+26.2%±1%
+93.4%±17%
+82.1%±3%
+16.7%±3%
+91.9%±8%
+✗
+✗
+✗
+✗
+SemVideo [19] [CVPR’26]
+86.5%±2%
+26.4%±2%
+–
+79.6%
+–
+52.3%
+✗
+✗
+✗
+✗
+Takagi... [6] [CVPR’23]
+✗
+✗
+✗
+✗
+✗
+✗
+0.246
+85.6%
+83.8% 0.811
+MindEye1 [7] [NeurIPS’24]
+✗
+✗
+✗
+✗
+✗
+✗
+0.319
+96.9%
+94.6% 0.648
+UMBRAE [10] [ECCV’24]
+✗
+✗
+✗
+✗
+✗
+✗
+0.283
+97.0%
+91.7% 0.700
+NeuroPictor [11] [ECCV’24]
+✗
+✗
+✗
+✗
+✗
+✗
+0.229
+98.4%
+94.5% 0.639
+MindBridge [12] [CVPR’24]
+✗
+✗
+✗
+✗
+✗
+✗
+0.151
+95.5%
+92.4% 0.712
+MindEye2 [8] [ICML’24]
+✗
+✗
+✗
+✗
+✗
+✗
+0.322
+98.6%
+95.4% 0.619
+MindTuner [9] [AAAI’25]
+✗
+✗
+✗
+✗
+✗
+✗
+0.322
+98.8%
+95.6% 0.612
+BrainIT [13] [ICLR’26]
+✗
+✗
+✗
+✗
+✗
+✗
+0.331
+98.6%
+94.4% 0.648
+NEURONS++
+87.1%±3%∗∗27.9%±1%∗94.6%±6% 85.0%±3%∗∗∗19.9%±2%∗∗∗93.2%±6%∗∗∗
+0.355
+98.8%
+96.2% 0.612
+Fig. 4.
+Qualitative comparison of fMRI-to-video reconstruction on the
+CC2017 dataset. For each example, the left clip is the ground-truth stimulus
+and the right clip is the reconstructed video; each row shows two examples.
+Best viewed with Acrobat Reader. Click the images to play the animation clips.
+interface, while the final visual rendering is performed by
+modality-appropriate pretrained generative priors for single-
+frame and multi-frame visual-stream generation.
+Fig. 5. Qualitative comparison of fMRI-to-video reconstruction on the HCP
+subject 1. For each example, the left clip is the ground-truth stimulus and
+the right clip is the reconstructed result; every row shows two examples. Best
+viewed with Acrobat Reader. Click the images to play the animation clips.
+4.
+DATASETS AND IMPLEMENTATION DETAILS
+4.1.
+Datasets
+fMRI-to-Video Datasets. We evaluate fMRI-to-video recon-
+struction on two public video-fMRI datasets: CC2017 [3]
+and HCP [37]. CC2017 contains fMRI responses from three
+subjects watching natural movie clips, with 18 training movies
+and 5 testing movies. Following prior work [3], [17], we use
+6
+
+
+GT
+NEURONS++
+GT
+NEURONS++
+Fig. 6.
+Qualitative comparison of fMRI-to-image reconstruction on NSD.
+Each pair shows the ground-truth image and the NEURONS++ reconstruction.
+TABLE II
+ABLATION STUDY ON THE TWO MAIN EXTENSIONS FROM NEURONS TO
+NEURONS++ ON VIDEO-BASED METRICS. ALL RESULTS ARE REPORTED
+ON CC2017 SUBJECT 1. ‘BASE’ DENOTES NEURONS, ‘MSP’ DENOTES
+MULTI-SUBJECT IMAGE-FMRI PRETRAINING, AND ‘SVD’ DENOTES THE
+SERIAL VISUAL DECOUPLER.
+Key Components
+Semantic-level
+ST-level
+Base
+MSP
+SVD
+2-way↑
+50-way↑
+CLIP-pcc↑
+✓
+86.2%
+25.4%
+93.2%
+✓
+✓
+86.5%
+26.1%
+93.8%
+✓
+✓
+86.3%
+26.3%
+96.7%
+✓
+✓
+✓
+86.5%
+26.6%
+97.2%
+the trial-averaged test responses and apply a hemodynamic
+lag when aligning BOLD signals with video stimuli. For
+HCP, we use three subjects from the movie-watching task
+and follow the standard HCP preprocessing pipeline. The
+visual cortical voxels are extracted using functionally defined
+ROIs. As there is no established train/test split for these
+subjects, we construct a leakage-free, group-aware temporal
+split that prevents temporally adjacent clips from straddling
+the train/test boundary (Supplementary §D). Detailed dataset
+statistics, voxel selection, BOLD-stimulus alignment, and pre-
+processing procedures are provided in Supplementary §D.
+fMRI-to-Image Dataset. For fMRI-to-image reconstruction,
+we use the Natural Scenes Dataset (NSD) [21], a large-scale
+public fMRI dataset containing brain responses to natural
+images from COCO [38]. Following standard NSD recon-
+struction protocols [6], [8], [9], we evaluate on the shared
+test images and report results averaged over the subjects
+with complete scanning sessions. We use preprocessed fMRI
+responses from the visually responsive posterior cortex and
+adopt the same train/test split and normalization strategy as
+previous fMRI-to-image reconstruction methods. More details
+are provided in Supplementary §D.
+4.2.
+Implementation Details and Evaluation Metrics
+We implement NEURONS++ following standard preprocess-
+ing, training, and evaluation protocols from prior fMRI-to-
+image and fMRI-to-video reconstruction studies. For videos,
+each stimulus is divided into short clips according to the
+fMRI temporal resolution, with BOLD responses aligned
+using a hemodynamic lag. For images, each stimulus is
+treated as a single-frame visual stream under the same decod-
+ing formulation. We evaluate videos with semantic-level re-
+trieval/classification accuracy and spatiotemporal consistency
+metrics, and images with standard low- and high-level NSD
+reconstruction metrics. Detailed preprocessing, model con-
+figurations, training hyperparameters, inference settings, and
+metric definitions are provided in Supplementary §F&G.
+5.
+EXPERIMENTAL EVALUATION
+5.1.
+Comparison with State-of-the-Art Methods
+Video
+Reconstruction.
+We
+first
+compare
+NEURONS++
+with representative fMRI-to-video reconstruction methods on
+CC2017 and HCP. As shown in Table I, NEURONS++ achieves
+the best overall performance on CC2017, improving over the
+conference version NEURONS from 0.863 to 0.871 in 2-way
+accuracy, from 0.262 to 0.279 in 50-way accuracy, and from
+0.934 to 0.946 in CLIP-pcc. Qualitative comparisons with
+ground-truth videos are shown in Fig. 4. On HCP, which
+we use as a complementary cross-dataset check under a
+leakage-free, group-aware temporal split (Supplementary §D),
+NEURONS++ likewise improves semantic-level accuracy over
+the conference version NEURONS while maintaining compa-
+rable spatiotemporal consistency (Table I), confirming that
+the gains generalize across video-fMRI datasets. Qualitative
+comparisons with ground-truth videos are in Fig. 5.
+Image Reconstruction. We further evaluate NEURONS++
+on NSD for fMRI-to-image reconstruction. As shown in
+Table I, NEURONS++ achieves strong performance across both
+low-level and high-level metrics, obtaining the best average
+PixCorr score of 0.355 and competitive semantic scores on
+AlexNet, Inception, and CLIP-based evaluations. These results
+show that treating images as single-frame visual streams pre-
+serves static image reconstruction quality while allowing the
+same visual-stream framework to support video reconstruction.
+5.2.
+Ablation on Main Extensions
+We ablate the main extensions introduced in NEURONS++:
+multi-subject image-fMRI pretraining, the Serial Visual De-
+coupler, and image-to-image diffusion refinement.
+Video-side ablation. We first evaluate the contribution of
+multi-subject pretraining and the Serial Visual Decoupler on
+video reconstruction. As shown in Table II, both extensions
+improve different aspects of video reconstruction over the con-
+ference version NEURONS. Multi-subject pretraining mainly
+improves semantic retrieval, while the Serial Visual Decoupler
+brings larger gains in both semantic-level and spatiotemporal
+metrics. Combining both extensions achieves the best overall
+performance, showing that image-fMRI pretraining and serial
+visual decoding are complementary.
+Image-side ablation. We further conduct an image-side ab-
+lation on NSD Subject 1 to examine whether these exten-
+sions also benefit static image reconstruction. As shown in
+Table III, removing multi-subject pretraining or the Serial
+7
+
+
+TABLE III
+IMAGE-SIDE ABLATION STUDY ON FMRI-TO-IMAGE RECONSTRUCTION ON NSD SUBJECT 1. ‘BASE’ DENOTES NEURONS, ‘MSP’ DENOTES
+MULTI-SUBJECT IMAGE-FMRI PRETRAINING, ‘SVD’ DENOTES THE SERIAL VISUAL DECOUPLER, AND ‘I2I’ DENOTES THE IMAGE-TO-IMAGE
+DIFFUSION REFINEMENT STAGE. BOLD AND UNDERLINED VALUES INDICATE THE BEST AND SECOND-BEST PERFORMANCE, RESPECTIVELY.
+Key Components
+Low-Level
+High-Level
+Base
+MSP
+SVD
+I2I
+PixCorr↑
+SSIM↑
+Alex(2)↑
+Alex(5)↑
+Incep↑
+CLIP↑
+Eff↓
+SwAV↓
+✓
+✓
+✓
+0.412
+0.432
+97.1%
+98.3%
+96.1%
+93.6%
+0.612
+0.368
+✓
+✓
+✓
+0.388
+0.463
+95.8%
+98.6%
+95.9%
+92.7%
+0.628
+0.374
+✓
+✓
+✓
+0.419
+0.455
+98.1%
+99.5%
+97.1%
+94.8%
+0.592
+0.353
+✓
+✓
+✓
+✓
+0.424
+0.478
+98.0%
+99.3%
+96.7%
+94.1%
+0.606
+0.364
+Fig. 7. Delta-fMRI counterfactual synthesis. Each row shows reconstructed
+keyframes for one clip pair (i, j) with six columns: the two ground-truth clips
+(GTi, GTj) followed by reconstructions at α ∈{−0.5, −0.3, +0.3, +0.5}.
+Negative α values interpolate from xj toward xi, whereas positive α
+values extrapolate beyond xj along the xi →xj direction. The resulting
+visual changes are smooth and semantically coherent under graded fMRI
+perturbations.
+Visual Decoupler degrades both low-level and high-level im-
+age reconstruction metrics, with the Serial Visual Decoupler
+causing the largest overall drop. Removing the image-to-image
+diffusion refinement stage improves some semantic feature
+metrics but reduces low-level fidelity, suggesting a trade-off
+between visual structure and feature-level semantics. Together,
+the video- and image-side ablations support the effectiveness
+of multi-subject pretraining and serial visual decoding across
+both dynamic and static visual-stream reconstruction.
+6.
+BEYOND RECONSTRUCTION: NEURAL-TO-VISUAL
+INTERPRETABILITY
+Beyond reconstruction fidelity, we conduct three analyses to
+examine whether NEURONS++ learns brain-grounded neural-
+to-visual representations. First, delta-fMRI perturbation tests
+whether graded changes along a neural direction produce
+direction-consistent visual changes. Second, ROI ablation tests
+whether the encoder read-out depends on the cortical regions
+actually engaged by each stimulus. Third, ROI amplification
+tests whether selectively enhancing functional ROIs can steer
+the decoded semantics. The delta-fMRI analysis is conducted
+on the CC2017 video-fMRI dataset, whereas ROI ablation
+and ROI amplification are conducted on CC2017 subject 1.
+Additional mathematical details, implementation notes, and
+cross-subject replications are provided in Supplementary §I.
+6.1.
+NEURONS++ Exhibits Directional Controllability under
+Delta-fMRI Perturbation
+Reconstruction metrics evaluate whether the model recovers
+a fixed ground-truth stimulus. A complementary property is
+controllability: when the input fMRI response is moved along
+a meaningful neural direction, the decoded visual content
+should change coherently along the same direction.
+Let xi and xj denote the trial-averaged fMRI responses to
+two CC2017 test clips. We define a directional delta-fMRI
+perturbation around xj as
+˜xj(α) = xj + α(xj −xi),
+α ∈{−0.5, −0.3, 0.3, 0.5}. (8)
+Negative α moves xj toward xi, whereas positive α ex-
+trapolates beyond xj along the same neural direction. Each
+synthetic response is z-score normalized before being passed
+to the encoder. Because the normalization is performed per re-
+sponse, this experiment is interpreted as a qualitative direction-
+consistency probe rather than a metrically calibrated pro-
+portionality test; the normalization analysis is provided in
+Supplementary §I.1.
+As shown in Fig. 7, the reconstructed keyframes change
+smoothly along the perturbation direction. Negative α values
+produce reconstructions closer to clip i, while positive α values
+move beyond clip j along the same direction. This suggests
+that the encoder propagates graded fMRI perturbations into
+coherent perceptual changes rather than unstructured visual
+variation.
+6.2.
+NEURONS++ Learns Stimulus-Relevant ROI Features
+through ROI Ablation
+A visually accurate decoder may still ignore the spatial
+organization of cortical responses. We therefore ask whether
+the encoder exhibits stimulus-specific dependence on cortical
+regions, namely whether it relies most strongly on the ROIs
+that each stimulus preferentially activates.
+We assign the activated voxels of CC2017 subject 1 to
+eight functional ROIs using the Glasser multi-modal parcella-
+tion [39]: FACE, PLACE, MOTION, EARLY VISUAL, OBJECT,
+SEMANTIC, VENTRAL, and DORSAL. Among V = 13,447
+activated voxels, 6,164 fall within these ROIs. The full HCP-
+MMP1 parcel assignments are listed in Supplementary §H.
+The first six ROIs are category- or stage-selective and mutu-
+ally disjoint, whereas VENTRAL and DORSAL denote broader
+visual streams and overlap with finer parcels by construction.
+Each ROI is nevertheless ablated independently.
+8
+
+
+−1.00 −0.75 −0.50 −0.25 0.00
+0.25
+0.50
+0.75
+1.00
+Spearman ρ (model ROI-dependence vs real ROI-energy)
+0.00
+0.25
+0.50
+0.75
+1.00
+1.25
+1.50
+1.75
+2.00
+density
+Δρ = 0.368
+A
+shuffled
+matched
+shuffled
+matched
+−1.00
+−0.75
+−0.50
+−0.25
+0.00
+0.25
+0.50
+0.75
+1.00
+per-sample Spearman ρ
+Cohen's d = 1.11,  p < 10−3
+B
+−1.00 −0.75 −0.50 −0.25 0.00
+0.25
+0.50
+0.75
+1.00
+Spearman ρ
+0.0
+0.2
+0.4
+0.6
+0.8
+1.0
+cumulative fraction
+72% of matched ρ > 0.5
+C
+shuffled
+matched
+Fig. 8. Per-sample stimulus specificity of ROI causal dependence. For each test sample, the ROI ablation profile (∆cos across the eight ROIs) is correlated
+by Spearman’s ρ with the sample’s own fMRI ROI activation-energy profile (matched, red) or with that of a randomly paired sample (mismatched, blue). A
+higher ρ indicates that the encoder relies most on the ROIs that the stimulus most strongly drives.
+0.04
+0.06
+0.08
+0.10
+0
+100
+200
+count
+0.36 0.37
+z = +31
+specificity gap
+random null  (n = 1000)
+real Glasser ROIs  (0.364)
+Fig. 9.
+Random-grouping control for ROI ablation specificity. The
+matched-minus-mismatched specificity gap obtained with the real Glasser
+parcellation is compared against a null distribution computed under size-
+matched random voxel groupings. The real ROI result falls far outside the
+random-grouping null, ruling out the possibility that larger ROIs trivially
+dominate the ablation signal.
+For each test sample xi, we zero out one ROI at a time
+and measure the resulting change in the encoder read-out. Let
+mr ∈{0, 1}V denote the binary ablation mask for ROI r,
+where mr,k = 0 if voxel k ∈Rr and mr,k = 1 otherwise. We
+define the ROI sensitivity score as
+∆cosr(xi) = 1 −cos
+ f(xi), f(xi ⊙mr)
+
+,
+(9)
+where f = Pi ◦Bθ ◦ridge denotes the image-level encoder
+read-out that produces the fMRI-derived CLIP visual embed-
+ding. A larger ∆cosr indicates that ablating ROI r causes a
+larger change in the predicted embedding. We compare this
+sensitivity profile with the corresponding fMRI activation-
+energy profile,
+Er(xi) = |Rr|−1 X
+k∈Rr
+x2
+ik.
+(10)
+The embedding-level read-out is used to isolate encoder sen-
+sitivity from the additional stochasticity of the downstream
+diffusion generator; a detailed discussion is provided in Sup-
+plementary §I.2.
+We compute the per-sample matched Spearman correlation
+between ∆cos·(xi) and E·(xi), and assess significance with a
+sample-level paired permutation test. The matched distribution
+is strongly right-shifted (¯ρm = 0.631 ± 0.27, n = 1,200)
+relative to the mismatched baseline (¯ρmm = 0.268 ± 0.38),
+yielding a matched-minus-null gap of ∆ρ = 0.368 with
+empirical p < 10−3 and pooled-SD Cohen’s d = 1.11 (Fig. 8).
+This suggests that the encoder read-out is most sensitive to the
+ROIs that are most strongly activated by the corresponding
+stimulus.
+A remaining concern is that spatially contiguous or larger
+voxel groups may cause stronger degradation regardless of
+functional identity. To address this, we repeat the analysis on
+1,000 random size-matched partitions, where the 6,164 ROI-
+assigned voxels are randomly permuted and divided into eight
+groups matching the real ROI sizes. The real Glasser parcella-
+tion produces a much larger matched-minus-mismatched gap
+than the random null (0.364 vs. 0.061±0.010), and no random
+partition reaches the real gap (empirical p < 10−3; Fig. 9).
+Thus, the observed specificity cannot be explained by voxel
+energy or ROI size alone.
+Beyond ROI-level ablation, we compute a voxel-level attri-
+bution map using the positive input-gradient product a(x) =
+ReLU(x⊙∇x∥f(x)∥2). As shown in Fig. 10, the attribution is
+broadly distributed but highlights stimulus-appropriate regions,
+including face-selective cortex for face stimuli and place-
+selective cortex for scene stimuli. This voxel-level result pro-
+vides complementary evidence that the encoder uses stimulus-
+relevant cortical features rather than a region-agnostic shortcut.
+We further replicate the ROI-ablation analysis across ad-
+ditional CC2017 subjects and all three HCP subjects. The
+per-sample matched-versus-null specificity remains large and
+highly significant in every case (∆ρ ∈[0.33, 0.46], pooled-SD
+Cohen’s d ∈[0.86, 1.27], empirical p < 10−3 throughout); full
+per-subject results are reported in Supplementary §L.
+6.3.
+NEURONS++ Enables ROI-Guided Semantic Control
+through ROI Amplification
+The ablation analysis establishes that the encoder reads
+stimulus-relevant ROIs. We next ask the converse: whether
+writing to these ROIs by artificially amplifying their responses
+before decoding can steer the reconstruction toward the seman-
+tic content the regions are known to represent.
+Given a target ROI R and the original trial-averaged re-
+sponse x ∈RV of CC2017 subject 1, we apply a boost
+intervention: all voxels in R are set to a fixed high activation
+9
+
+
+ Model Attribution Map
+Real ROI Energy
+Stimuli
+Fig. 10. Model attribution maps match real cortical activation energy. From left to right: the stimulus frame, the model attribution map projected onto the
+cortical surface, and the real fMRI ROI activation energy. For a face stimulus, the model highlights face-selective regions; for a scene stimulus, the attribution
+shifts toward place-selective regions.
+GT
+Original
+Boost
+0.0
+0.2
+0.4
+0.6
+0.8
+1.0
+CLIP score
+***
+A
+Face ROI
+GT
+Original
+Boost
+0.0
+0.2
+0.4
+0.6
+0.8
+1.0
+***
+Place ROI
+Boost
+Face ROI
+Boost
+Place ROI
+−0.2
+−0.1
+0.0
+0.1
+0.2
+0.3
+0.4
+0.5
+Δ CLIP score
+***
+***
+***
+***
+B
+Face
+Place
+Fig. 11. Matched semantic lift and asymmetric double dissociation under
+targeted ROI boosting. (A) Bar plots show CLIP-face and CLIP-place scores
+before and after boosting the corresponding ROI. Each boost selectively
+elevates the semantic score matched to its known functional role. (B) Bars
+display the change (∆) in semantic scores when boosting the face ROI or
+the place ROI. Targeted boosting enhances its matched semantic score while
+suppressing the competing category’s score.
+TABLE IV
+ASYMMETRIC DOUBLE DISSOCIATION UNDER ROI BOOST (N=200
+SAMPLES, WILCOXON SIGNED-RANK VS. ORIGINAL; ∗∗∗p<0.001).
+Boosted ROI
+∆CLIP-face
+∆CLIP-place
+Face (FFC + PeEc)
++0.332 (d=+1.13)∗∗∗
+−0.164 (d=−0.83)∗∗∗
+Place (PHA1/2/3 + VMV1–3)
+−0.166 (d=−0.52)∗∗∗
++0.143 (d=+0.52)∗∗∗
+value (v = 3.0), non-target voxels are suppressed by a factor
+of 0.1, and the resulting response is z-score normalized before
+decoding. This is a deliberately strong intervention, so we
+interpret the result as evidence of region-selective, direction-
+ally specific semantic modulation, not as a calibrated estimate
+of per-ROI causal gain. Additional details and limitations are
+provided in Supplementary §I.3.
+We quantify face and place content using a zero-shot CLIP
+classifier, with prompt sets and scoring formulas reported
+in Supplementary §J. Boosting each ROI raises its matched
+GT
+Original
+Face boost
+Place boost
+Fig. 12.
+Boosting functional ROIs steers decoded content toward the
+matched category. Each column shows one example stimulus; rows show the
+ground-truth frame, the unmanipulated reconstruction, the face-ROI-boosted
+reconstruction, and the place-ROI-boosted reconstruction.
+semantic score (Fig. 11, Table IV). The face boost drives
+the CLIP-face score from 0.665 to 0.997 (∆= +0.332,
+d = +1.13, p < 0.001), indicating a strong shift toward
+face-dominated reconstructions. The place boost increases
+the CLIP-place score from 0.258 to 0.401 (∆= +0.143,
+d = +0.52, p < 0.001), showing a significant but weaker shift
+toward place content. Both boosts also suppress the competing
+category: face boosting lowers CLIP-place (∆= −0.164,
+d = −0.83, p < 0.001), while place boosting lowers CLIP-
+face (∆= −0.166, d = −0.52, p < 0.001). This asymmetric
+double dissociation indicates that targeted ROI amplification
+10
+
+
+exerts a region-selective influence on decoded semantics, ro-
+bustly for face and more weakly for place.
+Representative reconstructions are shown in Fig. 12. We
+further replicate ROI boosting on all three HCP subjects and
+two additional CC2017 subjects. The HCP subjects reproduce
+the asymmetric double dissociation cleanly, whereas the ad-
+ditional CC2017 subjects show partial sign instability under
+this deliberately out-of-distribution intervention (Supplemen-
+tary §L).
+7.
+CONCLUSION
+In this study, we present NEURONS++, a unified fMRI-to-
+visual-stream reconstruction framework for both static image
+and dynamic video reconstruction. By treating images as
+single-frame visual streams and videos as multi-frame visual
+streams, NEURONS++ connects two previously separated de-
+coding settings under a common formulation and architectural
+template. Compared with our conference version NEURONS,
+NEURONS++ extends the task paradigm from video-only
+reconstruction to visual-stream reconstruction for both images
+and videos, and replaces parallel task aggregation with serial
+cortex-inspired visual decoupling. The proposed framework
+combines multi-subject image-fMRI model pretraining with
+subject-specific adaptation, allowing the spatial-semantic rep-
+resentations learned from image-fMRI data to benefit both
+static and dynamic visual-stream reconstruction. Through se-
+rial decoding, NEURONS++ progressively organizes fMRI-
+derived representations into spatial, semantic, language-level,
+and temporal cues, which support high-fidelity generative
+reconstruction. Extensive experiments on image and video
+reconstruction benchmarks show that NEURONS++ achieves
+state-of-the-art or competitive performance across low-level,
+semantic-level, and spatiotemporal metrics. Beyond recon-
+struction accuracy, we further evaluate the neural-to-visual
+interpretability of NEURONS++ through delta-fMRI pertur-
+bation, ROI ablation, and ROI amplification analyses. These
+analyses suggest that NEURONS++ exhibits qualitative direc-
+tional controllability under graded neural perturbation, that
+its encoder read-out is sensitive to stimulus-relevant cortical
+regions, and that it supports ROI-guided semantic control. To-
+gether, these results show that NEURONS++ advances fMRI-
+based visual reconstruction toward a unified and interpretable
+visual-stream decoding framework.
+REFERENCES
+[1] T. Horikawa and Y. Kamitani, “Generic decoding of seen and imagined
+objects using hierarchical visual features,” Nature communications,
+vol. 8, no. 1, p. 15037, 2017.
+[2] S. Nishimoto, A. T. Vu, T. Naselaris, Y. Benjamini, B. Yu, and J. L.
+Gallant, “Reconstructing visual experiences from brain activity evoked
+by natural movies,” Current biology, vol. 21, no. 19, pp. 1641–1646,
+2011.
+[3] H. Wen, J. Shi, Y. Zhang, K.-H. Lu, J. Cao, and Z. Liu, “Neural encoding
+and decoding with deep learning for dynamic natural vision,” Cerebral
+cortex, vol. 28, no. 12, pp. 4136–4160, 2018.
+[4] A. Radford, J. W. Kim, C. Hallacy, A. Ramesh, G. Goh, S. Agarwal,
+G. Sastry, A. Askell, P. Mishkin, J. Clark et al., “Learning transferable
+visual models from natural language supervision,” in International
+conference on machine learning.
+PMLR, 2021, pp. 8748–8763.
+[5] R. Rombach, A. Blattmann, D. Lorenz, P. Esser, and B. Ommer, “High-
+resolution image synthesis with latent diffusion models,” in Proceedings
+of the IEEE/CVF conference on computer vision and pattern recognition,
+2022, pp. 10 684–10 695.
+[6] Y. Takagi and S. Nishimoto, “High-resolution image reconstruction with
+latent diffusion models from human brain activity,” in Proceedings of
+the IEEE/CVF Conference on Computer Vision and Pattern Recognition,
+2023, pp. 14 453–14 463.
+[7] P. Scotti, A. Banerjee, J. Goode, S. Shabalin, A. Nguyen, A. Dempster,
+N. Verlinde, E. Yundler, D. Weisberg, K. Norman et al., “Reconstructing
+the mind’s eye: fmri-to-image with contrastive learning and diffusion
+priors,” Advances in Neural Information Processing Systems, vol. 36,
+pp. 24 705–24 728, 2023.
+[8] P. S. Scotti, M. Tripathy, C. K. T. Villanueva, R. Kneeland, T. Chen,
+A. Narang, C. Santhirasegaran, J. Xu, T. Naselaris, K. A. Norman, and
+T. M. Abraham, “Mindeye2: shared-subject models enable fmri-to-image
+with 1 hour of data,” in Proceedings of the 41st International Conference
+on Machine Learning, ser. ICML’24.
+JMLR.org, 2024.
+[9] Z. Gong, Q. Zhang, G. Bao, L. Zhu, R. Xu, K. Liu, L. Hu, and D. Miao,
+“Mindtuner: Cross-subject visual decoding with visual fingerprint and
+semantic correction,” in Proceedings of the AAAI Conference on Artifi-
+cial Intelligence, vol. 39, 2025, pp. 14 247–14 255.
+[10] W. Xia, R. de Charette, C. Oztireli, and J.-H. Xue, “Umbrae: Unified
+multimodal brain decoding,” in European Conference on Computer
+Vision.
+Springer, 2024, pp. 242–259.
+[11] J. Huo, Y. Wang, Y. Wang, X. Qian, C. Li, Y. Fu, and J. Feng,
+“Neuropictor: Refining fmri-to-image reconstruction via multi-individual
+pretraining and multi-level modulation,” in European Conference on
+Computer Vision.
+Springer, 2024, pp. 56–73.
+[12] S. Wang, S. Liu, Z. Tan, and X. Wang, “Mindbridge: A cross-subject
+brain decoding framework,” in Proceedings of the IEEE/CVF Conference
+on Computer Vision and Pattern Recognition, 2024, pp. 11 333–11 342.
+[13] R. Beliy, A. Zalcher, J. Kogman, N. Wasserman, and M. Irani, “Brain-
+it: Image reconstruction from fmri via brain-interaction transformer,” in
+ICLR, 2026.
+[14] C. Wang, H. Yan, W. Huang, J. Li, Y. Wang, Y.-S. Fan, W. Sheng,
+T. Liu, R. Li, and H. Chen, “Reconstructing rapid natural vision with
+fmri-conditional video generative adversarial network,” Cerebral Cortex,
+vol. 32, no. 20, pp. 4502–4511, 2022.
+[15] G. Kupershmidt, R. Beliy, G. Gaziv, and M. Irani, “A penny for your
+(visual) thoughts: Self-supervised reconstruction of natural movies from
+brain activity,” arXiv preprint arXiv:2206.03544, 2022.
+[16] Z. Chen, J. Qing, and J. H. Zhou, “Cinematic mindscapes: High-
+quality video reconstruction from brain activity,” Advances in Neural
+Information Processing Systems, vol. 36, 2024.
+[17] Z. Gong, G. Bao, Q. Zhang, Z. Wan, D. Miao, S. Wang, L. Zhu, C. Wang,
+R. Xu, L. Hu et al., “Neuroclips: Towards high-fidelity and smooth fmri-
+to-video reconstruction,” Advances in Neural Information Processing
+Systems, vol. 37, pp. 51 655–51 683, 2025.
+[18] H. Wang, Q. Zhang, L. Wang, X. Huang, and X. Li, “Neurons: Emulating
+the human visual cortex improves fidelity and interpretability in fmri-
+to-video reconstruction,” in Proceedings of the IEEE/CVF International
+Conference on Computer Vision, 2025, pp. 18 367–18 376.
+[19] M. Yang, L. Yang, K. Li, H. Zhang, K. Pang, and Y. Song, “Semvideo:
+Reconstructs what you watch from brain activity via hierarchical seman-
+tic guidance,” in CVPR, 2026.
+[20] R. Kneeland, P. S. Scotti, G. St-Yves, J. Breedlove, K. Kay, and
+T. Naselaris, “Nsd-imagery: A benchmark dataset for extending fmri
+vision decoding methods to mental imagery,” in Proceedings of the
+Computer Vision and Pattern Recognition Conference, 2025, pp. 28 852–
+28 862.
+[21] E. J. Allen, G. St-Yves, Y. Wu, J. L. Breedlove, J. S. Prince, L. T.
+Dowdle, M. Nau, B. Caron, F. Pestilli, I. Charest et al., “A massive 7t
+fmri dataset to bridge cognitive neuroscience and artificial intelligence,”
+Nature neuroscience, vol. 25, no. 1, pp. 116–126, 2022.
+[22] T. Fang, Q. Zheng, and G. Pan, “Alleviating the semantic gap for gen-
+eralized fmri-to-image reconstruction,” Advances in Neural Information
+Processing Systems, vol. 36, pp. 15 096–15 107, 2023.
+[23] B. Zeng, S. Li, X. Liu, S. Gao, X. Jiang, X. Tang, Y. Hu, J. Liu, and
+B. Zhang, “Controllable Mind Visual Diffusion Model,” Proceedings
+of the AAAI Conference on Artificial Intelligence, vol. 38, no. 7, pp.
+6935–6943, Mar. 2024.
+[24] Z. Chen, J. Qing, T. Xiang, W. L. Yue, and J. H. Zhou, “Seeing beyond
+the brain: Conditional diffusion model with sparse masked modeling
+for vision decoding,” in Proceedings of the IEEE/CVF Conference on
+Computer Vision and Pattern Recognition, 2023, pp. 22 710–22 720.
+[25] M. Ferrante, F. Ozcelik, T. Boccato, R. VanRullen, and N. Toschi, “Brain
+captioning: Decoding human brain activity into images and text,” arXiv
+preprint arXiv:2305.11560, 2023.
+[26] J. Lu, H. Wang, Q. Zhang, and X. Li, “A cognitive process-inspired
+architecture for subject-agnostic brain visual decoding,” arXiv preprint
+arXiv:2511.02565, 2025.
+[27] H. Wang, J. Lu, H. Li, and X. Li, “Zebra: Towards zero-shot cross-
+subject generalization for universal brain visual decoding,” Advances in
+Neural Information Processing Systems, vol. 38, pp. 1030–1051, 2026.
+11
+
+
+[28] A. Thual, Y. Benchetrit, F. Geilert, J. Rapin, I. Makarov, H. Banville,
+and J.-R. King, “Aligning brain functions boosts the decoding of visual
+semantics in novel subjects,” Dec. 2023.
+[29] X. Qian, Y. Wang, J. Huo, J. Feng, and Y. Fu, “fmri-pte: A large-
+scale fmri pretrained transformer encoder for multi-subject brain activity
+decoding,” arXiv preprint arXiv:2311.00342, 2023.
+[30] C. Li, X. Qian, Y. Wang, J. Huo, X. Xue, Y. Fu, and J. Feng, “Enhancing
+cross-subject fmri-to-video decoding with global-local functional align-
+ment,” in European Conference on Computer Vision.
+Springer, 2024,
+pp. 353–369.
+[31] Y. Guo, C. Yang, A. Rao, Y. Wang, Y. Qiao, D. Lin, and B. Dai,
+“Animatediff: Animate your personalized text-to-image diffusion models
+without specific tuning,” arXiv preprint arXiv:2307.04725, 2023.
+[32] A. Blattmann, R. Rombach, H. Ling, T. Dockhorn, S. W. Kim, S. Fidler,
+and K. Kreis, “Align your latents: High-resolution video synthesis with
+latent diffusion models,” in Proceedings of the IEEE/CVF Conference
+on Computer Vision and Pattern Recognition, 2023, pp. 22 563–22 575.
+[33] A. Ramesh, P. Dhariwal, A. Nichol, C. Chu, and M. Chen, “Hierarchical
+text-conditional image generation with clip latents,” arXiv preprint
+arXiv:2204.06125, vol. 1, no. 2, p. 3, 2022.
+[34] Y. Wei, C. Ma, J. Gao, C. Wang, S. Zhang, B. Gong, S. Tan, H. Yuan,
+and H. Shan, “Bridging brain and semantics: A hierarchical framework
+for semantically enhanced fmri-to-video reconstruction,” in CVPR, 2026.
+[35] X.-H. Liu, Y.-K. Liu, T. Zhou, B.-L. Lu, and W.-L. Zheng, “Mindcross:
+Fast new subject adaptation with limited data for cross-subject video re-
+construction from brain signals,” in Proceedings of the AAAI Conference
+on Artificial Intelligence, vol. 40, no. 21, 2026, pp. 17 589–17 597.
+[36] Y. Lu, C. Du, C. Wang, X. Zhu, L. Jiang, and H. He, “Animate your
+thoughts: Decoupled reconstruction of dynamic natural vision from slow
+brain activity,” in ICLR, 2025.
+[37] D. S. Marcus, J. Harwell, T. Olsen, M. Hodge, M. F. Glasser, F. Prior,
+M. Jenkinson, T. Laumann, S. W. Curtiss, and D. C. Van Essen, “Infor-
+matics and data mining tools and strategies for the human connectome
+project,” Frontiers in neuroinformatics, vol. 5, p. 4, 2011.
+[38] T.-Y. Lin, M. Maire, S. Belongie, J. Hays, P. Perona, D. Ramanan,
+P. Doll´ar, and C. L. Zitnick, “Microsoft coco: Common objects in
+context,” in Computer Vision–ECCV 2014: 13th European Conference,
+Zurich, Switzerland, September 6-12, 2014, Proceedings, Part V 13.
+Springer, 2014, pp. 740–755.
+[39] M. F. Glasser, T. S. Coalson, E. C. Robinson, C. D. Hacker, J. Harwell,
+E. Yacoub, K. Ugurbil, J. Andersson, C. F. Beckmann, M. Jenkinson
+et al., “A multi-modal parcellation of human cerebral cortex,” Nature,
+vol. 536, no. 7615, pp. 171–178, 2016.
+[40] S. Bai, K. Chen, X. Liu, J. Wang, W. Ge, S. Song, K. Dang, P. Wang,
+S. Wang, J. Tang, H. Zhong, Y. Zhu, M. Yang, Z. Li, J. Wan, P. Wang,
+W. Ding, Z. Fu, Y. Xu, J. Ye, X. Zhang, T. Xie, Z. Cheng, H. Zhang,
+Z. Yang, H. Xu, and J. Lin, “Qwen2.5-vl technical report,” 2025.
+[Online]. Available: https://arxiv.org/abs/2502.13923
+[41] C. Fellbaum, “Wordnet,” in Theory and applications of ontology:
+computer applications.
+Springer, 2010, pp. 231–243.
+[42] T. Ren, S. Liu, A. Zeng, J. Lin, K. Li, H. Cao, J. Chen, X. Huang,
+Y. Chen, F. Yan et al., “Grounded sam: Assembling open-world models
+for diverse visual tasks,” arXiv preprint arXiv:2401.14159, 2024.
+[43] A. Radford, J. Wu, R. Child, D. Luan, D. Amodei, I. Sutskever et al.,
+“Language models are unsupervised multitask learners,” OpenAI blog,
+vol. 1, no. 8, p. 9, 2019.
+[44] I. Loshchilov and F. Hutter, “Decoupled weight decay regularization,”
+arXiv preprint arXiv:1711.05101, 2017.
+[45] L. N. Smith and N. Topin, “Super-convergence: Very fast training of
+neural networks using large learning rates,” in Artificial intelligence and
+machine learning for multi-domain operations applications, vol. 11006.
+SPIE, 2019, pp. 369–386.
+[46] J. Song, C. Meng, and S. Ermon, “Denoising diffusion implicit models,”
+arXiv preprint arXiv:2010.02502, 2020.
+[47] M. F. Glasser, S. N. Sotiropoulos, J. A. Wilson, T. S. Coalson, B. Fischl,
+J. L. Andersson, J. Xu, S. Jbabdi, M. Webster, J. R. Polimeni et al., “The
+minimal preprocessing pipelines for the human connectome project,”
+Neuroimage, vol. 80, pp. 105–124, 2013.
+[48] K. Han, H. Wen, J. Shi, K.-H. Lu, Y. Zhang, D. Fu, and Z. Liu,
+“Variational autoencoder: An unsupervised model for encoding and
+decoding fmri activity in visual cortex,” NeuroImage, vol. 198, pp. 125–
+136, 2019.
+[49] Z. Tong, Y. Song, J. Wang, and L. Wang, “Videomae: Masked autoen-
+coders are data-efficient learners for self-supervised video pre-training,”
+Advances in neural information processing systems, vol. 35, pp. 10 078–
+10 093, 2022.
+[50] W. Kay, J. Carreira, K. Simonyan, B. Zhang, C. Hillier, S. Vijaya-
+narasimhan, F. Viola, T. Green, T. Back, P. Natsev et al., “The kinetics
+human action video dataset,” arXiv preprint arXiv:1705.06950, 2017.
+[51] J. Z. Wu, X. Li, D. Gao, Z. Dong, J. Bai, A. Singh, X. Xiang,
+Y. Li, Z. Huang, Y. Sun et al., “Cvpr 2023 text guided video editing
+competition,” arXiv preprint arXiv:2310.16003, 2023.
+12
+
+
+Supplementary Material
+NEURONS++: A Unified Visual-Stream Framework
+for Image and Video Reconstruction from fMRI
+with Neural-to-Visual Interpretability
+Contents
+A. Decoupled Task Construction
+B. Additional Model Details
+C. Training and Inference Configuration
+D. Dataset Details and Preprocessing
+E. Implementation Overview
+F. Evaluation Metrics
+G. Functional ROI Parcel Assignments
+H. Additional Details for Neural-to-Visual Interpretability
+I. Zero-Shot CLIP Scoring of Face and Place Content
+J. Additional Ablation: GRPO-based Image-to-Image Re-
+finement
+K. Additional Subjects and Datasets for ROI Analyses
+A.
+DECOUPLED TASK CONSTRUCTION
+We construct four types of task labels for the Serial Visual
+Decoupler: scene descriptions, concept names, concept seg-
+mentation masks, and rule-based key objects, as illustrated in
+Fig. b.
+Scene description generation. To construct labels for the
+scene description task, we generate a descriptive caption for
+each frame using Qwen2.5-VL-72B-Instruct [40]. Each frame
+is provided to Qwen with an instruction to produce a detailed
+one-phrase caption, such as “a woman sitting on a
+bed looking out a window at palm trees”.
+The instruction prompts are shown in Fig. a.
+Concept name generation. To construct labels for concept
+recognition, we generate concept names for the primary ob-
+jects in each frame. We first input each frame into Qwen and
+ask it to recognize the primary objects, such as ['woman',
+'bed', 'tree']. The detected primary objects are then mapped
+into 51 concept categories summarized from WordNet [41],
+such as ['animal', 'human', 'plant', 'furniture']. The
+output is a concept name list that covers the primary objects
+in the frame. The instruction prompts and the 51-concept list
+are shown in Fig. a.
+Concept segmentation mask generation. We use the object
+list of each frame to generate segmentation masks for the
+primary objects. Each frame and its object list are provided to
+Grounded-SAM [42], which generates binary masks using the
+object names as textual prompts.
+Rule-based key object discovery. We identify key objects
+in video sequences by integrating motion dynamics, object
+size, and semantic importance. Background categories such
+as sky and ocean are excluded using predefined labels. For
+the remaining objects, inter-frame displacement is calculated,
+with higher weights assigned to priority categories such as
+humans and animals to reflect semantic importance. Objects
+are ranked by weighted displacement, and excessively large
+objects occupying more than 50% of the image area are filtered
+out. Priority categories are selected first; otherwise, top-ranked
+objects by motion dynamics are chosen. If all objects are
+background, the largest object is selected as a fallback to
+ensure that at least one key object is identified.
+B.
+ADDITIONAL MODEL DETAILS
+B.1.
+Brain Encoding and Diffusion-Prior Objective
+The brain encoding module follows the MindEye2-style
+design [8] and consists of a ridge regression module, a
+residual MLP module, and a diffusion prior network. The
+ridge regression module first maps the high-dimensional voxel
+response xc into a lower-dimensional representation, and the
+residual MLP backbone Bθ produces the neural representation
+hc = Bθ(ridge(xc)). As described in Sec. 3.3, the projection
+heads Pi, Pvid, and Pt then map hc into the image-level visual
+tokens ei
+c, the visual-stream embedding ev
+c, and the textual
+embedding et
+c used in the main paper; the image-level read-
+out probed in the ROI ablation (Sec. 6.2) is the composition
+f = Pi◦Bθ◦ridge. These embeddings are subsequently passed
+to the Serial Visual Decoupler in Sec. 3.4, whose task-specific
+heads are denoted as Dseg, Dcls, Dtxt, and Drec. The Serial
+Visual Decoupler operates on ev
+c without gradient detachment,
+so the four decoupling losses backpropagate through Pvid, Pi,
+Bθ, and the ridge map; the read-out f probed in Sec. 6.2
+is therefore the encoder of the fully trained NEURONS++
+model, jointly shaped end-to-end by both the embedding-
+alignment objective Lenc and the cortex-inspired decoupling
+losses Ldec under Eq. (7), rather than by CLIP alignment
+alone. As defined in Eq. (3) of the main paper, the embedding-
+alignment objective Lenc comprises the visual CLIP alignment
+loss LCLIPv, the text CLIP alignment loss LCLIPt, and the
+diffusion-prior loss Lprior, balanced by λt and λp. Here
+we specify these three terms in detail. The diffusion prior
+is the component that contributes Lprior; it is part of the
+brain encoding module rather than an additional task head
+in the Serial Visual Decoupler. Consistent with the notation in
+Sec. 3.3, M(·) denotes the diffusion-prior module, while ϵψ(·)
+denotes its internal noise-prediction network—the network
+actually optimized by Lprior below.
+Following prior work, LCLIPv and LCLIPt are implemented
+with the BiMixCo objective, which combines MixCo augmen-
+tation and bidirectional contrastive learning. For each fMRI
+response xc, we randomly sample another response xmc and
+13
+
+
+Scene Description Generation
+System Prompts: You will assist with image analysis tasks. Your
+role is to analyze the given image and generate a descriptive
+caption for the provided image. Please follow the rules:
+-
+The output format should be: “Caption: *****.”.
+-
+Cover all primary objects in the given image.
+-
+Focus on the relationship between the objects.
+-
+Strictly keep the caption in one phrase.
+-
+Do not use a celebrities name such as "harry potter" in the
+caption, use "boy", "girl", "man”, "woman" instead.
+-
+Do not include any unnecessary commentary or explanations.
+-
+Do not say anything else from the output format.
+For example:
+[Input]: Image size of 224 * 224
+[Output]: Caption: a boy sitting on a chair holding a cup.
+[Input]: Image size of 224 * 224
+[Output]: Caption: an airplane flying to an airport.
+[Input]: Image size of 224 * 224
+[Output]: caption: two girls sitting on a couch.
+[Input]: Image size of 224 * 224
+[Output]: Caption: a woman with long black hair brushing teeth.
+[Input]: Image size of 224 * 224
+[Output]: Caption: a close up of a yellow eel in the ocean.
+[Input]: Image size of 224 * 224
+[Output]: Caption: a fish swimming in the ocean.
+Primary Object Detection
+System Prompts: You will assist with image analysis tasks. Your
+role is to analyze the given image and identify the primary
+objects and list their names. Please follow the rules:
+-
+Strictly follow the output format: “Objs: [***, ***, …]”.
+-
+Cover all primary objects in the given image.
+-
+Only provide the object names of the primary objects.
+-
+Make sure the object names are in one-word noun format, do
+not add any descriptive adjectives or descriptive nouns.
+-
+Keep only the object name in its singular form.
+-
+Do not use a persons' name as object name such as "harry
+potter", use "boy", "girl", "man”, "woman" instead.
+-
+Separate each object name with a comma.
+-
+Do not repeat any same word.
+-
+Do not include any unnecessary commentary or explanations.
+-
+Do not say anything else from the output format.
+For example:
+[Input]: Image size of 224 * 224
+[Output]: Objs: [boy, chair, cup]
+[Input]: Image size of 224 * 224
+[Output]: Objs: [airplane, airport]
+[Input]: Image size of 224 * 224
+[Output]: Objs: [girl, couch]
+[Input]: Image size of 224 * 224
+[Output]: Objs: [woman]
+Concept Generation
+System Prompts: You will assist with text-related tasks. I will
+give you a list of object names in the following form: Objs:
+[***, ***, ***, …]. Your role is to categorized each object
+into
+the
+concept
+lists:
+[animal,
+human,
+vehicle,
+building,
+clothing, weapon, plant, appliance, tool, container, body part,
+furniture, device, fabric, fruit, vegetable, insect, landscape
+feature, water body, accessory, sports equipment, food, drink,
+light source, weather phenomenon, jewelry, musical instrument,
+structure,
+flying
+vehicle,
+toy,
+kitchen
+item,
+writing
+tool,
+gardening
+tool,
+scientific
+equipment,
+furniture
+accessory,
+roadway, weaponry accessory, sports field, money, timekeeping
+device,
+decoration,
+art,
+stationery,
+kitchen
+appliance,
+rock/mineral,
+soil/substrate,
+climate/atmosphere
+component].
+Please follow the rules:
+-
+Strictly follow the output format: “Concept: [***, ***, …]”.
+-
+Only output the concept name in the given list.
+-
+You can categorize the object into more than one concepts.
+-
+If two objects belong to one concept, only list concept once.
+For example:
+[Input]: Objs: [boy, chair, cup]
+[Output]: Concept: [human, appliance, furniture]
+[Input]: Objs: [airplane, airport]
+[Output]: Objs: [building, flying vehicle]
+[Input]: Objs: [girl, couch]
+[Output]: Objs: [human, furniture]
+[Input]: Objs: [woman]
+[Output]: Objs: [human]
+(a)
+(b)
+(c)
+Fig. a. Instruction prompts for scene description generation and key concept generation.
+Prompt: …You need to generate a descriptive caption
+for the given image, keep the caption in one phrase…
+Qwen: A woman sitting on a bed looking out a
+window at palm trees
+Scene Description Generation
+Prompt: …You need to identify key objects in the
+image, and list their formal names in WordNet…
+Qwen: [Woman, Tree, Bed, Window]
+Concept Name Generation
+Prompt: Segment the [Woman, Tree, Bed, Window]
+in the given image.
+Concept Segmentation Mask Generation
+Grounded 
+SAM
+Woman
+Tree
+Bed
+…
+Woman
+Tree
+Bed
+Window
+Rule-based Key Object Discovery
+Fig. b. Construction pipeline for the decoupled task labels.
+form a mixed response x∗
+c = λcxc + (1 −λc)xmc, where λc
+is sampled from a Beta distribution. The mixed response is
+encoded and aligned with the corresponding visual or textual
+CLIP targets using the BiMixCo contrastive loss.
+The diffusion prior is used to transform the fMRI-derived
+visual embedding into the CLIP visual-embedding space used
+by the generative prior. Let ¯ev
+c
+= Pool(ev
+c) denote the
+pooled fMRI-derived visual embedding, and let ¯Φv(Yc) =
+Pool(Φv(Yc)) denote the pooled target CLIP visual embed-
+ding. For compactness, we write ex,c = ¯ev
+c and ey,c =
+¯Φv(Yc). At diffusion step s, the noisy target embedding is
+˜es
+y,c = √¯αsey,c +
+√
+1 −¯αsϵ,
+ϵ ∼N(0, I),
+where ¯αs is the cumulative noise schedule. The diffusion-
+prior module M(·) is realized by a noise-prediction network
+ϵψ(·) that predicts the injected noise conditioned on the fMRI-
+derived embedding:
+Lprior = Ec, s, ϵ
+hϵ −ϵψ
+ ˜es
+y,c, s, ex,c
+2
+2
+i
+.
+(11)
+This formulation follows the standard conditional diffusion-
+prior training objective and makes explicit the roles of the
+fMRI-derived condition ex,c and the target visual embedding
+ey,c.
+B.2.
+Serial Visual Decoupler Task Heads and Losses
+The main paper describes the Serial Visual Decoupler at
+the architectural level, emphasizing the journal-version change
+from the parallel task aggregation of NEURONS to a pro-
+gressive serial decoding process. Here we provide the task-
+head definitions and loss functions for the four inherited
+decoupled supervision targets: key object segmentation, con-
+cept recognition, scene description, and blurry visual-stream
+reconstruction. The construction of the corresponding labels
+follows NEURONS and is described in Supplementary §A.
+Key object segmentation. The first stage focuses on low-
+level object structure. Given the stage-0 representation z0
+c and
+the text embedding of the detected key object, a text-driven
+segmentation decoder Dseg(·) predicts the binary key object
+mask:
+ˆMc = Dseg(z0
+c, eobj
+c
+),
+eobj
+c
+= Φt(oc),
+(12)
+where oc is the detected key object name obtained during
+decoupled task construction and Φt(·) denotes the CLIP text
+encoder. The compact segmentation objective is
+Lseg = Lbce( ˆMc, Mc).
+(13)
+For completeness, let Mc
+∈
+{0, 1}Tc×H×W
+denote the
+ground-truth mask of a single stream and ˆMc ∈[0, 1]Tc×H×W
+14
+
+
+denote the predicted mask. Following the batch-index conven-
+tion of Sec. 3.1, the b-th stream of a minibatch is written
+M(b) ≡Mc=b with entries yseg,(b)
+t,h,w , and likewise ˆyseg,(b)
+t,h,w
+for
+the prediction. The binary cross-entropy loss is averaged over
+the minibatch, frames, and spatial locations:
+Lseg = −
+1
+BTcHW
+B
+X
+b=1
+Tc
+X
+t=1
+H
+X
+h=1
+W
+X
+w=1
+
+yseg,(b)
+t,h,w
+log ˆyseg,(b)
+t,h,w
++ (1 −yseg,(b)
+t,h,w ) log(1 −ˆyseg,(b)
+t,h,w )
+
+.
+(14)
+This task provides spatial guidance for object localization and
+shape refinement.
+Concept recognition. The second stage learns object-level
+semantic concepts. We apply a multi-label classifier Dcls(·)
+to the pooled representation of z1
+c:
+ˆCc = Dcls(Pool(z1
+c)),
+(15)
+where Pool(·) is the temporal- and token-axis average defined
+in Eq. (2) of the main paper, mapping RTc×Ntok×D to RD.
+The concept recognition objective is a multi-label binary cross-
+entropy loss:
+Lcls = Lbce( ˆCc, Cc).
+(16)
+This stage constrains the reconstruction with object-level se-
+mantics and reduces conceptual shifts.
+Scene description. The third stage decodes scene-level lan-
+guage information. We use a text decoder Dtxt(·), imple-
+mented with GPT-2 [43], to generate a caption conditioned on
+z2
+c and the fMRI-derived text embedding et
+c. Given the ground-
+truth token sequence Sc = {s1, . . . , s|Sc|}, the language-
+modeling objective is
+Ltxt = −1
+|Sc|
+|Sc|
+X
+i=1
+log pDtxt(si | s<i, z2
+c, et
+c).
+(17)
+This task provides language-level conditioning for downstream
+generation and helps preserve scene-level semantics.
+Blurry visual-stream reconstruction. The final stage learns
+coarse visual appearance and temporal structure. We use a
+reconstruction decoder Drec(·) to predict a low-resolution
+VAE-space visual stream:
+ˆRc = Drec(z3
+c, et
+c),
+ˆRc ∈RTc×C×H′×W ′,
+(18)
+where H′ = H/8 and W ′ = W/8. Let Rc = VAE(Yc)
+denote the VAE latent target of the visual stream. We opti-
+mize this task with a mean-absolute-error reconstruction loss,
+fully averaged over the batch, temporal, channel, and spatial
+dimensions:
+Lrec =
+1
+BTcCH′W ′
+B
+X
+b=1
+Tc
+X
+t=1
+C
+X
+γ=1
+H′
+X
+h=1
+W ′
+X
+w=1
+ ˆR(b)
+t,γ,h,w −R(b)
+t,γ,h,w
+ ,
+(19)
+where ˆR(b)
+t,γ,h,w and R(b)
+t,γ,h,w denote the predicted and target
+VAE-latent values of the b-th stream in the minibatch at frame
+t, channel γ, and spatial location (h, w), with ˆR(b) ≡ˆRc=b.
+For image reconstruction, this loss is applied to a single frame.
+For video reconstruction, it captures coarse temporal dynamics
+and color distribution across clips.
+Overall decoupling objective. The overall decoupling objec-
+tive sums the four task losses with equal weight:
+Ldec = Lseg + Lcls + Ltxt + Lrec.
+(20)
+Each term is mean-reduced over its own output dimensions—
+frames and spatial locations for Lseg, the concept set for
+Lcls, the caption length |Sc| for Ltxt, and (Tc, C, H′, W ′)
+for Lrec—so the four losses are of comparable scale rather
+than differing by orders of magnitude. We therefore combine
+them with equal weight and rely on the single outer coefficient
+λdec in Eq. (7) of the main paper to balance Ldec against
+the embedding-alignment objective Lenc. The loss weights are
+reported in Supplementary §C.
+C.
+TRAINING AND INFERENCE CONFIGURATION
+For the CC2017 dataset, videos are downsampled from 30
+FPS to 3 FPS to ensure fair comparison with prior methods.
+The blurry visual-stream prediction is interpolated to 8 FPS
+during inference to generate the final reconstructed video. The
+brain encoding module and Serial Visual Decoupler are trained
+for 30 and 50 epochs, respectively. The batch size is set to 120
+for the brain encoding module and 10 for the Serial Visual
+Decoupler.
+We use AdamW [44] for optimization with a learning rate
+of 5 × 10−5 and a OneCycle learning-rate schedule [45].
+The loss-balancing weights in Eqs. (3) and (7) of the main
+paper are set to λt = 0.5, λp = 1.0, and λdec = 1.0 in all
+experiments. For video reconstruction, the temporal expansion
+module can in principle be instantiated with different text-to-
+video diffusion models. In our implementation, we use the
+open-source AnimateDiff model [31], following prior fMRI-
+to-video reconstruction work [17]. Inference is performed with
+25 DDIM steps [46].
+For image reconstruction, the keyframe is first generated
+by an SDXL unCLIP pipeline and then refined by an SDXL-
+based image-to-image diffusion model. The refinement uses
+the publicly available ZavyChromaXL v3.0 SDXL checkpoint,
+conditioned on the fMRI-derived CLIP visual embedding and
+the decoded scene description. The img2img process runs for
+38 sampler steps and starts from a partially noised latent of
+the initial keyframe (i.e., the diffusion trajectory is entered
+near the high-noise end rather than from pure noise), so that
+the refined image preserves the layout of the keyframe while
+sharpening object-level detail. All experiments are conducted
+on a single NVIDIA A100 GPU.
+D.
+DATASET DETAILS AND PREPROCESSING
+D.1.
+CC2017
+We use the public CC2017 video-fMRI dataset [3] for
+fMRI-to-video reconstruction. The dataset contains fMRI re-
+sponses from three subjects viewing natural movie clips sub-
+tending approximately 23◦×23◦of visual angle, with a central
+fixation cross of 0.8◦× 0.8◦. The stimuli are divided into 18
+training movies and 5 testing movies, each 8 minutes long. The
+training and testing movies were presented 2 and 10 times to
+15
+
+
+each subject, respectively. Anatomical MRI, including T1- and
+T2-weighted scans, and fMRI data were acquired using a 3T
+MRI system. The fMRI signals have a temporal resolution of
+2 seconds.
+We follow the preprocessing protocol used in prior fMRI-
+to-video reconstruction studies [3], [17], based on the minimal
+preprocessing pipeline [47]. The fMRI volumes are corrected
+for artifacts and head motion, registered to the MNI space,
+and projected onto cortical surfaces co-registered to a tem-
+plate [39]. To identify stimulus-activated voxels, we compute
+the voxel-wise correlation between the fMRI signals of the
+repeated presentations of each training movie. The correlation
+coefficients are Fisher z-transformed, and the averaged z-
+scores across the 18 training movie segments are evaluated
+with a one-sample t-test. Voxels with significant activation
+(Bonferroni-corrected, P
+< 0.05) are selected to form a
+subject-specific visual mask, yielding 13,447, 14,828, and
+9,114 activated voxels in the visual cortex for the three
+subjects, respectively. This mask is computed only from
+the training set and then applied to both training and test
+responses. Following prior work [2], [48], we use BOLD
+signals with a 4-second hemodynamic lag to represent the
+corresponding movie stimulus responses. After preprocessing,
+the dataset contains 8,640 training fMRI-video pairs and
+1,200 testing pairs for each subject. The testing responses are
+averaged across repeated presentations, following the standard
+evaluation protocol.
+D.2.
+HCP
+We further evaluate fMRI-to-video reconstruction on the
+movie-watching data from the Human Connectome Project
+(HCP) [37]. The full dataset contains BOLD responses from
+158 subjects. In our experiments, we use three subjects,
+100610, 102816, and 104416, following the setting of prior
+video reconstruction work. The data were acquired using a
+7T MRI scanner with a spatial resolution of 1.6 mm and a
+repetition time of 1 second.
+We use the standard HCP preprocessing pipeline, includ-
+ing head-motion correction, distortion correction, high-pass
+filtering, and removal of temporal artifacts using independent
+component analysis (ICA). The preprocessed BOLD responses
+are registered to the MNI standard space. Since the HCP
+movie-watching data do not provide repeated presentations
+in the same way as CC2017, we identify visually responsive
+voxels using a split-half reliability test on the cortical surface
+(59,412 fsLR-32k vertices). For each movie, we divide its clips
+into even- and odd-indexed halves and compute the voxel-wise
+Pearson correlation between the two halves within consecutive
+segments; the correlations are Fisher z-transformed and tested
+against zero with a per-voxel one-sample t-test, and voxels
+surviving Bonferroni correction (α = 0.01) are retained. If
+fewer voxels survive than the target budget, we fall back to
+the top 12,000 voxels ranked by adjusted p-value. This yields
+12,000 voxels for subjects 100610 and 102816, and 13,292
+for subject 104416.
+Following prior fMRI video decoding protocols [2], [14],
+[48], we use a 4-second hemodynamic lag to align BOLD
+responses with movie stimuli. Since there is no widely estab-
+lished train/test split for video reconstruction on these three
+HCP subjects, the split must be constructed by us. The HCP
+movie-watching stimuli are continuous films, and the clips are
+1-second segments cut sequentially from four movies (728,
+792, 745, and 775 clips, respectively; 3,040 in total). A naive
+random shuffle of all clips into a 90%/10% split (as used
+in the conference version) causes severe temporal leakage:
+because temporally adjacent clips are highly correlated and
+the 4-second hemodynamic lag spreads each clip’s BOLD
+response onto its neighbors, a randomly held-out test clip
+is almost always flanked by training clips that carry the
+same hemodynamic signal. Concretely, under the random split,
+100% of test clips have a training clip within the 4-second
+hemodynamic window and 98% have an immediate (±1 s)
+training neighbor (median nearest-training gap of 1 s), and the
+voxel-wise fMRI response of a test clip correlates with its
+adjacent training clip at r=0.43 on average, which inflates
+test-time scores.
+To eliminate this leakage, we adopt a group-aware, embar-
+goed split. Within each movie, we partition the timeline into
+contiguous 30-second blocks and assign whole blocks to the
+training or test set (so all four movies are represented in both
+sets), and at every train/test boundary we discard an embargo
+of 4 seconds (the hemodynamic lag) of training clips adjacent
+to any test clip. This yields 2,597 training and 355 test clips
+(88 boundary clips discarded by the embargo) and reduces
+the fraction of test clips with a training neighbor within the
+hemodynamic window from 100% to 0% (minimum nearest-
+training gap of 5 s, median 13 s), removing the temporal
+leakage. All HCP results in this paper, including those in
+Table I, are reported under this leakage-free split, and the split
+is fixed across methods to ensure fair comparison.
+D.3.
+Natural Scenes Dataset
+For fMRI-to-image reconstruction, we use the Natural
+Scenes Dataset (NSD) [21], a large-scale public fMRI dataset
+containing brain responses to natural images from COCO [38].
+The dataset includes 8 subjects, each scanned for 30–40
+hours across 30–40 scanning sessions. Each scanning session
+contains 750 images, and each image is presented for 3
+seconds. Most images are unique to each subject, while a
+shared set of 1,000 images is presented to all subjects.
+We follow the standard train/test split used in previous NSD
+reconstruction studies [6], [8], [9]. The 1,000 shared images
+are used as the test set, and the remaining subject-specific
+images are used for training. We evaluate performance on the
+four subjects who completed all 40 scanning sessions. For the
+test set, responses to repeated presentations of the same image
+are averaged, resulting in 1,000 test samples per subject. For
+the training set, we use single-trial, non-averaged brain-image
+pairs, resulting in approximately 30,000 training samples per
+subject.
+The fMRI responses are normalized single-trial beta esti-
+mates produced by GLMSingle [21]. We use preprocessed
+flattened fMRI voxels in 1.8-mm native volume space from
+the “nsdgeneral” brain region, which is defined by the NSD
+16
+
+
+Fig. c. Qualitative comparison of fMRI-to-video reconstruction on the HCP
+subject 2. For each example, the left clip/frame is the ground-truth stimulus
+and the right clip/frame is the reconstructed result; every row shows two
+examples. Best viewed with Acrobat Reader. Click the images to play the
+animation clips.
+authors as the subset of voxels in posterior cortex most
+responsive to the presented visual stimuli. This region contains
+approximately 13,000 to 16,000 voxels per participant. For
+each subject, voxel-wise z-score normalization is applied using
+the mean and standard deviation computed from the training
+set only, and the same statistics are then used to normalize
+the test responses. We keep the shared 1,000-image test set
+fixed across all experiments to ensure consistency with prior
+fMRI-to-image reconstruction benchmarks.
+E.
+ADDITIONAL FMRI-TO-VIDEO QUALITATIVE
+RESULTS
+This section provides additional qualitative examples to
+complement the visual results reported in the main paper. We
+include more cases from both the HCP and CC2017 datasets
+to show the consistency of the reconstructed dynamic visual
+content across different subjects and stimuli.
+E.1.
+HCP
+For the HCP dataset, we present supplementary results from
+subjects 2 and 3 in Fig. c and Fig. d. These additional examples
+further corroborate the effectiveness of our method across
+different subjects.
+E.2.
+CC2017
+We further provide qualitative examples from CC2017 sub-
+jects 2 and 3 in Fig. e and Fig. f. These results offer an
+additional view of the model’s reconstruction behavior on
+natural videos with diverse visual content.
+F.
+IMPLEMENTATION OVERVIEW
+We implement NEURONS++ using the same preprocessing
+and evaluation protocols as prior fMRI-to-image and fMRI-
+to-video reconstruction studies to ensure fair comparison.
+Fig. d. Qualitative comparison of fMRI-to-video reconstruction on the HCP
+subject 3. For each example, the left clip/frame is the ground-truth stimulus
+and the right clip/frame is the reconstructed result; every row shows two
+examples. Best viewed with Acrobat Reader. Click the images to play the
+animation clips.
+Fig. e.
+Qualitative comparison of fMRI-to-video reconstruction on the
+CC2017 subject 2. For each example, the left clip/frame is the ground-truth
+stimulus and the right clip/frame is the reconstructed result; every row shows
+two examples. Best viewed with Acrobat Reader. Click the images to play the
+animation clips.
+For video reconstruction, each video is divided into short
+clips according to the temporal resolution of fMRI, and the
+corresponding BOLD responses are aligned with visual stimuli
+using a hemodynamic lag. For image reconstruction, each
+static image is treated as a single-frame visual stream, allowing
+the same visual-stream formulation to be applied to both image
+and video reconstruction.
+All fMRI responses are normalized following the dataset-
+specific preprocessing protocols described in Supplemen-
+tary §D. The brain encoding module maps fMRI voxels into
+visual and textual embeddings. These embeddings are then
+processed by the Serial Visual Decoupler, whose four task
+heads correspond to Dseg, Dcls, Dtxt, and Drec in Sec. 3.4.
+During inference, image reconstruction uses the decoded cues
+17
+
+
+Fig. f.
+Qualitative comparison of fMRI-to-video reconstruction on the
+CC2017 subject 3. For each example, the left clip/frame is the ground-truth
+stimulus and the right clip/frame is the reconstructed result; every row shows
+two examples. Best viewed with Acrobat Reader. Click the images to play the
+animation clips.
+for single-frame visual-stream generation, while video re-
+construction further performs temporal expansion using the
+reconstructed keyframe, decoded scene description, key object
+mask, concept predictions, and blurry visual-stream recon-
+struction. Additional model details are provided in Supple-
+mentary §B.
+G.
+EVALUATION METRICS
+G.1.
+Video Reconstruction Metrics
+For fMRI-to-video reconstruction, we evaluate the generated
+videos at both the semantic level and the spatiotemporal level.
+Semantic-level evaluation. Following prior fMRI-to-video
+reconstruction studies, we use an N-way classification-based
+evaluation protocol to measure whether the reconstructed
+video preserves the semantic category of the ground-truth
+stimulus. Here N denotes the number of candidate classes
+used in the metric and is unrelated to the CLIP visual-token
+count Ntok in the main paper. Specifically, we use a video
+classifier based on VideoMAE [49], trained on the Kinetics-
+400 dataset [50]. For each test sample, the ground-truth video
+and reconstructed video are classified, and the trial is consid-
+ered successful if the ground-truth class is correctly identified
+among N randomly sampled candidate classes, including the
+true class. We report 2-way and 50-way accuracy following
+prior work.
+Spatiotemporal consistency. To evaluate temporal smooth-
+ness and consistency, we compute CLIP image embeddings
+for each frame of the reconstructed video and report the av-
+erage cosine similarity between adjacent frames. This metric,
+denoted as CLIP-pcc, is commonly used in video editing and
+video reconstruction tasks [51]. A higher CLIP-pcc indicates
+stronger temporal consistency between neighboring frames.
+G.2.
+Frame-Level and Image Reconstruction Metrics
+In addition to video-level metrics, we also evaluate recon-
+structed frames and static image reconstructions using both
+low-level and high-level metrics.
+Low-level metrics. We use SSIM and PSNR to evaluate pixel-
+level similarity between reconstructed frames/images and the
+corresponding ground-truth visual stimuli. These metrics mea-
+sure low-level spatial fidelity, including structure, luminance,
+and pixel-wise reconstruction quality.
+High-level semantic metrics. For semantic-level image eval-
+uation, we use an N-way top-K classification test based on
+an ImageNet classifier with 1,000 classes. For each trial, the
+classifier predicts category probabilities for the reconstructed
+image. The trial is considered successful if the ground-truth
+class is included in the top-K predicted probabilities among
+N randomly sampled candidate classes, including the true
+class. We use top-1 prediction and repeat the random sampling
+procedure 100 times to obtain a stable success rate.
+For NSD-based fMRI-to-image reconstruction, we addition-
+ally follow the standard evaluation protocol used in prior
+image reconstruction studies. The metrics include low-level
+similarity measures such as pixel correlation and SSIM, as well
+as high-level feature-based metrics computed with pretrained
+visual recognition networks, including AlexNet, Inception,
+CLIP, EfficientNet, and SwAV. These metrics jointly assess
+whether the reconstructed image preserves both low-level
+visual structure and high-level semantic content.
+H.
+FUNCTIONAL ROI PARCEL ASSIGNMENTS
+To make the ROI grouping of the ablation analysis in Sec-
+tion 6.2 fully reproducible, Table c specifies the complete set
+of HCP-MMP1 parcels assigned to each of the eight functional
+ROIs under the Glasser multi-modal parcellation [39]. Of the
+V = 13,447 activated voxels of subject 1, 6,164 fall within
+these eight functional ROIs and are grouped accordingly; the
+remaining activated voxels lie outside the eight parcels and
+are not assigned to any ROI. Parcel label IDs are taken
+from the publicly available .dlabel.nii atlas projected
+onto the fsLR-32k surface. The first six ROIs (FACE through
+SEMANTIC) are category- or stage-selective and mutually
+disjoint, while VENTRAL and DORSAL denote broader visual
+streams and overlap with the finer parcels by construction.
+Each ROI is nonetheless masked independently in the ablation.
+I.
+ADDITIONAL DETAILS FOR NEURAL-TO-VISUAL
+INTERPRETABILITY
+This section provides the mathematical and implementation
+details that support the neural-to-visual interpretability anal-
+yses in Sec. 6 of the main paper. The main text retains the
+key figures, quantitative effects, and conclusions, while the
+derivations and methodological caveats are collected here to
+keep the result narrative concise.
+I.1.
+Delta-fMRI Perturbation Normalization
+The delta-fMRI analysis in Sec. 6.1 is designed as a
+qualitative direction-consistency probe rather than a metrically
+18
+
+
+TABLE a
+FULL QUANTITATIVE COMPARISON OF FMRI-TO-IMAGE RECONSTRUCTION ON NSD. RESULTS ARE AVERAGED OVER SUBJECTS 1, 2, 5, AND 7 FROM
+THE NATURAL SCENES DATASET. N/A INDICATES THAT THE METHOD IS VIDEO-ONLY AND DOES NOT SUPPORT STATIC IMAGE RECONSTRUCTION.
+Method
+Low-Level
+High-Level
+PixCorr↑
+SSIM↑
+Alex(2)↑
+Alex(5)↑
+Incep↑
+CLIP↑
+Eff↓
+SwAV↓
+Takagi... [6] [CVPR’23]
+0.246
+0.410
+78.9%
+85.6%
+83.8%
+82.1%
+0.811
+0.504
+MindEye1 [7] [NeurIPS’24]
+0.319
+0.360
+92.8%
+96.9%
+94.6%
+93.3%
+0.648
+0.377
+UMBRAE [10] [ECCV’24]
+0.283
+0.341
+95.5%
+97.0%
+91.7%
+93.5%
+0.700
+0.393
+NeuroPictor [11] [ECCV’24]
+0.229
+0.375
+96.5%
+98.4%
+94.5%
+93.3%
+0.639
+0.350
+MindBridge [12] [CVPR’24]
+0.151
+0.263
+87.7%
+95.5%
+92.4%
+94.7%
+0.712
+0.418
+MindEye2 [8] [ICML’24]
+0.322
+0.431
+96.1%
+98.6%
+95.4%
+93.0%
+0.619
+0.344
+MindTuner [9] [AAAI’25]
+0.322
+0.421
+95.8%
+98.8%
+95.6%
+93.8%
+0.612
+0.340
+BrainIT [13] [ICLR’26]
+0.331
+0.473
+97.1%
+98.6%
+94.4%
+93.0%
+0.648
+0.370
+NEURONS [18] [ICCV’25]
+N/A
+N/A
+N/A
+N/A
+N/A
+N/A
+N/A
+N/A
+NEURONS++
+0.355
+0.457
+96.8%
+98.8%
+96.2%
+93.8%
+0.612
+0.365
+Subject 1
+0.424
+0.478
+98.0%
+99.3%
+96.7%
+94.1%
+0.606
+0.364
+Subject 2
+0.363
+0.455
+97.6%
+98.9%
+96.2%
+93.5%
+0.612
+0.360
+Subject 5
+0.321
+0.449
+96.1%
+98.8%
+96.7%
+94.7%
+0.602
+0.357
+Subject 7
+0.311
+0.446
+95.4%
+98.0%
+95.3%
+92.9%
+0.625
+0.378
+TABLE b
+PAIRED SIGNIFICANCE TESTS OF NEURONS++ AGAINST THE PREVIOUS
+SOTA METHOD SEMVIDEO ON THE CC2017 DATASET, EVALUATED ON
+IDENTICAL TEST SAMPLES. FOR EACH METRIC, WE REPORT THE
+PER-METRIC MEAN OF BOTH MODELS, THE PAIRED DIFFERENCE ∆WITH
+ITS 95% BOOTSTRAP CONFIDENCE INTERVAL, AND THREE P-VALUES
+OBTAINED FROM A PERMUTATION TEST, A PAIRED BOOTSTRAP, AND A
+WILCOXON SIGNED-RANK TEST (104 RESAMPLES FOR THE PERMUTATION
+AND BOOTSTRAP TESTS). SIGNIFICANCE STARS FOLLOW THE
+PERMUTATION P-VALUE: ∗p<0.05, ∗∗p<0.01, ∗∗∗p<0.001, NS
+OTHERWISE.
+Metric
+SemVideo [19]
+NEURONS++
+95% CI
+pperm / pboot / pwil
+2-way↑
+0.865
+0.871
+[+0.0045, +0.0181]
+0.0013∗∗/ 0.0002 / 0.0005
+50-way↑
+0.264
+0.279
+[+0.0041, +0.0315]
+0.0102∗/ 0.0120 / 0.0037
+TABLE c
+HCP-MMP1 PARCEL ASSIGNMENTS FOR THE EIGHT FUNCTIONAL ROIS
+USED IN THE ROI ABLATION ANALYSIS. THE SEMANTIC ROI
+CORRESPONDS TO ANTERIOR VENTRAL TEMPORAL CORTEX.
+ROI
+HCP-MMP1 parcels
+FACE
+FFC, PeEc
+PLACE
+PHA1, PHA2, PHA3, VMV1, VMV2, VMV3
+MOTION
+MT, MST, FST
+EARLY VISUAL
+V1, V2, V3, V4
+OBJECT
+LO1, LO2, LO3
+SEMANTIC
+TE1a/p, TE2a/p
+VENTRAL
+V4, V8, FFC, PIT, VVC, VMV1
+DORSAL
+V3A, V6, V6A, V7
+calibrated test of proportionality. The reason is that each
+perturbed response is z-score normalized independently before
+being passed to the encoder.
+Before normalization, the directional perturbation is
+˜xj(α) = xj + αd,
+d = xj −xi,
+(21)
+so all raw perturbations lie on a single line and are ordered
+by α. Negative α values interpolate from xj toward xi,
+whereas positive α values extrapolate beyond xj along the
+same direction.
+The per-response z-score normalization is
+Z(v) = v −µ(v)1
+σ(v)
+,
+(22)
+where µ(v) and σ(v) denote the voxel-wise mean and stan-
+dard deviation of v. Writing µ(˜xj(α)) = µj + αµd and
+σ(˜xj(α)) = σ(α) gives
+Z(˜xj(α)) =
+1
+σ(α)
+h
+(xj −µj1) + α(d −µd1)
+i
+.
+(23)
+The bracketed term moves along a fixed mean-centered direc-
+tion, while the prefactor 1/σ(α) introduces an α-dependent
+rescaling. Therefore, strict collinearity is not exactly preserved
+after normalization.
+For the small perturbations used in the main text (|α| ≤0.5),
+a first-order approximation gives
+Z(˜xj(α)) ≈Z(xj) + α
+σj
+(d −µd1).
+(24)
+To this order, the normalized response moves along a single
+fixed direction, and the sign of the displacement follows
+the sign of α. Thus, interpolation and extrapolation remain
+directionally meaningful even though the path is not metrically
+uniform.
+We also explicitly bound the residual rescaling introduced
+by the α-dependent standard deviation. Expanding the per-
+response variance gives
+σ(α)2 = σ2
+j + 2α covk(xj,k, dk) + α2σ2
+d,
+(25)
+where covk and σ2
+d are the voxel-wise covariance and variance
+of xj and d. Hence the relative deviation of the normalization
+factor is |σ(α)/σj −1| = O(|α|σd/σj) to first order. Empir-
+ically, over all clip pairs (i, j) and all perturbation strengths
+used in the analysis,
+max
+i,j,α
+
+σ(α)
+σj
+−1
+ = 0.024.
+(26)
+19
+
+
+This small deviation supports treating the perturbation path as
+directionally meaningful. However, because equal increments
+in α do not necessarily correspond to equal Euclidean steps
+after per-response normalization, we do not interpret the visual
+changes as a quantitative proportionality curve. A fully cali-
+brated analysis would require a metric-preserving perturbation
+scheme, for example applying fixed training-set normalization
+statistics rather than per-response normalization.
+I.2.
+ROI Ablation Read-Out and Statistical Controls
+The ROI-ablation analysis in Sec. 6.2 probes the sensitivity
+of the trained fMRI encoder read-out to functional cortical
+regions. The read-out is
+f = Pi ◦Bθ ◦ridge,
+(27)
+where ridge is the voxel-to-latent ridge projection, Bθ is the
+residual-MLP backbone, and Pi is the image-level projection
+head that produces the fMRI-derived CLIP visual embed-
+ding. The downstream temporal projection Pvid, text head
+Pt, diffusion prior M, and final diffusion generator are not
+included in f. This isolates the neural encoder read-out from
+the additional stochasticity and generative-prior effects of the
+final image/video synthesis pipeline.
+Accordingly, the ROI sensitivity score
+∆cosr(xi) = 1 −cos
+ f(xi), f(xi ⊙mr)
+
+(28)
+measures how much ablating ROI r changes the predicted
+CLIP visual embedding, not how much the final generated
+image or video changes. A larger ∆cosr indicates that ROI
+r carries information used by the encoder, but it does not
+directly quantify reconstruction degradation after the down-
+stream diffusion generator. We choose the embedding-level
+score because it provides a cleaner measurement of neural
+read-out dependence. End-to-end ROI ablation through the full
+stochastic generation pipeline is a natural extension for future
+work.
+The read-out f should also not be interpreted as a frozen
+or generic CLIP-alignment encoder. In NEURONS++, the
+ridge map, backbone Bθ, image-level projection head Pi, and
+temporal projection Pvid are trained as part of the full model.
+The Serial Visual Decoupler operates on ev
+c without gradient
+detachment, so the decoupling losses backpropagate through
+the encoder. Therefore, the ROI-ablation analysis probes the
+read-out of the fully trained NEURONS++ encoder, jointly
+shaped by both the embedding-alignment objective Lenc and
+the cortex-inspired decoupling objective Ldec.
+I.2.0a.
+Matched, mismatched, and permutation-null cor-
+relations.: For each test sample xi, the main analysis com-
+putes the matched Spearman correlation
+ρm(i) = Spearman
+ E·(xi), ∆cos·(xi)
+
+,
+(29)
+where E·(xi) is the eight-ROI activation-energy profile and
+∆cos·(xi) is the corresponding eight-ROI ablation profile.
+This statistic asks whether the ROIs most activated by the
+stimulus are also the ROIs to which the encoder read-out is
+most sensitive.
+To assess stimulus specificity, we compare the matched
+statistic against a paired permutation null. Each of the 1,000
+permutations π is a bijection over the n test samples, and the
+null statistic is
+1
+n
+X
+i
+Spearman
+ E·(xi), ∆cos·(xπ(i))
+
+.
+(30)
+This preserves the marginal distribution of both energy pro-
+files and ablation profiles while destroying their sample-wise
+correspondence. The empirical p-value reported in the main
+text is computed against this permutation null.
+For visualization, we also report a descriptive mismatched
+baseline that pairs energy and ablation profiles from different
+samples,
+ρmm(i, j) = Spearman
+ E·(xi), ∆cos·(xj)
+
+,
+i̸ = j. (31)
+The
+matched-minus-null
+gap
+and
+the
+matched-versus-
+mismatched effect size thus serve slightly different purposes:
+the former is used for statistical significance, while the latter
+provides an interpretable descriptive effect size.
+I.2.0b.
+Random-grouping control.: To rule out the pos-
+sibility that the ablation effect is driven by ROI size or generic
+contiguous voxel groups, we repeat the analysis using 1,000
+size-matched random partitions. The 6,164 ROI-assigned vox-
+els are randomly permuted and divided into eight groups with
+the same sizes as the real Glasser ROIs. For each random parti-
+tion, we recompute the matched-minus-mismatched specificity
+gap. The real Glasser parcellation produces a gap of 0.364,
+whereas the random-grouping null is 0.061 ± 0.010, and no
+random partition reaches the real gap. This confirms that the
+observed specificity depends on functional ROI structure rather
+than ROI size alone.
+I.2.0c.
+Voxel-level attribution.: The voxel-level attribu-
+tion map in Sec. 6.2 is computed from the positive input-
+gradient product. Let
+Y (x) = ∥f(x)∥2
+(32)
+denote the squared norm of the predicted CLIP visual embed-
+ding. We define
+a(x) = ReLU
+ x ⊙∇xY (x)
+
+.
+(33)
+This attribution retains voxels whose positive input-gradient
+product contributes to the model response. Projecting a(x)
+onto the cortical surface provides a voxel-level visualization
+that complements the ROI-level ablation statistics.
+I.3.
+Details and Limitations of ROI Amplification
+The ROI amplification analysis in Sec. 6.3 tests whether
+selectively enhancing a functional ROI can steer the decoded
+visual semantics toward the category associated with that ROI.
+Given a target ROI R and an original trial-averaged fMRI
+response x ∈RV , we construct a manipulated response by
+setting all voxels in R to a fixed high activation value v = 3.0
+and suppressing non-target voxels by a factor of 0.1:
+˜xk =
+(
+v,
+k ∈R,
+0.1xk,
+k /∈R.
+(34)
+20
+
+
+The manipulated response is then z-score normalized and
+decoded through the same encoder and generative pipeline as
+the original response.
+This intervention is intentionally strong. It bundles three
+operations: target-ROI saturation, non-target suppression, and
+global z-score renormalization. Therefore, the result should be
+interpreted as a region-selective, directionally specific seman-
+tic modulation test, not as a calibrated estimate of the causal
+gain of the target ROI alone. In other words, the experiment
+asks whether pushing the neural input into a face-dominant or
+place-dominant direction changes the decoded content in the
+expected semantic direction; it does not estimate how much
+natural variation in a single ROI would change perception or
+reconstruction.
+This design also makes the intervention partially out-of-
+distribution relative to the natural fMRI responses used for
+training. The instability observed for one ROI direction in each
+of the two additional CC2017 subjects (Table f) should there-
+fore be interpreted cautiously. The same subjects still show
+strong ROI-ablation stimulus specificity (Table e), indicating
+that the encoder reads stimulus-relevant ROI information. The
+sign instability is specific to the strong boost intervention and
+its propagation through the downstream decoder. A milder in-
+distribution intervention, such as scaling only the target ROI
+by a modest factor without suppressing the remaining voxels,
+would provide a cleaner test of graded ROI gain and is left to
+future work.
+J.
+ZERO-SHOT CLIP SCORING OF FACE AND PLACE
+CONTENT
+To score the face and place content of each reconstructed
+keyframe in Section 6.3, we use a zero-shot CLIP classifier.
+For each target category c ∈{FACE, PLACE}, we specify
+a set of positive prompts P+
+c
+describing the category and
+a set of negative prompts P−
+c
+describing competing content
+(Table d). Each prompt p and each reconstructed keyframe
+are embedded with the CLIP text and image encoders and
+ℓ2-normalized, yielding unit vectors tp and z. We compute
+the cosine similarity between the image and each prompt, and
+average the similarities within the positive and negative sets:
+¯s±
+c (z) =
+1
+|P±
+c |
+X
+p∈P±
+c
+cos(z, tp).
+(35)
+The two pooled similarities are converted into a category score
+by a two-way softmax with a fixed inverse temperature β =
+100:
+sc(z) = σ
+ β[ ¯s+
+c (z) −¯s−
+c (z) ]
+
+=
+exp
+ β ¯s+
+c (z)
+
+exp
+ β ¯s+
+c (z)
+
++ exp
+ β ¯s−
+c (z)
+,
+(36)
+where σ(·) is the logistic sigmoid. The per-clip score is
+obtained by averaging sc over the keyframes of the clip.
+K.
+ADDITIONAL ABLATION: GRPO-BASED
+IMAGE-TO-IMAGE REFINEMENT
+We further explore whether the reconstructed images can
+be improved through a post-hoc image-to-image refinement
+TABLE d
+ZERO-SHOT CLIP TEXT PROMPTS FOR SCORING FACE AND PLACE
+CONTENT. EACH SCORE CONTRASTS THE MEAN SIMILARITY OF THE
+POSITIVE PROMPTS AGAINST THAT OF THE NEGATIVE PROMPTS.
+FACE score
+Positive
+“a photo of a human face”
+“a close-up portrait of a person”
+“a person looking at the camera”
+Negative
+“a landscape without people”
+“an empty outdoor scene”
+“a photo of buildings and architecture”
+PLACE score
+Positive
+“a photo of a building”
+“an indoor room or hallway”
+“a scenic landscape with architecture”
+Negative
+“a close-up of a face”
+“a single isolated object”
+“an abstract pattern”
+Ours
+Ours + grpo
+Ours
+Ours + grpo
+Ours
+Ours + grpo
+Fig. g. Qualitative examples of GRPO-based image-to-image refinement. The
+refinement often improves semantic clarity and reduces visual ambiguity, but
+does not consistently improve automatic reconstruction metrics.
+stage. Specifically, we fine-tune SD3.5 with GRPO and use
+the resulting model to refine our reconstructed images, as
+shown in Fig. g. Qualitatively, this refinement often produces
+sharper and more semantically faithful images. In many cases,
+it reduces visual ambiguity and recovers clearer object-level
+details compared with the original reconstruction.
+However, this improvement is not consistently reflected by
+automatic metrics. Although the refined images are visually
+more interpretable in several examples, the overall quantitative
+scores do not improve. We hypothesize that the GRPO-refined
+model tends to enhance semantic plausibility and perceptual
+clarity, while also introducing distributional changes or hal-
+lucinated details that are not always aligned with the ground-
+truth stimulus under pixel-level or embedding-based evaluation
+metrics. Therefore, we use this experiment as an additional
+qualitative analysis rather than the main quantitative result.
+L.
+ADDITIONAL SUBJECTS AND DATASETS FOR ROI
+ANALYSES
+The ROI ablation (Section 6.2) and ROI amplification
+(Section 6.3) analyses in the main text are reported on a
+single subject for clarity of exposition. To establish that the
+reported effects are not idiosyncratic to one subject or one
+acquisition protocol, we replicate both analyses on additional
+CC2017 subjects and on all three subjects of the HCP movie-
+watching dataset. The HCP data differ from CC2017 in scan-
+ner, preprocessing, stimulus set, and the number of activated
+21
+
+
+TABLE e
+ROI-ABLATION STIMULUS SPECIFICITY ACROSS SUBJECTS AND
+DATASETS. V : NUMBER OF ACTIVATED VOXELS. ¯ρm: MEAN MATCHED
+PER-SAMPLE SPEARMAN CORRELATION. NULL: MEAN OF THE
+PAIRED-PERMUTATION NULL. ∆ρ: MATCHED-MINUS-NULL GAP. d:
+POOLED-SD COHEN’S d BETWEEN THE MATCHED AND MISMATCHED
+PER-SAMPLE ρ DISTRIBUTIONS. ALL EMPIRICAL p < 10−3 (1,000
+PERMUTATIONS). THE POPULATION COLUMN IS THE COARSE
+ACROSS-SAMPLE ROI RANKING CORRELATION (SEE TEXT).
+Dataset
+Subj
+V
+¯ρm
+∆ρ
+d
+pop. ρ
+CC2017
+S1†
+13,447
+0.631
+0.368
+1.11
++0.50
+CC2017
+S2
+14,828
+0.573
+0.393
+1.11
++0.55
+CC2017
+S3
+9,114
+0.519
+0.434
+1.22
++0.26
+HCP
+S1
+12,000
+0.337
+0.325
+0.86
+−0.76
+HCP
+S2
+12,000
+0.402
+0.457
+1.27
+−0.81
+HCP
+S3
+13,292
+0.373
+0.415
+1.13
++0.14
+†The subject reported in the main text (Section 6.2).
+grayordinates, and therefore provide an independent test of
+the same hypotheses. Across all subjects and datasets we use
+the identical pipeline, ROI definitions, and statistical tests as
+in the main text; only the per-subject brain encoder and the
+per-subject activated-voxel set change.
+L.1.
+ROI Ablation Generalizes Across Subjects and Datasets
+For each subject we repeat the per-sample stimulus-
+specificity test of Section 6.2: for every stimulus we cor-
+relate the encoder’s eight-ROI ablation profile ∆cos·(xi)
+with the corresponding fMRI activation-energy profile E·(xi)
+(matched Spearman ρm), and assess significance with the
+same 1,000-permutation, bijective paired-permutation null. A
+positive matched-minus-null gap ∆ρ indicates that the encoder
+relies most on the ROIs that the stimulus most strongly drives.
+As summarized in Table e, the effect is large, positive,
+and highly significant for every subject in both datasets: the
+matched-minus-null gap ranges from ∆ρ = 0.33 to 0.46 with
+a pooled-SD Cohen’s d (matched vs. mismatched distribution)
+between 0.86 and 1.27, and the empirical p-value reaches
+the 1/1001 permutation floor (p < 10−3) in all cases. The
+consistency of this result across two datasets with different
+acquisition protocols, voxel counts, and stimulus distributions
+indicates that stimulus-specific ROI dependence is a robust
+and reproducible property of the learned encoder rather than
+an artifact of any single subject.
+We note that the population-level ROI ranking (the single
+Spearman correlation between the across-sample mean abla-
+tion profile and mean energy profile, last column of Table e)
+is more variable and is in some HCP subjects negative. This
+population statistic is dominated by a few high-energy early-
+visual ROIs and aggregates away the per-stimulus structure;
+it is therefore a coarse summary and is not the quantity
+our specificity test targets. The per-sample matched-versus-
+null gap, which preserves the stimulus-by-stimulus correspon-
+dence, is the appropriate measure of stimulus specificity and
+is uniformly strong.
+L.2.
+ROI Amplification Across Subjects and Datasets
+We next replicate the ROI-boost double-dissociation ex-
+periment of Section 6.3. For each subject we boost the
+FACE ROI and, separately, the PLACE ROI, and score every
+reconstructed keyframe with the same zero-shot CLIP classi-
+fier (Appendix J). For a clean double dissociation, boosting
+a region should raise its matched category score (the on-
+diagonal entries of the 2 × 2 score matrix) while leaving or
+suppressing the competing category (the off-diagonal entries).
+All comparisons use the Wilcoxon signed-rank test against the
+unmanipulated reconstruction.
+L.2.0a.
+HCP subjects show a clean, reproducible double
+dissociation.: On all three HCP subjects the same asymmet-
+ric double dissociation reported in the main text reproduces
+cleanly (top block of Table f): boosting the face ROI raises
+CLIP-face (on-diagonal d = +0.88 to +1.07) while lowering
+CLIP-place, and boosting the place ROI raises CLIP-place
+(on-diagonal d = +1.03 to +1.35) while lowering CLIP-face.
+Both on-diagonal effects are positive and highly significant for
+every HCP subject, and the off-diagonal entries are uniformly
+suppressive, exactly matching the competitive, region-selective
+pattern described in the main text. Because the HCP data
+were acquired and preprocessed independently of CC2017, this
+constitutes a strong cross-dataset confirmation that targeted
+ROI amplification steers the reconstruction toward the matched
+semantic category.
+L.2.0b.
+Additional CC2017 subjects.: We also apply the
+boost intervention to two further CC2017 subjects (bottom
+block of Table f). In each case one of the two ROI directions
+reproduces the intended on-diagonal lift with a large effect
+(CC2017 S2 place: d = +1.57; CC2017 S3 face: d = +0.80),
+confirming that the boost can drive the matched category.
+The complementary direction in each subject is, however,
+slightly imperfect: the on-diagonal effect is mildly negative
+(CC2017 S2 face: d = −0.77; CC2017 S3 place: d = −0.94),
+so boosting the region does not raise its own matched category
+as cleanly. We note that these same two subjects show among
+the strongest ablation specificity in the study (Table e), so the
+encoder clearly reads the relevant ROI signal; the amplification
+direction simply does not always propagate with a consistent
+sign through the decoder. This is a minor instability that
+affects only a single ROI direction per subject, and reducing
+the boost magnitude does not remove it, so we report it
+for completeness rather than treating it as a failure of the
+underlying representation.
+L.3.
+Per-Subject Figures
+For completeness, we provide the per-subject visualizations
+for the five additional subjects used in the supplementary ROI
+analyses. These include the ROI-ablation stimulus-specificity
+panels, corresponding to the per-subject analogue of main-
+text Fig. 8, and the ROI-boost double-dissociation summaries,
+corresponding to the per-subject analogue of main-text Fig. 11.
+The stimulus-specificity results are shown separately for the
+additional CC2017 subjects in Fig. h and for the HCP subjects
+in Fig. i. The corresponding double-dissociation summaries
+22
+
+
+TABLE f
+ROI-BOOST DOUBLE DISSOCIATION ACROSS SUBJECTS AND DATASETS.
+EACH SUBJECT CONTRIBUTES TWO ROWS (FACE BOOST, PLACE BOOST).
+ON-DIAGONAL ENTRIES (THE CATEGORY MATCHED TO THE BOOSTED
+ROI) ARE IN BOLD AND ARE THE INTENDED EFFECT; OFF-DIAGONAL
+ENTRIES REPORT THE COMPETING CATEGORY. CELL VALUES ARE ∆IN
+CLIP SCORE (COHEN’S d IN PARENTHESES), WILCOXON SIGNED-RANK
+VS. THE UNMANIPULATED RECONSTRUCTION. THE HCP BLOCK USES
+N=200 SAMPLES PER ROI AND THE CC2017 BLOCK N=200; ALL
+REPORTED EFFECTS HAVE p < 10−2. REVERSED ON-DIAGONAL ENTRIES
+(BOOSTING A REGION LOWERS ITS OWN MATCHED CATEGORY) ARE
+MARKED ‡.
+Dataset
+Subj
+Boost
+∆CLIP-face
+∆CLIP-place
+HCP
+S1
+Face
++0.255 (+0.88)
+−0.161 (−0.67)
+HCP
+S1
+Place
+−0.424 (−1.22)
++0.306 (+1.03)
+HCP
+S2
+Face
++0.290 (+1.07)
+−0.264 (−1.15)
+HCP
+S2
+Place
+−0.426 (−1.26)
++0.349 (+1.23)
+HCP
+S3
+Face
++0.318 (+1.07)
+−0.325 (−1.21)
+HCP
+S3
+Place
+−0.533 (−1.37)
++0.447 (+1.35)
+CC2017
+S2
+Face
+−0.237 (−0.77)‡
+−0.034 (−0.17)
+CC2017
+S2
+Place
+−0.125 (−0.43)
++0.494 (+1.57)
+CC2017
+S3
+Face
++0.205 (+0.80)
+−0.133 (−0.64)
+CC2017
+S3
+Place
++0.257 (+0.98)
+−0.207 (−0.94)‡
+are shown in Figs. j and k, respectively. The numerical values
+underlying these figures are reported in Tables e and f.
+23
+
+
+−1.00 −0.75 −0.50 −0.25 0.00
+0.25
+0.50
+0.75
+1.00
+Spearman ρ (model ROI-dependence vs real ROI-energy)
+0.0
+0.2
+0.4
+0.6
+0.8
+1.0
+1.2
+1.4
+1.6
+density
+Δρ = 0.393
+A
+shuffled
+matched
+shuffled
+matched
+−1.00
+−0.75
+−0.50
+−0.25
+0.00
+0.25
+0.50
+0.75
+1.00
+per-sample Spearman ρ
+Cohen's d = 1.11,  p < 10−3
+B
+−1.00 −0.75 −0.50 −0.25 0.00
+0.25
+0.50
+0.75
+1.00
+Spearman ρ
+0.0
+0.2
+0.4
+0.6
+0.8
+1.0
+cumulative fraction
+65% of matched ρ > 0.5
+C
+shuffled
+matched
+−1.00 −0.75 −0.50 −0.25 0.00
+0.25
+0.50
+0.75
+1.00
+Spearman ρ (model ROI-dependence vs real ROI-energy)
+0.0
+0.2
+0.4
+0.6
+0.8
+1.0
+1.2
+1.4
+density
+Δρ = 0.434
+D
+shuffled
+matched
+shuffled
+matched
+−1.00
+−0.75
+−0.50
+−0.25
+0.00
+0.25
+0.50
+0.75
+1.00
+per-sample Spearman ρ
+Cohen's d = 1.22,  p < 10−3
+E
+−1.00 −0.75 −0.50 −0.25 0.00
+0.25
+0.50
+0.75
+1.00
+Spearman ρ
+0.0
+0.2
+0.4
+0.6
+0.8
+1.0
+cumulative fraction
+56% of matched ρ > 0.5
+F
+shuffled
+matched
+Fig. h. Per-sample ROI-ablation stimulus specificity for the additional CC2017 subjects. Panels A–C show CC2017 S2, and panels D–F show CC2017 S3.
+For each subject, the three panels respectively report the matched vs. mismatched Spearman-ρ histogram, the violin/box comparison of per-sample Spearman-ρ,
+and the empirical CDF. In both subjects, the matched distribution is strongly right-shifted relative to the permutation-based null, consistent with Table e.
+−1.00 −0.75 −0.50 −0.25 0.00
+0.25
+0.50
+0.75
+1.00
+Spearman ρ (model ROI-dependence vs real ROI-energy)
+0.0
+0.2
+0.4
+0.6
+0.8
+1.0
+1.2
+1.4
+density
+Δρ = 0.325
+A
+shuffled
+matched
+shuffled
+matched
+−1.00
+−0.75
+−0.50
+−0.25
+0.00
+0.25
+0.50
+0.75
+1.00
+per-sample Spearman ρ
+Cohen's d = 0.86,  p < 10−3
+B
+−1.00 −0.75 −0.50 −0.25 0.00
+0.25
+0.50
+0.75
+1.00
+Spearman ρ
+0.0
+0.2
+0.4
+0.6
+0.8
+1.0
+cumulative fraction
+36% of matched ρ > 0.5
+C
+shuffled
+matched
+−1.00 −0.75 −0.50 −0.25 0.00
+0.25
+0.50
+0.75
+1.00
+Spearman ρ (model ROI-dependence vs real ROI-energy)
+0.0
+0.2
+0.4
+0.6
+0.8
+1.0
+1.2
+1.4
+density
+Δρ = 0.457
+D
+shuffled
+matched
+shuffled
+matched
+−1.00
+−0.75
+−0.50
+−0.25
+0.00
+0.25
+0.50
+0.75
+1.00
+per-sample Spearman ρ
+Cohen's d = 1.27,  p < 10−3
+E
+−1.00 −0.75 −0.50 −0.25 0.00
+0.25
+0.50
+0.75
+1.00
+Spearman ρ
+0.0
+0.2
+0.4
+0.6
+0.8
+1.0
+cumulative fraction
+41% of matched ρ > 0.5
+F
+shuffled
+matched
+−1.00 −0.75 −0.50 −0.25 0.00
+0.25
+0.50
+0.75
+1.00
+Spearman ρ (model ROI-dependence vs real ROI-energy)
+0.0
+0.2
+0.4
+0.6
+0.8
+1.0
+1.2
+1.4
+density
+Δρ = 0.415
+G
+shuffled
+matched
+shuffled
+matched
+−1.00
+−0.75
+−0.50
+−0.25
+0.00
+0.25
+0.50
+0.75
+1.00
+per-sample Spearman ρ
+Cohen's d = 1.13,  p < 10−3
+H
+−1.00 −0.75 −0.50 −0.25 0.00
+0.25
+0.50
+0.75
+1.00
+Spearman ρ
+0.0
+0.2
+0.4
+0.6
+0.8
+1.0
+cumulative fraction
+37% of matched ρ > 0.5
+I
+shuffled
+matched
+Fig. i. Per-sample ROI-ablation stimulus specificity for the HCP subjects. Panels A–C show HCP S1, panels D–F show HCP S2, and panels G–I show
+HCP S3. For each subject, the three panels respectively report the matched vs. mismatched Spearman-ρ histogram, the violin/box comparison of per-sample
+Spearman-ρ, and the empirical CDF. In all three subjects, the matched distribution is strongly right-shifted relative to the permutation-based null, consistent
+with Table e.
+24
+
+
+GT
+Original
+Boost
+0.0
+0.2
+0.4
+0.6
+0.8
+1.0
+CLIP score
+***
+A
+Face ROI
+GT
+Original
+Boost
+0.0
+0.2
+0.4
+0.6
+0.8
+1.0
+***
+Place ROI
+Boost
+Face ROI
+Boost
+Place ROI
+−0.2
+−0.1
+0.0
+0.1
+0.2
+0.3
+0.4
+0.5
+Δ CLIP score
+***
+**
+n.s.
+***
+B
+Face
+Place
+GT
+Original
+Boost
+0.0
+0.2
+0.4
+0.6
+0.8
+1.0
+CLIP score
+***
+C
+Face ROI
+GT
+Original
+Boost
+0.0
+0.2
+0.4
+0.6
+0.8
+1.0
+***
+Place ROI
+Boost
+Face ROI
+Boost
+Place ROI
+−0.2
+−0.1
+0.0
+0.1
+0.2
+0.3
+0.4
+0.5
+Δ CLIP score
+***
+***
+***
+***
+D
+Face
+Place
+Fig. j.
+ROI-boost double-dissociation summaries for the additional
+CC2017 subjects. Panels A–B show CC2017 S2, and panels C–D show
+CC2017 S3. For each subject, the left panel reports the matched-category lift
+after boosting the corresponding ROI, and the right panel reports the cross-
+suppressive ∆-score bars. These panels reproduce the per-subject analogue of
+main-text Fig. 11.
+GT
+Original
+Boost
+0.0
+0.2
+0.4
+0.6
+0.8
+1.0
+CLIP score
+***
+A
+Face ROI
+GT
+Original
+Boost
+0.0
+0.2
+0.4
+0.6
+0.8
+1.0
+***
+Place ROI
+Boost
+Face ROI
+Boost
+Place ROI
+−0.2
+−0.1
+0.0
+0.1
+0.2
+0.3
+0.4
+0.5
+Δ CLIP score
+***
+***
+**
+***
+B
+Face
+Place
+GT
+Original
+Boost
+0.0
+0.2
+0.4
+0.6
+0.8
+1.0
+CLIP score
+***
+C
+Face ROI
+GT
+Original
+Boost
+0.0
+0.2
+0.4
+0.6
+0.8
+1.0
+***
+Place ROI
+Boost
+Face ROI
+Boost
+Place ROI
+−0.2
+−0.1
+0.0
+0.1
+0.2
+0.3
+0.4
+0.5
+Δ CLIP score
+***
+***
+***
+***
+D
+Face
+Place
+GT
+Original
+Boost
+0.0
+0.2
+0.4
+0.6
+0.8
+1.0
+CLIP score
+***
+E
+Face ROI
+GT
+Original
+Boost
+0.0
+0.2
+0.4
+0.6
+0.8
+1.0
+***
+Place ROI
+Boost
+Face ROI
+Boost
+Place ROI
+−0.2
+−0.1
+0.0
+0.1
+0.2
+0.3
+0.4
+0.5
+Δ CLIP score
+***
+***
+***
+***
+F
+Face
+Place
+Fig. k. ROI-boost double-dissociation summaries for the HCP subjects.
+Panels A–B show HCP S1, panels C–D show HCP S2, and panels E–F show
+HCP S3. For each subject, the left panel reports the matched-category lift
+after boosting the corresponding ROI, and the right panel reports the cross-
+suppressive ∆-score bars. These panels reproduce the per-subject analogue of
+main-text Fig. 11.
+25

@@ -1,0 +1,2896 @@
+A4-MR: Abnormality-aware Anatomical Alignment
+for MR
+Noel Dsouza1,*, Zhijian Yang†1, Nishank Singla1, Pranay Doshi†1, Krisztian Koos2, Fei Tan2, Bruno
+Nunes2, Laszlo Rusko2, Bernadett Kolozsvari2, Eszter Sabo2, Emanuele Valeriano1, Vikash Gupta1,3,
+Seyed Iman Zare Estakhraji1, Marc Lebel1, Farzin Haddadpour†1, Taha Kass-Hout1, and Erhan Bas1,*
+1GE Healthcare, Seattle, USA
+2GE Healthcare, Budapest, Hungary
+3Amazon, USA
+*Corresponding author:
+Noel Dsouza; Erhan Bas, {noel.dsouza, erhan.bas}@gehealthcare.com
+Abstract
+With the advent of large scale foundation models, significant progress has been
+made on their application to Magnetic Resonance Imaging. Recent vision language
+MR models generalize well across a wide variety of clinical and research based
+MR tasks and perform on par with task-specific models. However, we find anatomy
+specific localization and pathological analysis still remains woefully inadequate,
+especially in any real-world scenarios. To this end, we propose A4-MR, a 3D
+vision-language foundation model trained on around 50k MR studies (491k MR
+series), about half with corresponding radiology reports. We aim to solve the
+following tasks, 1) localize anatomies through large scale pretraining leveraging
+noisy labels, 2) align image and text representations at the anatomy level, 3) natively
+learn separate embedding representations for healthy and unhealthy anatomies. We
+demonstrate that our model surpasses existing foundation models on a diverse set
+of tasks (e.g. +1.7 AUROC on abnormality detection against MedSigLIP). With
+a frozen encoder, it also outperforms end-to-end task-specific models on knee
+segmentation (+1.4 Dice against MedNeXt) and is on par with them on abdominal
+organ segmentation (within 0.4 Dice of the best model on AMOS). Without any
+prompt, it localizes 3D anatomies as well as MedSAM2 given a ground-truth box.
+1
+Introduction
+Magnetic resonance imaging (MRI) has transformed medical imaging by enabling safe, non-invasive
+visualization of soft tissue across a wide range of clinical tasks, including disease classification,
+organ-at-risk segmentation, and tumor identification and monitoring. Despite these advantages,
+automated MR analysis remains challenging. MR scans vary substantially across scanner hardware,
+acquisition protocols, spatial resolutions, and anatomical regions, while clinically relevant pathologies
+are often subtle and difficult to distinguish. These challenges are further compounded by the limited
+availability of large, diverse datasets with high-quality annotations.
+In recent years, foundation models have emerged as a promising strategy for addressing these limita-
+tions. By leveraging large-scale unlabeled data, these models learn general-purpose representations
+that can be transferred to downstream tasks. For example, BERT and GPT-2 [10, 32] transformed
+natural language processing, while ViT [12] played a similar role in computer vision. Self-supervised
+methods such as DINOv2 [28] and MAE [14] have further enabled large visual models to learn
+†Work performed while at GE Healthcare.
+Preprint.
+arXiv:2610.13056v1  [cs.CV]  9 Oct 2026
+
+
+transferable image representations from unlabeled data at scale. In parallel, localization and detection
+methods such as YOLO and DETR [34, 6] have demonstrated strong progress in object-level visual
+understanding, with DETR showing the effectiveness of transformer architectures for detection.
+These advances have increasingly been adapted to medical imaging, where foundation models have
+pushed performance in modalities such as CT [3, 30], X-ray [22, 37, 52], and MR [21, 47, 36].
+Prior work has explored both multimodal and modality-specific representation learning. Multimodal
+models are trained across mixtures of imaging modalities [45, 46], enabling support for diverse image
+types and downstream tasks. In contrast, modality-specific models focus on a single imaging domain,
+including X-ray [37, 48], MR [47, 11], and CT [54], often yielding stronger representations for their
+target modality. These models have also been adapted to specialized downstream tasks, including
+disease classification [39], segmentation [40, 51], and retrieval [47].
+However, existing medical foundation models remain limited in several important ways. Some focus
+on narrow anatomical regions [8, 2, 41], others are optimized primarily for a single task such as
+segmentation [42, 43], and some operate on two-dimensional slices rather than full three-dimensional
+volumes [11]. Models trained jointly across CT, X-ray, and MR may also generalize poorly to MR,
+where acquisition heterogeneity is high and large-scale labeled data are scarce. Moreover, many
+existing models learn image-level representations [15, 11, 47], in some cases aligned with radiology
+reports, that lack explicit anatomy-level structure, making it difficult to distinguish normal from
+abnormal findings within a specific organ or region.
+To address these issues, we introduce A4-MR, an anatomy-aware multimodal foundation model
+for 3D MR imaging. Our approach uses a two-stage training strategy designed to support broad
+generalization across MR tasks (Fig. 1). In the first stage, self-supervised vision learning with a
+teacher–student framework enables the model to learn from a large-scale MR pretraining dataset.
+In the second stage, the model learns anatomy-targeted representations from bootstrapped labels
+while aligning image and text embeddings at both the image and anatomy levels. This design
+enables A4-MR to support anatomy-level localization, multimodal retrieval, and abnormality-aware
+representation learning, leading to improved performance over state-of-the-art foundation models on
+tasks such as triaging.
+2
+Related Work
+Decipher-MR [47] and OmniMRI [15] are 3D MRI vision-language foundation models trained
+on large corpora of MRI series with associated radiology reports, spanning diverse anatomical
+regions, pathologies, and acquisition protocols. Both approaches use multi-stage training for visual
+and language encoders, also referred to as towers: a self-supervised vision model first learns MR
+image representations, followed by a second stage that aligns radiology reports with MR images.
+Decipher-MR uses cross-modal training in the second stage as a form of weak supervision for MR
+representation learning, whereas OmniMRI freezes the visual tower, aligns the text encoder, and later
+performs instruction tuning with additional annotated supervision.
+These approaches enable general-purpose representation learning and perform strongly across re-
+trieval, classification, and segmentation tasks compared with task-specific models. Inspired by this
+line of work, we adopt a multi-stage pretraining strategy in which free-form radiology reports provide
+weak supervision, and we further extend the representation granularity to the organ level.
+MRI-CORE [11] is a vision foundation model for MRI, pretrained in a self-supervised fashion on
+over 100k MRI volumes across 18 body regions. The model uses DINOv2 as its self-supervised
+training objective, combining global and image-level objectives in a student–teacher framework,
+and initializes its vision backbone from SAM-pretrained weights. MRI-CORE demonstrates strong
+performance in segmentation across body regions and in zero-shot classification tasks. However, the
+absence of a language component limits it to vision-only tasks and restricts its utility for applications
+such as retrieval and grounding. Its coverage of anatomical diversity and pathological variation is
+also narrower than our training corpus, motivating our approach of training natively with paired text
+reports across a broader range of anatomies and clinical findings.
+X-DETR [4] is a versatile end-to-end architecture for instance-wise vision-language tasks, designed to
+efficiently align free-form language with individual object instances rather than whole images. Based
+on DETR [6] and MDETR [20], it uses a visual object detector, a language encoder, and a lightweight
+2
+
+
+a Pretraining data
+b Data preparation and two-stage pretraining
+c Frozen-encoder evaluation
+∼50k MRI studies
+∼491k series
+∼25.5k studies with reports
+16 body regions
+Head & Neck 13k
+Thorax 290
+Liver 1.8k
+Abdomen 4.5k
+Colon 1.1k
+Msk 470
+Vascular 2.0k
+Joint 6.0k
+Spine 9.8k
+Breast 3.1k
+Heart 1.6k
+Pancreas 420
+Kidney 580
+Uterus 1.3k
+Pelvis 1.7k
+Prostate 1.7k
+studies per region
+102 103
+104
+MR sequence type (studies, log scale)
+104
+105
+103
+T1w
+T2w
+STIR
+DWI/ADC
+Other
+FLAIR
+SWI
+MRA/TOF
+Dixon
+SSFP/Cine
+DCE/Perf.
+PD
+Localizer
+Scanner vendor (studies, log scale)
+103
+104
+105
+102
+Siemens
+GE
+Canon
+Philips
+Unknown
+Hitachi
+Other
+Patient age (studies, years)
+2k
+4k
+6k
+0
+20
+40
+60
+80
+100
+Patient sex (studies)
+female
+26,365
+male
+22,989
+Data preparation
+Stage 1
+self-supervised
+Stage 2
+localized alignment
+series 1
+series 2
+series 3
+1 2
+3
+1
+2
+3
+1
+2
+3
+weak anatomy boxes (segmentation
+models, DICOM transfer)
+report
+LLM
+1 right eye: normal
+2 left eye: lesion
+3 brain: normal
+crops
+student
+teacher
+LDINO
+text encoder
+LMLM
+PubMedBERT
+init.
+anatomy detection +
+abnormality-aware
+anatomy–text contrast
+(Fig. 2)
+Lcls
+Lbox LCLIP
+weak boxes + findings
+frozen
+encoder
+retrieval
+zero-shot
+abnormality detection MLP probe
+localization
+zero-shot
+segmentation
+decoder
+report generation
++ LLM
+Figure 1: Overview. (a) Pretraining data: MRI studies per body region (bubble size on a log scale),
+MR sequence types, scanner vendors, and patient age and sex (all counted per study). (b) Weak
+anatomy boxes from segmentation models and anatomy-level findings extracted from reports by
+an LLM supervise a two-stage pretraining: self-supervised image (DINO student–teacher on 3D
+crops) and text (masked language modeling) encoders (stage 1), then localized, abnormality-aware
+image–text alignment (stage 2, Fig. 2). (c) Evaluation with a frozen encoder: retrieval and localization
+zero-shot; abnormality detection, segmentation and report generation with lightweight task-specific
+modules.
+vision-language alignment module that bridges the two modalities through an efficient dot-product
+operation. We adapt this idea to our MR model by aligning radiological findings with localized
+anatomical regions. We further extend this logic to capture the state (e.g., healthy or abnormal) of
+each anatomical region in a contrastive pretraining setup.
+3
+Methodology
+3.1
+Pretraining Data
+To improve generalization to real-world settings, we compile a diverse dataset of MRI studies
+collected across multiple hardware platforms and geographic locations. These studies cover 16 body
+regions and a broad range of sequence types, scanner vendors and patient demographics (Fig. 1a).
+We rigorously preprocessed the data to ensure quality, excluding scans with non-uniform spacing,
+missing slices, low resolution, excessive noise, or too few slices. After preprocessing, the dataset
+consisted of 50k studies comprising 491k MRI series, with reports available for 25.5k studies. Each
+study included several MRI series spanning multiple protocols. We split the dataset into training and
+evaluation sets, using 85% of studies for pretraining and 15% for downstream validation. Half of the
+pretraining set was used for first-stage pretraining, and the full training set was used for second-stage
+pretraining.
+3.2
+Pretraining Data Preparation
+Medical annotation is a laborious and costly process. To provide supervision at scale, we weakly anno-
+tate MR images and their corresponding radiology reports using existing models. In order to provide
+3
+
+
+localization supervision, we applied standard MRI processing techniques (i.e., intensity normalization
+and foreground cropping; details in the Supplementary Material) and utilized an open-source segmen-
+tation model [43] together with proprietary custom-built deep learning (DL) segmentation models to
+delineate anatomical regions. We utilized DICOM header information to translate mask coordinates
+across different protocols in the absence of a DL model for a given sequence, as a means of weak
+supervision. Finally, we converted the resulting delineation masks into bounding-box coordinates to
+capture anatomy location. Full preprocessing details (foreground cropping, intensity scaling, and
+crop sizes for each pretraining stage) are provided in the Supplementary Material (Section 6.2).
+To better support cross-modal training and localization, we standardized free-form radiology reports
+using an LLM (Claude 3.7 Sonnet). We instructed the LLM to extract medical anatomies, information
+describing the health status of each anatomy, and corresponding supporting evidence. Finally, we
+manually reviewed a subset of processed reports to check for hallucinations and ensure output
+consistency. A list of anatomies and additional details on anatomy-text pairing are provided in the
+Supplementary Material (Section 6.6).
+3.3
+Pretraining
+We implement a two stage pretraining strategy following earlier work [47, 15, 11]. The first
+stage consists of pretraining of the image and text encoders via self-supervised methods. Unlike
+earlier work that focuses on image level representation, in the second round, we extend multimodal
+pretraining with anatomy localization where we train the encoder to identify image anatomies and
+align the image and text encoder embedding spaces. For the text encoder, we start with a pretrained
+PubMedBERT [13] model trained on biomedical text. We then train this model on our MR reports
+using a masked language modeling loss. For the image encoder, we use the DINOv2 pretraining
+strategy of a student-teacher network trained via self supervision. The student network learns to
+match the teacher’s representation of the MR scans at the image and patch level.
+As we mentioned earlier, our goals are to train a foundation model that can natively do anatomy level
+localization, learn embedding representations at the image and anatomy level, and natively learn an
+anatomy level representation that differentiates normal and abnormal appearances.
+For the first goal, we leverage a DETR style decoder trained on weakly annotated data to classify
+and learn bounding boxes for our predefined list of anatomies. For our second goal, we use the
+CLS token of our encoder and leverage the fact that DETR provides output embeddings for each
+identified anatomy. We pass these through a projection layer and use a contrastive loss to align the
+anatomy with the corresponding text representation. In addition, we also align the CLS token of
+the encoder with the text encoder. For our final goal, we leverage abnormality information from
+the reports to structure the CLIP loss in such a way that the model learns to separate normal and
+abnormal anatomies corresponding to the same organ. Each of these is described in detail in the
+following sections.
+3.4
+Model Architecture
+Fig. 2 gives an overview of the second-stage architecture and losses. Augmentation details for
+both pretraining stages and study-level, organ-aware data sampling strategy are provided in the
+Supplementary Material (Section 6.3 and Section 6.4 respectively).
+We employ a 3D Vision Transformer (ViT-Base) as our vision encoder similar to [11, 38, 47, 40].
+We use an 8 × 8 × 8 cubic non-overlapping patch size. The model consists of a projection layer
+that operates on flattened patches to generate patch embeddings. A linear position embedding
+interpolation allows handling of different image sizes during downstream and inference tasks. Our
+model follows the rest of the standard ViT-B architecture [12]. Our decoder used for localization is
+based on DETR [6]. We use 200 object queries, 126 classes including the no object class and a 6 layer
+transformer, that consist of self attention, cross attention and an MLP for bounding box regression and
+classification. In addition, we use the output object embedding from the decoder projected through
+a linear layer to align the anatomy representation with text embeddings. Section 3.4.1 provides a
+more detailed description of the DETR architecture. We use a BERT style encoder initialized from
+PubMedBERT, which was trained on biomedical text data. We train this encoder via a projection
+layer to align with the CLS token of the ViT-based teacher encoder, and object query embeddings of
+the DETR decoder. An image-text contrastive learning approach [33] was used for this task.
+4
+
+
+3D anatomical region images
+1
+brain
+2
+brain
+3
+abdomen
+3D ViT
+encoder
+DETR
+decoder
+object queries
+class
+3D box
+projection
+Lcls
+Lbox
+weak anatomy boxes
+Hungarian-matched
+DETR set loss
+chiasma
+thalamus
+right eye
+chiasma
+thalamus
+right eye
+liver
+anatomy
+embeddings
+Radiology reports →anatomy-level findings
+anatomical
+extraction
+Text
+encoder
+“The chiasma has a lesion”
+1
+“Right thalamus is ok”
+1
+“Right eye is normal”
+1
+“Chiasma is inflamed”
+2
+“Thalamus is normal”
+2
+“Lesion in the right eye”
+2
+“Liver shows cirrhosis”
+3
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+1
+1
+1
+1
+1
+1
+1
+1
+1
+LCLIP
+abnormality-aware
+contrastive targets
+1
+positive: pulled together
+0
+negative: pushed apart
+abnormal (from report)
+Same organ, both normal
+(thalamus 1–2): 1.
+An abnormal anatomy is
+positive only with its own
+finding (chiasma 1–2, right
+eye 1–2): 0.
+Figure 2: Cross-modal localized alignment. A 3D ViT encoder and a DETR decoder detect anatomies
+in each MR volume. Each decoder output feeds three heads: class and 3D box, trained with the
+Hungarian-matched DETR set loss, and a projection that gives one embedding per detected anatomy.
+Similarly, report findings are extracted per anatomy from the radiology reports and are encoded by a
+text encoder. The abnormality-aware contrastive loss LCLIP uses pairwise target matrix where the
+same organ in two images is a positive pair only if both are normal (thalamus); an abnormal anatomy
+is positive only with its own finding (chiasma, right eye). The image-level CLS–text contrastive loss
+is omitted for clarity. (best in color)
+3.4.1
+DETR for bounding box detection
+We use the Detection Transformer architecture proposed by [6] to build our anatomy localizer. As a
+refresher, DETR operates as follows.
+It consists of a backbone such as ResNet, a transformer encoder, and a transformer decoder. We get
+rid of the ResNet and directly feed images into a ViT based transformer encoder. The output tokens
+from the transformer are Z. The transformer decoder takes learnable input queries Q, and consists of
+L stacked decoder blocks. Each block consists of a self attention layer followed by a cross attention
+layer. The latter makes the object queries interact with the encoder tokens Z. The output embeddings
+from each decoder layer are then used to train an MLP classifier to classify each embedding into
+a predefined list of classes or a no object found class. A regression head then generates the box
+coordinates for classes other than no object found. In addition, we add a CLIP projection head to the
+output embeddings of the last layer, which is then used to align anatomy text representations. We
+describe the working of this in Section 3.4.2.
+Following DETR, we employ a fixed set of N object queries, where N is chosen to exceed the
+maximum number of anatomical structures present in an MRI scan. The ground-truth set ˆy is
+correspondingly padded with ∅(no-object) labels to match. This formulation casts detection as a set
+prediction problem, which we solve via bipartite matching using the Hungarian algorithm.
+Let σ denote the optimal permutation over N elements obtained from the Hungarian matching. The
+training objective is then,
+Lloss(y, ˆy) =
+N
+X
+i=1
+h
+−log ˆpσ(i)(ci) + 1{ci̸=∅} Lbox(bi,ˆbσ(i))
+i
+,
+(1)
+where ci and bi denote the class label and bounding box of the i-th ground-truth element, respectively,
+and ˆpσ(i)(ci) and ˆbσ(i) denote the predicted class probability and bounding box for the matched
+5
+
+
+prediction σ(i). The indicator function 1{ci̸=∅} ensures that the bounding box loss is applied only to
+non-empty targets.
+The bounding box loss is defined as a weighted combination of an L1 loss and GIoU loss following
+DETR. We provide the equation here for completeness
+Lbox(bi,ˆbσ(i)) = λL1 LL1(bi,ˆbσ(i)) + λgiou Lgiou(bi,ˆbσ(i))
+(2)
+where λL1, λgiou ∈R are weighting coefficients.
+In addition to the primary matching loss, we apply auxiliary supervision at each decoder layer,
+following DETR. Furthermore, we introduce two additional objectives. First, we incorporate an
+image–text contrastive loss between the CLS tokens of the vision encoder (ViT) and the text encoder,
+implemented using the CLIP formulation. Second, we propose an anatomy-level contrastive loss that
+aligns the CLS token of the text encoder with the object queries from the final decoder layer. The
+formulation of this loss is described in the next section.
+3.4.2
+A4-MR for anatomy-level multimodal alignment with abnormality awareness
+Let D ∈R(B×N)×Q×H denote the input embeddings, where B is the batch size, N is the number
+of texts per report, Q is the number of object queries, 200 in our case, and H is the embedding
+dimension, 768 for ViT-B.
+Projection Layers.
+Define a contrastive projection function fclip : RH →RHc, which is an MLP,
+applied across the query dimension to yield:
+Dc = fclip(D) ∈R(B×N)×Q×Hc
+(3)
+Define a classification function fcls : RH →RC, applied across the query dimension to yield:
+P = fcls(D) ∈R(B×N)×Q×C
+(4)
+where C is the number of classes.
+Inputs.
+Let T ∈R(B×N)×Hc denote the text embeddings, and let y, a ∈Z(B×N) denote the
+ground-truth organ label and abnormality vectors respectively, where each yi ∈{1, . . . , C}, and each
+ai ∈{0, 1}.
+Matching and Extraction.
+For each sample index i ∈{1, . . . , B × N}, identify the first query
+index whose predicted class matches the ground-truth label:
+q∗
+i = min
+n
+q ∈{1, . . . , Q}
+ arg max
+c
+Pi,q,c = yi
+o
+(5)
+If no such query exists, sample i is discarded. Otherwise, extract the aligned tuple:
+Si =
+ Dc,i,q∗
+i , Ti, yi, ai
+
+(6)
+where Dc,i,q∗
+i ∈RHc is the CLIP-projected visual embedding for the matched query at sample i.
+Output.
+The full collection of aligned tuples is:
+S = {Si | i ∈{1, . . . , B × N}, q∗
+i exists}
+(7)
+Intra-Report Abnormality Propagation.
+For each report b ∈{1, . . . , B}, consider its N associ-
+ated samples with indices Ib = {(b −1)N + 1, . . . , bN}. For each unique organ u ∈Ub = {yi |
+i ∈Ib}, define its consolidated abnormality status as:
+˜ab,u =
+max
+i∈Ib, yi=u ai
+(8)
+That is, if any occurrence of organ u within report b is abnormal, all occurrences are marked abnormal.
+The updated abnormality vector ˜a ∈Z(B×N) is then:
+˜ai = ˜ab,yi,
+∀i ∈Ib,
+∀b ∈{1, . . . , B}
+(9)
+6
+
+
+Global Organ-Abnormality Key Assignment.
+Let P denote the set of all unique organ-
+abnormality pairs observed across the full batch:
+P = {(yi, ˜ai) | i ∈{1, . . . , B × N}}
+(10)
+Assign a unique key k ∈{1, . . . , |P|} to each pair via a bijective mapping ω : P →{1, . . . , |P|}.
+The label vector is then updated as:
+˜yi = ω(yi, ˜ai) ,
+∀i ∈{1, . . . , B × N}
+(11)
+We use the labels ˜y to define positive pairs: samples sharing the same organ-abnormality key are
+assigned a target similarity of 1 only if the organ is normal. An abnormal anatomy forms a positive
+pair only with its own finding, so abnormal occurrences of the same organ in different images are
+assigned 0. We compute a standard contrastive loss [33] in both directions: image-to-text Li2t and
+text-to-image Lt2i. The final loss is their average:
+LCLIP = 1
+2 (Li2t + Lt2i)
+(12)
+4
+Results
+We compare our model to the following models:
+• Vista3D CT-MR [16], a multimodal 3D foundation model designed to jointly learn from CT and
+MR volumes for robust cross-modality medical image segmentation.
+• MedSigLIP [36], a medical adaptation of the SigLIP [49] vision-language model that aligns
+clinical images with text for improved multimodal understanding and retrieval.
+• BiomedParse [53], a large-scale biomedical parsing model that unifies segmentation and structured
+understanding across diverse medical imaging tasks and anatomies.
+• MRI-CORE [11], a foundation model trained specifically on MRI data to capture modality-specific
+representations for downstream tasks such as segmentation and diagnosis.
+• Decipher-MR [47], where a 3D volumetric image level contrastive objective is utilized to align
+visual and text towers.
+• MedSAM2 [23], a promptable medical segmentation foundation model that propagates 2D box
+prompts through a 3D volume.
+• nnUNet3D [17], a deep learning-based segmentation method that automatically configures itself,
+including preprocessing, network architecture, training and post-processing, for any new task.
+• MedNeXt [35], a ConvNeXt-based 3D segmentation network trained end-to-end.
+• VNet [25], a 3D convolutional volumetric segmentation model, originally proposed for prostate
+MRI.
+• BiomedCLIP [50], a multimodal vision-language foundation model trained on image-text pairs
+from biomedical scientific articles.
+• MedImageInsight [7], a medical imaging embedding model trained on images and text.
+• Qwen2.5-VL [1], a general-purpose vision-language model, used as a baseline for report genera-
+tion.
+• No Abnormality, an ablation of A4-MR trained with the same setup but without the abnormality-
+aware contrastive loss (Section 3.4.2). It is reported as “No Abnormality” in the tables.
+Datasets.
+We evaluate on public and proprietary datasets covering retrieval, classification, segmen-
+tation, localization and report generation.
+• Retrieval set, the held-out 8% of our pretraining studies (2000 studies with reports, never seen
+during pretraining). Metrics: Precision @K and mean average precision (mAP)
+• CirrMRI600+ [18], 310 T1 and 318 T2 abdominal MRI volumes of cirrhotic livers and 55 healthy
+volumes per sequence, with liver masks. We use the official train/val/test split for cirrhotic scans
+and split healthy scans by patient. Metrics: AUROC (classification), Dice (segmentation).
+7
+
+
+• AMOS22 (MR) [19], abdominal MRI with 13 annotated organs. We use the official split (40
+training, 20 validation volumes). Localization is evaluated on the 20 validation volumes (13
+organs present in MR, 259 image–organ pairs), excluding 12 pairs with unreliable ground-truth
+boxes: organs thinner than one 8-voxel patch along an axis (6) and labels with stray voxels that
+enlarge the box more than 1.3-fold (7; one pair meets both). The same pairs are excluded for every
+model; this changes scores by at most 1.4 points and does not change the ranking (Supplementary
+Section 7.4).
+• Dataset A (pelvis), proprietary, 193 pelvic MRI volumes with 11 annotated organs that are not
+part of the weak pretraining labels; 140 training, 18 validation and 35 test volumes. Metrics:
+Mean Dice.
+• Dataset B (prostate), proprietary, 300 prostate MRI studies, each with 3 series (T2W, ADC, DWI)
+and a radiology report; 83% training (250) / 17% validation (50). For evaluation, we measure
+lesion detection, lesion attribute similarities (location, lesion size and PI-RADS agreement)
+and prostate volume error. The full list of evaluation metrics and their descriptions is given in
+Supplementary Section 7.5.
+• KneeSeg: proprietary, 1,357 training, 60 validation and 50 test 3D knee MRI volumes with
+femoral, tibial and patellar cartilage and meniscus labels. Metrics: Mean Dice.
+Additional ablation results (classification, age regression) are reported in the Supplementary Material.
+4.1
+Cross Modal Retrieval
+Zero-shot cross-modal retrieval enables matching between MRI images and text—such as retrieving
+scans from text queries or linking relevant report descriptions to a given image—without the need for
+additional model fine-tuning. We evaluated A4-MR’s zero-shot cross-modal retrieval performance on
+text-to-image and image-to-text tasks on a dataset which contains reports and MRIs across sixteen
+body regions, comparing it against other biomedical vision-language models.
+Using the held-out test set from our pretraining dataset, we performed paired report-to-image retrieval,
+using both full radiology reports and conclusion sections as text queries (6.5). Performance was
+measured by the percentage of cases where all top N retrieved scans belonged to the same body
+region as the text query, evaluated at top 1, 3 and 5 results.
+As shown in Tables 1 and 2, A4-MR achieves the strongest overall performance across both image-to-
+text and text-to-image retrieval tasks, consistently outperforming Decipher-MR, BiomedCLIP, and
+MedImageInsight. In Table 1, A4-MR obtains the highest scores for all Entire Report image-to-text
+retrieval metrics and achieves the best performance in three of four Organ Description metrics, with
+only a marginal decrease in @1 compared to the Decipher-MR (85.42 vs. 86.60). Similarly, Table 2
+shows that A4-MR demonstrates the strongest overall text-to-image retrieval performance across
+the Entire Report and Organ Description settings, with the exception of Entire Report @1, where
+No Abnormality achieves the highest score. The largest gains are observed in mAP and higher-
+rank retrieval metrics (@3 and @5), indicating improved ranking quality and stronger cross-modal
+alignment rather than only better top-1 retrieval. Overall, these results demonstrate that A4-MR
+effectively captures both global report-level semantics and fine-grained organ-specific information,
+leading to more robust and accurate medical image-text retrieval.
+Table 1: Image-to-Text Performance on body region retrieval task. Bold: best; underlined: second
+best.
+Entire Report
+Organ Descriptions
+Model
+@1
+@3
+@5
+mAP
+@1
+@3
+@5
+mAP
+A4-MR (ours)
+93.27
+86.52
+84.13
+90.13
+85.42
+74.51
+68.74
+77.58
+Decipher-MR
+90.90
+79.60
+71.90
+77.80
+86.60
+72.30
+62.80
+66.70
+BiomedCLIP
+81.90
+69.80
+64.40
+70.90
+66.40
+48.80
+41.00
+51.70
+MedImageInsight
+78.00
+65.10
+58.10
+71.70
+73.00
+57.30
+50.50
+60.70
+No Abnormality
+88.25
+82.49
+78.87
+84.38
+81.47
+68.71
+60.76
+70.66
+8
+
+
+Table 2: Text-to-Image Retrieval Performance. Bold: best; underlined: second best.
+Entire Report
+Organ Descriptions
+Model
+@1
+@3
+@5
+mAP
+@1
+@3
+@5
+mAP
+A4-MR (ours)
+96.49
+94.60
+92.70
+88.32
+86.93
+82.58
+79.53
+78.42
+Decipher-MR
+94.60
+91.40
+89.70
+78.10
+84.50
+78.80
+75.10
+73.80
+BiomedCLIP
+83.50
+72.40
+68.10
+75.50
+66.00
+52.70
+47.40
+62.40
+MedImageInsight
+91.90
+81.10
+74.90
+77.20
+73.90
+63.70
+56.90
+66.80
+No Abnormality
+97.30
+91.89
+87.84
+81.16
+79.92
+71.28
+65.65
+72.24
+4.2
+Classification
+4.2.1
+Improved abnormality detection
+0
+2
+4
+6
+8
+10
+12
+14
+UMAP 1
+2
+4
+6
+8
+10
+UMAP 2
+Sequence (shape)
+T1 (n = 365)
+T2 (n = 373)
+Health status (color)
+Healthy
+Cirrhotic
+Figure 3: UMAP [24] plot of the full CirrMRI600+ dataset with A4-MR (ours) model embeddings.
+Colors indicate the health status of the sample. Shapes indicate the MRI pulse sequence of the image
+that we have found to be an important factor for the model.
+We test the model’s representation capabilities on disease detection using the CirrMRI600+
+dataset (Fig. 3). We keep the official splits for the cirrhotic scans and split the healthy scans
+by patient. On frozen embeddings, we train an MLP probe with two hidden layers (768 units each)
+using a fixed learning rate of 10−4 for the output layer and 10−5 for the hidden layers, and a fixed
+budget of 10k steps; the last checkpoint is evaluated, and results are averaged over 10 seeds (see
+Supplementary for details). To measure data efficiency, we train on 10%, 25%, 50% and 100% of the
+training set while keeping the class prevalence.
+Table 3 shows the results of the abnormality detection task. Our model gives the highest AUROC
+score in abnormality detection of 98.9 at 100% data, followed by MedSigLIP with 97.2. Our model
+achieves the same score at 25% data as MedSigLIP at 100% data, however, with higher variance.
+To check the effect of the proposed abnormality contrastive loss function, and whether these results
+could be improved, we performed ablation studies on this task (Tab. 4). The A4-MR-no abnormality
+model uses the same setup as A4-MR without the abnormality loss function. Results indicate that this
+9
+
+
+Table 3: Comparison of models on CirrMRI600+ abnormality detection tasks with various data
+budgets (mean ± std). All values are mean of 10 repeated runs with different random seeds. Bold:
+best; underlined: second best.
+Abnormality detection (AUROC)
+Model
+10%
+25%
+50%
+100%
+A4-MR (ours)
+94.7 ± 6.8
+97.2 ± 2.1
+98.8 ± 0.7
+98.9 ± 0.3
+Decipher-MR
+86.8 ± 4.8
+89.7 ± 3.5
+92.4 ± 2.3
+94.5 ± 0.6
+BiomedParse
+80.0 ± 8.1
+87.2 ± 6.0
+89.6 ± 2.7
+90.7 ± 0.3
+Vista3D CT-MR
+78.9 ± 8.1
+87.8 ± 3.7
+92.2 ± 1.7
+93.2 ± 0.7
+MRI-CORE
+69.4 ± 5.4
+73.0 ± 4.7
+71.9 ± 3.7
+72.5 ± 0.7
+MedSigLIP
+90.8 ± 3.5
+93.0 ± 2.8
+95.8 ± 2.2
+97.2 ± 0.3
+Table 4: Ablation studies on the CirrMRI600+ abnormality detection task (AUROC, mean ± std
+over 10 runs). Checkmarks indicate experiment setup. A4-MR model results are repeated from Tab.
+3. Bold: best; underlined: second best. GT crop CLS rows use the ground-truth liver mask (upper
+bound) and are not ranked.
+CLS
+Mean organ emb
+Random PE
+Abnormality loss
+Liver emb
+Pred crop CLS
+GT crop CLS
+Abnormality detection (AUROC)
+Model
+10%
+25%
+50%
+100%
+A4-MR (ours)
+✓
+✓
+94.7 ± 6.8
+97.2 ± 2.1
+98.8 ± 0.7
+98.9 ± 0.3
+Mean organ
+✓
+✓
+89.9 ± 5.7
+94.6 ± 3.2
+97.9 ± 1.3
+99.4 ± 0.2
+Random PE
+✓
+✓
+80.5 ± 9.7
+92.6 ± 4.8
+96.5 ± 1.1
+97.4 ± 0.7
+Liver
+✓
+✓
+87.7 ± 5.9
+94.0 ± 3.1
+97.0 ± 2.0
+96.9 ± 0.5
+Liver crop CLS
+✓
+✓
+95.5 ± 3.7
+96.8 ± 2.4
+99.1 ± 0.6
+99.7 ± 0.2
+Liver pad crop CLS
+✓
+✓
+95.2 ± 3.6
+98.1 ± 1.6
+99.4 ± 0.5
+99.8 ± 0.1
+GT crop CLS
+✓
+✓
+94.8 ± 6.8
+98.6 ± 1.4
+99.4 ± 0.5
+100.0 ± 0.0
+No abnormality
+✓
+93.0 ± 3.1
+96.2 ± 1.5
+96.4 ± 0.9
+96.1 ± 0.6
+Liver crop CLS
+✓
+94.0 ± 5.2
+96.9 ± 2.3
+99.2 ± 0.7
+99.6 ± 0.4
+Liver pad crop CLS
+✓
+93.8 ± 5.2
+98.3 ± 1.3
+99.4 ± 0.4
+99.8 ± 0.2
+GT crop CLS
+✓
+95.3 ± 3.4
+98.5 ± 1.1
+99.3 ± 0.5
+99.8 ± 0.1
+triaging capability increases model performance on disease detection across all data amounts, and
+gives +2.8 score at 100% data. Then, we evaluated the organ embeddings extracted by our model.
+Since detection performance may influence representation quality, we compute the mean embedding
+of detected organs for each sample. Mean organ embeddings improve performance by +0.5 AUROC
+at 100% data compared to CLS tokens. This approach is inferior at lower data regimes (-0.9, -2.6,
+and -4.8 AUROC at 50%, 25%, and 10% data, respectively). Since the localization of organs can
+be imperfect we compared the approach with 10 randomly sampled patch embeddings (random PE)
+as a baseline. Considering that patch embeddings can originate from background region, they are
+still expected to contain global information and achieve impressive classification score of 97.4 at
+100% data. However, mean organ embeddings constantly provide higher performance, that indicates
+localized embeddings have a positive effect.
+Next, we focus on liver representation or localization experiments. The liver organ embedding
+(Liver) is competitive with baselines, however, it gives inferior classification score (96.9) compared to
+whole-image CLS token. Using the A4-MR model’s liver localization result over the organ embedding
+for cropping the image and then running the inference on the cropped image (Liver crop CLS), the
+performance beats the CLS token-based approach in 3 out of 4 data regimes (+0.8, +0.3, -0.4, +0.8
+AUROC at 100%, 50%, 25%, and 10% data, respectively). Padding the localization result by 8×8×2
+voxels the performance further improves (+0.1, +0.3, +1.3, -0.3 AUROC at 100%, 50%, 25%, and
+10% data, respectively). Finally, we include the results of ground truth liver segmentation-based crop
+results as an upper bound where the model achieves 100.0 classification score at 100% data.
+10
+
+
+Finally, we perform experiments with the A4-MR-no abnormality model using the mentioned cropping
+techniques (crop, crop and pad, GT crop). The results show similar scores to A4-MR model (that
+includes this loss function), indicating that good localization can help the models to achieve higher
+classification scores.
+4.3
+Segmentation
+We evaluate whether the representations learned by A4-MR transfer to dense prediction by training a
+lightweight segmentation decoder on top of the frozen vision encoder. In all experiments, the encoder
+weights are kept fixed and only the segmentation decoder is trained, allowing us to isolate the quality
+of the pretrained image representations.
+We use a SegResNet-style decoder [27] with skip connections from the A4-MR encoder. Specifically,
+the final patch embeddings and intermediate embeddings from zero indexed layers 2, 5 and 8 are
+provided to the decoder to preserve spatial detail at multiple resolutions. The decoder contains
+approximately 8 million trainable parameters; for KneeSeg we use a larger variant (Section 4.3.1).
+We experimented with several voxel spacings and found that smaller spacings consistently improved
+segmentation performance, even when the original acquisition spacing was coarser. Unless otherwise
+stated, we use the 25th percentile spacing for each dataset. Models are trained with a learning rate
+of 5 × 10−4, cosine decay, and a minimum learning rate of 10−6. Training is performed for 60k
+batches per GPU across 8 GPUs with a batch size of 2. We use random cropping with a crop size of
+384 × 384 × 48 and additional augmentations adapted from AMOS [19].
+We benchmark A4-MR against alternative pretrained models on three segmentation datasets:
+AMOS [19], an internal Dataset A (pelvis), and CirrMRI600+. Dataset A is out of distribution
+relative to the pretraining corpus. For AMOS, we use the official train/validation split. For Dataset
+A and CirrMRI600+, we evaluate on held-out test sets. Knee cartilage segmentation is analyzed
+separately in Section 4.3.1. Unless otherwise stated, all results are reported as mean Dice across
+segmentation classes. Extended per-organ ablations (encoder variant, curriculum augmentation,
+decoder warm-start) are provided in the Supplementary Material.
+Table 5: Segmentation Dice scores (%, higher is better). Bold: best; underlined: second best.
+Model
+AMOS
+Dataset A (pelvis)
+CirrMRI600+
+A4-MR (ours)
+85.3
+87.6
+96.5
+Decipher-MR
+85.7
+84.3
+96.3
+nnUNet3D
+85.6
+88.7
+84.8
+4.3.1
+Comparison Against End-to-end (e2e) models
+We use the same frozen A4-MR encoder with a larger SegResNet decoder [27] (58M trainable
+parameters) and compare against e2e models on the KneeSeg dataset under different labeled-data
+budgets. In a decoder ablation with the stage-1 encoder (Supplementary Section 7.3), a 4.3M-
+parameter bottleneck variant reaches nearly the same Dice (78.4 vs. 78.7), so the knee results do not
+depend on decoder capacity.
+Table 6: Knee segmentation performance (Dice in %, higher is better). Bold: best; underlined: second
+best.
+Model
+Femoral Cartilage
+Tibial Cartilage
+Patellar Cartilage
+Meniscus
+Average
+A4-MR (ours)
+88.2
+87.2
+89.0
+85.0
+87.3
+MedNeXt
+86.6
+85.0
+87.4
+84.4
+85.9
+VNet
+86.4
+85.0
+88.0
+84.1
+85.9
+nnUNet3D
+79.9
+79.2
+86.8
+79.7
+81.4
+Figure 4 shows a qualitative assessment of knee cartilage segmentation and Table 6 summarizes
+segmentation accuracy for femoral, tibial and patellar cartilage and the meniscus on the test set.
+A4-MR achieves Dice scores of 88.2, 87.2, 89.0 and 85.0, respectively, yielding an average Dice of
+11
+
+
+Figure 4: Qualitative assessment from an external clinical case never seen by the models during
+training. (A) 3D rendering of segmentation outputs from the reference standard and all models in
+axial views. (B), (C),(D)and (E) show different sagittal slices from the same case with the respective
+overlaid segmentations for femoral, patellar and tibial cartilages and the meniscus horns. In (B) and
+(C), strong agreement is observed on sagittal slices through the center of the structures. However,
+in peripheral slices (D) and (E), models begin to disagree, particularly for femoral cartilage and the
+meniscus. Cyan arrows show bigger missegmentation errors.
+87.3. Compared with fully supervised end-to-end baselines, A4-MR is best on every structure and on
+average: MedNeXt [35] and VNet both obtain an average Dice of 85.9, and nnUNet3D 81.4. These
+results suggest that pretrained MR foundation model features can improve dense prediction with a
+frozen encoder.
+Figure 5 shows validation Dice for N ∈{10, 50, 100, 300} labeled volumes and the full set of 1,357
+volumes. A4-MR consistently outperforms the fully supervised VNet baseline, particularly in the
+low-data regime. With only N = 10 labeled cases, A4-MR reaches an average Dice of 68.2, whereas
+VNet is near zero (0.7). With N = 50 and N = 100, A4-MR reaches 75.4 and 79.1 Dice, exceeding
+VNet (65.1 and 75.5).
+Overall, these results indicate that A4-MR supports accurate and label-efficient segmentation on
+internal knee cartilage data, where the model consistently improves over fully supervised baselines,
+and substantially reduces the amount of labeled data required to reach competitive performance.
+With a frozen encoder and a lightweight (∼8M parameter) decoder, A4-MR matches or exceeds
+strong task-specific models across anatomies. It is within 0.4 of the best model on AMOS (85.3
+vs. 85.7), is best on CirrMRI600+ (96.5), and stays competitive on Dataset A (87.6 vs. 88.7). On
+knee segmentation, with a larger (58M) decoder, it beats end-to-end MedNeXt and VNet (87.3
+vs. 85.9 average Dice for both). Its largest advantage is in the low-label regime: with only 10
+annotated cases it reaches ∼68 Dice, while VNet fails to converge. Together, these results show that
+A4-MR’s pretrained representations carry fine-grained anatomical information. This lets accurate,
+label-efficient segmentation be achieved without fine-tuning the encoder.
+12
+
+
+10
+50
+100
+300
+1357
+(full)
+Number of labeled training volumes (log scale)
+0
+20
+40
+60
+80
+100
+Mean Dice (%)
+68.2
+0.7
+Validation
+Test
+82
+84
+86
+88
+85.2
+83.7
+87.3
+85.9 85.9
+81.4
+Full training set (n = 1357)
+A4-MR (val.)
+VNet (val.)
+A4-MR (test)
+VNet (test)
+MedNeXt (test)
+nnUNet3D (test)
+Figure 5: Label efficiency on knee segmentation: mean Dice over femoral, tibial and patellar cartilage
+and the meniscus versus the number of labeled training volumes (log scale). A4-MR uses a frozen
+encoder; VNet is trained end-to-end. Curves (filled markers) are on the validation set. At the full
+training set, the inset compares these validation end points with test-set results from Table 6 (hollow
+markers for A4-MR and VNet), including MedNeXt and nnUNet3D, which were trained on the full
+set only.
+4.4
+Localization and Detection
+We evaluate 3D organ localization on the AMOS22 MR validation set (247 image–organ pairs after
+exclusions; see Datasets in Section 4). A4-MR predicts a 3D bounding box for each organ directly
+from the full volume, without prompts or task-specific fine-tuning; we report the same for its No
+Abnormality variant. Localization is measured by the 3D intersection-over-union (IoU) between
+predicted and ground-truth boxes, averaged over images per organ and then over the 13 organs.
+Preprocessing and metric details are given in Supplementary Section 7.4.
+To our knowledge, no public model predicts organ bounding boxes directly from full 3D MRI
+volumes. We therefore compare against MedSAM2 [23], a promptable medical foundation model
+that propagates 2D box prompts through the volume. It receives ground-truth boxes on one slice
+(1 box) or on three slices (3 slices) per organ, so its results show what prompted segmentation can
+achieve rather than fully automatic localization. As an upper bound, we use the nnUNet3D trained on
+AMOS from Section 4.3 and convert its predicted masks to bounding boxes.
+Table 7 summarizes the results. Without any prompt, A4-MR (66.3) slightly outperforms MedSAM2
+given a ground-truth box (65.5), while MedSAM2 with three prompted slices (74.8) and the AMOS-
+trained nnUNet3D (82.4) remain stronger. On AMOS, the abnormality-aware loss also improves
+localization (66.3 vs. 65.0 without it), with gains on 11 of the 13 organs and up to +4.4 IoU on the left
+adrenal gland; the only decrease, on the inferior vena cava, is 0.5. Because the two models share the
+same localization decoder and box supervision and differ only in how positive pairs are formed in the
+contrastive batch, this indicates that separating normal and abnormal occurrences of an organ yields
+more discriminative organ-level features that also benefit localization. Per organ (Supplementary
+Table 23), the picture depends on organ shape and size. For large, compact organs (liver, spleen,
+kidneys), a single prompted box already pins down most of the extent, and MedSAM2 reaches 90–97
+IoU versus 75–81 for A4-MR. For elongated or hollow organs that span many slices with changing
+cross-sections, slice-wise propagation struggles: A4-MR outperforms MedSAM2 with one box on the
+esophagus (61.2 vs. 38.4), stomach (76.0 vs. 51.4), inferior vena cava (70.7 vs. 47.9) and duodenum
+(60.9 vs. 41.1), and even MedSAM2 with three slices on the first three. Small organs remain hardest
+for all models; for the adrenal glands and the gallbladder, A4-MR reaches only 42–52 IoU, consistent
+with the 8-voxel patch size of its encoder. Figure 6 shows qualitative examples for volumes with the
+best, median and worst localization performance.
+13
+
+
+Best (amos_0556)
+Median (amos_0561)
+Worst (amos_0553)
+Liver
+Spleen
+Pancreas
+Stomach
+Right adrenal
+Figure 6: Ground-truth and predicted 3D bounding boxes on AMOS22 MR validation for the volumes
+with the best, median and worst mean bounding-box IoU, averaged over all models and organs
+(columns), for five organs (rows). Each panel is the axial slice on which the ground-truth mask best
+fills its bounding box. The ground-truth mask (blue), the ground-truth box (white) and each model’s
+box (colored) are projected along the head–foot axis onto this slice. Numbers at the bottom of each
+panel give the bounding-box IoU per model (A4: A4-MR; NA: No Abnormality; M1, M3: MedSAM2
+with one or three box prompts). The right adrenal gland is shown enlarged in an inset. Volumes
+whose shown organs contain stray label voxels (Supplementary Fig. 9) were not considered when
+selecting these examples.
+14
+
+
+Table 7: Mean 3D bounding-box IoU (%) on AMOS22 MR validation after excluding unreliable
+(image, organ) pairs (n=247). Scores are averaged over images per organ, then over the 13 organs.
+MedSAM2 is prompted with ground-truth boxes on one slice (1 box) or on three slices per organ
+(3 slices). nnUNet3D is trained on AMOS; all other models are evaluated zero-shot. Bold: best;
+underlined: second best among the models above the rule; the AMOS-trained reference is not ranked.
+Model
+Bounding-box IoU
+A4-MR (zero-shot)
+66.3
+No Abnormality (zero-shot)
+65.0
+MedSAM2 (1 box)
+65.5
+MedSAM2 (3 slices)
+74.8
+nnUNet3D (AMOS-trained)
+82.4
+4.5
+Prostate Structured Report Generation
+We frame automated prostate MR report generation as a vision-conditioned lesion identification,
+characterization and measurement problem. Given a single patient study, which may comprise several
+co-acquired 3D MRI series, the model outputs one structured report as a JSON object (schema
+in Supplementary Section 7.5) that describes clinical findings and enumerates identified lesions
+(anatomical location, size in millimeters, and PI-RADS [44] category) together with the estimated
+prostate volume. Here we aim at structured findings extraction (lesion detection, measurement, and
+PI-RADS characterization), not free-text narrative report writing. This choice makes the output
+directly parseable and evaluable.
+We follow a prefix-based setup [26], in which a mapping layer connects the visual encoder to the
+LLM decoder:
+1. 3D Vision Encoder (Frozen): Visual features for all 3 series are extracted using the A4-MR
+encoder and mean-pooled. Only the teacher backbone is used.
+2. Cross-modal Mapping (Trainable): The fused visual tokens are projected into the LLM embedding
+space by a single learnable linear layer W ∈Rdℓ×dv followed by LayerNorm, where dℓis the
+LLM hidden size (2048 for Qwen2.5-3B [31]):
+Zimg = LayerNorm
+ W ¯Eimg
+
+.
+(13)
+3. Language Decoder (Frozen): The decoder is a Qwen2.5-3B-Instruct causal LM loaded in bfloat16
+with FlashAttention-2 [9]. Prompts are tokenized and mapped to embeddings Zprompt and
+prepended with the projected visual tokens in embedding space to form the input to the transformer
+blocks:
+H = [ Zimg ; Zprompt ] ,
+(14)
+Generation then proceeds autoregressively from the input embeddings.
+We train and evaluate on Dataset B, an internal dataset comprising MRI studies in which each study
+has 3 MRI series/volumes and an accompanying report. We use a split stratified by lesion presence:
+250 training studies (167 with lesions) and 50 validation studies (33 with lesions). There is no separate
+test set, so all results are reported on the validation set given the sample size. For evaluation, we
+measure lesion detection, lesion attribute similarities (location, lesion size and PI-RADS agreement)
+and prostate volume error. The full list of evaluation metrics and their descriptions is given in
+Supplementary Section 7.5.
+We compare our setup against the following baselines:
+• Qwen2.5-VL: We pass the 3 MR volumes as sequences of 2D slices to Qwen2.5-VL-Instruct
+(3B and 32B variants) zero-shot, without fine-tuning on Dataset B.
+• Decipher-MR: We use our setup with the Decipher-MR vision encoder.
+From Table 8, we observe that both Decipher-MR and A4-MR embeddings lead to the best perfor-
+mance on precision, F1 score, lesion size and PI-RADS. We also observe that A4-MR is the best
+15
+
+
+Table 8: Prostate Structured Report Generation results. All Qwen models are the Instruct variants.
+Bold: best; underlined: second best.
+Lesion detection
+Lesion attributes
+Prostate
+Model
+Precision
+↑
+Recall
+↑
+F1
+↑
+Size
+agreement ↑
+Location
+ROUGE-F1 ↑
+PI-RADS
+agreement ↑
+Volume
+error (cc) ↓
+Qwen2.5-VL-3B
+45.00
+55.33
+47.60
+52.05
+31.34
+66.94
+1174.48
+Qwen2.5-VL-32B
+26.00
+26.00
+26.00
+60.00
+33.33
+75.00
+20.00
+Decipher-MR
++ Qwen2.5-3B
+53.00
+49.02
+49.44
+64.88
+27.88
+83.78
+20.32
+A4-MR
++ Qwen2.5-3B
+53.33
+49.13
+49.64
+63.94
+24.74
+80.74
+16.43
+among all candidates at measuring prostate volume, improving over Decipher-MR by about 20%,
+which we hypothesize is due to its optimization for organ detection. The zero-shot Qwen2.5-VL-3B
+baseline has a large prostate volume error (1174.48 cc) because it hallucinates volumes: it receives
+the series as 2D slices without voxel spacing and is not fine-tuned for the task. There is a trade-off
+with recall, which we believe is caused by mean pooling the patch embeddings of the 3 MR volumes
+in the Decipher-MR and A4-MR approaches but not in the other baselines. We leave the exploration
+of other aggregation strategies to future work.
+5
+Limitations and Future Work
+• Weak and noisy pretraining supervision. During pretraining, anatomy boxes are derived from
+TotalSegmentator, proprietary segmentation models, and DICOM-based coordinate transfer, and
+anatomy health status is extracted from reports by an LLM. Only a subset of the processed
+reports was manually reviewed, so label noise in both localization targets and abnormality labels
+shapes the learned representations; downstream tasks are trained and evaluated on their own
+curated labels with the encoder frozen. The weak masks are also reduced to bounding boxes. A
+segmentation head trained with a masked loss during pretraining, applied only to anatomies for
+which a mask is available, would let the encoder learn from voxel-level shape information instead
+of the box extent alone.
+• Patch resolution. With 8 × 8 × 8 patches, structures smaller than a single patch along any
+axis cannot be resolved, and zero-shot localization still trails prompted (multi-slice) MedSAM2
+and dataset-specific supervised models, particularly on small organs such as the adrenal glands.
+Smaller or anisotropic patches, or multi-scale tokenization, could improve localization and
+segmentation of small anatomies at a manageable computational cost.
+• Coarse abnormality modeling. Abnormality is represented as a binary healthy/abnormal state
+per organ, propagated to all mentions of that organ within a report. This does not capture
+severity, multiple co-occurring findings, or lesion-level detail, and our abnormality evaluation
+focuses mainly on a single organ and disease (liver cirrhosis). Abnormality is learned implicitly
+through the structure of the contrastive targets. A classification head on the per-anatomy decoder
+embeddings, trained with an explicit abnormality loss, could provide a more direct training signal,
+enable organ-level abnormality prediction without a downstream probe, and serve as a first step
+toward severity and lesion level labels.
+• Fixed anatomy list. The localization decoder detects a fixed list of anatomy classes. Because
+each detected anatomy has an embedding aligned with the text encoder, this list can already be
+queried with free text rather than class names: a query such as “anatomies required for vision”
+matches all related classes, including the left and right eyes, lenses and optic nerves. Howeever,
+anatomies outside the vocabulary list cannot be localized. Extending the list, together with the
+corresponding weak labels and report findings, would broaden anatomy-level alignment and
+abnormality awareness to more body regions and structures, towards open-vocabulary setup.
+• From anatomies to pathologies. Existing MR foundation models such as MRI-CORE [11],
+OmniMRI [15] and Decipher-MR [47] learn image-level representations, in some cases aligned
+with radiology reports. A4-MR extends this alignment to anatomical regions across the body. The
+natural next step is to bring lesions, tumors and other pathologies into pretraining in the same way:
+16
+
+
+findings extracted from reports provide weak text supervision, and existing lesion detection and
+segmentation models can bootstrap their locations. Any pretrained model can be fine-tuned for
+lesion detection or delineation; the goal here is to make pathology grounding part of the learned
+representation itself.
+References
+[1]
+Shuai Bai et al. “Qwen2.5-VL Technical Report”. In: ArXiv abs/2502.13923 (2025). URL:
+https://api.semanticscholar.org/CorpusID:276449796.
+[2]
+Carlo Alberto Barbano et al. “Anatomical Foundation Models for Brain MRIs”. In: ArXiv
+abs/2408.07079 (2024). URL: https : / / api . semanticscholar . org / CorpusID :
+271865368.
+[3]
+Louis Blankemeier et al. “Merlin: A Computed Tomography Vision-Language Founda-
+tion Model and Dataset”. In: Nature 652 (2024), pp. 1318–1328. URL: https : / / api .
+semanticscholar.org/CorpusID:270371846.
+[4]
+Zhaowei Cai et al. “X-DETR: A Versatile Architecture for Instance-wise Vision-Language
+Tasks”. In: ArXiv abs/2204.05626 (2022). URL: https://api.semanticscholar.org/
+CorpusID:248118610.
+[5]
+M. Jorge Cardoso et al. “MONAI: An open-source framework for deep learning in healthcare”.
+In: arXiv preprint arXiv:2211.02701 (2022).
+[6]
+Nicolas Carion et al. “End-to-End Object Detection with Transformers”. In: ArXiv
+abs/2005.12872 (2020). URL: https : / / api . semanticscholar . org / CorpusID :
+218889832.
+[7]
+Noel C. F. Codella et al. “MedImageInsight: An Open-Source Embedding Model for Gen-
+eral Domain Medical Imaging”. In: ArXiv abs/2410.06542 (2024). URL: https://api.
+semanticscholar.org/CorpusID:273228498.
+[8]
+Joseph Cox et al. “BrainSegFounder: Towards 3D foundation models for neuroimage seg-
+mentation”. In: Medical image analysis 97 (2024), pp. 103301–103301. URL: https://api.
+semanticscholar.org/CorpusID:270559279.
+[9]
+Tri Dao. “FlashAttention-2: Faster Attention with Better Parallelism and Work Partitioning”.
+In: ArXiv abs/2307.08691 (2023). URL: https://api.semanticscholar.org/CorpusID:
+259936734.
+[10]
+Jacob Devlin et al. “BERT: Pre-training of Deep Bidirectional Transformers for Language
+Understanding”. In: North American Chapter of the Association for Computational Linguistics.
+2019. URL: https://api.semanticscholar.org/CorpusID:52967399.
+[11]
+Haoyu Dong et al. “MRI-CORE: A Foundation Model for Magnetic Resonance Imaging”.
+In: ArXiv abs/2506.12186 (2025). URL: https://api.semanticscholar.org/CorpusID:
+279402564.
+[12]
+Alexey Dosovitskiy et al. “An Image is Worth 16x16 Words: Transformers for Image Recogni-
+tion at Scale”. In: International Conference on Learning Representations. 2021. URL: https:
+//openreview.net/forum?id=YicbFdNTTy.
+[13]
+Yu Gu et al. “Domain-Specific Language Model Pretraining for Biomedical Natural Language
+Processing”. In: ACM Transactions on Computing for Healthcare (HEALTH) 3 (2020), pp. 1–
+23. URL: https://api.semanticscholar.org/CorpusID:220919723.
+[14]
+Kaiming He et al. “Masked Autoencoders Are Scalable Vision Learners”. In: 2022 IEEE/CVF
+Conference on Computer Vision and Pattern Recognition (CVPR) (2021), pp. 15979–15988.
+URL: https://api.semanticscholar.org/CorpusID:243985980.
+[15]
+Xingxin He et al. “OmniMRI: A Unified Vision–Language Foundation Model for Generalist
+MRI Interpretation”. In: arXiv preprint arXiv:2508.17524 (2025).
+[16]
+Yidong He, Qinbin Yang, Jianwei Yang, et al. “VISTA3D: A Unified Segmentation Foundation
+Model For 3D Medical Imaging”. In: arXiv preprint arXiv:2406.05285 (2024).
+[17]
+Fabian Isensee et al. “nnU-Net: a self-configuring method for deep learning-based biomedical
+image segmentation”. In: Nature Methods 18 (2020), pp. 203–211. URL: https://api.
+semanticscholar.org/CorpusID:227947847.
+[18]
+Debesh Jha et al. “Large scale MRI collection and segmentation of cirrhotic liver”. In: Scientific
+Data 12.1 (2025), p. 896.
+17
+
+
+[19]
+Yuanfeng Ji et al. “Amos: A large-scale abdominal multi-organ benchmark for versatile
+medical image segmentation”. In: Advances in neural information processing systems 35
+(2022), pp. 36722–36732.
+[20]
+Aishwarya Kamath et al. “MDETR - Modulated Detection for End-to-End Multi-Modal Under-
+standing”. In: 2021 IEEE/CVF International Conference on Computer Vision (ICCV) (2021),
+pp. 1760–1770. URL: https://api.semanticscholar.org/CorpusID:233393962.
+[21]
+Cheng-Yi Li et al. “Towards a holistic framework for multimodal LLM in 3D brain CT
+radiology report generation”. In: Nature Communications 16 (2024). URL: https://api.
+semanticscholar.org/CorpusID:270878503.
+[22]
+Dong Ma, Jiaxuan Pang, Michael B. Gotway, et al. “A fully open AI foundation model applied
+to chest radiography”. In: Nature 643 (2025), pp. 488–498. DOI: 10.1038/s41586-025-
+09079-8.
+[23]
+Jun Ma et al. “MedSAM2: Segment Anything in 3D Medical Images and Videos”. In: arXiv
+preprint arXiv:2504.03600 (2025).
+[24]
+Leland McInnes, John Healy, and James Melville. “UMAP: Uniform Manifold Approximation
+and Projection for Dimension Reduction”. In: arXiv preprint arXiv:1802.03426 (2018).
+[25]
+Fausto Milletarì, Nassir Navab, and Seyed-Ahmad Ahmadi. “V-Net: Fully Convolutional Neu-
+ral Networks for Volumetric Medical Image Segmentation”. In: 2016 Fourth International Con-
+ference on 3D Vision (3DV) (2016), pp. 565–571. URL: https://api.semanticscholar.
+org/CorpusID:206429151.
+[26]
+Ron Mokady, Amir Hertz, and Amit H Bermano. “Clipcap: Clip prefix for image captioning”.
+In: arXiv preprint arXiv:2111.09734 (2021).
+[27]
+Andriy Myronenko. “3D MRI brain tumor segmentation using autoencoder regularization”.
+In: BrainLes@MICCAI. 2018. URL: https://api.semanticscholar.org/CorpusID:
+53104235.
+[28]
+Maxime Oquab et al. “DINOv2: Learning Robust Visual Features without Supervision”. In:
+Transactions on Machine Learning Research (2024). Featured Certification. ISSN: 2835-8856.
+URL: https://openreview.net/forum?id=a68SUt6zFt.
+[29]
+Nobuyuki Otsu. “A Threshold Selection Method from Gray-Level Histograms”. In: IEEE
+Trans. Syst. Man Cybern. 9 (1979), pp. 62–66. URL: https://api.semanticscholar.org/
+CorpusID:15326934.
+[30]
+Suraj Pai et al. “Vision Foundation Models for Computed Tomography”. In: ArXiv
+abs/2501.09001 (2025). URL: https : / / api . semanticscholar . org / CorpusID :
+275544195.
+[31]
+Qwen et al. Qwen2.5 Technical Report. 2025. arXiv: 2412.15115 [cs.CL]. URL: https:
+//arxiv.org/abs/2412.15115.
+[32]
+Alec Radford et al. “Language Models are Unsupervised Multitask Learners”. In: (2019).
+[33]
+Alec Radford et al. “Learning Transferable Visual Models From Natural Language Super-
+vision”. In: Proceedings of the 38th International Conference on Machine Learning. Ed.
+by Marina Meila and Tong Zhang. Vol. 139. Proceedings of Machine Learning Research.
+PMLR, 18–24 Jul 2021, pp. 8748–8763. URL: https://proceedings.mlr.press/v139/
+radford21a.html.
+[34]
+Joseph Redmon et al. “You Only Look Once: Unified, Real-Time Object Detection”. In: 2016
+IEEE Conference on Computer Vision and Pattern Recognition (CVPR) (2015), pp. 779–788.
+URL: https://api.semanticscholar.org/CorpusID:206594738.
+[35]
+Saikat Roy et al. “MedNeXt: Transformer-driven Scaling of ConvNets for Medical Image
+Segmentation”. In: International Conference on Medical Image Computing and Computer-
+Assisted Intervention. 2023. URL: https://api.semanticscholar.org/CorpusID:
+257623026.
+[36]
+Andrew B. Sellergren et al. “MedGemma Technical Report”. In: 2025. URL: https://api.
+semanticscholar.org/CorpusID:280150648.
+[37]
+Nishank Singla et al. “Multi Anatomy X-Ray Foundation Model”. In: ArXiv abs/2509.12146
+(2025). URL: https://api.semanticscholar.org/CorpusID:281315310.
+[38]
+Divyanshu Tak et al. “A foundation model for generalized brain MRI analysis”. In: MedRxiv
+(2024).
+18
+
+
+[39]
+Divyanshu Tak et al. “A generalizable foundation model for analysis of human brain MRI”. In:
+Nature Neuroscience 29 (Feb. 2026), pp. 1–12. DOI: 10.1038/s41593-026-02202-6.
+[40]
+Haoyu Wang et al. “SAM-Med3D: Towards General-Purpose Segmentation Models for
+Volumetric Medical Images”. In: ECCV Workshops. 2023. URL: https : / / api .
+semanticscholar.org/CorpusID:264436479.
+[41]
+Shansong Wang et al. “Triad: Vision Foundation Model for 3D Magnetic Resonance
+Imaging”. In: Research Square 110 (2025), pp. 103992–103992. URL: https : / / api .
+semanticscholar.org/CorpusID:276482536.
+[42]
+Zhao Wang et al. “SAMRI: Segment Any MRI”. In: 2025. URL: https : / / api .
+semanticscholar.org/CorpusID:282591991.
+[43]
+Jakob Wasserthal et al. “TotalSegmentator: Robust Segmentation of 104 Anatomic Structures
+in CT Images.” In: Radiology. Artificial intelligence 5 5 (2022), e230024. URL: https:
+//api.semanticscholar.org/CorpusID:260790662.
+[44]
+Jeffrey C. Weinreb et al. “PI-RADS Prostate Imaging – Reporting and Data System: 2015, Ver-
+sion 2”. In: European urology 69 (2015), pp. 16–40. URL: https://api.semanticscholar.
+org/CorpusID:207654519.
+[45]
+J. Wu, Y. Wang, Z. Zhong, et al. “Vision-language foundation model for 3D medical imaging”.
+In: npj Artificial Intelligence 1 (2025), p. 17. DOI: 10.1038/s44387-025-00015-9.
+[46]
+T. Xu, S. Hosseini, C. Anderson, et al. “A generalizable 3D framework and model for self-
+supervised learning in medical imaging”. In: npj Digital Medicine 8 (2025), p. 639. DOI:
+10.1038/s41746-025-02035-w.
+[47]
+Zhijian Yang et al. “Decipher-MR: A Vision-Language Foundation Model for 3D MRI Repre-
+sentations”. In: Nature Digital Medicine (2026).
+[48]
+Jingfeng Yao et al. “EVA-X: a foundation model for general chest x-ray analysis with
+self-supervised learning”. In: NPJ Digital Medicine 8 (2024). URL: https : / / api .
+semanticscholar.org/CorpusID:269626550.
+[49]
+Xiaohua Zhai et al. “Sigmoid Loss for Language Image Pre-Training”. In: 2023 IEEE/CVF
+International Conference on Computer Vision (ICCV) (2023), pp. 11941–11952. URL: https:
+//api.semanticscholar.org/CorpusID:257767223.
+[50]
+Sheng Zhang et al. “BiomedCLIP: a multimodal biomedical foundation model pretrained from
+fifteen million scientific image-text pairs”. In: 2023. URL: https://api.semanticscholar.
+org/CorpusID:257280046.
+[51]
+Xinru Zhang et al. “A Foundation Model for Brain Lesion Segmentation with Mixture of
+Modality Experts”. In: International Conference on Medical Image Computing and Computer-
+Assisted Intervention. 2024. URL: https://api.semanticscholar.org/CorpusID:
+269790752.
+[52]
+Yuhao Zhang et al. “Contrastive Learning of Medical Visual Representations from Paired
+Images and Text”. In: Machine Learning in Health Care. 2020. URL: https : / / api .
+semanticscholar.org/CorpusID:222125307.
+[53]
+Theodore Zhao et al. “Biomedparse: a biomedical foundation model for image parsing of
+everything everywhere all at once”. In: arXiv preprint arXiv:2405.12971 (2024).
+[54]
+Weicheng Zhu et al. “3D foundation model for generalizable disease detection in head
+computed tomography”. In: Nature Biomedical Engineering (2025). URL: https://api.
+semanticscholar.org/CorpusID:276116970.
+19
+
+
+6
+Pretraining Details
+This section provides the image preprocessing, augmentation, and data sampling details referenced
+from the main paper’s Methodology section.
+6.1
+Training details.
+The second pretraining stage is trained with AdamW (β1 = 0.9, β2 = 0.999) for 100 epochs of
+1,250 iterations (125k iterations) on 8 NVIDIA A100 GPUs with a batch size of 12 per GPU (global
+batch size 96), using FSDP with fp16 mixed precision. The base learning rate of 5 × 10−3 is scaled
+by
+p
+96/1024 to 1.53 × 10−3, warmed up linearly over 2 epochs and then decayed with a cosine
+schedule to 10−6. Weight decay follows a cosine schedule from 0.04 to 0.4, and gradients are clipped
+at a norm of 3.0. We apply layer-wise learning-rate decay of 0.9 and scale the learning rate by 0.1
+for the pretrained vision and text backbones and by 0.2 for the contrastive projection heads. Both
+contrastive losses use a learnable logit scale initialized to 1/0.07 (i.e., a temperature of τ = 0.07).
+6.2
+Image preprocessing
+Following standard MRI processing techniques, we used Otsu’s method to crop the foreground
+using 256 bins. This removes the black background. We then used percentile scaling to scale the
+pixel intensities between -1 and 1 using the 1st and 99th percentile pixel as references. First stage
+pretraining used a global crop size of 256,256,24, and a local crop size of 128,128,16. For the second
+stage, we resized the image to 384,384,48 while preserving aspect ratio. This larger crop size was
+chosen to minimize information loss and better help train the localization and contrastive tasks.
+6.3
+Data augmentations
+For the first stage, we use the same augmentations as [47]. They propose a modified version of
+DINOv2’s cropping strategy specifically suited for 3D MR data. These augmentations were designed
+to train the model to be invariant to MRI resolution, size and acquisition protocols, across different
+scanner and body regions. We start with two global crops for the teacher network. One global crop
+corresponds to the entire image scaled to the model’s input dimension, while the second is selected at
+a random resolution. Combined with augmentations like rotation and flipping, this introduces scale
+diversity, allowing the same scan to be seen at multiple resolutions. In addition, we generate local
+crops for each of these global crops, allowing the model to learn consistent image level representations.
+For the second stage we resize images to match the resolution of the model’s input, padding where
+necessary. In addition we have augmentations like random rotation to aid the model to learn a rich
+set of image features to help with localization. We adjust the ground truth bounding box image
+coordinates for the various anatomies as necessary.
+6.4
+Data sampling
+We adopt a study level data sampling strategy at the organ level. MRIs and corresponding reports
+describing different anatomies and body regions tend to be fairly easy to distinguish between,
+exhibiting marked differences. However, similar body regions make this a far more difficult task.
+There are often subtleties and nuances in clinical pathology that are hard to distinguish. In order to
+have our model learn these distinctions, we try to increase the homogeneity within a batch. This
+batch-wise sampling, proposed in [47], is an implicit form of hard negative mining. We use the organ
+name attribute from our LLM processed reports to achieve this. With some random probability, we
+try to ensure the batch is composed of other similar organs from other series. However, a key point
+to note, we do not use the same series from within a batch as a negative contrastive sample. This
+approach allows the model to learn nuanced differences and learn to separate different anatomies
+within its embedding space, without the need for explicit hard negative mining. This further helps
+with downstream tasks that require the model to differentiate between similar clinical pathologies,
+such as our healthy and unhealthy use case. In addition, for a given series within a report, our
+LLM preprocessing methodology yields multiple text samples. As such, we randomly sample ntext
+reports from a study, and broadcast our ViT image embeddings ntext times. This strategy allows for
+contrastive training in a one-to-many fashion between image and text. Our effective batch size is thus
+B × ntext, where B is the original batch size.
+20
+
+
+6.5
+Report processing
+We preprocess the radiology reports using a large language model (Claude) to extract structured
+information, including organ names, abnormalities, and other relevant clinical details. This structured
+representation allows for more effective contrastive learning between image and text modalities, as it
+provides explicit anatomical and pathological context for each report. Figure 7 shows an example.
+Figure 7: Example of LLM-based report processing for a brain MRI study (date jittered). Left:
+original radiology report. Middle: report processing prompt. Right: processed and restructured report
+with one entry per anatomy, its findings and an abnormality flag (Abnormal: Yes/No), followed by
+the conclusion.
+6.6
+Anatomy classes
+Table 9 lists the 125 anatomy classes detected by the DETR decoder; together with the no-object
+class, this gives the 126 classes used during pretraining. Class names are given as used in our label
+set. Abbreviations: Larynx_SG and Larynx_G, supraglottic and glottic larynx; PCM, pharyngeal
+constrictor muscle (superior, middle and inferior); autochthon, autochthonous back muscles.
+21
+
+
+Table 9: Anatomy classes supported by the localization decoder.
+#
+Anatomy
+#
+Anatomy
+#
+Anatomy
+1
+spleen
+43
+gluteus_medius_right
+85
+pallidum_right
+2
+kidney_right
+44
+gluteus_minimus_left
+86
+thalamus_left
+3
+kidney_left
+45
+gluteus_minimus_right
+87
+thalamus_right
+4
+gallbladder
+46
+autochthon_left
+88
+hypothalamus_left
+5
+liver
+47
+autochthon_right
+89
+hypothalamus_right
+6
+stomach
+48
+iliopsoas_left
+90
+ventricle_3rd
+7
+pancreas
+49
+iliopsoas_right
+91
+ventricle_4th
+8
+adrenal_gland_right
+50
+brain
+92
+pineal_gland
+9
+adrenal_gland_left
+51
+spinal_cord_sup
+93
+hippocampus_left
+10
+lung_left
+52
+brainstem
+94
+hippocampus_right
+11
+lung_right
+53
+pituitary
+95
+amygdala_left
+12
+esophagus
+54
+inner_ear_left
+96
+amygdala_right
+13
+small_bowel
+55
+inner_ear_right
+97
+ventricle_lateral_inf_left
+14
+duodenum
+56
+eye_left
+98
+ventricle_lateral_inf_right
+15
+colon
+57
+eye_right
+99
+fornix
+16
+urinary_bladder
+58
+optic_nerve_left
+100
+mammillary_body_left
+17
+prostate
+59
+optic_nerve_right
+101
+mammillary_body_right
+18
+sacrum
+60
+chiasma
+102
+vertebrae_L5
+19
+vertebrae
+61
+lacrimal_left
+103
+vertebrae_L4
+20
+intervertebral_discs
+62
+lacrimal_right
+104
+vertebrae_L3
+21
+spinal_cord
+63
+lens_left
+105
+vertebrae_L2
+22
+heart
+64
+lens_right
+106
+vertebrae_L1
+23
+aorta
+65
+parotid_left
+107
+vertebrae_T12
+24
+inferior_vena_cava
+66
+parotid_right
+108
+vertebrae_T11
+25
+portal_vein_and_splenic_vein
+67
+oral_cavity
+109
+vertebrae_T10
+26
+iliac_artery_left
+68
+mandible
+110
+vertebrae_T9
+27
+iliac_artery_right
+69
+submandibular_left
+111
+vertebrae_T8
+28
+iliac_vena_left
+70
+submandibular_right
+112
+vertebrae_T7
+29
+iliac_vena_right
+71
+Larynx_SG
+113
+vertebrae_T6
+30
+humerus_left
+72
+Larynx_G
+114
+vertebrae_T5
+31
+humerus_right
+73
+PCM_sup
+115
+vertebrae_T4
+32
+scapula_left
+74
+PCM_mid
+116
+vertebrae_T3
+33
+scapula_right
+75
+PCM_inf
+117
+vertebrae_T2
+34
+clavicula_left
+76
+cerebellum
+118
+vertebrae_T1
+35
+clavicula_right
+77
+corpus_callosum
+119
+vertebrae_C7
+36
+femur_left
+78
+ventricle_lateral_left
+120
+vertebrae_C6
+37
+femur_right
+79
+ventricle_lateral_right
+121
+vertebrae_C5
+38
+hip_left
+80
+nucleus_caudatus_left
+122
+vertebrae_C4
+39
+hip_right
+81
+nucleus_caudatus_right
+123
+vertebrae_C3
+40
+gluteus_maximus_left
+82
+putamen_left
+124
+vertebrae_C2
+41
+gluteus_maximus_right
+83
+putamen_right
+125
+vertebrae_C1
+42
+gluteus_medius_left
+84
+pallidum_left
+22
+
+
+7
+Ablation Studies
+7.1
+Segmentation: Setup and Ablation Design
+7.1.1
+Decoder Architecture and Benchmarks
+Figure 8: Architecture of the segmentation decoder
+Our model shows strong performance on segmentation. We evaluate this by training a segmentation
+decoder on the output of the vision encoder. The encoder was kept frozen while training. Evaluation
+was performed on a held out test set.
+A SegResNet decoder was used for segmentation. Output patch embeddings from the encoder, as
+well as intermediate embeddings from layers 3, 6 and 9, were fed to the decoder via skip connections.
+The latter helped preserve spatial information. Our decoder consisted of about 8 million parameters.
+We experimented with various voxel spacings and observed consistent improvements with smaller
+spacings, even if the original data wasn’t captured at this spacing. We used the 25th percentile spacing
+for all results here. A learning rate of 5e-4 with cosine decay and minimum learning rate of 1e-6 was
+used. The model was trained for 60k batches per GPU across 8 GPUs, with a batch size of 2. Random
+cropping was used to aid data augmentation, with a random crop size of 384,384,48. Additional
+augmentations were adapted from AMOS [19].
+We benchmarked our model on two datasets: AMOS and an internal pelvis dataset (Dataset A), which
+was out of distribution relative to our pretraining set.
+For AMOS we use the official train/val split; and for Dataset A, we benchmark on a held-out test set.
+Unless stated, results are mean Dice across segmentation classes.
+We perform controlled ablations for multi-organ MR segmentation by varying encoder pretraining/fine-
+tuning strategy and decoder initialization, while keeping the downstream segmentation pipeline fixed.
+7.1.2
+Task and Model Setup
+Let x ∈RH×W ×D denote a 3D MR volume and y ∈{0, 1}C×H×W ×D the multi-label target mask
+for C organs. Our model uses: (i) a frozen foundation encoder (ViT family) to extract volume
+embeddings, from the 2, 5, 8 and last layers, and (ii) a trainable 37-layer 3D SegResNet decoder to
+predict organ masks
+Training minimizes an equal-weight Dice–Focal objective:
+L = λDiceLDice + λFocalLFocal,
+λDice = λFocal = 0.5.
+(15)
+7.1.3
+Preprocessing and Sampling Protocol
+All experiments use the same preprocessing pipeline (except where explicitly stated): loading,
+channel-first conversion, spacing normalization, canonical orientation, foreground cropping, and
+percentile intensity normalization. For segmentation labels provided as per-organ masks, masks are
+stacked into a multi-channel label tensor.
+23
+
+
+Task-specific geometry.
+We use task-specific voxel spacing and crop sizes:
+• Pelvis: spacing (0.52, 0.52, 0.6), crop size 384 × 384 × 48.
+• AMOS (abdomen): spacing (0.8, 0.8, 1.2), crop size 224 × 160 × 80.
+During training, we feed in random 3D spatial crops of volumes and labels considering GPU memory
+constraints.
+7.1.4
+Training Parameters
+We train for 60k iterations with a batch size of 2 per GPU on 8 A100 GPUs (effective batch size 16)
+using PyTorch FSDP.
+7.1.5
+Optimization Control Across Ablations
+To isolate ablation effects, all non-ablated components are fixed: decoder architecture, loss function,
+crop policy, preprocessing, and augmentation framework. In transfer settings, decoder optimization
+uses lower learning rates with a layer-wise linear learning-rate increase across decoder depth.
+7.1.6
+Curriculum Augmentation
+To stabilize optimization and reduce numerical failures (e.g., NaNs), we use curricular augmentation.
+The full augmentation pool includes random rotation, zoom, Gaussian noise, Gaussian sharpening,
+intensity scaling, contrast scaling/clipping, low-resolution simulation, and contrast adjustment,
+followed by spatial padding.
+Under curriculum learning, augmentations are introduced in stages at predefined milestones (epochs
+10, 20, 30 and 40):
+1. Random zoom,
+2. Random Gaussian noise + sharpening,
+3. Random intensity scale + scale-and-clip contrast,
+4. Random low-resolution simulation + contrast adjustment.
+This staged schedule is compared against non-curriculum training. Initially, we observed a drop
+in performance on Pelvis when curriculum data augmentation was enabled. We attributed this to a
+shifted schedule leading to fewer transformations that the model saw during training. To ensure same
+quantity of transformations, we adjust probabilities of each transformation in curriculum training to
+match the non-curriculum-learning approach. We also tried different scheduling cadences and didn’t
+see a change in performance thanks to the adjusted probabilities ensuring.
+7.1.7
+Encoder Ablations
+We evaluate three encoder variants with identical decoder/training settings:
+1. ViT-B, DINOv2 SSL →additional localization/bounding-box fine-tuning with X-DETR.
+2. ViT-B, DINOv3 SSL →We pretrain ViT-B using DinoV3 SSL paradigm.
+3. ViT-L, DINOv3 SSL →To test if scaling the encoder model helps, we pretrain ViT-L using
+DinoV3 SSL paradigm.
+7.1.8
+Decoder Initialization Ablation: Cold Start vs Warm Start
+While keeping the encoder fixed, we compare:
+• Cold start: decoder initialized with default PyTorch initialization (Kaiming Uniform
+weights) and trained directly on task labels.
+• Warm start: two-stage transfer for decoder initialization:
+1. Bootstrapping: pretrain decoder on 8.5k volumes with TotalSegmentator pseudo-labels
+(hard labels).
+2. Task fine-tuning: initialize from bootstrap weights and train on target annotations.
+24
+
+
+Table 10: Pelvis ablation: Overall Validation Dice (%) on single-split validation. Bold: best;
+underlined: second best.
+Decoder
+Encoder (pre-training crop size)
+Curriculum learning
+Initialization
+Overall Dice (%)
+segresnet37
+A4-MR (384)
+No
+coldstart
+86.00
+segresnet37
+A4-MR (384)
+Yes
+coldstart
+86.20
+segresnet37
+A4-MR (384)
+Yes
+warmstart
+86.67
+segresnet37
+vit-b + DinoV3 (256)
+Yes
+coldstart
+86.37
+segresnet37
+vit-L + DinoV3 (256)
+Yes
+coldstart
+86.82
+Table 11: Pelvis ablation: organ Dice (%), Part 1. Bold: best; underlined: second best.
+Decoder
+Encoder
+Curriculum
+Initialization
+Urethra
+Penile bulb
+Seminal vesicles
+segresnet37
+A4-MR (384)
+No
+Coldstart
+57.00
+80.00
+80.10
+segresnet37
+A4-MR (384)
+Yes
+Coldstart
+56.02
+86.55
+79.50
+segresnet37
+A4-MR (384)
+Yes
+Warmstart
+57.52
+86.68
+81.15
+segresnet37
+ViT-B + DINOv3 (256)
+Yes
+Coldstart
+56.94
+87.11
+79.13
+segresnet37
+ViT-L + DINOv3 (256)
+Yes
+Coldstart
+58.30
+87.24
+78.97
+7.2
+Segmentation: Ablation Results
+7.2.1
+Pelvis
+We see that the addition of curricular data increases the performance of Pelvis segmentation by +0.2.
+The bigger benefit of it is stabilizing the training as we do not encounter any NaNs, which was earlier
+pretty common with the non-curriculum learning setup on the Pelvis task.
+Additionally, we see performance improve by +0.47 points when we add warmstart. We believe that
+with more tuning, the benefits can be even higher. The performance of A4-MR is comparable to the
+use of SOTA approaches such as DinoV3.
+25
+
+
+Table 12: Pelvis ablation: organ Dice (%), Part 2. Bold: best; underlined: second best.
+Decoder
+Encoder
+Curriculum
+Initialization
+Prostate
+Rectum
+Bladder
+segresnet37
+A4-MR (384)
+No
+Coldstart
+90.00
+91.20
+96.00
+segresnet37
+A4-MR (384)
+Yes
+Coldstart
+89.80
+91.63
+96.06
+segresnet37
+A4-MR (384)
+Yes
+Warmstart
+89.70
+91.55
+96.25
+segresnet37
+ViT-B + DINOv3 (256)
+Yes
+Coldstart
+89.47
+91.14
+95.75
+segresnet37
+ViT-L + DINOv3 (256)
+Yes
+Coldstart
+89.52
+91.90
+95.56
+Table 13: Pelvis ablation: organ Dice (%), Part 3. Bold: best; underlined: second best.
+Decoder
+Encoder
+Curriculum
+Initialization
+Bowel bag
+Femoral head (L)
+Femoral head (R)
+segresnet37
+A4-MR (384)
+No
+Coldstart
+84.60
+90.90
+85.60
+segresnet37
+A4-MR (384)
+Yes
+Coldstart
+84.17
+90.09
+85.31
+segresnet37
+A4-MR (384)
+Yes
+Warmstart
+84.83
+91.26
+85.27
+segresnet37
+ViT-B + DINOv3 (256)
+Yes
+Coldstart
+82.81
+92.76
+85.37
+segresnet37
+ViT-L + DINOv3 (256)
+Yes
+Coldstart
+83.50
+94.09
+85.24
+Table 14: Pelvis ablation: organ Dice (%), Part 4. Bold: best; underlined: second best.
+Decoder
+Encoder
+Curriculum
+Initialization
+Pelvis body
+Hydrogel
+segresnet37
+A4-MR (384)
+No
+Coldstart
+96.80
+93.70
+segresnet37
+A4-MR (384)
+Yes
+Coldstart
+95.56
+93.47
+segresnet37
+A4-MR (384)
+Yes
+Warmstart
+94.72
+94.41
+segresnet37
+ViT-B + DINOv3 (256)
+Yes
+Coldstart
+96.16
+93.40
+segresnet37
+ViT-L + DINOv3 (256)
+Yes
+Coldstart
+96.36
+94.30
+26
+
+
+Table 15: AMOS ablation: overall Dice (%) on single-split validation. Overall is computed excluding
+background, prostate/uterus, and gall bladder. Bold: best; underlined: second best.
+Decoder
+Encoder
+LR
+Initialization
+Overall Dice (%)
+segresnet37
+A4-MR (384)
+1×10−3
+Coldstart
+83.90
+segresnet37
+ViT-B + DINOv3 (256)
+1×10−3
+Coldstart
+83.86
+segresnet37
+ViT-L + DINOv3 (256)
+1×10−3
+Coldstart
+84.24
+segresnet37†
+Decipher-MR (256)
+1×10−3
+Coldstart
+83.76
+segresnet37†
+A4-MR (384)
+1×10−3
+Coldstart
+83.75
+segresnet37
+A4-MR (384)
+1×10−4
+Warmstart
+84.19
+segresnet37
+ViT-L + DINOv3 (256)
+5×10−5
+Warmstart
+84.61
+† z-score preprocessing; unmarked
+rows use percentile intensity scaling.
+Table 16: AMOS organ Dice (%), Part 1. Bold: best; underlined: second best.
+Decoder
+Encoder
+LR
+Init.
+Spleen
+R. Kidney
+L. Kidney
+segresnet37
+A4-MR (384)
+1×10−3
+Cold
+95.37
+95.10
+95.58
+segresnet37
+ViT-B + DINOv3 (256)
+1×10−3
+Cold
+95.51
+94.49
+95.42
+segresnet37
+ViT-L + DINOv3 (256)
+1×10−3
+Cold
+95.93
+95.42
+95.68
+segresnet37†
+Decipher-MR (256)
+1×10−3
+Cold
+95.86
+95.52
+95.49
+segresnet37†
+A4-MR (384)
+1×10−3
+Cold
+95.87
+95.38
+95.55
+segresnet37
+A4-MR (384)
+1×10−4
+Warm
+95.68
+95.19
+95.65
+segresnet37
+ViT-L + DINOv3 (256)
+5×10−5
+Warm
+96.08
+95.24
+95.76
+† z-score preprocessing;
+unmarked rows use percentile intensity scaling.
+7.2.2
+AMOS
+Similar to the Pelvis task, we see that adding warmstart improves performance by +0.3 on A4-MR
+and +0.37 with ViT-L. We believe that with more tuning, the benefits can be even higher. Similar to
+Pelvis, the performance of A4-MR is comparable to the use of SOTA approaches such as DinoV3.
+7.3
+Segmentation: Decoder Size on KneeSeg
+The knee results in the main text (Table 6, Fig. 5) use a larger SegResNet decoder than the other
+segmentation tasks, with 58M trainable parameters. To test whether the knee results depend on
+decoder capacity, we compare it with a bottleneck variant in which each convolution block is replaced
+by 1 × 1, 3 × 3 and 1 × 1 convolutions (768 →192 →768 channels). This reduces the first
+convolution layer from 16M to 1.3M parameters and the whole decoder from 58M to 4.3M trainable
+parameters. Both decoders are trained on the frozen stage-1 encoder. Table 21 shows that the two
+variants reach nearly the same Dice (78.4 vs. 78.7 over all structures), and the bottleneck variant has
+a slightly lower mean Hausdorff distance (0.642 vs. 0.651 mm). It converges more slowly, however
+(136 vs. 87 epochs; 4.9 vs. 3.7 days). Decoder capacity therefore has little effect on knee segmentation
+accuracy.
+27
+
+
+Table 17: AMOS organ Dice (%), Part 2. Bold: best; underlined: second best.
+Decoder
+Encoder
+LR
+Init.
+Gall Bladder
+Esophagus
+Liver
+segresnet37
+A4-MR (384)
+1×10−3
+Cold
+75.84
+77.80
+97.04
+segresnet37
+ViT-B + DINOv3 (256)
+1×10−3
+Cold
+75.48
+77.83
+97.07
+segresnet37
+ViT-L + DINOv3 (256)
+1×10−3
+Cold
+79.39
+76.23
+96.99
+segresnet37†
+Decipher-MR (256)
+1×10−3
+Cold
+75.63
+77.17
+96.76
+segresnet37†
+A4-MR (384)
+1×10−3
+Cold
+73.97
+77.59
+97.06
+segresnet37
+A4-MR (384)
+1×10−4
+Warm
+78.44
+77.04
+97.11
+segresnet37
+ViT-L + DINOv3 (256)
+5×10−5
+Warm
+79.10
+78.87
+97.27
+† z-score preprocessing;
+unmarked rows use percentile intensity scaling.
+Table 18: AMOS organ Dice (%), Part 3. Bold: best; underlined: second best.
+Decoder
+Encoder
+LR
+Init.
+Stomach
+Aorta
+Postcava
+segresnet37
+A4-MR (384)
+1×10−3
+Cold
+89.31
+91.83
+89.40
+segresnet37
+ViT-B + DINOv3 (256)
+1×10−3
+Cold
+89.64
+92.31
+89.42
+segresnet37
+ViT-L + DINOv3 (256)
+1×10−3
+Cold
+88.03
+92.04
+89.29
+segresnet37†
+Decipher-MR (256)
+1×10−3
+Cold
+89.93
+92.16
+89.42
+segresnet37†
+A4-MR (384)
+1×10−3
+Cold
+89.98
+91.93
+89.24
+segresnet37
+A4-MR (384)
+1×10−4
+Warm
+90.56
+91.94
+89.83
+segresnet37
+ViT-L + DINOv3 (256)
+5×10−5
+Warm
+89.66
+92.15
+90.03
+† z-score preprocessing;
+unmarked rows use percentile intensity scaling.
+Table 19: AMOS organ Dice (%), Part 4. Bold: best; underlined: second best.
+Decoder
+Encoder
+LR
+Init.
+Pancreas
+R. Adrenal
+L. Adrenal
+segresnet37
+A4-MR (384)
+1×10−3
+Cold
+86.17
+60.97
+65.80
+segresnet37
+ViT-B + DINOv3 (256)
+1×10−3
+Cold
+86.72
+60.85
+62.94
+segresnet37
+ViT-L + DINOv3 (256)
+1×10−3
+Cold
+86.12
+62.17
+65.62
+segresnet37†
+Decipher-MR (256)
+1×10−3
+Cold
+85.41
+58.97
+65.09
+segresnet37†
+A4-MR (384)
+1×10−3
+Cold
+86.31
+60.21
+63.51
+segresnet37
+A4-MR (384)
+1×10−4
+Warm
+85.87
+60.62
+65.25
+segresnet37
+ViT-L + DINOv3 (256)
+5×10−5
+Warm
+87.12
+59.51
+66.81
+† z-score preprocessing;
+unmarked rows use percentile intensity scaling.
+Table 20: AMOS organ Dice (%), Part 5. Bold: best; underlined: second best.
+Decoder
+Encoder
+LR
+Init.
+Duodenum
+segresnet37
+A4-MR (384)
+1×10−3
+Cold
+70.51
+segresnet37
+ViT-B + DINOv3 (256)
+1×10−3
+Cold
+72.45
+segresnet37
+ViT-L + DINOv3 (256)
+1×10−3
+Cold
+72.27
+segresnet37†
+Decipher-MR (256)
+1×10−3
+Cold
+71.48
+segresnet37†
+A4-MR (384)
+1×10−3
+Cold
+72.17
+segresnet37
+A4-MR (384)
+1×10−4
+Warm
+71.30
+segresnet37
+ViT-L + DINOv3 (256)
+5×10−5
+Warm
+72.37
+† z-score preprocessing; unmarked rows use
+percentile intensity scaling.
+28
+
+
+Table 21: Decoder size ablation on KneeSeg with the frozen stage-1 encoder: SegResNet decoder
+without and with bottleneck blocks. Dice (%, higher is better) and mean Hausdorff distance (mHD,
+mm, lower is better), mean ± std over volumes. Bold: better of the two.
+Dice (%) ↑
+mHD (mm) ↓
+Structure
+No bottleneck
+Bottleneck
+No bottleneck
+Bottleneck
+Femoral cartilage
+78.8 ± 9.3
+78.3 ± 9.4
+0.519 ± 0.682
+0.540 ± 0.733
+Tibial cartilage
+78.1 ± 9.8
+77.7 ± 9.6
+0.581 ± 0.767
+0.589 ± 0.798
+Patellar cartilage
+80.0 ± 11.1
+80.0 ± 10.8
+0.586 ± 1.601
+0.592 ± 1.516
+Menisci
+77.8 ± 12.9
+77.7 ± 12.2
+0.916 ± 2.131
+0.849 ± 1.925
+All
+78.7 ± 10.9
+78.4 ± 10.6
+0.651 ± 1.436
+0.642 ± 1.345
+Model size and training cost
+Trainable parameters
+58M
+4.3M
+Total parameters
+146M
+92.1M
+Epochs to converge
+87
+136
+Training time (days)
+3.7
+4.9
+29
+
+
+7.4
+Localization
+Preprocessing.
+We process all volumes with a MONAI-based [5] pipeline. Images are loaded in
+channel-first format. To ensure a consistent layout across volumes stored with different conventions,
+the out-of-plane (slice) axis is identified as the axis with the largest voxel spacing from the affine (or
+the smallest dimension if no affine is available) and moved to the last spatial dimension. Foreground
+is cropped with an Otsu threshold [29]. Intensities are mapped from the 1st–99th percentile range to
+[−1, 1] with clipping. Volumes are then resized so that the larger in-plane dimension is 384 voxels,
+preserving the in-plane aspect ratio, and the out-of-plane dimension is resized to 48 slices. Finally,
+they are padded to 384 × 384 × 48 with a constant value of −1. All spatial operations are recorded
+so that predicted boxes can be mapped back to the original image by applying their inverses. All
+boxes are evaluated in the native image coordinates.
+Metric.
+Localization is measured by the 3D intersection-over-union (IoU) between axis-aligned
+predicted and ground-truth boxes. Boxes are defined by inclusive voxel indices, so each box’s volume
+equals the number of voxels it covers. Ground-truth boxes enclose all voxels of an organ’s label. We
+average IoU over images for each organ, then over the 13 organs, so each organ contributes equally.
+MedSAM2 setup.
+To our knowledge, no public model predicts organ bounding boxes directly
+from full 3D MRI volumes, so we use MedSAM2 [23] as a representative medical foundation model.
+MedSAM2 treats a volume as a sequence of 2D slices and propagates a segmentation from prompted
+slices to the rest of the volume. We use the public checkpoint (MedSAM2_latest, 512 × 512 input)
+with its own preprocessing: slices along the stored axis, resized to 512 × 512. Prompts are 2D boxes
+derived from the ground truth, either one box on the slice with the largest organ area (“1 box”), or
+boxes on three slices at 25%, 50% and 75% of the organ’s extent (“3 slices”). Propagation runs
+in both directions from the prompted slices and stops early when the mask shrinks to under 5%
+or grows to over twice the prompted area. Only connected components overlapping the prompted
+slices are kept, and the predicted mask is converted to a bounding box. Because MedSAM2 receives
+ground-truth boxes as prompts, its results show what prompted segmentation can achieve rather than
+fully automatic localization.
+Excluded pairs.
+We exclude 12 of the 259 pairs, with the same exclusions applied to every model.
+Six are organs whose ground-truth box spans fewer than 8 voxels along at least one axis. Because
+A4-MR is a vision transformer with 8 voxel patches, such an organ fits within a single patch along that
+axis, so its extent cannot be resolved at the patch level. Seven have stray label voxels disconnected
+from the organ, which enlarge the ground-truth box more than 1.3-fold (Fig. 9); one pair meets both
+criteria. Excluding these pairs changed the overall scores by at most 1.4 and did not change the model
+ranking (Table 22).
+Per-organ results on AMOS.
+Table 23 reports per-organ bounding-box IoU for all models in
+the main localization comparison, after the exclusions described above. The nnUNet3D trained
+on AMOS achieves the highest IoU for most organs. Among the zero-shot and prompted models,
+MedSAM2 with three ground-truth box prompts per organ is strongest, particularly for small organs
+such as the adrenal glands and the gallbladder. A4-MR, which receives no prompts, outperforms
+prompted MedSAM2 on the esophagus, stomach, inferior vena cava and duodenum when MedSAM2
+is given a single box.
+30
+
+
+Figure 9: Ground-truth labels in AMOS with stray voxels disconnected from the organ (red, circled).
+The bounding box of all label voxels (white) is much larger than the box of the organ itself (green).
+Blue: organ on the shown slice (filled) and its outline projected over all slices. Each panel shows the
+full slice through the stray voxels. These (image, organ) pairs were excluded from the evaluation.
+Table 22: Mean 3D bounding-box IoU (%) on AMOS22 MR validation, before and after excluding
+unreliable (image, organ) pairs. Scores are averaged over images per organ, then over the 13 organs.
+MedSAM2 is prompted with ground-truth boxes on one slice (1 box) or on three slices per organ
+(3 slices). nnUNet3D is trained on AMOS; all other models are evaluated zero-shot. Bold: best;
+underlined: second best among the models above the rule; the AMOS-trained reference is not ranked.
+Model
+All pairs (n=259)
+After exclusion (n=247)
+∆
+A4-MR (zero-shot)
+65.1
+66.3
++1.2
+No Abnormality
+63.8
+65.0
++1.2
+MedSAM2 (1 box)
+64.6
+65.5
++0.9
+MedSAM2 (3 slices)
+74.0
+74.8
++0.8
+nnUNet3D (AMOS-trained)
+81.0
+82.4
++1.4
+31
+
+
+Table 23: Per-organ bounding-box IoU (%) on AMOS MR validation after excluding unreliable
+(image, organ) pairs; n is the number of images per organ. MedSAM2 is prompted with ground-truth
+boxes on one slice (1 box) or three slices per organ (3 slices). The nnUNet3D is trained on AMOS.
+Bold: best; underlined: second best per organ; the AMOS-trained nnUNet3D is a reference and is not
+ranked.
+Organ
+n
+A4-MR
+(ours)
+No
+Abnormality
+MedSAM2
+(1 box)
+MedSAM2
+(3 slices)
+nnUNet3D
+(AMOS)
+Spleen
+20
+74.5
+72.4
+92.3
+94.3
+94.8
+Kidney R
+20
+76.4
+74.8
+96.0
+96.1
+93.7
+Kidney L
+18
+75.8
+75.4
+96.1
+96.6
+98.3
+Gallbladder
+18
+52.0
+52.0
+70.1
+75.4
+68.8
+Esophagus
+20
+61.2
+59.8
+38.4
+54.0
+79.3
+Liver
+20
+81.1
+79.2
+90.1
+90.1
+97.3
+Stomach
+19
+76.0
+73.6
+51.4
+65.1
+83.5
+Aorta
+20
+75.7
+74.8
+72.0
+80.2
+88.1
+IVC
+20
+70.7
+71.2
+47.9
+62.5
+89.3
+Pancreas
+20
+69.0
+68.4
+65.7
+73.6
+86.9
+Adrenal R
+15
+42.2
+42.0
+35.2
+58.9
+60.1
+Adrenal L
+18
+46.8
+42.4
+55.0
+64.3
+58.6
+Duodenum
+19
+60.9
+58.6
+41.1
+61.7
+72.9
+Mean
+66.3
+65.0
+65.5
+74.8
+82.4
+32
+
+
+7.5
+Report Generation
+The output for report generation follows this schema:
+{ lesions : [{location : string ∪{null},
+size : {max_mm : number ∪{null},
+dims_mm : [number] ∪{null}},
+pi_rads : {1, 2, 3, 4, 5} ∪{null}}],
+prostate_volume_cc : number ∪{null} }
+We use the following evaluation metrics to measure performance of the candidate models:
+• avg_precision: Percentage of predicted lesions that match the ground truth. Higher is better.
+• avg_recall: Percentage of ground truth lesions that match the predicted lesions. Higher is
+better.
+• avg_f1: F1-score of precision and recall. Higher is better.
+• avg_size: Size agreement between ground truth and prediction measured as min over max.
+Higher is better.
+• avg_rouge_f1: Rouge-F1 score for lesion location. Higher is better.
+• avg_pi_rads: Measured as 1 - MAE(predicted_pi_rads, ground_truth_pi_rads) / 4.0 where
+MAE = mean absolute error. Higher is better.
+• avg_prostate_volume_error_cc: MAE of predicted and ground truth prostate volumes.
+Lower is better.
+33
+
+
+7.6
+Linear Probing Classification
+We applied a 3-layer MLP with 768-dimensional hidden layers, 20% dropout, and ReLU activations
+(1.2M parameters) to the CLS embedding of the backbone ViT, serving as the classification or
+regression head. All evaluations and comparisons followed a simple probing setup, with the weights
+of the pretrained vision backbone frozen. A consistent learning rate of 1e-4 with plateau decay was
+applied across all tasks, without intense hyper-parameter tuning.
+We further assessed the impact of data preprocessing by evaluating performance on the PICAI dataset
+using MRI images cropped around the prostate based on provided masks.
+Table 24: PICAI Disease Classification (Cropped & Whole Images), AUROC (%, mean ± std). Bold:
+best; underlined: second best.
+PICAI-Crop
+PICAI
+Model
+10%
+25%
+100%
+10%
+25%
+100%
+A4-MR (256)
+70.7 ± 4.4
+71.2 ± 4.7
+74.1 ± 4.1
+59.5 ± 5.8
+63.2 ± 5.8
+68.1 ± 5.1
+A4-MR (384)
+68.1 ± 4.6
+70.0 ± 4.9
+73.6 ± 4.1
+58.3 ± 5.9
+62.3 ± 5.6
+66.7 ± 4.8
+A4-MR (1st stage)
+68.6 ± 4.7
+71.7 ± 3.8
+75.2 ± 4.2
+61.6 ± 5.9
+65.8 ± 5.5
+69.6 ± 4.6
+Table 25: PICAI Age Prediction using cropped and whole-prostate images (MAE ± std, lower is
+better). Bold: best; underlined: second best.
+PICAI-Crop
+PICAI
+Model
+10%
+25%
+100%
+10%
+25%
+100%
+A4-MR (256)
+5.35 ± 0.37
+5.11 ± 0.36
+4.87 ± 0.33
+4.91 ± 0.31
+4.66 ± 0.33
+4.34 ± 0.29
+A4-MR (384)
+5.32 ± 0.35
+5.10 ± 0.34
+4.86 ± 0.31
+5.06 ± 0.32
+4.80 ± 0.31
+4.46 ± 0.29
+A4-MR (1st stage)
+5.15 ± 0.32
+4.86 ± 0.29
+4.53 ± 0.27
+4.69 ± 0.29
+4.41 ± 0.28
+4.09 ± 0.26
+34

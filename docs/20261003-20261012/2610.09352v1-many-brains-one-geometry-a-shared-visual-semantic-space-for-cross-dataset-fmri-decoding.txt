@@ -1,0 +1,4543 @@
+Many Brains,
+One Geometry:
+A Shared
+Visual-Semantic Space for Cross-Dataset
+fMRI Decoding
+Moein Khajehnejad1,2,a, Michelangelo Tronti3,a Forough Habibollahi1, Tommaso Boccato1, Matteo Ferrante1,3,
+Nicola Toschi3
+1Tether Evo, 2Turner Institute for Brain and Mental Health, Monash University, 3The University of Rome Tor
+Vergata
+Visual decoding from fMRI is typically siloed by participant and experiment, obscuring whether heterogeneous neural
+measurements can be organized within a common computational geometry.
+Here we introduce BRAID-fMRI (Brain
+Representation Alignment across Individuals and Datasets), a shared CLIP-supervised decoding framework. BRAID-fMRI
+uses a single ROI-wise Transformer with optional participant conditioning across eight visual-fMRI datasets comprising
+93 dataset-specific participant entries, 430,007 single-trial responses and 162,839 unique stimuli. Regional brain activity
+is aligned with 512-dimensional CLIP ViT-B/32 representations using a multi-positive contrastive objective that treats re-
+peated stimuli across participants and datasets as positives. BRAID-fMRI supports retrieval across seven evaluation datasets.
+On eight matched participant entries, it achieves 35.0 ± 11.1% Top-10 accuracy, exceeding the observed mean accuracy of
+the two evaluated baselines—the MindEye-style pooled-CLIP decoder (27.1 ± 5.1%) and ridge regression (21.1 ± 9.1%)—and
+attaining the highest observed accuracy for seven of eight entries. In separately trained participant-agnostic models, expand-
+ing the source pool increased target-dataset holdout accuracy by up to 92.1% relative to the initial source-training condition.
+The learned space preserves graded semantic structure, while ablations and saliency highlight ventral and early visual cortex
+and category-specific motion and attentional systems. These results support scalable cross-dataset decoding into a common
+CLIP-aligned space, with model sensitivity concentrated in ventral and early visual inputs.
+aThe authors contributed equally to this manuscript.
+Introduction
+Modern visual neuroscience faces a paradox: fMRI datasets are becoming larger and visual decoders in-
+creasingly powerful, yet the resulting models remain largely confined to the participants and experiments
+on which they were trained. Individual studies differ in participants, scanners, acquisition protocols, exper-
+imental tasks, stimulus distributions and sampling density. Consequently, visual decoders are commonly
+developed for one participant or one dataset at a time, yielding highly optimized but fragmented models that
+are difficult to compare, scale or transfer across studies. This fragmentation leaves a fundamental question
+unresolved: can heterogeneous neural measurements support a common visual representational geometry that
+transfers to participants and experiments never encountered during training? A related challenge is to de-
+termine whether such commonality reflects structure preserved in the neural representations themselves,
+rather than simply their alignment to the same pretrained visual target space.
+Visual decoding from fMRI has progressed substantially over the past two decades. Early encoding-based
+approaches demonstrated that activity in visual cortex could identify previously unseen natural images [1],
+while subsequent work used deep neural representations and generative priors to reconstruct increasingly
+complex visual content from brain activity [2, 3]. More recently, large vision–language models such as CLIP
+[4] have provided a semantically structured target space in which neural responses can be aligned with
+natural images, enabling high-accuracy retrieval and reconstruction [5, 6, 7]. Voxelwise encoding studies
+additionally show that CLIP features predict held-out responses in high-level visual cortex [8], supporting
+their use as a shared visual target without establishing that their distances reproduce native cortical ge-
+ometry. Large, densely sampled resources such as the Natural Scenes Dataset have been central to this
+progress [9]. However, much of the strongest performance has been obtained by fitting or adapting map-
+pings to extensively sampled participants within a single experimental setting. Recent approaches have
+begun to share information across participants. MindEye2, for example, pretrains across participants be-
+fore adapting to a new individual [6], but such transfer has largely involved participant-specific adaptation
+within a common dataset and acquisition regime. Other recent work has extended this direction across
+datasets: NeuroFusion jointly learns across datasets and also evaluates leave-one-dataset-out transfer with
+1
+arXiv:2610.09352v1  [cs.HC]  7 Oct 2026
+
+
+target-specific alignment-layer adaptation [10]. Brain-IT shares functional voxel-cluster processing across
+NSD participants and adapts target voxel embeddings for a new participant [11]. Zero-shot participant trans-
+fer has been demonstrated within NSD by ZEBRA [12] and across participants held out from jointly repre-
+sented datasets by PictorialCortex [13]. TRIBE v2 synthetic-only decoders additionally retrieve images from
+datasets excluded from the response generator’s pretraining [14].
+A complementary line of work has shown that neural representations themselves contain structure
+shared across individuals. Hyperalignment identifies high-dimensional transformations that place participant-
+specific cortical responses into a common representational space [15], while shared-response models
+explicitly factor multi-participant fMRI data into individual mappings and a shared latent response [16].
+Representational similarity analysis provides a complementary framework for comparing the geometry of
+neural and computational representations independently of their native coordinate systems [17, 18]. Recent
+work has gone further, showing that independently learned participant-specific fMRI spaces within NSD
+can exhibit approximately isometric geometry and be related through unsupervised orthogonal transforma-
+tions [19]. Those spaces were learned from repeated neural measurements without visual-model targets;
+here, geometry is evaluated after supervised alignment to CLIP. Together, these studies establish that com-
+mon structure can be recovered across people under coordinated experimental conditions. Cross-dataset
+learning poses a more stringent problem: inter-individual variability is compounded by differences in scan-
+ner hardware, spatial and temporal resolution, experimental design, stimulus statistics, and the amount of
+data available for each participant. It therefore remains unclear whether a common relational geometry
+persists when representations are learned jointly across independently acquired datasets, and whether that
+geometry can support direct transfer to participants and experiments absent from training.
+MOSAIC makes it possible to test this question at a substantially broader scale [20]. The resource harmo-
+nizes eight independently collected visual-fMRI datasets: the Natural Scenes Dataset (NSD), THINGS-fMRI
+(THINGS), Deeprecon, BOLD5000, the BOLD Moments Dataset (BMD), Generic Object Decoding (GOD), the
+Human Actions Dataset (HAD) and the Natural Object Dataset (NOD). MOSAIC comprises 93 dataset-specific
+participant entries from 77 individuals, 430,007 single-trial fMRI–stimulus pairs and 162,839 unique stimuli.
+Data are uniformly reprocessed with fMRIPrep, registered to the fsLR32k cortical surface and converted to
+single-trial beta estimates with GLMsingle, with curated splits preventing duplicate or perceptually similar
+train–test stimuli. These datasets sample different portions of both the human population and the visual
+world. MOSAIC itself establishes a framework for aggregating these datasets and demonstrates the value of
+multi-dataset training for brain encoding. Here we use this harmonized resource to address a distinct de-
+coding question: whether neural responses from all eight datasets can be mapped by one shared model into
+the same visual-semantic coordinate system, whether that mapping transfers without target-participant
+calibration, and whether its internal brain-space geometry is shared across datasets. Rather than treating
+this heterogeneity solely as nuisance variation to be removed, we ask whether it can provide complementary
+training signal from which a representation transferable across both datasets and individuals can emerge.
+We address this question with a single ROI-wise brain-to-CLIP model trained jointly across all eight
+datasets. Anatomically corresponding regions of interest are mapped into a common token space using
+ROI-specific encoders, augmented with learned ROI embeddings and, when used, participant embeddings,
+and integrated by a Transformer shared across every participant and dataset [21] (Fig. 1). Attention pool-
+ing produces a brain representation projected into the frozen 512-dimensional image-embedding space of
+CLIP ViT-B/32 [4]. A symmetric multi-positive contrastive objective allows repeated observations of the
+same stimulus, including repetitions across participants or datasets, to reinforce a common representation
+rather than act as false negatives. Learned participant embeddings provide a lightweight mechanism for
+accommodating participant-specific variation when identity is available, paralleling the participant align-
+ment or adaptation used in previous cross-participant decoders [22, 6]. Crucially, participant conditioning
+is optional; disabling participant embeddings provides a participant-agnostic shared encoder that can be
+evaluated directly on participants and datasets absent from training. This design therefore separates two
+questions that are often conflated: whether participant-specific conditioning can accommodate individual
+variation when identity is known, and whether the shared representation itself is sufficiently invariant to
+operate without such conditioning.
+We find that a single model supports stimulus retrieval across seven evaluation datasets and, across
+eight matched participants, performs best for seven relative to Ridge regression [23] and a MindEye-style
+retrieval baseline. Following Benchetrit et al. [14], this MindEye-style comparison predicts a single pooled
+CLIP embedding for retrieval, without the diffusion prior or image reconstruction used in the full MindEye
+framework [5]. Separately trained participant-agnostic models also support target-dataset holdout retrieval
+without fitting participant embeddings. Expanding the source pretraining pool was associated with relative
+gains of up to 92.1% in target-dataset holdout accuracy; this comparison jointly changes dataset diversity
+and the amount of training data. Within the CLIP-supervised prediction space, representations exhibit a
+graded hierarchy from stimulus identity to semantic relatedness, and category-level geometry shows corre-
+spondence among the evaluable dataset pairs. Functional-network ablations and ROI-level saliency further
+2
+
+
+reveal a common dependence on early and ventral visual systems alongside category-dependent contribu-
+tions from motion and attentional networks. Our contribution is the joint evaluation of one anatomically
+indexed decoder across heterogeneous visual-fMRI datasets: matched-participant retrieval, target-dataset
+holdout transfer without fitted participant embeddings, and characterization of semantic geometry and
+anatomical sensitivity within the CLIP-supervised prediction space.
+Results
+A shared cross-dataset encoder combines anatomical correspondence and optional participant
+conditioning
+We trained BRAID-fMRI, a single model using the naturalistic MOSAIC training split, pooling single-trial
+responses across all eight source datasets and all dataset-specific participant entries. Brain activity was
+represented in a common atlas space using 379 cortical and subcortical regions of interest (ROIs). Each
+ROI contains a variable number of cortical vertices or subcortical voxels; therefore, a separate two-layer
+tokenizer mapped each ROI vector into a common 512-dimensional token. A learned ROI identity embedding
+encoded anatomical correspondence, whereas a learned participant embedding was broadcast across all
+ROI tokens from the same dataset-specific participant. The resulting tokens were processed by a four-layer
+Transformer whose parameters were shared across all datasets and participants. Attention pooling and a
+projection head produced a 512-dimensional prediction in the image space of the frozen CLIP ViT-B/32
+encoder (Fig. 1).
+This construction provides separate parameter components for ROI identity and participant condition-
+ing. ROI-specific tokenizers accommodate differences in regional dimensionality, while participant embed-
+dings provide a lightweight participant-dependent shift of the common token space. The shared Trans-
+former must nevertheless learn interactions among anatomically corresponding regions that are useful
+across the complete training collection. Repeated presentations and stimuli shared between participants or
+datasets were handled by a multi-positive InfoNCE objective, preventing valid stimulus matches from being
+incorrectly treated as negatives. We use participant conditioning when evaluating held-out stimuli from par-
+ticipant entries represented during training; in the zero-shot experiments below, participant embeddings
+are disabled entirely to isolate transfer supported by the shared encoder.
+One model retrieves visual stimuli across datasets and participants
+We first asked whether a single model trained jointly across heterogeneous datasets and participants could
+identify held-out visual stimuli from fMRI. For each query, the predicted brain embedding was compared by
+cosine similarity with precomputed CLIP ViT-B/32 image embeddings, and unique candidate stimuli were
+ranked accordingly. In the most stringent evaluation, the candidate pool comprised all unique validation
+stimuli across the seven evaluation datasets. Dataset-level unique-stimulus Top-10 accuracy reached 38.1%
+for BMD, 21.7% for NSD, 8.7% for THINGS, 8.6% for GOD, 6.6% for BOLD5000, 5.6% for Deeprecon and 0.3%
+for NOD, compared with a global chance level of 0.08% (Fig. 2a). Observed accuracy exceeded the global
+random-ranking reference across datasets, despite differences in their stimulus distributions and numbers
+of evaluation queries. Participant-level performance also varied within datasets, indicating heterogeneity
+in decoding difficulty across individuals and experimental settings (Fig. 2b).
+We next restricted the candidate pool to unique validation stimuli from the query participant’s dataset.
+This dataset-restricted evaluation generally increased retrieval accuracy, particularly for GOD, BOLD5000,
+Deeprecon and THINGS (Fig. 2c). Because the number of candidate stimuli differed across datasets, the cor-
+responding Top-10 chance levels also varied. The improvement relative to the global setting indicates that
+part of the retrieval challenge arises from discriminating among stimuli drawn from multiple experiments
+and visual domains.
+Accuracy above global random-ranking chance does not by itself exclude dataset-
+specific cues: a predictor that identifies the source dataset can already restrict the plausible candidate
+set. Stimulus discrimination therefore also needs to be evaluated against the corresponding restricted-
+candidate reference.
+We then compared BRAID-fMRI with Ridge regression and a MindEye-style pooled-CLIP decoder using
+the eight participants for whom matched results were available in BOLD5000 and NSD. Across this subset,
+BRAID-fMRI achieved a mean Top-10 accuracy of 35.0%, compared with 27.1% for MindEye and 21.1% for
+Ridge regression (Table 1). It achieved the highest participant-level accuracy in seven of the eight compar-
+isons and the highest dataset-level mean for both BOLD5000 and NSD. Thus, jointly learning from heteroge-
+neous datasets did not require sacrificing participant-level performance and, under the matched evaluation
+considered here, generally outperformed established participant-specific baselines. A broader compari-
+son against Ridge regression across 63 dataset–participant entries is provided in Supplementary Table S2;
+3
+
+
+c)
+Learnable
+participant embedding
+⋮
+⋮
+CLIP Image
+Encoder
+Multi-positive InfoNCE loss
+Training data
+NSD
+n=8
+THINGS
+n=3
+Deeprecon
+n=3
+BOLD5000
+n=4
+BMD
+n=10
+GOD
+n=5
+HAD
+n=30
+NOD
+n=30
+93 Participant 
+from 8 datasets
+ROI-wise brain features
+ROI 1 
+ROI 2 
+ROI 3
+ROI N
+•••
+•••
+Each column is the
+feature vector for one ROI
+Shared ROI encoder
+ROI tokenizers
+(one MLP per ROI)
+ROI tokens
+•••
++ learned ROI embeddings
++
+Transformer encoder
+shared across all 
+datasets and participants
+Contrastive branch
+Attention pooling
+Brain projector
+⋮
+⋮
+Predicted
+CLIP embedding
+Stimulus
+Target
+CLIP embedding
+⋮
+E
+1
+N
+E
+2
+N
+E
+d
+N
+•••
+S
+1
+i
+E
+1
+1
+E
+2
+1
+E
+d
+1
+S
+2
+i
+S
+d
+i
+Si
+E1
+EN
+E3
+E2
+E1
+EN
+E3
+E2
+~
+~
+~
+❄
+ROI 1
+ROI 2
+ROI 3
+ROI N
+Trial 1
+Trial 2
+Trial 3
+Single-trial beta responses
+2
+1
+0
+1
+2
+Beta
+a) 
+Source datasets
+Harmonization
+389 Glasser-based ROIs
+Image-based experiments
+NSD
+BMD
+HAD
+THINGS
+Deeprecon
+BOLD5000
+GOD
+NOD
+Dynamic/video experiments
+MOSAIC
+harmonized
+resource
+fMRI
+Preprocessing
+Single-trial
+GLMs
+Single-trial
+beta values
+CLIP ViT-B/32
+targets
+512-dimensional
+embeddings
+360 cortical +
+29 subcortical
+ROI-based fMRI
+measurements
+Standardized representations
+b) 
+512
+Figure 1: Cross-dataset visual-fMRI harmonization and the BRAID-fMRI model. a, Visual stimuli are presented
+during fMRI acquisition, and single-trial responses are estimated to obtain stimulus-specific brain activity patterns. b,
+Eight visual-fMRI datasets spanning static-image and dynamic-video experiments are brought into a common
+processing framework. fMRI responses are represented using 360 HCP-MMP1.0 cortical parcels and 19 additional
+regions, while stimuli are represented in a common 512-dimensional CLIP ViT-B/32 image space. c, ROI-wise
+responses from participants in eight visual-fMRI datasets are mapped to ROI tokens and augmented with learned ROI
+embeddings and, in participant-conditioned analyses, learned participant embeddings. A Transformer shared across
+datasets and participants contextualizes the tokens, which are attention-pooled and projected into the
+512-dimensional image space of a frozen CLIP ViT-B/32 encoder. Participant embeddings are omitted in the zero-shot
+transfer experiments. A multi-positive contrastive objective aligns neural responses with their corresponding stimuli
+while treating repeated observations of the same stimulus as positives.
+BRAID-fMRI achieved a higher overall mean (22.2% vs. 13.1%) and a higher dataset-level mean in six of seven
+datasets.
+Representative retrieval examples further illustrated the structure of the model’s predictions (Fig. 2d).
+When the exact target was not ranked first, the highest-ranked candidates frequently preserved salient
+semantic or perceptual properties of the target, including object category, scene context, shape and tex-
+ture. These selected examples illustrate semantically or perceptually related non-matches, suggesting that
+retrieval errors were typically structured within the learned visual-semantic space.
+4
+
+
+sub-01
+sub-03
+sub-04
+sub-02
+0.0
+0.2
+0.4
+0.6 BOLD5000
+sub-01
+sub-03
+sub-02
+0.0
+0.2
+0.4
+0.6
+THINGS
+sub-04
+sub-03
+sub-05
+sub-02
+sub-01
+0.0
+0.2
+0.4
+0.6
+GOD
+sub-03
+sub-02
+sub-01
+0.0
+0.2
+0.4
+0.6 Deeprecon
+sub-05
+sub-01
+sub-02
+sub-06
+sub-04
+sub-03
+sub-08
+sub-07
+0.0
+0.2
+0.4
+0.6
+NSD
+c)
+sub-21
+sub-22
+sub-14
+sub-13
+sub-25
+sub-20
+sub-28
+sub-11
+sub-12
+sub-24
+sub-29
+sub-18
+sub-15
+sub-30
+sub-16
+sub-17
+sub-19
+sub-23
+sub-27
+sub-26
+sub-08
+sub-03
+sub-05
+sub-10
+sub-02
+sub-07
+sub-04
+sub-06
+sub-09
+sub-01
+0.0
+0.2
+0.4
+0.6
+NOD
+Participant
+sub-01
+sub-06
+sub-09
+sub-10
+sub-04
+sub-02
+sub-03
+sub-07
+sub-08
+sub-05
+0.0
+0.2
+0.4
+BMD
+sub-05
+sub-01
+sub-02
+sub-06
+sub-04
+sub-03
+sub-08
+sub-07
+0.0
+0.2
+0.4
+NSD
+sub-01
+sub-03
+sub-02
+0.0
+0.2
+0.4
+THINGS
+sub-04
+sub-01
+sub-03
+sub-02
+sub-05
+0.0
+0.2
+0.4
+GOD
+b)
+Unique-stimulus
+Top-10 accuracy
+Within-dataset Top-10
+retrieval accuracy
+sub-01
+sub-06
+sub-09
+sub-10
+sub-04
+sub-02
+sub-03
+sub-07
+sub-08
+sub-05
+0.0
+0.2
+0.4
+0.6
+BMD
+Participant-specific chance
+Observed accuracy
+sub-01
+sub-03
+sub-02
+sub-04
+0.0
+0.2
+0.4
+BOLD5000
+sub-01
+sub-03
+sub-02
+0.0
+0.2
+0.4
+Deeprecon
+d)
+a)
+0%
+10%
+20%
+30%
+40%
+Unique-stimulus Top-10 retrieval accuracy
+BMD
+NSD
+THINGS
+GOD
+BOLD5000
+Deeprecon
+NOD
+Observed ± 95% CI
+Chance = 0.0008
+0×
+500×
+× chance
+0
+2000 4000
+Median rank
+Evaluation set
+Stimuli
+Queries
+102
+10,200
+1,000
+21,118
+100
+3,600
+50
+8,750
+113
+1,615
+100
+6,360
+11,424
+13,752
+True stimulus
+Rank 1
+Rank 2 ✓
+Rank 3
+Rank 4
+Rank 5
+Rank 6
+Rank 7
+Rank 8
+Rank 9
+Rank 10
+True stimulus
+Rank 1 ✓
+Rank 2
+Rank 3
+Rank 4
+Rank 5
+Rank 6
+Rank 7
+Rank 8
+Rank 9
+Rank 10
+True stimulus
+Rank 1
+Rank 2
+Rank 3
+Rank 4 ✓
+Rank 5
+Rank 6
+Rank 7
+Rank 8
+Rank 9
+Rank 10
+True stimulus 
+Rank 1
+Rank 2
+Rank 3
+Rank 4 ✓
+Rank 5
+Rank 6
+Rank 7
+Rank 8
+Rank 9
+Rank 10
+True stimulus
+Rank 1
+Rank 2
+Rank 3 ✓
+Rank 4
+Rank 5
+Rank 6
+Rank 7
+Rank 8
+Rank 9
+Rank 10
+NSD
+THINGS
+GOD
+BOLD5000
+Deeprecon
+NOD
+BMD
+True stimulus
+Rank 1
+Rank 2 ✓
+Rank 3
+Rank 4
+Rank 5
+Rank 6
+Rank 7
+Rank 8
+Rank 9
+Rank 10
+True stimulus
+Rank 1 ✓
+Rank 2
+Rank 3
+Rank 4
+Rank 5
+Rank 6
+Rank 7
+Rank 8
+Rank 9
+Rank 10
+Figure 2: Cross-dataset and within-dataset stimulus retrieval. a, Dataset-level unique-stimulus Top-10 retrieval
+using a global candidate pool comprising all unique validation stimuli across the seven evaluation datasets. Filled
+circles show observed accuracy with query-level 95% Wilson confidence intervals, which do not account for
+within-participant or within-session dependence; open diamonds denote global chance. Adjacent summaries show
+performance relative to chance (× chance), median rank of the correct stimulus (lower is better), and the numbers of
+candidate stimuli and retrieval queries. b, Participant-level Top-10 retrieval using the same global candidate pool.
+Participants are ordered by accuracy within each dataset; filled circles and error bars show observed accuracy and
+95% Wilson confidence intervals, and dashed lines indicate dataset means. NOD is omitted for visual clarity because of
+its larger participant sample. c, Participant-level retrieval with the candidate pool restricted to unique validation
+stimuli from the query participant’s dataset. Filled circles and error bars show observed accuracy and 95% Wilson
+confidence intervals; open circles denote participant-specific chance levels and vertical connectors show the
+difference from chance. Dashed lines indicate dataset means. NOD is shown separately in a wider lower panel. d, Each
+row shows the true stimulus followed by the ten highest-ranked candidates based on cosine similarity between the
+predicted brain embedding and frozen CLIP ViT-B/32 image embeddings. Green borders and check marks identify the
+true stimulus. Examples span multiple datasets; high-ranking non-matches often share object category, scene context,
+shape or texture with the target, illustrating the semantic structure of the learned retrieval space. HAD dataset is not
+presented since it is not included in the retrieval evaluation.
+5
+
+
+Table 1: Participant-matched unique-stimulus Top-10 retrieval accuracy.
+Dataset
+Participant
+Ridge regression
+MindEye-style
+BRAID-fMRI
+BOLD5000
+sub-01
+26.8
+34.0
+46.3
+sub-02
+22.6
+34.0
+38.8
+sub-03
+23.3
+30.0
+42.6
+sub-04
+35.9
+26.0
+41.6
+Mean ± s.d.
+27.2 ± 6.1
+31.0 ± 3.8
+42.3 ± 3.1
+NSD
+sub-01
+18.6
+23.0
+32.8
+sub-02
+17.1
+22.0
+31.1
+sub-03
+20.3
+27.0
+35.9
+sub-04
+3.9
+21.0
+10.6
+Mean ± s.d.
+15.0 ± 7.5
+23.3 ± 2.6
+27.6 ± 11.5
+Overall
+Mean ± s.d.
+21.1 ± 9.1
+27.1 ± 5.1
+35.0 ± 11.1
+Best-performing participants
+0/8
+1/8
+7/8
+Values are percentages. Comparisons include the eight BOLD5000 and NSD participants available for all three
+methods. Following the retrieval-only MindEye-style approach of Benchetrit et al. [14], our baseline predicts
+a single pooled image embedding for contrastive retrieval. Unlike the full MindEye framework [5], it does not
+model the distribution of CLIP image embeddings with a diffusion prior or perform image reconstruction.
+The participant-agnostic encoder supports transfer in target-dataset holdout evaluations
+We next asked whether cross-dataset transfer depended on learned participant identities. For these exper-
+iments, participant embeddings were disabled throughout training and evaluation. Each target dataset—
+including all of its participants and stimuli—was excluded from training, while the remaining source pool
+was expanded cumulatively by adding datasets and their selected participants. Thus, no target-participant
+embedding or other target-specific decoder parameter was fitted.
+In this participant-agnostic setting, the final curriculum condition exceeded the initial condition for all
+seven targets (Fig. 3g). Relative gains from the first to the final step were 92.1% for NSD, 69.0% for BMD,
+60.9% for BOLD5000, 32.0% for NOD, 25.3% for THINGS, 11.7% for Deeprecon and 10.9% for GOD. Individual
+curriculum steps were not uniformly beneficial, indicating that source datasets differ in their relationship to
+a given target. Nevertheless, the positive final gain for every target shows that the shared encoder captures
+cross-participant and cross-dataset structure that can transfer without participant-specific conditioning,
+with a positive final relative gain in each of the seven reported target comparisons.
+Retrieval performance follows visual-semantic organization
+The large, heterogeneous candidate pool enabled us to ask whether retrieval performance was structured
+by stimulus semantics. We clustered unique validation stimuli by applying k-means (k = 40) to their ℓ2-
+normalized CLIP embeddings, using t-SNE only to visualize the resulting organization. The clusters formed
+recognizable semantic groups, including people and portraits, tennis actions, marine life, consumer elec-
+tronics, trains, rural scenes and architecture (Fig. 3a). Descriptive cluster names were assigned manually
+after inspecting representative stimuli from each cluster and played no role in the clustering procedure.
+Most selected clusters contained stimuli contributed by multiple datasets, although NOD supplied a large
+fraction of many categories because of its broad stimulus set (Fig. 3b). Note that cluster IDs (C0–C39) are
+arbitrary k-means labels and do not encode any particular ordering. A complete atlas of all 40 clusters,
+together with their retrieval performance, size and cross-dataset composition, is shown in Supplementary
+Fig. S1.
+Retrieval differed markedly across clusters. People and portraits achieved the highest Top-10 accuracy,
+followed by several coherent categories including tennis actions and marine life, whereas home appliances
+and some architectural categories were among the most difficult (Fig. 3c). High- and low-performing groups
+occurred across a range of stimulus counts and dataset compositions (Supplementary Fig. S1). To avoid se-
+lecting categories after inspecting their content, we ranked all 40 clusters by retrieval accuracy and retained
+every fourth cluster, yielding ten categories at ranks 1, 5, 9, …, 37. This performance-stratified sampling
+scheme spans the observed accuracy range and provides an illustrative subset for subsequent geometric
+and neuroanatomical analyses.
+A shared visual backbone supports retrieval across datasets
+We next examined the trained model’s sensitivity to masking inputs from different anatomical and functional
+groups. Atlas ROIs were assigned to nine functional or anatomical groups, and all tokens from one group
+6
+
+
+10
+1 1
+12
+13
+14
+15
+16
+17
+Unique-stimulus Top-10 retrieval accuracy (%)
+Baseline
+15.4%
+−4.8 ****
+−3.5 ****
+−1.2 ****
+−1.0 **
+−0.9 ****
+−0.3 ns
+−0.1 ns
+−0.1 ns
++0.0 ns
+Ventral visual/object
+Early visual
+Parietal attention
+Other
+Motion visual
+Frontal/control
+Cerebellum
+Temporal/auditory
+Subcortical
+BMD
+Baseline 38.1%
+NSD
+Baseline 21.7%
+THINGS
+Baseline 8.7%
+GOD
+Baseline 8.6%
+BOLD5000
+Baseline 6.6%
+Deeprecon
+Baseline 5.6%
+NOD
+Baseline 0.3%
+−7.1
+−7.9
+−2.6
+−4.9
+−1.7
+−2.8
+−0.1
+−5.6
+−7.1
+−1.2
+−1.0
+−0.9
+−1.0
+−0.1
+−1.5
+−2.5
+−0.7
+−0.7
+0.0
+−0.4
+0.0
++0.5
+−3.0
++0.2
+−0.6
+−1.5
+−0.4
+−0.1
+−2.0
+−1.2
++0.1
+−1.0
+−0.3
+−0.5
+0.0
++0.7
+−1.3
++0.1
+−0.1
+−0.6
++0.2
+0.0
+−0.5
+0.0
+0.0
+−0.3
++0.2
+−0.2
+0.0
++0.2
+−0.5
++0.1
+0.0
+−0.7
+0.0
+0.0
++0.9
+−0.1
+−0.3
+−0.4
+−0.4
+0.0
+0.0
+−6.0
+−4.0
+−2.0
+0
++2.0
++4.0
++6.0
+Change in unique-stimulus Top-10 accuracy
+(ablated −baseline), percentage points
+Ventral visual/object
+Early visual
+Parietal attention
+Other
+Motion visual
+Frontal/control
+Cerebellum
+Temporal/auditory
+Subcortical
+d)
+f)
+e)
+−2 0
+0
+20
+40
+60
+80
+100
+1000 stimuli
+Δ step 0→last: +92.1%
++35%+ 4 %
++10%
++ 8 % + 1 %
++14%
+NSD
+113 stimuli
+Δ step 0→last: +60.9%
++22%+ 2 %
++ 6 % + 5 %
++14%+ 3 %
+BOLD5000
+102 stimuli
+Δ step 0→last: +69.0%
++47% -4% +1% -0% + 5 %
++14%
+BMD
+100 stimuli
+Δ step 0→last: +11.7%
++ 7 % + 2 % -4% +0%
++13% -6%
+Deeprecon
+0
+2
+4
+6
+−2 0
+0
+20
+40
+60
+80
+100
+50 stimuli
+Δ step 0→last: +10.9%
+-2% + 3 % -3% + 5 % -1%
++10%
+GOD
+0
+2
+4
+6
+100 stimuli
+Δ step 0→last: +25.3%
++10%+ 1 %
++ 7 % -4%
++8% +0%
+THINGS
+0
+2
+4
+6
+11424 stimuli
++21%
+-41%
++85%
++35%
++10%
+-33%
+NOD
+Curriculum step
+Top-10 change from step 0 (%)
+Model
+Step-0 baseline (0%)
+Ventral Visual
+Object Scene
+Early Visual
+Parietal Attention
+Other
+−1 0
+− 8
+− 6
+− 4
+− 2
+0
++ 2
+Change in unique-stimulus Top-10 accuracy
+from baseline, percentage points
+Subject-level impact of ablating the most disruptive networks
+****
+****
+****
+**
+Dataset
+BMD
+NSD
+THINGS
+GOD
+BOLD5000
+Deeprecon
+NOD
+g)
+Δ step 0→last: +32%
+− 7 5
+− 5 0
+− 2 5
+0
+25
+50
+75
+t-SNE 1
+− 7 5
+− 5 0
+− 2 5
+0
+25
+50
+75
+t-SNE 2
+Highlighted clusters
+Other clusters
+People & portraits (C7)
+Tennis action (C33)
+Sharks & marine life (C4)
+Consumer electronics (C36)
+Trains & rail transport (C22)
+Water towers (C18)
+Rural fields (C35)
+Emergency vehicles (C23)
+Religious architecture (C25)
+Homeappliances (C11)
+7
+0
+6
+30
+33
+14
+2
+21
+4
+17
+39
+24
+36
+8
+26
+27
+22
+1
+34
+19
+18
+9
+5
+28
+35
+16
+31
+12
+23
+15
+29
+20
+25
+3
+37
+10
+11
+13
+32
+38
+Semantic cluster (sorted by retrieval accuracy)
+0.00
+0.05
+0.10
+0.15
+0.20
+0.25
+0.30
+0.35
+Unique-stimulus Top-10 accuracy
+Highlighted clusters
+People & portraits (C7)
+Tennis action (C33)
+Sharks & marine life (C4)
+Consumer electronics (C36)
+Trains & rail transport (C22)
+Water towers (C18)
+Rural fields (C35)
+Emergency vehicles (C23)
+Religious architecture (C25)
+Home appliances (C11)
+Other clusters
+c)
+People & portraits (C7, rank 1)
+Tennis action (C33, rank 5)
+Sharks & marine life (C4, rank 9)
+Consumer electronics (C36, rank 13)
+Trains & rail transport (C22, rank 17)
+Water towers (C18, rank 21)
+Rural fields (C35, rank 25)
+Emergency vehicles (C23, rank 29)
+Religious architecture (C25, rank 33)
+Home appliances (C11, rank 37)
+0
+100
+200
+300
+400
+Number of unique stimuli
+BMD
+NSD
+THINGS
+GOD
+BOLD5000
+Deeprecon
+NOD
+7
+0
+6
+30
+33
+14
+2
+21
+4
+17
+39
+24
+36
+8
+26
+27
+22
+1
+34
+19
+18
+9
+5
+28
+35
+16
+31
+12
+23
+15
+29
+20
+25
+3
+37
+10
+11
+13
+32
+38
+Semantic cluster (same retrieval-sorted order)
+0
+200
+400
+600
+800
+1000
+Number of unique stimuli
+a)
+b)
+Figure 3: Semantic organization, network contributions and zero-shot cross-dataset transfer. a, t-SNE
+visualization of 40 k-means clusters obtained from normalized CLIP embeddings of unique validation stimuli. Ten
+clusters used for subsequent analyses are highlighted, with representative stimuli shown. b, Dataset composition of
+the selected clusters. Stacked bars show the number of unique stimuli contributed by each dataset. Cluster labels
+(C0–C39) denote arbitrary k-means cluster identifiers and are unrelated to retrieval rank; ranks indicate ordering by
+Top-10 retrieval accuracy. c, Top: unique-stimulus Top-10 accuracy for all clusters, ordered by performance; bottom:
+number of unique stimuli in the same ordering. Every fourth cluster in the ranked sequence was retained, yielding ten
+clusters spanning the full performance range. d, Global unique-stimulus Top-10 accuracy after masking each
+functional or anatomical ROI group. The dashed line marks the unablated baseline; annotations give percentage-point
+changes. e, Dataset-specific ablation effects. f, Participant-level effects for the four most disruptive groups. Points
+denote participants, violins show distributions, boxes show medians and interquartile ranges, and black circles show
+means. Asterisks denote one-sided Wilcoxon signed-rank tests of retrieval impairment, with Benjamini–Hochberg
+correction across nine groups. g, Zero-shot participant and dataset transfer with participant embeddings disabled
+throughout training and evaluation. For each target, the entire dataset and all of its participants remain held out while
+source datasets and participants are cumulatively added to pretraining. Values are percentage changes relative to step
+0; annotations report the net change from the first to the final step.
+were masked at inference. The unablated pooled Top-10 accuracy was 15.4%. Masking ventral visual/object
+regions produced the largest reduction, decreasing accuracy by 4.8 percentage points, followed by early
+visual cortex (−3.5 points), parietal attention regions (−1.2), the heterogeneous “Other” group (−1.0) and
+7
+
+
+motion-selective visual regions (−0.9; Fig. 3d). These reductions survived Benjamini–Hochberg correction
+across the nine ablations, whereas frontal/control, cerebellar, temporal/auditory and subcortical ablations
+had small pooled effects. The dominance of ventral and early visual systems indicates that cross-dataset
+alignment remains anchored in core visual representations rather than being distributed uniformly across
+the brain.
+The same hierarchy was broadly visible at the participant level, but effect sizes varied across datasets
+(Fig. 3e,f). Ventral and early visual ablations were especially disruptive for BMD and NSD, whereas the con-
+tribution of other systems varied more strongly across datasets. The shared representation therefore does
+not depend on a single invariant subset of regions. Instead, it combines a common early and ventral visual
+backbone with content- and dataset-dependent contributions from attention, motion and other systems.
+The complete cluster-by-network ablation landscape across all 40 semantic clusters is shown in Supple-
+mentary Fig. S2a.
+The learned space preserves graded semantics and category-specific cortical structure
+A successful retrieval model could in principle separate individual stimuli without preserving relationships
+among them. We therefore compared the cosine similarity between each predicted brain embedding and
+three classes of CLIP targets: its matched stimulus, a non-matching stimulus from the same semantic cluster
+and a stimulus from a different cluster. Across participants, matched pairs were more similar than same-
+cluster non-matches by a mean margin of 0.094 (P = 6.4 × 10−12). Same-cluster non-matches were, in
+turn, more similar than different-cluster stimuli by a mean margin of 0.043 (P = 3.9 × 10−10; Fig. 4a). This
+ordering was visible across the seven evaluation datasets and across the representative semantic clusters,
+although the magnitude of the margins varied by dataset and category (Fig. 4b,c). The model therefore
+preserves both stimulus identity and broader semantic neighbourhood structure. The same analysis across
+all 40 semantic clusters showed substantial variation in the strength of both margins while preserving the
+broader hierarchical pattern (Supplementary Fig. S2b).
+We next examined how this geometry was expressed across cortical systems.
+For each query, ROI
+saliency was defined as the absolute gradient-times-input contribution to matched brain–CLIP cosine simi-
+larity. Cluster selectivity contrasted an ROI’s mean saliency for one semantic cluster with its mean saliency
+for all other clusters, standardized by pooled variability. Cluster-associated beta maps were spatially dis-
+tributed and differed systematically among categories (Fig. 4d). People and portraits, tennis actions, marine
+life, consumer electronics and scene-related categories emphasized partially distinct patterns across occip-
+ital, ventral temporal, parietal and motion-sensitive cortex.
+To distinguish selectivity from differences in network size, we compared the number of top positively se-
+lective ROIs in each network with the count expected from that network’s share of all ROIs. Early visual and
+ventral visual/object systems were enriched across several clusters, whereas the balance of network con-
+tributions varied substantially across semantic content (Fig. 4e; Supplementary Fig. S2c). Cluster-specific
+ablations provided complementary functional evidence (Fig. 4f). People and portraits were most impaired
+by ventral visual/object ablation (−8.0 percentage points). Tennis actions depended jointly on ventral vi-
+sual/object (−8.7), parietal attention (−8.0) and early visual regions (−6.7), whereas trains and rail trans-
+port were particularly sensitive to early visual ablation (−8.2). Thus, the trained decoder shows broadly
+shared visual-input dependence and category-associated variation in masking effects, although category
+and dataset composition are not disentangled here.
+Shared semantic geometry persists across datasets and retrieval difficulty
+The preceding analyses showed that the model preserves semantic structure relative to CLIP and recruits
+partly distinct cortical systems across stimulus categories. We next asked whether CLIP-supervised brain
+predictions preserve semantic relationships across datasets and remain informative as retrieval becomes
+progressively more difficult.
+We first compared pairs of predicted brain embeddings without using CLIP vectors in the pairwise simi-
+larity calculation. Across participant pairs, representations of the same stimulus were most similar, followed
+by representations of different stimuli from the same semantic cluster, whereas stimuli from different clus-
+ters were least similar (Fig. 5a). Participant pairs drawn both within and across datasets contributed to this
+graded organization, indicating that the hierarchy from stimulus identity to broader semantic relatedness
+is not confined to a single experimental setting.
+We then asked whether the broader arrangement of semantic categories was itself conserved across
+datasets. For each dataset, we constructed a representational dissimilarity matrix from the pairwise cosine
+distances among semantic-cluster centroids and compared these geometries between datasets. The five
+evaluable dataset pairs, involving NSD, THINGS, BOLD5000 and NOD, showed positive correspondence af-
+ter multiple-comparison correction, with Spearman correlations ranging from 0.61 to 0.88 (Fig. 5b). Thus,
+8
+
+
+-1
+-0.5
+0
+0.5
+1
+Semantic cluster
+People & portraits (C7)
+Tennis action (C33)
+Sharks & marine life (C4)
+Consumer electronics (C36)
+Trains & rail transport (C22)
+Water towers (C18)
+Rural fields (C35)
+Emergency vehicles (C23)
+Religious architecture (C25)
+Home appliances (C11)
+2
+4
+6
+8
+10
+2
+4
+6
+8
+10
+2
+4
+6
+8
+10
+2
+4
+6
+8
+10
+2
+4
+6
+8
+10
+2
+4
+6
+8
+10
+2
+4
+6
+8
+10
+2
+4
+6
+8
+10
+2
+4
+6
+8
+10
+2
+4
+6
+8
+10
+2
+4
+6
+8
+10
+Early
+visual
+Motion
+visual
+Ventral
+visual/object
+Parietal
+a t t e n t i o n
+Frontal
+control
+Temporal/
+auditory
+Cerebellum
+Subcortical
+Other
+d)
+e)
+− 6
+− 4
+− 2
+0
+2
+4
+6
+8
+Excess top-selective ROIs
+observed − expected
+Cluster-selective saliency after correcting for network size
+Early visual
+Motion visual
+Ventral visual/object
+Parietal attention
+Frontal/control
+Cerebellum
+Subcortical
+Other
+People & portraits
+Baseline 33.3%
+Tennis action
+Baseline 24.5%
+Sharks & marine life
+Baseline 18.6%
+Consumer electronic
+Baseline 14.8%
+Trains & rail transport
+Baseline 12.5%
+Water towers
+Baseline 7.8%
+Rural fields
+Baseline 4.8%
+Emergency vehicles
+Baseline 3.3%
+Religious architecture
+Baseline 2.9%
+Home appliances
+Baseline 0.6%
+−8.0 
+−8.7 
+−5.6 
+−6.3 
+−3.3 
+−1.6 
+−2.0 
++0.4 
+−0.2 
+−0.3
+−5.0 
+−6.7 
+−1.5 
+−1.6 
+−8.2 
+−4.2 
+−1.6 
++0.4 
+−1.7 
+−0.6
+−2.6 
+−8.0 
+−2.6 
+−1.2 
+−1.8 
+−0.9 
+−0.5 
++0.4 
+−0.6 
+−0.3
++0.5 
++1.6 
+−4.1 
+−1.5 
+−2.0 
+−1.4 
+−1.1 
++0.4 
+−1.1 
+−0.4
+−1.8 
+−5.6 
+−1.1 
++0.2 
++0.2 
++0.2 
+−0.3 
+−0.4 
+−0.4 
++0.1
+0.0
++1.0 
+−0.6 
+−0.8 
+−1.7 
+−0.7 
+0.0
+−0.7 
+−0.2 
+−0.3
+−0.1 
++0.3 
+−1.1 
++0.3 
++0.6 
++0.2 
++0.3 
+−0.4 
+−0.4 
++0.1
+−0.4 
++0.4 
++0.2 
++0.4 
+−0.6 
+−0.4 
++0.2 
++0.4 
+−0.5 
++0.1
++0.3 
++0.6 
+0.0
+−0.1 
+−0.2 
+−1.2 
++0.1 
+−0.7 
+−0.3 
+−0.1
+−8.0
+−6.0
+−4.0
+−2.0
+0
++2.0
++4.0
++6.0
++8.0
+Change in unique stimulus Top 10 accuracy
+−8.0
+−6.0
+−4.0
+−2.0
+0
++2.0
++4.0
++6.0
++8.0
+Change in unique-stimulus Top-10 accuracy
+(ablated − baseline), percentage points
+Ventralvisual/object
+Early visual
+Parietal attention
+Other
+Motion visual
+Frontal/control
+Cerebellum
+Temporal/auditory
+Subcortical
+a)
+b)
+c)
+f)
+Matched
+stimulus
+Same-cluster
+non-match
+Different
+cluster
+−0.1
+0.0
+0.1
+0.2
+0.3
+Brain-CLIPcosine similarity
+0.00
+0.02
+0.04
+0.06
+0.08
+0.10
+0.12
+0.14
+People & portraits
+Tennis action
+Consumer electronics
+Sharks & marinelife
+Rural fields
+Water towers
+Religious architecture
+Trains & rail transport
+Emergency vehicles
+Home appliances
+Matched − same cluster
+Same cluster − different cluster
+0.00
+0.05
+0.10
+0.15
+0.20
+0.25
+0.30
+Subject-level cosine-similarity margin
+BMD
+(n = 10)
+NSD
+(n = 8)
+THINGS
+(n = 3)
+Deeprecon
+(n = 3)
+BOLD5000
+(n = 4)
+GOD
+(n = 5)
+NOD
+(n = 30)
+Matched − same cluster
+Dataset
+BMD
+NSD
+THINGS
+GOD
+BOLD5000
+Deeprecon
+NOD
+Figure 4: CLIP-space semantic organization and category-associated attribution patterns. a, Brain–CLIP
+cosine similarity for the matched stimulus, a non-matching stimulus from the same semantic cluster and a stimulus
+from a different cluster. Thin lines show participant-level or dataset-level trajectories, and summary markers show the
+group mean with uncertainty. b, Participant-level identity and semantic margins for the ten representative clusters,
+defined as matched minus same-cluster similarity and same-cluster minus different-cluster similarity, respectively. c,
+The same margins summarized by dataset. d, Cluster-associated ROI beta patterns projected onto the HCP-MMP1.0
+cortical surface for ten representative semantic clusters. Colours indicate normalized cluster-associated beta values.
+e, Network composition of positively cluster-selective saliency. Radar plots show observed counts among up to 20
+positively selective ROIs in each network for individual clusters; the central bar plot shows observed minus expected
+counts after correcting for network size. Positive values indicate enrichment. f, Cluster-specific change in
+unique-stimulus Top-10 accuracy after ablating each functional or anatomical network. Values are ablated minus
+baseline accuracy in percentage points; negative values indicate that the ablated network supported retrieval.
+datasets with different participants, stimulus distributions and acquisition protocols nevertheless preserve
+similar relative relationships among semantic categories. BMD, GOD and Deeprecon lacked sufficient shared
+clusters for this comparison. The observed correspondences establish relational consistency in the super-
+vised prediction space, without separating target-imposed structure from structure supported by the neural
+measurements.
+We next quantified how retrieval scales as the candidate space expands. Using each query’s rank in
+the full candidate set, we computed the exact expected Top-10 accuracy for progressively larger candidate
+pools. Performance declined as the number of competing stimuli increased, but the across-participant
+trajectory remained above random Top-10 chance throughout the tested range (Fig. 5c). Dataset-specific
+trajectories differed substantially, with some datasets retaining strong retrieval even in large search spaces.
+These results show that the learned ranking structure remains informative as the discrimination problem
+becomes increasingly demanding.
+We additionally tested retrieval with distractors from the target’s CLIP-derived semantic cluster rather
+than arbitrary distractors. We therefore progressively increased the fraction of candidate distractors drawn
+from the target’s own CLIP-derived semantic cluster while holding candidate-pool size fixed. Expected
+9
+
+
+Top-10 accuracy declined only moderately at the population level and remained well above chance even
+when all distractors were drawn from the same semantic cluster (Fig. 5d). Small non-monotonic changes
+in individual datasets are expected because same-cluster membership constrains semantic relatedness but
+does not guarantee greater difficulty for every individual query. Retrieval therefore cannot be explained
+solely by coarse category identification: the learned representation retains information that discriminates
+individual stimuli within semantic neighbourhoods.
+Finally, we asked whether local relationships among unique stimuli were preserved between brain and
+CLIP space. Across neighbourhood sizes from k = 5 to k = 250, the overlap between brain-space and CLIP-
+space nearest neighbours consistently exceeded the analytical expectation under random neighbourhood
+correspondence (Fig. 5e). Absolute overlap remained modest, indicating partial preservation rather than
+replication of CLIP’s local topology. Nevertheless, its systematic elevation above chance shows that stimuli
+occupying nearby locations in CLIP space also tend to remain neighbours in the learned brain representa-
+tion.
+Together, these analyses show that the learned representation supports substantially more than point-
+wise brain–image alignment. Its CLIP-supervised predictions preserve graded semantic relationships across
+participant entries and relational correspondence among the evaluable datasets, remains informative under
+large and semantically challenging candidate spaces, and partially preserves the local organization of the
+target visual-semantic space.
+Discussion
+By jointly modelling eight visual-fMRI datasets, we show that heterogeneous neural measurements can be or-
+ganized within a common visual-semantic representation despite large differences in participants, stimulus
+distributions and acquisition protocols. A single model retrieved held-out stimuli across seven evaluation
+datasets and outperformed matched participant-specific baselines for seven of eight participants. More
+importantly, the shared encoder did not require learned participant identities to generalize: participant-
+agnostic models supported target-dataset holdout retrieval, with the final source-pool condition improving
+accuracy by up to 92.1% relative to the initial condition. The learned representation was also structured be-
+yond retrieval accuracy; stimulus identity and semantic relatedness were reflected directly in brain–brain
+geometry, semantic organization was conserved across datasets, and retrieval remained robust as both
+the candidate space and prevalence of semantic hard negatives increased. Together, these findings sup-
+port reusable mappings from heterogeneous visual-fMRI measurements into a shared supervised prediction
+space.
+A central design principle is to provide participant-specific conditioning while sharing the remaining
+model parameters. Why retain participant conditioning if the encoder can transfer without it? Anatomical
+harmonization does not eliminate inter-individual differences in functional organization and measurement
+characteristics, and previous cross-participant decoders have therefore used explicit participant alignment
+or participant-specific adaptation to map individual responses into shared spaces [22, 6]. Here, participant
+embeddings provide a considerably lighter mechanism: a single learned vector can modulate all ROI to-
+kens for a known participant while the ROI tokenizers, Transformer, pooling and projection remain shared.
+Their role is therefore to provide capacity for participant-specific variation, not to define the common rep-
+resentation itself. The zero-shot results make this distinction explicit: models trained without participant
+embeddings still support target-dataset holdout retrieval.
+The zero-shot curriculum analysis further indicates that cross-dataset heterogeneity can be a source
+of transferable information rather than merely a nuisance to be removed. With participant embeddings
+disabled, every target dataset and all of its participants remained unseen throughout training, while the
+source pool was progressively expanded. The final, more diverse pretraining condition outperformed the
+initial condition for all seven targets, although individual curriculum steps were not uniformly beneficial.
+This non-monotonicity is informative: additional neural data are not interchangeable simply because they
+increase sample size, and their utility depends on relationships among source and target stimulus distribu-
+tions, participants and acquisition regimes. Nevertheless, the uniformly positive final gains demonstrate that
+broader pretraining can expose regularities that transfer directly to unseen participants and experiments.
+Controlled scaling experiments that independently manipulate numbers of trials, participants, unique stim-
+uli and datasets will be important for determining which forms of diversity contribute most strongly to this
+transfer.
+The geometry analyses provide complementary evidence that the model learns more than a collection of
+pointwise brain–image associations. Brain embeddings corresponding to the same stimulus were most sim-
+ilar, embeddings from different stimuli within the same semantic cluster occupied an intermediate regime,
+and embeddings from unrelated clusters were least similar. Importantly, this ordering persisted for com-
+parisons across datasets. At a broader scale, semantic representational geometries showed substantial cor-
+10
+
+
+Same dataset
+Different datasets
+Mean ± 95% bootstrap CI
+0.0
+0.2
+0.4
+0.6
+0.8
+1.0
+Brain–brain cosine similarity
+Same
+stimulus
+Same 
+semantic 
+cluster
+Different 
+cluster
+BMD
+BOLD5000
+GOD
+NOD
+NSD
+102
+103
+104
+Number of retrieval candidates
+0
+20
+40
+60
+80
+100
+Expected Top-10 accuracy (%)
+THINGS
+Deeprecon
+Across subjects
+Chance
+0
+25
+50
+75
+100
+Same-cluster distractors (%)
+20
+40
+60
+80
+100
+Expected Top-10 accuracy (%)
+BMD
+BOLD5000
+GOD
+NOD
+NSD
+THINGS
+Deeprecon
+Across subjects
+Chance
+101
+102
+Neighbourhood size, k
+0
+1
+2
+3
+4
+Brain–CLIP kNN overlap (%)
+Observed
+Random overlap
+BMD
+NSD
+THINGS
+GOD
+BOLD5000
+Deeprecon
+NOD
+BMD
+NSD
+THINGS
+GOD
+BOLD5000
+Deeprecon
+NOD
+—
+—
+0.85*
+—
+—
+—
+— 
+0.64*** 
+—
+—
+—
+—
+—
+—
+—
+— 
+0.61*** 0.88*** 
+—
+0.64**
+—
+— insufficient overlapping semantic clust
+−0.8
+−0.6
+−0.4
+−0.2
+0.0
+0.2
+0.4
+0.6
+0.8
+Semantic RDM correspondence (Spearman ρ)
+c)
+d)
+e)
+b)
+a)
+Figure 5: Semantic organization and robustness of the learned brain representation. a, Hierarchical
+structure within the learned brain-embedding space. Brain–brain cosine similarity is compared across participant
+pairs for the same stimulus, different stimuli from the same CLIP-derived semantic cluster, and stimuli from different
+clusters. Points distinguish participant pairs drawn from the same or different datasets; summary markers show the
+mean and 95% bootstrap confidence interval. b, Cross-dataset correspondence of semantic representational
+geometry. Within each dataset, a representational dissimilarity matrix (RDM) was constructed from cosine distances
+among semantic-cluster centroids. Cells report Spearman correlations between RDMs for dataset pairs with at least
+five shared semantic clusters. Asterisks denote significance after Benjamini–Hochberg correction of Mantel-style
+permutation tests; dashes indicate insufficient cluster overlap. c, Expected retrieval performance as the candidate
+search space increases. For each query, exact expected Top-10 accuracy was derived from its full-pool rank using the
+hypergeometric distribution. Coloured curves show dataset means, the black curve shows the mean across
+participants, and shading denotes the 95% bootstrap confidence interval. The dashed line indicates random Top-10
+chance, min(10/N, 1), for a candidate pool of size N. d, Retrieval among semantic hard negatives. The fraction of
+distractors drawn from the same semantic cluster as the target was increased from 0 to 100% while candidate-pool
+size remained fixed. Expected Top-10 accuracy was computed analytically from the numbers of same- and
+different-cluster candidates outranking each target. Coloured curves show dataset means, the black curve shows the
+mean across participants, shading denotes the 95% bootstrap confidence interval and the dashed line indicates
+random Top-10 chance. e, Preservation of local semantic neighbourhoods. Predicted brain embeddings were averaged
+across repeated observations of each unique stimulus. For each neighbourhood size k, overlap between the k nearest
+neighbours in brain and CLIP space was computed across unique stimuli. The black curve shows mean observed
+overlap with its 95% bootstrap confidence interval; the dashed curve shows the analytical expectation under random
+neighbourhood correspondence.
+respondence between dataset pairs with sufficient overlapping categories, with RDM correlations ranging
+from 0.61 to 0.88. These results imply that different experiments can preserve similar relations among se-
+mantic categories even when their absolute neural measurements differ. The shared space is therefore
+not simply aligning isolated targets; it is recovering aspects of a common relational organization across the
+evaluated datasets within the supervised prediction space.
+The retrieval stress tests reinforce this interpretation. Accuracy decreased as the candidate pool ex-
+panded over several orders of magnitude, as expected, but remained above the corresponding random
+baseline throughout the tested range. More importantly, replacing increasingly large fractions of the can-
+didate set with same-cluster distractors produced only a moderate population-level decline, with retrieval
+remaining well above chance even when the search space was dominated by semantically related alterna-
+tives. Thus, the representation cannot be explained solely by coarse category information; it retains infor-
+mation that distinguishes individual stimuli within semantic neighbourhoods. Consistent with this result,
+nearest-neighbour structure in brain space overlapped with that of CLIP more than expected by random cor-
+respondence across neighbourhood scales. The absolute overlap was modest, however, indicating partial
+preservation rather than a wholesale reproduction of CLIP’s local topology. Together, these results support
+partial preservation of meaningful visual-semantic neighbourhood structure from CLIP, while the incom-
+11
+
+
+plete overlap leaves room for prediction error, regularization, measurement noise, and potentially distinct
+representational structure.
+The neuroanatomical analyses further ground this shared geometry in recognizable cortical organization.
+Early and ventral visual systems formed the most consistent backbone across datasets and participants,
+whereas motion and parietal-attention systems contributed more selectively across stimulus categories.
+Cluster-specific response maps, saliency and ablation therefore point to a representation that is both shared
+and compositional; a common set of visual systems supports decoding broadly, while the relative contribu-
+tion of additional networks changes with visual content. The convergence between saliency and ablation is
+particularly useful because the two analyses probe different aspects of the model. Gradient-based saliency
+identifies inputs to which an individual prediction is locally sensitive, whereas ablation measures the loss
+of retrieval performance when an entire network is removed. Their agreement is consistent with category-
+associated input dependence in the fitted mapping, but the two analyses share the same model and data
+and do not independently establish biological category selectivity.
+Several limitations define the scope of these conclusions. First, although participant-agnostic models
+support target-dataset holdout retrieval, we have not yet quantified how efficiently limited participant-
+specific data could improve upon this initial representation. Comparing zero-shot transfer with few-shot
+estimation of a new participant embedding while freezing the shared encoder would clarify how much
+individual adaptation remains beneficial. Second, CLIP provides the supervisory target and consequently
+constrains the geometry that the model can recover. Although our analyses show that CLIP-like semantic
+relationships survive prediction from fMRI, they do not establish that this geometry is uniquely or com-
+pletely representative of human visual organization. Comparisons with behaviour-derived similarity spaces,
+alternative self-supervised vision models and other multimodal representations could separate structure
+imposed by the target model from structure consistently supported by human neural data. A stronger test
+would compare raw-response, pre-projection and output geometries on held-out stimuli against CLIP, in-
+dependently pretrained visual models and human similarity judgments, accounting for measurement reli-
+ability. THINGS behavioural judgments and their behaviour-only similarity embedding provide one such
+reference [24]; CLIP-based predictions that extend this embedding to new images [25] should be distin-
+guished from direct behavioural measurements. Alternative cluster definitions would test sensitivity to the
+grouping scheme, whereas alternative supervision would require retraining the decoder. Third, the source
+datasets remain highly imbalanced in participants, trials and stimulus composition, making it difficult to iso-
+late diversity from scale. Finally, network masking and gradient attribution characterize the fitted decoder
+and can reflect group size, redundant inputs, and distribution shift. Biological interpretation would addi-
+tionally require attribution validation and perturbation controls [26]; these analyses do not establish causal
+necessity of the corresponding brain systems.
+More broadly, this work suggests a different strategy for scaling computational models of human brain
+activity. Progress need not depend exclusively on collecting a single, uniformly acquired dataset of ever-
+increasing size. Independently acquired experiments contain shared information that can become compu-
+tationally compatible when anatomical correspondence, cross-participant structure and stimulus semantics
+are modelled jointly. Our target-dataset holdout results support decoding without fitting participant em-
+beddings to the target data. Extending this framework to few-shot participant adaptation, behaviourally
+grounded targets and other sensory or cognitive domains could provide a route towards neural models that
+improve as heterogeneous datasets accumulate— transforming cross-study variation from an obstacle to
+scaling into a source of transferable structure.
+Methods
+MOSAIC dataset and harmonization
+Dataset aggregation.
+We used MOSAIC, a harmonized collection of eight independently acquired visual-
+fMRI datasets [20]: the Natural Scenes Dataset (NSD), THINGS-fMRI (THINGS), Deeprecon, BOLD5000, the
+BOLD Moments Dataset (BMD), Generic Object Decoding (GOD), the Human Actions Dataset (HAD), and the
+Natural Object Dataset (NOD). Together, these datasets span substantial variation in acquisition protocol,
+scanner, stimulus domain, experimental design, and amount of data collected per participant. After har-
+monization and cross-dataset filtering, MOSAIC contains 93 dataset-specific participant entries, 430,007
+single-trial fMRI–stimulus pairs, and 162,839 unique stimuli.
+The curated splits comprise 144,360 naturalistic training stimuli associated with 353,924 single-trial re-
+sponses, 18,145 naturalistic test stimuli associated with 68,011 responses, and 334 artificial test stimuli as-
+sociated with 8,072 responses. The experiments reported here use the naturalistic training and validation
+partitions. HAD contributes to model training but is not included in the retrieval evaluation.
+A dataset-specific participant entry is treated as a distinct modelling unit. Accordingly, participant iden-
+tity is defined jointly by dataset and participant label. For example, sub-01 from two different source datasets
+12
+
+
+is assigned two different participant indices. This convention allows the model to accommodate dataset-
+specific differences in acquisition and recording conditions even when participant labels coincide.
+Cross-dataset split construction and leakage control.
+The scale of MOSAIC creates an important po-
+tential source of leakage; the same or highly similar visual stimulus can occur in more than one constituent
+dataset. MOSAIC therefore constructs its splits at the level of stimulus identity rather than individual fMRI
+trials. Identical stimuli assigned to conflicting source-dataset splits are first reconciled so that all observa-
+tions of a stimulus remain in the same partition.
+A second filtering stage removes near-duplicate visual content. Training stimuli are compared with test
+stimuli using cosine similarity between DreamSim embeddings [27]; training stimuli exceeding a similarity
+threshold of 0.8196 to a test stimulus are excluded. This procedure removed 1,186 training stimuli. Conse-
+quently, repeated observations of the same stimulus—including observations obtained from different par-
+ticipants or datasets—remain together, while identical or highly similar images cannot appear on opposite
+sides of the train–test boundary.
+fMRI preprocessing and single-trial response estimation.
+Rather than combining the heterogeneous
+preprocessing products released with the original datasets, MOSAIC reprocesses the constituent studies
+through a common pipeline [20]. Functional data were preprocessed using fMRIPrep v23.2.0 [28] and reg-
+istered to the HCP fsLR32k cortical surface space. Single-trial response amplitudes were estimated using
+GLMsingle [29], with dataset-specific treatment of acquisition timing, stimulus duration, repeated presen-
+tations, and nuisance regressors.
+Within each session or session group, beta estimates were normalized using statistics estimated exclu-
+sively from training trials. The resulting training-derived mean and standard deviation were then applied
+unchanged to both training and validation responses. No spatial smoothing was applied. This harmoniza-
+tion step places measurements from otherwise heterogeneous experiments into a common anatomical and
+statistical representation while preventing information from the validation partition from entering the nor-
+malization procedure.
+ROI representation and model input
+Each single-trial response was represented using N = 379 anatomically defined regions of interest (ROIs):
+360 cortical parcels from the HCP-MMP1.0 parcellation [30], comprising 180 parcels per hemisphere, to-
+gether with 19 subcortical regions. This ROI-based representation provides an anatomically corresponding
+sequence across datasets while retaining the fine-grained activation pattern within each region.
+For trial t from dataset-specific participant i, the response in ROI r is
+R(i)
+t,r =
+h
+β(i)
+t,r,1, . . . , β(i)
+t,r,mr
+i
+∈Rmr,
+(1)
+where β(i)
+t,r,k denotes the single-trial beta coefficient of cortical vertex or subcortical voxel k within ROI
+r. Because anatomical regions contain different numbers of vertices or voxels, mr varies across ROIs. The
+model therefore does not assume that every ROI has the same raw input dimensionality.
+Before tokenization, an additional normalization was performed independently within each ROI and trial.
+Non-finite values were first replaced with zero. The resulting vector was then standardized across its con-
+stituent vertices or voxels and clipped to [−5, 5]:
+bR(i)
+t,r = clip
+
+
+R(i)
+t,r −µ
+
+R(i)
+t,r
+
+σ
+
+R(i)
+t,r
+
++ 10−6 , −5, 5
+
+.
+(2)
+This operation standardizes the distribution within each ROI while preserving the relative spatial pattern
+of activation across its vertices or voxels. Clipping reduces the influence of extreme coefficients. Spatial
+centering and scaling remove ROI-wide mean and scale information from each trial, so the decoder primarily
+uses within-ROI spatial patterns rather than absolute regional response amplitudes. Importantly, this per-
+trial, within-ROI normalization is distinct from the training-derived normalization applied during MOSAIC
+preprocessing.
+Shared brain encoder with optional participant conditioning
+The central modelling objective was to separate variation that is specific to an ROI or participant from the
+parameters used to learn structure shared across the entire collection. We therefore first map each anatom-
+ically corresponding ROI into a common token space and only then apply a Transformer whose parameters
+are shared across all 93 participant entries and all eight datasets (Fig. 1).
+13
+
+
+ROI tokenization.
+Because the raw dimensionality mr differs across ROIs, each region has its own two-
+layer multilayer perceptron (MLP) tokenizer. For simplicity, we omit the trial index below. The standardized
+response from ROI r of participant i is mapped to
+E(i)
+r
+= fr
+
+bR(i)
+r
+
+= Wr,2 GELU
+
+Wr,1 bR(i)
+r
++ br,1
+
++ br,2,
+(3)
+where Wr,1 ∈Rd×mr, Wr,2 ∈Rd×d, and the common token dimension is d = 512. Thus, the ROI-specific
+tokenizers absorb differences in the number of measurements available within each anatomical region while
+presenting the shared encoder with a fixed-dimensional sequence.
+ROI identity and participant conditioning.
+Each token is augmented with two learned embeddings: an
+ROI identity embedding Pr ∈Rd and a participant embedding Si ∈Rd,
+eE(i)
+r
+= E(i)
+r
++ Pr + Si,
+r = 1, . . . , 379.
+(4)
+The ROI embedding allows anatomically distinct tokens to retain their identity after entering the shared
+Transformer. The same participant embedding Si is broadcast to all 379 ROI tokens from participant i, pro-
+viding a low-dimensional mechanism through which the network can account for participant- and dataset-
+specific variation without introducing a separate encoder for each individual. Because participant identities
+are defined jointly by dataset and participant label, identically named participants from different datasets
+receive different embeddings.
+Participant conditioning was included to provide a lightweight mechanism for modelling participant-
+specific variation that can remain after anatomical harmonization. Related cross-participant decoding ap-
+proaches similarly use participant-specific functional alignment or adaptation before applying shared decod-
+ing components [22, 6]. In our model, this role is restricted to the additive embedding Si; the ROI tokenizers,
+Transformer encoder, attention pooling and projection head remain shared.
+We therefore evaluate two operating modes. In the participant-conditioned mode used for the standard
+retrieval and interpretability analyses, the learned embedding Si is added to every ROI token for participant
+i. In the participant-agnostic mode used for zero-shot transfer, participant embeddings are disabled, so that
+eEr = Er + Pr,
+(5)
+and no participant-specific embedding is required. This second mode permits direct evaluation on partici-
+pants whose identities were never represented during training.
+Shared Transformer encoder.
+The conditioned sequence
+eE(i) =
+h
+eE(i)
+1 , . . . , eE(i)
+379
+i
+(6)
+is processed by a four-layer pre-normalization Transformer encoder [21]. Each layer contains four self-
+attention heads, a token dimension of 512, a feed-forward dimension of 2,048, GELU activations, and dropout
+of 0.1. The Transformer parameters are shared across every ROI sequence, participant, and dataset. A final
+layer normalization is applied to the resulting contextualized ROI representations, H(i)
+r
+∈R512.
+This design allows the participant embedding to modulate the representation presented to the shared
+network while requiring the Transformer itself to learn interactions among anatomically corresponding re-
+gions that are useful across the heterogeneous training collection.
+Attention pooling and alignment with CLIP
+Attention pooling.
+The Transformer produces one contextualized representation for each ROI. We com-
+bine these representations using learned attention pooling rather than assuming that every region con-
+tributes equally to every trial. A two-layer scoring network assigns
+a(i)
+r
+= w⊤
+2 GELU
+
+W1 LN(H(i)
+r ) + b1
+
++ b2,
+(7)
+α(i)
+r
+=
+exp(a(i)
+r )
+P379
+q=1 exp(a(i)
+q )
+,
+(8)
+where the scoring network has a hidden dimension of 256. The trial-level brain representation is then
+B(i) =
+379
+X
+r=1
+α(i)
+r H(i)
+r .
+(9)
+14
+
+
+The pooled representation is passed through a projection head consisting of layer normalization, a 512 →
+512 linear transformation, GELU, and a second 512 →512 linear transformation. The resulting vector,
+bC(i) ∈R512,
+(10)
+is the model prediction in visual-semantic embedding space.
+CLIP target representations.
+Target stimulus representations were precomputed using the image en-
+coder of OpenAI CLIP ViT-B/32 [4]. For static-image stimuli, the presented image was passed directly
+through the frozen CLIP image encoder, yielding a 512-dimensional target embedding C(j) ∈R512.
+For datasets containing dynamic video stimuli, including BMD and HAD, each video was represented by
+its temporally central frame. Specifically, the frame at, or nearest to, the temporal midpoint of the pre-
+sented video clip was extracted and passed through the same CLIP ViT-B/32 image encoder. The resulting
+512-dimensional embedding was used as the visual-semantic target for all fMRI responses associated with
+that video stimulus. This provided a single fixed-dimensional image-space representation for each dynamic
+stimulus while keeping the target representation consistent with that used for the static-image datasets. Ac-
+cordingly, this target evaluates correspondence to a representative frame and does not separately establish
+decoding of temporal dynamics or actions.
+The CLIP encoder remained frozen throughout training; gradients were propagated only through the
+brain encoder, attention-pooling module, and projection head.
+Multi-positive contrastive learning
+When repeated stimuli are sampled together, several fMRI observations within a training batch can corre-
+spond to the same stimulus, whether within or across participants and datasets. These repetitions may
+arise within one participant, across participants, or across datasets. Treating all other samples in the batch
+as conventional contrastive negatives would therefore incorrectly push valid representations of the same
+stimulus apart.
+We instead optimized symmetric cross-entropy with a uniform target over all same-stimulus observa-
+tions in the distributed batch. For brain sample i, let P(i) denote all samples in the distributed batch with
+the same stimulus identity. The target distribution is
+yij =
+(
+1/|P(i)|,
+j ∈P(i),
+0,
+otherwise.
+(11)
+Predicted brain embeddings and target CLIP embeddings are first ℓ2-normalized. Brain-to-CLIP similar-
+ity logits are then
+ℓB2C
+ij
+= γ bC(i)⊤C(j),
+(12)
+where γ is a learned logit scale initialized to 1/0.07 and capped at 15. The brain-to-CLIP objective is
+LB2C = −1
+B
+B
+X
+i=1
+X
+j
+yij log
+exp(ℓB2C
+ij )
+P
+k exp(ℓB2C
+ik ).
+(13)
+We analogously compute LC2B by reversing the query and target roles and use the symmetric objective
+Lcontrastive = 1
+2 (LB2C + LC2B) .
+(14)
+Embeddings and stimulus identifiers are gathered across GPUs before the loss is computed, so positive
+and negative relationships are defined across the full distributed batch rather than independently on each
+device. The contrastive loss was assigned a weight of 0.5. The general implementation also supports masked
+autoencoding; this branch was disabled for every experiment reported here.
+Model optimization
+Models were optimized with AdamW using an initial learning rate of 10−4 and weight decay of 10−3. Bias
+parameters, normalization parameters, and the learned contrastive logit scale were excluded from weight
+decay. The learning rate followed a per-epoch cosine-annealing schedule. Training used 256 samples per
+GPU across four GPUs with distributed data parallelism, giving an effective batch size of 1,024. Embeddings
+were gathered across GPUs so that each contrastive loss term was computed against all 1,024 samples in the
+global batch. Models were trained in 32-bit precision with gradient-norm clipping at 1.0 and random seed
+42.
+15
+
+
+Early stopping and checkpoint selection were based on the held-out evaluation split. The monitored
+quantity was a minibatch-level proxy; Top-5 retrieval within each per-GPU minibatch of 256 samples, av-
+eraged over the epoch. This proxy is distinct from the full-gallery retrieval metrics reported in the Results.
+Training stopped when this proxy failed to improve by at least 10−4 for five consecutive epochs. Additional
+checkpoint analysis can be found in section .
+Stimulus retrieval
+We evaluated whether the predicted brain representation identified the stimulus associated with a held-out
+fMRI response. Predicted brain embeddings and candidate CLIP embeddings were ℓ2-normalized, making
+their inner product equivalent to cosine similarity. For each held-out brain query q, candidate stimuli were
+ranked by decreasing brain–CLIP similarity.
+Repeated candidate entries were collapsed by stimulus identity before ranking; the accuracy below av-
+erages success over the Q evaluated fMRI queries. Retrieval therefore asks which unique stimulus is rep-
+resented by a given brain response rather than rewarding repeated entries of the same target. Unique-
+stimulus Top-K accuracy was defined as
+Top -K = 1
+Q
+Q
+X
+q=1
+1 [rankq(yq) ≤K] ,
+(15)
+where yq is the identity of the true stimulus and Q is the number of evaluated fMRI queries. Unless
+otherwise stated, we report Top-10 accuracy. For a random ranking over Nc unique candidates, chance
+Top-10 performance is
+pchance = min
+ 10
+Nc
+, 1
+
+.
+(16)
+We considered two candidate spaces. In the global evaluation, each query was ranked against all unique
+validation stimuli pooled across the seven evaluation datasets. This is the most demanding setting because
+candidates can originate from entirely different experiments and stimulus distributions. In the dataset-
+restricted evaluation, candidate stimuli were limited to the dataset from which the query originated. The lat-
+ter provides a complementary measure that removes cross-dataset distractors and has a dataset-dependent
+chance level determined by the number of unique candidate stimuli.
+Participant-matched baseline comparison
+Following Benchetrit et al. [14], our MindEye-style baseline predicts a single pooled CLIP embedding for
+retrieval, without the diffusion prior or image reconstruction components of the full MindEye framework
+[5]. We compared BRAID-fMRI with ridge regression and this MindEye-style pooled-CLIP decoder on the
+subset of participant entries for which matched results were available for all three approaches; four from
+BOLD5000 and four from NSD. All comparisons use unique-stimulus Top-10 retrieval accuracy. Dataset-
+level and overall summaries are reported as the mean ± standard deviation across matched participants.
+Semantic organization of the stimulus space
+To examine whether retrieval depended systematically on stimulus content, we partitioned the unique val-
+idation stimuli according to their CLIP representations. Target embeddings were ℓ2-normalized and clus-
+tered using k-means with k = 40. A two-dimensional t-SNE projection was used only for visualization and
+played no role in defining clusters or computing the subsequent statistics. Semantic category names are
+descriptive annotations of the embedding-defined clusters.
+For each semantic cluster, retrieval accuracy was obtained by averaging query-level Top-10 success over
+queries whose target belonged to that cluster. To avoid selecting categories after inspecting their identities,
+clusters were first ordered solely by retrieval accuracy and every fourth cluster in this ordering was retained.
+The selected ranks were
+1, 5, 9, . . . , 37,
+(17)
+yielding ten semantic clusters spanning the observed range from high to low retrieval performance.
+These same ten clusters were used for subsequent representational-geometry, ablation, and saliency analy-
+ses.
+16
+
+
+Functional-network ablation
+To quantify the effect of masking large-scale anatomical and functional input groups on model retrieval,
+the 379 ROIs were assigned to nine functional or anatomical groups: early visual, motion visual, ventral
+visual/object, parietal attention, frontal/control, temporal/auditory, cerebellar, subcortical, and a resid-
+ual “Other” group. Each group was ablated independently at inference by removing its tokens from the
+model’s computation. Ablated tokens were excluded as keys in every self-attention layer of the encoder
+and received zero weight in the attention-pooling readout, so pooling weights were renormalized over the
+remaining tokens. Because the encoder is pre-normalized and acts on each token independently except
+through attention, and because ROI identity embeddings are the only positional signal, this is equivalent to
+deleting the ablated tokens from the input set. It differs from zeroing the input signal; a zero-valued input
+would still produce a token through the tokenizer biases and the added ROI and subject embeddings. Model
+parameters, subject embeddings of the retained tokens, and the retrieval candidate pool were unchanged.
+For participant i and network g, we defined the retrieval drop as
+Di,g = Abaseline
+i
+−Aablated
+i,g
+,
+(18)
+where accuracy is measured in percentage points. Positive values therefore indicate impaired retrieval
+following ablation. Participant identities were defined using the joint identifier dataset::participant; if
+multiple entries existed for the same participant–network combination, their retrieval drops were averaged
+before inference.
+For each network, we used a one-sided Wilcoxon signed-rank test of a positive shift in retrieval drops.
+Interpreting the following hypothesis as a median shift requires an approximately symmetric distribution of
+independent differences:
+H0 : median(Dg) ≤0,
+H1 : median(Dg) > 0.
+(19)
+Zero-valued differences were omitted according to the Wilcoxon zero_method=wilcox convention. The
+resulting P values were corrected across the nine network tests using the Benjamini–Hochberg false-
+discovery-rate procedure with α = 0.05.
+We estimated 95% percentile-bootstrap confidence intervals for both the mean and median retrieval
+drop using 20,000 resamples with random seed 42. As an effect-size measure, we additionally computed
+the signed-rank rank-biserial correlation,
+rrb = W + −W −
+W + + W −,
+(20)
+where W + and W −are the sums of ranks associated with positive and negative non-zero differences,
+respectively.
+Differences among networks were additionally assessed using a Friedman repeated-measures omnibus
+test over participants with complete observations for all nine groups. We report Kendall’s coefficient of
+concordance as the corresponding omnibus effect size,
+W = χ2
+Friedman
+n(k −1) ,
+(21)
+where n is the number of complete participants and k = 9.
+For visualization, ablation effects are plotted using the reverse sign,
+∆Ai,g = Aablated
+i,g
+−Abaseline
+i
+= −Di,g,
+(22)
+such that negative plotted values denote impaired retrieval.
+Pooled effects weight individual fMRI
+queries equally, whereas participant-level summaries weight participants equally; the corresponding unab-
+lated baseline accuracies can therefore differ.
+Zero-shot cross-dataset transfer
+For all zero-shot curriculum experiments, participant embeddings were disabled throughout model training
+and evaluation. For each target dataset, the dataset was excluded in its entirety, including all of its partic-
+ipants and stimuli. Consequently, no target dataset’s participant embeddings or other parameters were
+learned or estimated, and no training data from the target dataset were available to the model. The target
+evaluation set remained fixed while the source training pool was expanded cumulatively. At each curriculum
+step, one additional dataset was added to the training pool; the target dataset was never introduced during
+this sequence.
+17
+
+
+Let At denote target-dataset Top-10 retrieval accuracy after curriculum step t. To place datasets with
+different absolute retrieval accuracies on a common scale, performance was expressed relative to the initial
+source-training condition:
+∆(0)
+t
+= 100
+ At
+A0
+−1
+
+.
+(23)
+The step-0 model therefore appears at 0%. Incremental annotations in the figure report the change
+relative to the immediately preceding step,
+∆(prev)
+t
+= 100
+ At
+At−1
+−1
+
+,
+(24)
+whereas the final annotation summarizes the total change between the first and last curriculum con-
+ditions. This analysis therefore tests whether progressively broader cross-dataset pretraining improves
+calibration-free transfer to entirely unseen participants and datasets in the absence of participant-specific
+conditioning.
+Semantic geometry of predicted brain representations
+Retrieval evaluates whether the true stimulus receives a sufficiently high rank, but does not reveal how the
+remaining candidates are organized around a brain prediction. We therefore tested whether the learned
+representation preserved graded semantic neighbourhood structure.
+For every held-out brain query, candidate CLIP embeddings were partitioned into three classes: the
+matched stimulus; non-matching stimuli belonging to the same semantic cluster as the target; and stimuli
+belonging to different clusters. We computed the mean cosine similarity to each class and summarized the
+resulting ordering using two margins,
+Midentity = smatched −ssame,
+(25)
+Msemantic = ssame −sdifferent.
+(26)
+The identity margin measures stimulus-specific information beyond semantic category membership,
+whereas the semantic margin measures preservation of broader category structure. Margins were summa-
+rized at both the semantic cluster and dataset levels. Cluster-level comparisons were corrected for multiple
+testing; hollow markers in the corresponding figure denote comparisons with FDR-adjusted q ≥0.05.
+ROI saliency and semantic selectivity
+Finally, we asked whether different portions of the learned semantic space relied on different input regions.
+For each brain query q, we first computed the cosine similarity sq between the ℓ2-normalized predicted
+embedding and its matched CLIP embedding. ROI importance for region r was then quantified by summing,
+across its voxels, the absolute product of each input value xv and the sensitivity of sq to that input, ∂sq/∂xv.
+Attributions were computed with respect to the model input, for which the beta values within each ROI
+were z-scored across that ROI’s voxels or vertices for every trial and clipped at ±5. They therefore reflect
+the spatial pattern of activity within each ROI rather than its mean amplitude. The ROI-level attribution was
+defined as
+Sq,r =
+X
+v∈r
+xv
+∂sq
+∂xv
+ ,
+and each query’s saliency vector was normalized to sum to one across ROIs, so that Sq,r represents the
+fraction of total attribution assigned to ROI r.
+For ROI r and semantic cluster c, we quantified cluster selectivity by comparing the normalized ROI
+attribution Sq,r for queries belonging to cluster c with that for all queries outside the cluster:
+Zr,c = µin
+r,c −µout
+r,c
+σpooled
+r,c
+,
+(27)
+where µin
+r,c and µout
+r,c are the mean values of Sq,r for queries inside and outside cluster c, respectively, and
+σpooled
+r,c
+is their pooled within-group standard deviation. Thus, Zr,c is a standardized effect size (Cohen’s d)
+where positive values indicate greater relative attribution to ROI r for stimuli in cluster c. It is used here as
+a descriptive selectivity measure rather than as a standard-normal test statistic. ROIs were ranked by Zr,c,
+and the top nc = 20 ROIs with positive selectivity were retained for each cluster.
+18
+
+
+Because the functional groups contain unequal numbers of ROIs, raw counts among these selected ROIs
+would favour larger groups. We therefore compared the observed count with that expected if selected ROIs
+were distributed in proportion to each group’s representation in the atlas:
+Expectedg,c = nc
+Ng
+N ,
+(28)
+where Ng is the total number of eligible ROIs assigned to functional group g, and N = 379 is the total
+number of eligible ROIs. We then defined the network-enrichment score as
+Enrichmentg,c = Observedg,c −Expectedg,c,
+(29)
+where Observedg,c is the number of selected ROIs from group g. Positive values therefore indicate that
+a functional group contributes more cluster-selective ROIs than expected from its overall representation in
+the atlas, whereas negative values indicate fewer than expected.
+Cross-dataset semantic geometry and retrieval robustness
+Hierarchical geometry within the learned brain space.
+To test whether stimulus identity and se-
+mantic structure were preserved directly within the learned brain representations, we compared predicted
+brain embeddings across participant entries. Because the same stimulus can have multiple fMRI observa-
+tions within a participant, embeddings were first averaged for each participant–stimulus combination and
+ℓ2-normalized. We then considered stimuli observed by at least two distinct participant entries and formed
+pairs of embeddings corresponding to the same stimulus. To prevent stimuli seen by many participants from
+disproportionately influencing the analysis, at most ten participant pairs were sampled per stimulus.
+For each same-stimulus participant pair (i, j), we computed the cosine similarity between their normal-
+ized brain embeddings. We constructed two control conditions using stimuli available for the corresponding
+participants. For the same-cluster condition, the embedding from participant i was compared with up to five
+randomly sampled embeddings from participant j belonging to the same semantic cluster but corresponding
+to different stimuli; the reverse comparison, from participant j to participant i, was computed analogously,
+and the two directional means were averaged. The different-cluster condition was constructed identically,
+except that control stimuli were sampled from semantic clusters different from that of the target. Sampling
+was without replacement.
+For each participant pair, similarities were then averaged across all shared stimuli, yielding three esti-
+mates: ssame stimulus, ssame cluster, and sdifferent cluster. We quantified hierarchical organization using
+Midentity = ssame stimulus −ssame cluster,
+(30)
+Msemantic = ssame cluster −sdifferent cluster.
+(31)
+Positive Midentity indicates convergence across brains that is specific to stimulus identity beyond seman-
+tic category, whereas positive Msemantic indicates preservation of broader semantic structure. Both margins
+were tested across participant pairs using one-sided Wilcoxon signed-rank tests with the alternative hypoth-
+esis that the margin was greater than zero. For visualization, participant pairs were additionally classified
+according to whether they originated from the same or different datasets. Group means and 95% confidence
+intervals were estimated by bootstrapping the participant-pair estimates with 5,000 resamples. These pair-
+level summaries do not account for dependence induced by participants or stimuli shared across pairs, and
+therefore do not establish population-level uncertainty over independent people and stimuli. Inference that
+generalizes over people and stimuli requires a design that respects both sampling factors [31].
+Cross-dataset correspondence of semantic representational geometry.
+We tested whether the
+relative organization of semantic categories in the learned brain space was preserved across datasets. To
+avoid weighting stimuli according to the number of repeated fMRI observations, we first averaged all pre-
+dicted brain embeddings corresponding to the same unique stimulus within each dataset and ℓ2-normalized
+the resulting stimulus-level embedding. Within each dataset and semantic cluster, these stimulus-level em-
+beddings were then averaged to obtain a dataset-specific cluster centroid and normalized again. Clusters
+containing fewer than five unique stimuli were excluded.
+For each pair of datasets, we retained semantic clusters represented in both datasets and required at least
+five shared clusters. A semantic representational dissimilarity matrix (RDM) was constructed separately for
+each dataset using cosine distance between its cluster centroids,
+Dab = 1 −c⊤
+a cb,
+(32)
+19
+
+
+where ca and cb are ℓ2-normalized centroids for semantic clusters a and b. Cross-dataset correspondence
+was quantified as the Spearman correlation, ρ, between the upper-triangular entries of the two RDMs.
+Statistical significance was assessed using a Mantel-style permutation test with 2,000 permutations. At
+each permutation, the cluster ordering of one RDM was randomly permuted identically across its rows and
+columns before recomputing ρ. The one-sided permutation P value was calculated as
+P = 1 + P2000
+m=1 1
+
+ρnull
+m
+≥ρobs
+
+2001
+.
+(33)
+Permutation P values were corrected across all evaluable dataset pairs using the Benjamini–Hochberg false-
+discovery-rate procedure. Dataset pairs with fewer than five overlapping semantic clusters were not evalu-
+ated.
+Candidate-pool scaling.
+To quantify how retrieval performance changes as the search space expands,
+we evaluated candidate pools of 25, 50, 100, 250, 500, 1,000, 2,500, 5,000 and 10,000 unique stimuli, together
+with the full candidate pool when not already included among these sizes. Rather than repeatedly subsam-
+pling candidate sets, we computed the exact expected Top-10 accuracy for each brain query from its rank
+in the full retrieval pool using the hypergeometric distribution.
+For a query whose true stimulus has rank r in a full pool containing Nfull candidates, there are r −1
+distractors ranked above the target among the Nfull −1 available distractors. For a reduced candidate pool
+of size N, the target is accompanied by N −1 distractors sampled uniformly without replacement. The
+probability that the target appears within the Top-10 is therefore
+pTop10(N) = Pr [X ≤9] ,
+X ∼Hypergeom (Nfull −1, r −1, N −1) ,
+(34)
+where X is the number of sampled distractors that rank above the true stimulus. Thus, the analysis gives
+the exact expected retrieval performance under uniform candidate subsampling without requiring repeated
+random draws.
+Query-level probabilities were first averaged within each participant at each candidate-pool size.
+Dataset-specific curves show the mean of these participant-level expectations within each dataset, whereas
+the overall curve shows the mean across participants with a 95% bootstrap confidence interval. Random
+Top-10 performance for a candidate pool of size N was
+pchance(N) = min
+10
+N , 1
+
+.
+(35)
+This analysis isolates the effect of increasing search-space size while preserving the ranking structure
+observed in the full retrieval evaluation.
+Semantic hard-negative retrieval.
+To test whether successful retrieval depended primarily on coarse
+semantic category information, we constructed fixed-size candidate pools containing progressively larger
+fractions of distractors from the same semantic cluster as the target. Hard-negative fractions were 0, 0.25,
+0.50, 0.75, and 1.00. The candidate-pool size was chosen as
+Nhard = min (200, Nmin cluster) ,
+(36)
+where Nmin cluster is the number of candidate stimuli in the smallest semantic cluster. This ensured that
+even the 100% hard-negative condition could be formed without replacement for every query.
+For each brain query, we used its similarity to the full candidate set to count separately the number
+of same-cluster and different-cluster distractors that ranked above the true stimulus. Let Ns and Nd de-
+note the available same-cluster and different-cluster distractors, and let Bs and Bd denote the correspond-
+ing numbers that outrank the target. For a hard-negative fraction f, the numbers of sampled same- and
+different-cluster distractors were
+ns = round [(Nhard −1)f] ,
+(37)
+nd = (Nhard −1) −ns.
+(38)
+The numbers of sampled distractors that outrank the target therefore follow
+Xs ∼Hypergeom(Ns, Bs, ns),
+Xd ∼Hypergeom(Nd, Bd, nd).
+(39)
+Because the target is retrieved within the Top-10 whenever at most nine sampled distractors outrank it,
+its exact success probability is
+20
+
+
+pTop10(f) =
+9
+X
+x=0
+Pr(Xs = x) Pr(Xd ≤9 −x).
+(40)
+Thus, expected performance at each hard-negative fraction was obtained analytically from the full re-
+trieval ordering rather than by repeated candidate resampling. Query-level probabilities were averaged
+within participant and then summarized by dataset; the overall trajectory shows the mean across partici-
+pants with a 95% bootstrap confidence interval. Because candidate-pool size remained fixed across hard-
+negative conditions, random Top-10 chance was constant at
+pchance = min
+ 10
+Nhard
+, 1
+
+.
+(41)
+This analysis progressively increases the semantic similarity of the distractor set while holding its size
+fixed, providing a direct test of whether the learned representation can discriminate individual stimuli within
+their broader semantic neighbourhood.
+Local neighbourhood preservation.
+To test whether the learned brain representation preserved the
+local topology of the CLIP stimulus space, we compared k-nearest-neighbour sets around each unique stim-
+ulus in the two embedding spaces. Because a stimulus can have multiple fMRI observations, all predicted
+brain embeddings associated with the same stimulus were first averaged and the resulting stimulus-level
+representation was ℓ2-normalized. CLIP embeddings were aligned to the same unique-stimulus ordering
+and likewise ℓ2-normalized.
+For each stimulus, nearest neighbours were identified independently in brain and CLIP space by cosine
+similarity, excluding the stimulus itself. We evaluated neighbourhood sizes k ∈{5, 10, 20, 50, 100, 250}. Local
+neighbourhood preservation was quantified as
+Ok(i) =
+N brain
+k
+(i) ∩N CLIP
+k
+(i)
+
+k
+,
+(42)
+where N brain
+k
+(i) and N CLIP
+k
+(i) denote the k nearest neighbours of stimulus i in the two spaces. Overlap
+fractions were averaged across all unique stimuli, with 95% bootstrap confidence intervals for the mean.
+Under random correspondence between two neighbourhoods of size k drawn from the same N −1 pos-
+sible non-self stimuli, the expected overlap fraction is
+Orandom
+k
+=
+k
+N −1,
+(43)
+where N is the total number of unique candidate stimuli. Observed overlap was compared with this
+analytical random expectation across neighbourhood scales. This analysis tests whether stimuli that are
+locally similar in CLIP space also tend to occupy nearby positions in the learned brain-embedding space,
+beyond what would be expected from random neighbourhood correspondence.
+Data availability
+The source fMRI datasets and MOSAIC preprocessing resources are publicly available through the reposito-
+ries listed by the MOSAIC project [20].
+Funding Statements
+This work was supported by Tether Operations, S.A. de C.V., which provided salary support for participat-
+ing employees and the resources required to conduct the research. This work was also supported by the
+BRAINFEDERATION FISA-2022-00899, b the CROSSBRAIN project (European Union’s European Innovation
+Council under grant agreement No. 101070908; The BRAINSTORM PROJECT under Grant Agreement num-
+ber 101099355).
+Author contributions
+M.K. led the development of the study, including model design and implementation, experimental design,
+model training and evaluation, quantitative analyses, visualization, interpretation of results, and prepara-
+tion of the manuscript. M.T. contributed to methodology, model development, experimental analyses, and
+interpretation of results. F.H. contributed substantially to data analysis, visualization, interpretation of re-
+sults, and manuscript writing and revision. T.B. contributed to methodology and manuscript revision. M.F.
+21
+
+
+contributed to conceptualization, methodology, interpretation of results, and manuscript revision. N.T. con-
+tributed to conceptualization, interpretation of results, and manuscript revision. All authors reviewed and
+approved the final manuscript.
+Competing interests
+The authors declare no competing interests.
+References
+[1] Kay, K.N., Naselaris, T., Prenger, R.J., Gallant, J.L.: Identifying natural images from human brain activity.
+Nature 452(7185), 352–355 (2008) https://doi.org/10.1038/nature06713
+[2] Shen, G., Horikawa, T., Majima, K., Kamitani, Y.: Deep image reconstruction from human brain activity.
+PLoS Computational Biology 15(1), 1006633 (2019) https://doi.org/10.1371/journal.pcbi.1006633
+[3] Takagi, Y., Nishimoto, S.: High-resolution image reconstruction with latent diffusion models from hu-
+man brain activity. In: Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern
+Recognition, pp. 14453–14463 (2023)
+[4] Radford, A., Kim, J.W., Hallacy, C., Ramesh, A., Goh, G., Agarwal, S., Sastry, G., Askell, A., Mishkin, P., Clark,
+J., Krueger, G., Sutskever, I.: Learning transferable visual models from natural language supervision.
+In: Proceedings of the 38th International Conference on Machine Learning. Proceedings of Machine
+Learning Research, vol. 139, pp. 8748–8763. PMLR, ??? (2021)
+[5] Scotti, P.S., Banerjee, A., Goode, J., Shabalin, S., Nguyen, A., Cohen, E., Dempster, A.J., Verlinde, N.,
+Yundler, E., Weisberg, D., Norman, K.A., Abraham, T.M.: Reconstructing the mind’s eye: fMRI-to-image
+with contrastive learning and diffusion priors. In: Advances in Neural Information Processing Systems,
+vol. 36 (2023)
+[6] Scotti, P.S., Tripathy, M., Torrico, C., Kneeland, R., Chen, T., Narang, A., Santhirasegaran, C., Xu, J., Nase-
+laris, T., Norman, K.A., Abraham, T.M.: Mindeye2: Shared-subject models enable fmri-to-image with 1
+hour of data. In: Proceedings of the 41st International Conference on Machine Learning. Proceedings
+of Machine Learning Research, vol. 235, pp. 44038–44059. PMLR, ??? (2024)
+[7] Zhang, G., Zhao, Y., Sun, K., Khajehnejad, M., Razi, A., Phung, D., Kuhlmann, L.: Hi-dream: Brain-
+inspired hierarchical diffusion for fmri-to-image reconstruction via roi encoder and visual mapping.
+arXiv preprint arXiv:2511.11437 (2025)
+[8] Wang, A.Y., Kay, K., Naselaris, T., Tarr, M.J., Wehbe, L.: Better models of human high-level visual cortex
+emerge from natural language supervision with a large and diverse dataset. Nature Machine Intelligence
+5(12), 1415–1426 (2023) https://doi.org/10.1038/s42256-023-00753-y
+[9] Allen, E.J., St-Yves, G., Wu, Y., Breedlove, J.L., Prince, J.S., Dowdle, L.T., Nau, M., Caron, B., Pestilli, F.,
+Charest, I., Hutchinson, J.B., Naselaris, T., Kay, K.N.: A massive 7t fmri dataset to bridge cognitive neuro-
+science and artificial intelligence. Nature Neuroscience 25(1), 116–126 (2022) https://doi.org/10.1038/
+s41593-021-00962-x
+[10] Kashif, M., Ferrante, M., Toschi, N.: NeuroFusion: A unified framework for generalized visual stimulus
+decoding from fMRI across datasets and subjects. Neuroinformatics 24, 45 (2026) https://doi.org/10.
+1007/s12021-026-09803-3
+[11] Beliy, R., Zalcher, A., Kogman, J., Wasserman, N., Irani, M.: Brain-IT: Image reconstruction from fMRI
+via brain-interaction transformer. In: International Conference on Learning Representations (2026)
+[12] Wang, H., Lu, J., Li, H., Li, X.:
+ZEBRA: Towards zero-shot cross-subject generalization for
+universal brain visual decoding. In:
+Advances in Neural Information Processing Systems (2025).
+https://arxiv.org/abs/2510.27128
+[13] Huo, J., Wang, Y., Fu, Y., Feng, J.: The pictorial cortex: Zero-shot cross-subject fmri-to-image recon-
+struction via compositional latent modeling. arXiv preprint arXiv:2601.15071 (2026)
+[14] Benchetrit, Y., Careil, M., Dahan, S., Banville, H., d’Ascoli, S., King, J.-R.: Boosting brain-to-image decod-
+ing with tribe v2 data augmentation. arXiv preprint arXiv:2606.06345 (2026)
+22
+
+
+[15] Haxby, J.V., Guntupalli, J.S., Connolly, A.C., Halchenko, Y.O., Conroy, B.R., Gobbini, M.I., Hanke, M., Ra-
+madge, P.J.: A common, high-dimensional model of the representational space in human ventral tem-
+poral cortex. Neuron 72(2), 404–416 (2011) https://doi.org/10.1016/j.neuron.2011.08.026
+[16] Chen, P.-H., Chen, J., Yeshurun, Y., Hasson, U., Haxby, J.V., Ramadge, P.J.: A reduced-dimension fmri
+shared response model. In: Advances in Neural Information Processing Systems, vol. 28, pp. 460–468
+(2015)
+[17] Kriegeskorte, N., Mur, M., Bandettini, P.A.:
+Representational similarity analysis—connecting the
+branches of systems neuroscience. Frontiers in Systems Neuroscience 2, 4 (2008) https://doi.org/
+10.3389/neuro.06.004.2008
+[18] Kriegeskorte, N., Kievit, R.A.: Representational geometry: Integrating cognition, computation, and
+the brain. Trends in Cognitive Sciences 17(8), 401–412 (2013) https://doi.org/10.1016/j.tics.2013.
+06.007
+[19] Marcos-Manchón, P., Jha, R., Fuentemilla, L.: Platonic representations in the human brain: Unsuper-
+vised recovery of universal geometry. arXiv preprint arXiv:2605.20496 (2026)
+[20] Lahner, B., Deb, M., Murty, N.A.R., Oliva, A.: MOSAIC: A scalable framework for fMRI dataset aggregation
+and modeling of human vision. bioRxiv (2025) https://doi.org/10.64898/2025.11.28.690060
+[21] Vaswani, A., Shazeer, N., Parmar, N., Uszkoreit, J., Jones, L., Gomez, A.N., Kaiser, Ł., Polosukhin, I.: At-
+tention is all you need. In: Advances in Neural Information Processing Systems, vol. 30, pp. 5998–6008
+(2017)
+[22] Ferrante, M., Boccato, T., Ozcelik, F., VanRullen, R., Toschi, N.: Through their eyes: Multi-subject brain
+decoding with simple alignment techniques. Imaging Neuroscience 2, 2–00170 (2024) https://doi.org/
+10.1162/imag_a_00170
+[23] Hoerl, A.E., Kennard, R.W.: Ridge regression: Biased estimation for nonorthogonal problems. Techno-
+metrics 12(1), 55–67 (1970)
+[24] Hebart, M.N., Contier, O., Teichmann, L., Rockter, A.H., Zheng, C.Y., Kidder, A., Corriveau, A., Vaziri-
+Pashkam, M., Baker, C.I.: THINGS-data, a multimodal collection of large-scale datasets for investigating
+object representations in human brain and behavior. eLife 12, 82580 (2023) https://doi.org/10.7554/
+eLife.82580
+[25] Contier, O., Baker, C.I., Hebart, M.N.: Distributed representations of behaviour-derived object dimen-
+sions in the human visual system. Nature Human Behaviour 8, 2179–2193 (2024) https://doi.org/10.
+1038/s41562-024-01980-y
+[26] Adebayo,
+J.,
+Gilmer,
+J.,
+Muelly,
+M.,
+Goodfellow,
+I.,
+Hardt,
+M.,
+Kim,
+B.:
+Sanity
+checks
+for saliency maps. In:
+Advances in Neural Information Processing Systems,
+vol. 31 (2018).
+https://papers.nips.cc/paper/2018/hash/294a8ed24b1ad22ec2e7efea049b8737-Abstract.html
+[27] Fu, S., Tamir, N., Sundaram, S., Chai, L., Zhang, R., Dekel, T., Isola, P.: Dreamsim: Learning new dimen-
+sions of human visual similarity using synthetic data. arXiv preprint arXiv:2306.09344 (2023)
+[28] Esteban, O., Markiewicz, C.J., Blair, R.W., Moodie, C.A., Isik, A.I., Erramuzpe, A., Kent, J.D., Goncalves,
+M., DuPre, E., Snyder, M., Oya, H., Ghosh, S.S., Wright, J., Durnez, J., Poldrack, R.A., Gorgolewski, K.J.:
+fMRIPrep: A robust preprocessing pipeline for functional MRI. Nature Methods 16, 111–116 (2019) https:
+//doi.org/10.1038/s41592-018-0235-4
+[29] Prince, J.S., Charest, I., Kurzawski, J.W., Pyles, J.A., Tarr, M.J., Kay, K.N.: Improving the accuracy of single-
+trial fMRI response estimates using GLMsingle. eLife 11, 77599 (2022) https://doi.org/10.7554/eLife.
+77599
+[30] Glasser, M.F., Coalson, T.S., Robinson, E.C., Hacker, C.D., Harwell, J., Yacoub, E., Ugurbil, K., Andersson,
+J., Beckmann, C.F., Jenkinson, M., Smith, S.M., Van Essen, D.C.: A multi-modal parcellation of human
+cerebral cortex. Nature 536, 171–178 (2016) https://doi.org/10.1038/nature18933
+[31] Schütt, H.H., Kipnis, A.D., Diedrichsen, J., Kriegeskorte, N.: Statistical inference on representational
+geometries. eLife 12, 82566 (2023) https://doi.org/10.7554/eLife.82566
+23
+
+
+Supplementary information
+Composition of the aggregated MOSAIC dataset
+Supplementary Table S1 summarizes the contribution of each constituent dataset to MOSAIC before and
+after cross-dataset stimulus filtering. The eight datasets together comprise 93 dataset-specific participant
+entries, corresponding to 77 unique individuals. Because some individuals participated in more than one
+source dataset, dataset-specific entries rather than unique people define the modelling units used through-
+out this study. Filtering primarily removes duplicate or highly similar stimuli across train–test partitions,
+reducing the numbers of unique stimuli and associated trials while preserving the underlying participant
+collection.
+Table S1: Composition of the aggregated MOSAIC dataset before and after cross-dataset stimulus filtering.
+Dataset
+Entries Naturalistic train Naturalistic test Artificial test Total stimuli Total trials
+BOLD5000
+4
+4,803
+113
+0
+4,916
+18,870
+BMD
+10
+1,000
+102
+0
+1,102
+40,200
+GOD
+5
+1,200
+50
+0
+1,250
+14,750
+Deeprecon
+3
+1,200
+50
+50
+1,300
+24,360
+HAD
+30
+16,200
+5,400
+0
+21,600
+21,600
+THINGS
+3
+8,640
+100
+0
+8,740
+29,520
+NOD
+30
+45,696
+11,424
+0
+57,120
+68,760
+NSD
+8
+69,566
+1,000
+284
+70,850
+218,312
+Agg. before filtering
+93
+148,305
+18,573
+334
+166,878
+436,372
+Final after filtering
+93
+144,360
+18,145
+334
+162,839
+430,007
+The 93 dataset-specific participant entries correspond to 77 unique individuals; 16 individuals contributed recordings to more than
+one constituent dataset. Filtering refers to cross-dataset stimulus reconciliation and near-duplicate removal and therefore
+changes stimulus and trial counts, not the number of participant entries.
+Complete semantic organization of the validation stimulus space
+To complement the representative clusters shown in the main text, we examined the complete set of 40 se-
+mantic clusters defined from normalized CLIP embeddings of the unique validation stimuli (Supplementary
+Fig. S1). The clusters span a broad range of visual content, including people, animals, actions, landscapes,
+vehicles, architecture and manufactured objects (Supplementary Fig. S1a). Retrieval accuracy varied sub-
+stantially across this full semantic spectrum and did not simply follow the number of stimuli assigned to
+each cluster (Supplementary Fig. S1b). Cluster composition also varied across source datasets, with many
+semantic categories represented by stimuli from multiple datasets (Supplementary Fig. S1c). Together, these
+results show that the content-dependent retrieval differences observed in the main analysis extend across
+the complete stimulus taxonomy rather than being specific to the ten clusters selected for detailed neu-
+roanatomical analysis.
+Semantic geometry and cortical contributions across all stimulus clusters
+We next extended the geometric and neuroanatomical analyses from the ten representative clusters used
+in the main text to the complete set of 40 semantic clusters (Supplementary Fig. S2). Network ablation
+effects were strongly content dependent: ventral visual/object and early visual regions produced some of
+the largest retrieval impairments across the semantic space, but the magnitude and relative contribution of
+individual networks varied considerably among clusters (Supplementary Fig. S2a).
+The two semantic-similarity margins likewise varied across categories (Supplementary Fig. S2b). Most
+clusters showed positive stimulus-identity and/or semantic margins, although the strength and statistical
+support of these effects differed across the stimulus taxonomy. Finally, the functional-network composition
+of positively cluster-selective ROIs showed marked variation across all 40 clusters (Supplementary Fig. S2c).
+Together, these analyses show that the category-dependent geometric and cortical effects highlighted in
+the main text form part of a broader, continuously varying organization across the full semantic stimulus
+space.
+Expanded participant-level comparison with Ridge regression
+The main-text baseline analysis was restricted to the eight participants from BOLD5000 and NSD for whom
+matched results were available for BRAID-fMRI , Ridge regression, and the MindEye-style decoder. To assess
+24
+
+
+People & portraits
+C7
+Mountain landscapes
+C0
+Soups & hot 
+beverages
+C6
+Skiing & snow sports
+C30
+Tennis action
+C33
+Snakes
+C14
+Dogs
+C2
+Baseball
+C21
+Sharks & marine life
+C4
+Airplanes & aviation
+C17
+Birds
+C39
+Bridges & urban 
+infrastructure
+C24
+Consumer electronics
+C36
+Stone bridges 
+C8
+Library & auditorium
+C26
+Zebras
+C27
+Trains & rail 
+transport
+C22
+B a t hr oom s & 
+wa s hr o om s
+C1
+Citrus & fruit
+C34
+Shorebirds & 
+wading birds
+C19
+Wa t e r t o w e r s
+C18
+Coastal landscapes
+C9
+Wo o d e n f u r n i t u r e
+C5
+Ceramics & tableware
+C28
+Rural fields
+C35
+Buses & trucks
+C16
+Classic vehicles
+C31
+Textile accessories
+C12
+Emergency vehicles
+C23
+Sailboats & sailing
+C15
+Flowers
+C29
+Structural patterns
+C20
+Religious architecture
+C25
+Clocks & timers
+C3
+Tools & hardware
+C37
+Insects
+C10
+Home appliances
+C11
+Household containers
+ & bins
+C13
+Toiletries & 
+personal care
+C32
+Books, plaques & 
+instruments
+C38
+C7
+C0
+C6
+C30
+C33
+C14
+C2
+C21
+C4
+C17
+C39
+C24
+C36
+C8
+C26
+C27
+C22
+C1
+C34
+C19
+C18
+C9
+C5
+C28
+C35
+C16
+C31
+C12
+C23
+C15
+C29
+C20
+C25
+C3
+C37
+C10
+C11
+C13
+C32
+C38
+Semantic cluster (sorted by retrieval accuracy)
+0.00
+0.05
+0.10
+0.15
+0.20
+0.25
+0.30
+0.35
+Unique-stimulus Top-10 accuracy
+C7
+C0
+C6
+C30
+C33
+C14
+C2
+C21
+C4
+C17
+C39
+C24
+C36
+C8
+C26
+C27
+C22
+C1
+C34
+C19
+C18
+C9
+C5
+C28
+C35
+C16
+C31
+C12
+C23
+C15
+C29
+C20
+C25
+C3
+C37
+C10
+C11
+C13
+C32
+C38
+Semantic cluster (same retrieval-ranked order)
+0
+200
+400
+600
+800
+1000
+Fraction of unique stimuli
+People & portraits (C7)
+Mountain landscapes (C0)
+Soups & hot beverages (C6)
+Skiing & snow sports (C30)
+Tennis action (C33)
+Snakes (C14)
+Dogs (C2)
+Baseball (C21)
+Sharks & marine life (C4)
+Airplanes & aviation (C17)
+Birds (C39)
+Bridges & urban infrastructure (C24)
+Consumer electronics (C36)
+Stone bridges (C8)
+Libraries & auditoriums (C26)
+Zebras (C27)
+Trains & rail transport 
+(C22)
+Bathrooms & washrooms (C1)
+Citrus & fruit (C34)
+Shorebirds & wading birds (C19)
+Water towers (C18)
+Coastal landscapes (C9)
+Wooden furniture (C5)
+Ceramics & tableware (C28)
+Rural fields (C35)
+Buses & trucks (C16)
+Classic vehicles (C31)
+Textile accessories (C12)
+Emergency vehicles (C23)
+Sailboats & sailing (C15)
+Flowers (C29)
+Structural patterns (C20)
+Religious architecture (C25)
+Clocks & timers (C3)
+Tools & hardware (C37)
+Insects (C10)
+Home appliances (C11)
+Household containers & bins (C13)
+Toiletries & personal care (C32)
+Books, plaques & instruments (C38)
+0
+200
+400
+600
+800
+Number of unique stimuli
+BMD
+NSD
+THINGS
+GOD
+BOLD5000
+Deeprecon
+NOD
+c)
+b)
+a)
+Figure S1: Complete semantic organization and retrieval performance across all 40 stimulus clusters. a,
+Representative stimuli from each of the 40 semantic clusters obtained by applying k-means to ℓ2-normalized CLIP
+embeddings of unique validation stimuli. Clusters are arranged from higher to lower Top-10 retrieval accuracy, with
+labels indicating the descriptive semantic category and arbitrary k-means cluster identifier (C0–C39). b,
+Unique-stimulus Top-10 retrieval accuracy (top) and number of unique stimuli (bottom) for all 40 clusters in the same
+retrieval-ranked order. The colour progression follows retrieval rank and is used consistently across panels. c, Dataset
+composition of each semantic cluster, shown in the same retrieval-ranked order as in a,b. Horizontal stacked bars
+indicate the number of unique stimuli contributed by each evaluation dataset. Cluster identifiers are arbitrary and are
+unrelated to retrieval rank.
+performance over a broader set of participants, we additionally compared BRAID-fMRI with Ridge regres-
+sion across all 63 dataset–participant entries for which both methods were evaluated, spanning the seven
+retrieval datasets (Table S2). Across these entries, BRAID-fMRI achieved a higher overall mean Top-10 accu-
+racy than Ridge regression (22.2% versus 13.1%) and a higher dataset-level mean in six of the seven datasets.
+NOD was the exception, where Ridge regression achieved the higher dataset-level mean (12.8% versus 8.1%).
+These results extend the main-text comparison by showing that the relative advantage of BRAID-fMRI over
+Ridge regression is observed across a substantially broader range of datasets and participants.
+25
+
+
+People & portraits (C7)
+Baseline 33.3%
+Mountains & landscapes (C0)
+Baseline 32.4%
+Bowls & drinks (C6)
+Baseline 28.9%
+Skiing (C30)
+Baseline 25.5%
+Tennis action (C33)
+Baseline 24.5%
+Reptiles & frogs (C14)
+Baseline 22.6%
+Dogs (C2)
+Baseline 22.5%
+Baseball (C21)
+Baseline 22.1%
+Sharks & marine life (C4)
+Baseline 18.6%
+Airplanes (C17)
+Baseline 17.2%
+Birds (C39)
+Baseline 15.9%
+Bridges (C24)
+Baseline 15.0%
+Consumer electronics
+Baseline 14.8%
+(C36)
+Stone arches & ruins (C8)
+Baseline 14.3%
+Libraries & theatres (C26)
+Baseline 13.8%
+Zebras (C27)
+Baseline 13.4%
+Trains & rail transport (C22)
+Baseline 12.5%
+Bathrooms & interiors (C1)
+Baseline 12.1%
+Fruits (C34)
+Baseline 9.6%
+Shore birds (C19)
+Baseline 8.4%
+Water towers (C18)
+Baseline 7.8%
+Coasts & oceans (C9)
+Baseline 6.3%
+Wooden furniture (C5)
+Baseline 5.7%
+Cups & jugs (C28)
+Baseline 5.6%
+Rural fields (C35)
+Baseline 4.8%
+Buses (C16)
+Baseline 4.4%
+Cars & trucks (C31)
+Baseline 4.2%
+Bags & textiles (C12)
+Baseline 3.4%
+Emergency vehicles (C23)
+Baseline 3.3%
+Sailboats (C15)
+Baseline 3.3%
+Flowers (C29)
+Baseline 3.2%
+Architectural details (C20)
+Baseline 2.9%
+Religious architecture (C25)
+Baseline 2.9%
+Clocks & gauges (C3)
+Baseline 2.3%
+Tools & hardware (C37)
+Baseline 1.7%
+Insects (C10)
+Baseline 1.7%
+Home appliances (C11)
+Baseline 0.6%
+Containers & boxes (C13)
+Baseline 0.4%
+Toiletries & bottles (C32)
+Baseline 0.2%
+Books & artifacts (C38)
+Baseline 0.0%
+Ventral visual/object
+Early visual
+Parietal attention
+Other
+Motion visual
+Frontal/control
+Cerebellum
+Temporal/auditory
+Subcortical
+Change in unique-stimulus Top-10 accuracy
+(ablated − baseline), percentage points
+−8.0−12.3−15.4−7.2 −8.7−14.4−8.7 +2.0 −5.6 −2.4−11.8−3.8 −6.3 −2.3 −4.1 −3.0 −3.3 −6.2 −2.7 −3.8 −1.6
+0.0
+−2.1 −1.5 −2.0 −1.4 +0.7 −0.6 +0.4 −0.7 −1.7 −1.1 −0.2
+0.0
+−0.4 −0.5 −0.3 +1.2
+0.0
+0.0
+−5.0 −5.6 −2.7−10.1−6.7 +2.0 −3.8 −4.1 −1.5−11.6−2.2 −2.5 −1.6 −6.5 −0.2 −0.9 −8.2 −4.1 −2.5 −0.5 −4.2 −3.8 −1.6 −2.8 −1.6 −2.5 −2.7 −0.6 +0.4 −2.8 −0.9 −0.3 −1.7 −0.7 −0.6 −1.0 −0.6
+0.0
+0.0
+0.0
+−2.6 −1.7 −2.1 −1.8 −8.0 −3.2 +0.2 −5.3 −2.6 −1.0 −0.6 −2.1 −1.2 −0.3 −0.7 −0.8 −1.8 −0.8 −1.0 −0.3 −0.9 −0.2
+0.0
+−0.7 −0.5 −0.4
+0.0
+−0.4 +0.4 +0.3 +0.2 −0.1 −0.6
+0.0
+−0.3
+0.0
+−0.3
+0.0
+0.0
++0.1
++0.5 −1.3 +1.6 +0.1 +1.6 −6.2 −5.0 −1.1 −4.1 −2.6 −1.7 −2.3 −1.5 −0.6 −0.1 −4.5 −2.0 −1.0 −1.1 −1.5 −1.4 −1.1 −0.7 −1.5 −1.1 −1.1 −0.7 −0.3 +0.4 −0.4 −0.3 +0.3 −1.1 −1.7 +0.7 +0.2 −0.4 +0.4 −0.2
+0.0
+−1.8 −0.4 −0.8 −4.0 −5.6 −2.7 +0.2 −5.8 −1.1 +0.8 −1.6 −0.6 +0.2 −1.0 −0.8 +0.3 +0.2 −0.2 +0.1 −0.3 +0.2 −0.1 −0.3
+0.0
+−0.3 −0.4 +0.5 +0.5 −0.4
+0.0
++0.3 −0.1 −0.4 −0.7 −0.3 −0.4 +0.1 +0.4 −0.2
+0.0
+0.0
+−0.7 +0.6 +1.7 +1.0 −2.2 −1.5 −0.2 −0.6 −1.1 −0.8 −1.9 −0.8 +0.1 −0.5 −2.0 −1.7 −0.7 −0.7 −0.6 −0.7
+0.0
++1.0 −0.8
+0.0
+−0.3 −0.4 +0.1 −0.7 −1.2
+0.0
++0.1 −0.2 −0.3 +0.3 −0.1 −0.3
+0.0
+0.0
+0.0
+−0.1 −0.7
+0.0
+−0.2 +0.3 −1.7 −0.4 +0.2 −1.1 −0.2 −0.3 −0.1 +0.3 +0.2 −0.5
+0.0
++0.6 −0.5 −0.2 −0.6 +0.2 +0.3 −0.6 −0.1 +0.3 −0.3 −0.4 +0.4 −0.4 +0.3 +1.0
+0.0
+−0.4 −0.3 −0.1 −0.4 +0.1 +0.4
+0.0
+0.0
+−0.4 +0.7 +0.4 +0.2 +0.4 −2.0 +0.2 +0.3 +0.2 −0.8 +0.2 −0.5 +0.4 −0.2 −0.8 −0.5 −0.6 −0.3 −0.4 −0.2 −0.4 −0.1 −0.2 −0.3 +0.2 −0.2
+0.0
+−0.2 +0.4 −0.1 +0.3
+0.0
+−0.5
+0.0
++0.2 −0.2 +0.1
+0.0
+0.0
+0.0
++0.3 −0.3 +0.7 +0.4 +0.6 −2.0 −0.3 −0.1
+0.0
++0.3 −0.4 −0.3 −0.1 +0.2 −0.8 +0.3 −0.2 −0.1 −0.1 +0.3 −1.2 +0.2 −0.1 −0.4 +0.1 −0.7 −0.4 +0.2 −0.7 −0.1 +0.2
+0.0
+−0.3 +0.3
+0.0
+0.0
+−0.1
+0.0
+−0.2
+0.0
+Negative values indicate impaired retrieval; positive values indicate improved retrieval after ablation.
+Negative values indicate impaired retrieval; positive values indicate improved retrieval after ablation.
+−15.0
+−10.0
+−5.0
+0
++5.0
++10.0
++15.0
+c)
+0.000
+0.025
+0.050
+0.075
+0.100
+0.125
+0.150
+Subject-level cosine-similarity margin
+Matched − same cluster
+Same cluster − different cluster
+Hollow: FDR q ≥ 0.05
+People & portraits (C7)
+Mountain landscapes (C0)
+Soups & hot beverages (C6)
+Skiing & snow sports (C30)
+Tennis action (C33)
+Snakes (C14)
+Dogs (C2)
+Baseball (C21)
+Sharks & marine life (C4)
+Airplanes & aviation (C17)
+Birds (C39)
+Bridges & urban infrastructure (C24)
+Consumer electronics (C36)
+Stone bridges (C8)
+Libraries & auditoriums (C26)
+Zebras (C27)
+Trains & rail transport 
+(C22)
+Bathrooms & washrooms (C1)
+Citrus & fruit (C34)
+Shorebirds & wading birds (C19)
+Water towers (C18)
+Coastal landscapes (C9)
+Wooden furniture (C5)
+Ceramics & tableware (C28)
+Rural fields (C35)
+Buses & trucks (C16)
+Classic vehicles (C31)
+Textile accessories (C12)
+Emergency vehicles (C23)
+Sailboats & sailing (C15)
+Flowers (C29)
+Structural patterns (C20)
+Religious architecture (C25)
+Clocks & timers (C3)
+Tools & hardware (C37)
+Insects (C10)
+Home appliances (C11)
+Household containers & bins (C13)
+Toiletries & personal care (C32)
+Books, plaques & instruments (C38)
+Early
+visual
+Motion
+visual
+Ventral
+visual/
+object
+Parietal
+attention
+Frontal/
+control
+Temporal/
+auditory
+Cerebellum
+Subcortical
+Other
+4
+8
+12
+People & portraits (C7)
+Early
+visual
+Motion
+visual
+Ventral
+visual/
+object
+Parietal
+attention
+Frontal/
+control
+Temporal/
+auditory
+Cerebellum
+Subcortical
+Other
+4
+8
+12
+Mountains & landscapes
+(C0)
+Early
+visual
+Motion
+visual
+Ventral
+visual/
+object
+Parietal
+attention
+Frontal/
+control
+Temporal/
+auditory
+Cerebellum
+Subcortical
+Other
+4
+8
+12
+Bowls & drinks (C6)
+Early
+visual
+Motion
+visual
+Ventral
+visual/
+object
+Parietal
+attention
+Frontal/
+control
+Temporal/
+auditory
+Cerebellum
+Subcortical
+Other
+4
+8
+12
+Skiing (C30)
+Early
+visual
+Motion
+visual
+Ventral
+visual/
+object
+Parietal
+attention
+Frontal/
+control
+Temporal/
+auditory
+Cerebellum
+Subcortical
+Other
+4
+8
+12
+Tennis action (C33)
+Early
+visual
+Motion
+visual
+Ventral
+visual/
+object
+Parietal
+attention
+Frontal/
+control
+Temporal/
+auditory
+Cerebellum
+Subcortical
+Other
+4
+8
+12
+Reptiles & frogs (C14)
+Early
+visual
+Motion
+visual
+Ventral
+visual/
+object
+Parietal
+attention
+Frontal/
+control
+Temporal/
+auditory
+Cerebellum
+Subcortical
+Other
+4
+8
+12
+Dogs (C2)
+Early
+visual
+Motion
+visual
+Ventral
+visual/
+object
+Parietal
+attention
+Frontal/
+control
+Temporal/
+auditory
+Cerebellum
+Subcortical
+Other
+4
+8
+12
+Baseball (C21)
+Early
+visual
+Motion
+visual
+Ventral
+visual/
+object
+Parietal
+attention
+Frontal/
+control
+Temporal/
+auditory
+Cerebellum
+Subcortical
+Other
+4
+8
+12
+Sharks & marine life
+(C4)
+Early
+visual
+Motion
+visual
+Ventral
+visual/
+object
+Parietal
+attention
+Frontal/
+control
+Temporal/
+auditory
+Cerebellum
+Subcortical
+Other
+4
+8
+12
+Airplanes (C17)
+Early
+visual
+Motion
+visual
+Ventral
+visual/
+object
+Parietal
+attention
+Frontal/
+control
+Temporal/
+auditory
+Cerebellum
+Subcortical
+Other
+4
+8
+12
+Birds (C39)
+Early
+visual
+Motion
+visual
+Ventral
+visual/
+object
+Parietal
+attention
+Frontal/
+control
+Temporal/
+auditory
+Cerebellum
+Subcortical
+Other
+4
+8
+12
+Bridges (C24)
+Early
+visual
+Motion
+visual
+Ventral
+visual/
+object
+Parietal
+attention
+Frontal/
+control
+Temporal/
+auditory
+Cerebellum
+Subcortical
+Other
+4
+8
+12
+Consumer electronics
+(C36)
+Early
+visual
+Motion
+visual
+Ventral
+visual/
+object
+Parietal
+attention
+Frontal/
+control
+Temporal/
+auditory
+Cerebellum
+Subcortical
+Other
+4
+8
+12
+Stone arches & ruins
+(C8)
+Early
+visual
+Motion
+visual
+Ventral
+visual/
+object
+Parietal
+attention
+Frontal/
+control
+Temporal/
+auditory
+Cerebellum
+Subcortical
+Other
+4
+8
+12
+Libraries & theatres
+(C26)
+Early
+visual
+Motion
+visual
+Ventral
+visual/
+object
+Parietal
+attention
+Frontal/
+control
+Temporal/
+auditory
+Cerebellum
+Subcortical
+Other
+4
+8
+12
+Zebras (C27)
+Early
+visual
+Motion
+visual
+Ventral
+visual/
+object
+Parietal
+attention
+Frontal/
+control
+Temporal/
+auditory
+Cerebellum
+Subcortical
+Other
+4
+8
+12
+Trains & rail transport
+(C22)
+Early
+visual
+Motion
+visual
+Ventral
+visual/
+object
+Parietal
+attention
+Frontal/
+control
+Temporal/
+auditory
+Cerebellum
+Subcortical
+Other
+4
+8
+12
+Bathrooms & interiors
+(C1)
+Early
+visual
+Motion
+visual
+Ventral
+visual/
+object
+Parietal
+attention
+Frontal/
+control
+Temporal/
+auditory
+Cerebellum
+Subcortical
+Other
+4
+8
+12
+Fruits (C34)
+Early
+visual
+Motion
+visual
+Ventral
+visual/
+object
+Parietal
+attention
+Frontal/
+control
+Temporal/
+auditory
+Cerebellum
+Subcortical
+Other
+4
+8
+12
+Shore birds (C19)
+Early
+visual
+Motion
+visual
+Ventral
+visual/
+object
+Parietal
+attention
+Frontal/
+control
+Temporal/
+auditory
+Cerebellum
+Subcortical
+Other
+4
+8
+12
+Water towers (C18)
+Early
+visual
+Motion
+visual
+Ventral
+visual/
+object
+Parietal
+attention
+Frontal/
+control
+Temporal/
+auditory
+Cerebellum
+Subcortical
+Other
+4
+8
+12
+Coasts & oceans (C9)
+Early
+visual
+Motion
+visual
+Ventral
+visual/
+object
+Parietal
+attention
+Frontal/
+control
+Temporal/
+auditory
+Cerebellum
+Subcortical
+Other
+4
+8
+12
+Wooden furniture (C5)
+Early
+visual
+Motion
+visual
+Ventral
+visual/
+object
+Parietal
+attention
+Frontal/
+control
+Temporal/
+auditory
+Cerebellum
+Subcortical
+Other
+4
+8
+12
+Cups & jugs (C28)
+Early
+visual
+Motion
+visual
+Ventral
+visual/
+object
+Parietal
+attention
+Frontal/
+control
+Temporal/
+auditory
+Cerebellum
+Subcortical
+Other
+4
+8
+12
+Rural fields (C35)
+Early
+visual
+Motion
+visual
+Ventral
+visual/
+object
+Parietal
+attention
+Frontal/
+control
+Temporal/
+auditory
+Cerebellum
+Subcortical
+Other
+4
+8
+12
+Buses (C16)
+Early
+visual
+Motion
+visual
+Ventral
+visual/
+object
+Parietal
+attention
+Frontal/
+control
+Temporal/
+auditory
+Cerebellum
+Subcortical
+Other
+4
+8
+12
+Cars & trucks (C31)
+Early
+visual
+Motion
+visual
+Ventral
+visual/
+object
+Parietal
+attention
+Frontal/
+control
+Temporal/
+auditory
+Cerebellum
+Subcortical
+Other
+4
+8
+12
+Bags & textiles (C12)
+Early
+visual
+Motion
+visual
+Ventral
+visual/
+object
+Parietal
+attention
+Frontal/
+control
+Temporal/
+auditory
+Cerebellum
+Subcortical
+Other
+4
+8
+12
+Emergency vehicles (C23)
+Early
+visual
+Motion
+visual
+Ventral
+visual/
+object
+Parietal
+attention
+Frontal/
+control
+Temporal/
+auditory
+Cerebellum
+Subcortical
+Other
+4
+8
+12
+Sailboats (C15)
+Early
+visual
+Motion
+visual
+Ventral
+visual/
+object
+Parietal
+attention
+Frontal/
+control
+Temporal/
+auditory
+Cerebellum
+Subcortical
+Other
+4
+8
+12
+Flowers (C29)
+Early
+visual
+Motion
+visual
+Ventral
+visual/
+object
+Parietal
+attention
+Frontal/
+control
+Temporal/
+auditory
+Cerebellum
+Subcortical
+Other
+4
+8
+12
+Architectural details
+(C20)
+Early
+visual
+Motion
+visual
+Ventral
+visual/
+object
+Parietal
+attention
+Frontal/
+control
+Temporal/
+auditory
+Cerebellum
+Subcortical
+Other
+4
+8
+12
+Religious architecture
+(C25)
+Early
+visual
+Motion
+visual
+Ventral
+visual/
+object
+Parietal
+attention
+Frontal/
+control
+Temporal/
+auditory
+Cerebellum
+Subcortical
+Other
+4
+8
+12
+Clocks & gauges (C3)
+Early
+visual
+Motion
+visual
+Ventral
+visual/
+object
+Parietal
+attention
+Frontal/
+control
+Temporal/
+auditory
+Cerebellum
+Subcortical
+Other
+4
+8
+12
+Tools & hardware (C37)
+Early
+visual
+Motion
+visual
+Ventral
+visual/
+object
+Parietal
+attention
+Frontal/
+control
+Temporal/
+auditory
+Cerebellum
+Subcortical
+Other
+4
+8
+12
+Insects (C10)
+Early
+visual
+Motion
+visual
+Ventral
+visual/
+object
+Parietal
+attention
+Frontal/
+control
+Temporal/
+auditory
+Cerebellum
+Subcortical
+Other
+4
+8
+12
+Home appliances (C11)
+Early
+visual
+Motion
+visual
+Ventral
+visual/
+object
+Parietal
+attention
+Frontal/
+control
+Temporal/
+auditory
+Cerebellum
+Subcortical
+Other
+4
+8
+12
+Containers & boxes (C13)
+Early
+visual
+Motion
+visual
+Ventral
+visual/
+object
+Parietal
+attention
+Frontal/
+control
+Temporal/
+auditory
+Cerebellum
+Subcortical
+Other
+4
+8
+12
+Toiletries & bottles
+(C32)
+Early
+visual
+Motion
+visual
+Ventral
+visual/
+object
+Parietal
+attention
+Frontal/
+control
+Temporal/
+auditory
+Cerebellum
+Subcortical
+Other
+4
+8
+12
+Books & artifacts (C38)
+b)
+c)
+a)
+Figure S2: Semantic geometry and cortical contributions across all 40 stimulus clusters. a, Cluster-specific
+effects of functional-network ablation on unique-stimulus Top-10 retrieval accuracy. Columns show all 40 semantic
+clusters in retrieval-ranked order and rows show the nine functional or anatomical ROI groups. Values are ablated
+minus baseline accuracy in percentage points; negative values therefore indicate impaired retrieval after ablation,
+whereas positive values indicate improved retrieval. b, Stimulus-identity and semantic-neighbourhood margins for
+each semantic cluster. The identity margin is the difference between matched brain–CLIP similarity and similarity to
+non-matching stimuli from the same semantic cluster; the semantic margin is the difference between same-cluster
+and different-cluster similarity. Markers show cluster-level estimates with uncertainty across participants. Hollow
+markers denote comparisons that did not survive false-discovery-rate correction (q ≥0.05); the dashed vertical line
+denotes zero margin. c, Functional-network composition of the most positively cluster-selective ROIs for all 40
+semantic clusters. Radar plots show the distribution of up to the top 20 positively selective ROIs across the nine
+functional or anatomical groups; reference markers indicate the expected contribution based on each network’s
+representation among the 379 ROIs. Cluster colours and ordering correspond to the retrieval-ranked semantic
+organization shown in Supplementary Fig. S1.
+26
+
+
+Table S2: Participant-level unique-stimulus Top-10 retrieval accuracy.
+Dataset
+Participant
+Ridge regression
+BRAID-fMRI
+BMD
+sub-01
+19.1
+44.9
+BMD
+sub-02
+17.2
+37.5
+BMD
+sub-03
+14.9
+35.2
+BMD
+sub-04
+17.5
+40.7
+BMD
+sub-05
+13.2
+32.4
+BMD
+sub-06
+19.2
+42.8
+BMD
+sub-07
+11.4
+33.5
+BMD
+sub-08
+12.3
+32.5
+BMD
+sub-09
+16.9
+41.3
+BMD
+sub-10
+17.4
+41.0
+Mean ± s.d.
+15.9 ± 2.8
+38.2 ± 4.6
+BOLD5000
+sub-01
+26.8
+46.3
+BOLD5000
+sub-02
+22.6
+38.8
+BOLD5000
+sub-03
+23.3
+42.6
+BOLD5000
+sub-04
+35.9
+41.6
+Mean ± s.d.
+27.2 ± 6.1
+42.3 ± 3.1
+NSD
+sub-01
+18.6
+32.8
+NSD
+sub-02
+17.1
+31.1
+NSD
+sub-03
+15.4
+27.3
+NSD
+sub-04
+17.9
+29.1
+NSD
+sub-05
+20.3
+35.9
+NSD
+sub-06
+23.1
+30.1
+NSD
+sub-07
+3.9
+10.6
+NSD
+sub-08
+13.5
+21.6
+Mean ± s.d.
+16.2 ± 5.8
+27.3 ± 7.9
+GOD
+sub-01
+2.2
+42.0
+GOD
+sub-02
+2.9
+45.1
+GOD
+sub-03
+4.7
+52.8
+GOD
+sub-04
+3.8
+56.1
+GOD
+sub-05
+3.4
+45.6
+Mean ± s.d.
+3.4 ± 1.0
+48.3 ± 5.9
+Deeprecon
+sub-01
+3.0
+26.1
+Deeprecon
+sub-02
+4.8
+28.9
+Deeprecon
+sub-03
+4.4
+31.6
+Mean ± s.d.
+4.1 ± 0.9
+28.9 ± 2.7
+THINGS
+sub-01
+7.5
+25.2
+THINGS
+sub-02
+3.4
+17.5
+THINGS
+sub-03
+3.0
+18.7
+Mean ± s.d.
+4.6 ± 2.5
+20.4 ± 4.1
+NOD
+sub-01
+1.7
+2.1
+NOD
+sub-02
+4.5
+3.3
+NOD
+sub-03
+8.8
+3.8
+NOD
+sub-04
+4.1
+3.2
+NOD
+sub-05
+3.3
+3.6
+NOD
+sub-06
+5.1
+3.1
+NOD
+sub-07
+4.4
+3.3
+NOD
+sub-08
+5.9
+5.2
+NOD
+sub-09
+4.3
+3.1
+NOD
+sub-10
+4.5
+3.5
+NOD
+sub-11
+9.0
+10.0
+NOD
+sub-12
+14.5
+10.0
+NOD
+sub-13
+16.0
+13.5
+NOD
+sub-14
+25.0
+14.0
+NOD
+sub-15
+16.5
+8.5
+NOD
+sub-16
+13.5
+8.0
+NOD
+sub-17
+17.0
+8.0
+NOD
+sub-18
+16.5
+9.0
+27
+
+
+Dataset
+Participant
+Ridge regression
+BRAID-fMRI
+NOD
+sub-19
+12.0
+8.0
+NOD
+sub-20
+24.5
+11.0
+NOD
+sub-21
+21.5
+17.5
+NOD
+sub-22
+27.5
+16.0
+NOD
+sub-23
+10.5
+8.0
+NOD
+sub-24
+14.5
+10.0
+NOD
+sub-25
+23.0
+12.5
+NOD
+sub-26
+8.0
+7.0
+NOD
+sub-27
+21.5
+8.0
+NOD
+sub-28
+20.0
+10.5
+NOD
+sub-29
+19.0
+9.5
+NOD
+sub-30
+8.5
+8.5
+Mean ± s.d.
+12.8 ± 7.6
+8.1 ± 4.1
+Overall
+Mean ± s.d.
+13.1 ± 8.0
+22.2 ± 15.7
+Values are percentages for the 63 dataset–participant entries evaluated by both methods.
+Robustness to checkpoint selection
+To assess whether the main findings depended on checkpoint selection, we compared the checkpoint se-
+lected during training by validation retrieval with the final checkpoint from the same training run. Both were
+evaluated on the same held-out set of 65,395 trials corresponding to 12,819 unique images from 63 partici-
+pants across seven datasets (Fig. S3). The selected checkpoint achieved moderately higher global retrieval
+(Fig. S3a), with a +1.6 percentage-point difference in overall Top-10 accuracy (95% CI, 1.1–2.2 pp; Fig. S3c).
+Dataset-level performance showed a similar ordering across checkpoints (Fig. S3b,c), whereas retrieval us-
+ing participant-specific galleries was essentially unchanged overall (+0.1 pp; 95% CI, −0.3–0.5 pp; Fig. S3c,d).
+The semantic-category retrieval profile was also highly preserved (Spearman ρ = 0.98; Fig. S3e), as was the
+decline in expected Top-10 accuracy with increasing candidate-pool size (Fig. S3f). Thus, checkpoint selec-
+tion modestly affected absolute global retrieval but did not materially alter the dataset-level, semantic, or
+retrieval scaling patterns reported in the main analyses.
+The selected checkpoint was chosen during training by validation Top-5 retrieval and was used for all
+main-text analyses; the last checkpoint corresponds to the final epoch of the same run. Accuracy is unique-
+stimulus Top-10 unless stated otherwise. Confidence intervals were estimated from 2,000 bootstrap resam-
+ples. For pooled retrieval analyses, resampling was performed by image so that repeated trials of the same
+image remained grouped, with identical resamples used for both checkpoints to preserve pairing.
+28
+
+
+Top-1
+Top-5
+Top-10
+0.0
+2.5
+5.0
+7.5
+10.0
+12.5
+15.0
+17.5
+Retrieval accuracy (%)
+Chance ≤ 0.08%
+a)
+Overall (12,819-image gallery)
+n =10.2k
+n = 21.1k
+n = 3.6k
+n = 8.8k
+n = 1.6k
+n = 6.4k
+BMD
+NSD
+THINGS
+Deeprecon
+BOLD5000
+GOD
+NOD
+n = 13.8k
+0
+10
+20
+30
+40
+Top-10 accuracy (%)
+b)
+Per  dataset (global gallery)
+−2
+0
+2
+4
+Δ Top-10, Selected − Last (pp)
+All
+Within-participant
+c)
+(10)
+(8)
+(3)
+(5)
+(4)
+(3)
+(30)
+−7.5
+−5.0
+−2.5
+0.0
+2.5
+5.0
+7.5
+10.0
+Δ within-dataset Top-10 (pp)
+d)
+Within-dataset, per  participant gallery (Selected − Last)
+filled: 95% CI excludes 0 (c, d)
+hollow: n.s.
+dataset median
+participant 95% CI
+0
+10
+20
+30
+40
+50
+Selected: Top-10 (%)
+0
+10
+20
+30
+40
+50
+Last: Top-10 (%)
+People & portraits
+Mountain landscapes
+Soups & hot beverages
+Skiing & snow sports
+Spearman ρ = 0.98
+p = 1e-26
+40 clusters
+e)
+Semantic-category profile
+102
+103
+104
+Candidate-pool size (images)
+0
+20
+40
+60
+80
+100
+Expected Top-10 (%)
+chance (10/M)
+10.7%
+9.8%
+f)
+Candidate-pool stress test (mean of participants)
+Selected checkpoint
+Last checkpoint
+BMD
+NSD
+THINGS
+Deeprecon
+BOLD5000
+GOD
+NOD
+BMD
+NSD
+THINGS
+Deeprecon
+BOLD5000
+GOD
+NOD
+Figure S3: Robustness of retrieval results to checkpoint selection. a, Overall Top-1, Top-5, and Top-10 retrieval
+against the full gallery of 12,819 images. Chance Top-10 is 0.08%. b, Dataset-level Top-10 accuracy, with every query
+ranked against the same global gallery. n denotes the number of held-out trials per dataset. c, Paired difference in
+Top-10 accuracy (Selected – Last, in percentage points) overall, for each dataset, and for participant-specific galleries
+averaged across participants. Diamonds mark the two pooled summaries. d, Participant-level difference in Top-10
+retrieval using each participant’s own held-out gallery. Each point represents one participant; grey lines show 95% CIs
+obtained by resampling that participant’s images. Filled points indicate participants whose CI excludes zero, orange
+bars show dataset medians, and numbers in parentheses give the number of participants per dataset. e, Top-10
+accuracy for each of the 40 CLIP semantic clusters at the selected versus last checkpoint, with 95% CIs on both axes.
+The dashed line denotes identity, and the four best-retrieved clusters are labelled for orientation. Cluster ranking was
+highly preserved between checkpoints (Spearman ρ = 0.98, p ≈10−26). f, Candidate-pool stress test, as in Fig. 5.
+Expected Top-10 accuracy is shown when the gallery is a random subset of M images that always contains the target.
+Values are computed exactly from each query’s global rank using the hypergeometric distribution, averaged within
+participants and then across participants. Bands show 95% CIs from participant resampling, the dashed line denotes
+chance (10/M), and full-gallery values are shown at right. The p-values and CIs are not corrected for multiple
+comparisons.
+29
