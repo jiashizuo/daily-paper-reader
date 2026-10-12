@@ -18,6 +18,8 @@ try:
 except ImportError:
     fcntl = None
 
+from paper_dates import resolve_publication_date
+
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 DEFAULT_SIDEBAR_PATH = ROOT_DIR / "docs" / "_sidebar.md"
@@ -25,6 +27,9 @@ DEFAULT_DOCS_DIR = ROOT_DIR / "docs"
 CONFERENCE_HEADING = "* Conference Papers\n"
 CONFERENCE_DISPLAY_MIN_SCORE = 4.0
 CONFERENCE_DEEP_MIN_SCORE = 4.0
+CONFERENCE_DOC_FILENAME_MAX_BYTES = 255
+CONFERENCE_DOC_BASENAME_MAX_BYTES = 240
+CONFERENCE_DOC_BASENAME_HASH_LEN = 10
 _GENERATE_DOCS_MODULE = None
 
 
@@ -34,7 +39,7 @@ def norm_text(value: Any) -> str:
 
 def parse_conference_result_name(path: Path) -> Tuple[str, str]:
     name = path.name
-    match = re.match(r"^conference-([a-z0-9-]+?)-([0-9]{4}(?:-[0-9]{4})*)\.supabase\.(?:llm|rerank|rrf)\.json$", name)
+    match = re.match(r"^conference-([a-z0-9_-]+?)-([0-9]{4}(?:-[0-9]{4})*)\.supabase\.(?:llm|rerank|rrf)\.json$", name)
     if not match:
         raise ValueError(f"无法从会议结果文件名解析会议和年份：{path}")
     conference = match.group(1).upper()
@@ -49,8 +54,15 @@ def build_conference_marker(conference: str, years: str) -> str:
 
 
 def build_conference_label(conference: str, years: str) -> str:
-    year_label = ", ".join(part.strip() for part in norm_text(years).split(",") if part.strip())
-    return f"{norm_text(conference).upper()} {year_label}".strip()
+    display_names = {
+        "IEEE_SP": "IEEE S&P",
+        "IEEE-SP": "IEEE S&P",
+    }
+    raw = norm_text(conference).upper()
+    conf_label = display_names.get(raw, raw)
+    sep = "/" if raw in display_names else ", "
+    year_label = sep.join(part.strip() for part in norm_text(years).split(",") if part.strip())
+    return f"{conf_label} {year_label}".strip()
 
 
 def build_conference_key(conference: str, years: str) -> str:
@@ -93,6 +105,54 @@ def slugify(value: str) -> str:
     text = re.sub(r"\s+", "-", text)
     text = re.sub(r"[^a-z0-9-]+", "", text)
     return text.strip("-") or "paper"
+
+
+def stable_short_hash(*parts: Any, length: int = CONFERENCE_DOC_BASENAME_HASH_LEN) -> str:
+    raw = "\n".join(norm_text(part) for part in parts)
+    return hashlib.sha1(raw.encode("utf-8")).hexdigest()[: max(int(length or 0), 1)]
+
+
+def shorten_slug_bytes(slug: str, max_bytes: int, *, suffix: str = "") -> str:
+    text = slugify(slug)
+    suffix_text = slugify(suffix) if suffix else ""
+    limit = max(int(max_bytes or 0), 16)
+    reserved = len(suffix_text.encode("utf-8")) + (1 if suffix_text else 0)
+    body_limit = max(limit - reserved, 8)
+    encoded = text.encode("utf-8")
+    if len(encoded) <= body_limit:
+        body = text
+    else:
+        body = encoded[:body_limit].decode("utf-8", errors="ignore").rstrip("-")
+    body = body or "paper"
+    out = f"{body}-{suffix_text}" if suffix_text else body
+    if len(out.encode("utf-8")) <= limit:
+        return out
+    return out.encode("utf-8")[:limit].decode("utf-8", errors="ignore").rstrip("-") or "paper"
+
+
+def build_conference_paper_basename(paper: Dict[str, Any], conference: str, years: str) -> str:
+    paper_id = norm_text(paper.get("id")) or "paper"
+    title = norm_text(paper.get("title")) or paper_id
+    paper_slug = slugify(paper_id)
+    title_slug = slugify(title)
+    basename = f"{paper_slug}-{title_slug}"
+    if len(f"{basename}.md".encode("utf-8")) <= CONFERENCE_DOC_FILENAME_MAX_BYTES:
+        return basename
+    digest = stable_short_hash(conference, years, paper_id, title)
+    return shorten_slug_bytes(
+        basename,
+        CONFERENCE_DOC_BASENAME_MAX_BYTES,
+        suffix=digest,
+    )
+
+
+def build_conference_asset_key(paper: Dict[str, Any]) -> str:
+    raw_key = norm_text(paper.get("id")) or norm_text(paper.get("title")) or "paper"
+    key = slugify(raw_key)
+    if len(key.encode("utf-8")) <= CONFERENCE_DOC_FILENAME_MAX_BYTES:
+        return key
+    digest = stable_short_hash(raw_key, paper.get("title"))
+    return shorten_slug_bytes(key, CONFERENCE_DOC_BASENAME_MAX_BYTES, suffix=digest)
 
 
 def yaml_escape_value(value: Any) -> str:
@@ -170,9 +230,7 @@ def normalize_sidebar_tag(raw_tag: str) -> Tuple[str, str]:
 
 
 def build_conference_paper_route(paper: Dict[str, Any], conference: str, years: str) -> str:
-    paper_id = norm_text(paper.get("id")) or "paper"
-    title_slug = slugify(norm_text(paper.get("title")) or paper_id)
-    basename = f"{slugify(paper_id)}-{title_slug}"
+    basename = build_conference_paper_basename(paper, conference, years)
     return f"conference/{build_conference_key(conference, years)}/{basename}"
 
 
@@ -357,7 +415,7 @@ def ensure_conference_media(
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
     if not pdf_url:
         return [], []
-    asset_key = norm_text(paper.get("id")) or slugify(norm_text(paper.get("title")))
+    asset_key = build_conference_asset_key(paper)
     try:
         from paper_figures import ensure_paper_media
 
@@ -451,6 +509,9 @@ def build_sidebar_payload(
         "selection_source": "conference_retrieval",
         "tags": tags,
     }
+    payload.update(resolve_publication_date(paper, conference, years))
+    if paper.get("published"):
+        payload["published"] = norm_text(paper["published"])
     evidence = get_evidence(ranked_item)
     if evidence:
         payload["evidence"] = evidence
@@ -467,7 +528,8 @@ def build_conference_markdown(
     title_zh = norm_text(ranked_item.get("title_zh") or paper.get("title_zh"))
     authors = paper.get("authors") if isinstance(paper.get("authors"), list) else []
     authors_text = ", ".join(norm_text(item) for item in authors if norm_text(item)) or "Unknown"
-    published = norm_text(paper.get("published"))[:10] or "Unknown"
+    publication = resolve_publication_date(paper, conference, years)
+    published = publication["publication_date"] or "Unknown"
     source = norm_text(paper.get("source"))
     link = norm_text(paper.get("link"))
     pdf_url = resolve_conference_pdf_url(paper)
@@ -494,6 +556,8 @@ def build_conference_markdown(
         lines.append(f"title_zh: {yaml_escape_value(title_zh)}")
     lines.append(f"authors: {yaml_escape_value(authors_text)}")
     lines.append(f"date: {yaml_escape_value(published)}")
+    for key, value in publication.items():
+        lines.append(f"{key}: {yaml_escape_value(value)}")
     if pdf_url:
         lines.append(f"pdf: {yaml_escape_value(pdf_url)}")
     if tags:
