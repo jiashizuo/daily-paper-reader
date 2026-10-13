@@ -48,17 +48,17 @@
 <section class="dpr-home-dashboard-card dpr-home-report-card">
   <div class="dpr-home-dashboard-header">
     <div>
-      <span class="dpr-home-dashboard-kicker">2026-10-03 ~ 2026-10-12</span>
+      <span class="dpr-home-dashboard-kicker">2026-10-13</span>
       <h3 class="dpr-home-dashboard-title">今日汇总</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">共 10 篇</strong>
+    <strong class="dpr-home-dashboard-count">共 8 篇</strong>
   </div>
   <dl class="dpr-home-dashboard-stats">
     <div class="dpr-home-dashboard-stat"><dt>累计更新</dt><dd>1 次</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>6</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>4</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>2</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>6</dd></div>
   </dl>
-  <p class="dpr-home-dashboard-body">最近更新：2026-10-12 15:14:12 UTC<br>状态：成功</p>
+  <p class="dpr-home-dashboard-body">最近更新：2026-10-13 01:14:58 UTC<br>状态：成功</p>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-brief-card">
   <div class="dpr-home-dashboard-header">
@@ -69,7 +69,9 @@
     <strong class="dpr-home-dashboard-count">AI</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<p>2026-10-03至10-12共筛出10篇脑影像论文，精读6篇、速读4篇，重点聚焦fMRI多模态对比学习与超图融合。最值得看的是fMRI-TAMCL（9.0）用文本锚定监督多模态对比学习做脑疾病分类，以及CoHyFuse（9.0）在任务fMRI中结合全局连接组的条件超图融合。普通读者可先了解这两项如何提升小样本脑解码与疾病分类的稳定性，再按需跟进速读中的SPD-MetaFormer等轻量方案。</p>
+<p>10月13日脑影像AI日报：8篇中精读2篇，聚焦家族性阿尔茨海默病连接组与连续脑连接建模。</p>
+<p>最值得看的是两篇8分精读：一项关联突变特异性Aβ聚集与连接组建模，另一项用Log-Gaussian Cox过程做连续脑连接贝叶斯估计；速读中的MRI检索与纵向多模态临床推理也值得扫一眼。</p>
+<p>普通读者可先读这两篇精读的摘要与关键图，再按需关注MRI检索、临床推理工具是否开源可用。</p>
   </div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-deep-card">
@@ -78,12 +80,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">精读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">6 篇</strong>
+    <strong class="dpr-home-dashboard-count">2 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="fMRI-TAMCL: Text-Anchored Supervised Multimodal Contrastive Learning for fMRI-Based Brain Disorder Classification">fMRI-TAMCL: Text-Anchored Supervised Multimodal Contrastive Learning for fMRI-Based Brain Disorder Classification</span></li><li><span class="dpr-home-dashboard-paper-title" title="CoHyFuse: Condition-wise Hypergraph Fusion with Global Connectome in Task-fMRI">CoHyFuse: Condition-wise Hypergraph Fusion with Global Connectome in Task-fMRI</span></li><li><span class="dpr-home-dashboard-paper-title" title="MovieSTAGE: Scene, Transition, and Global Encoding for Movie-fMRI ADHD Classification">MovieSTAGE: Scene, Transition, and Global Encoding for Movie-fMRI ADHD Classification</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Connectome-Based Modeling of Mutation-Specific Amyloid-$β$ Aggregation in Familial Alzheimer&#x27;s Disease">Connectome-Based Modeling of Mutation-Specific Amyloid-$β$ Aggregation in Familial Alzheimer&#x27;s Disease</span></li><li><span class="dpr-home-dashboard-paper-title" title="Bayesian Estimation of Continuous Brain Connectivity with Log-Gaussian Cox Processes">Bayesian Estimation of Continuous Brain Connectivity with Log-Gaussian Cox Processes</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">fbn <strong>6</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">fbn <strong>2</strong></span></div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-skim-card">
   <div class="dpr-home-dashboard-header">
@@ -91,12 +93,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">速读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">4 篇</strong>
+    <strong class="dpr-home-dashboard-count">6 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="SPD-MetaFormer is what you need for small-data brain decoding">SPD-MetaFormer is what you need for small-data brain decoding</span></li><li><span class="dpr-home-dashboard-paper-title" title="MindVLM: Neural-Grounded Visual Captioning via Subject-Aware Semantic Evidence Selection">MindVLM: Neural-Grounded Visual Captioning via Subject-Aware Semantic Evidence Selection</span></li><li><span class="dpr-home-dashboard-paper-title" title="A4-MR: Abnormality-aware Anatomical Alignment for MR">A4-MR: Abnormality-aware Anatomical Alignment for MR</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="NeuroCBIR: A Fast and Accurate Image Retrieval System for Whole-Brain and Region-Specific MRI">NeuroCBIR: A Fast and Accurate Image Retrieval System for Whole-Brain and Region-Specific MRI</span></li><li><span class="dpr-home-dashboard-paper-title" title="BrainTRACE: Tracing Longitudinal, Multimodal, and Volumetric Evidence in Brain MRI Clinical Reasoning">BrainTRACE: Tracing Longitudinal, Multimodal, and Volumetric Evidence in Brain MRI Clinical Reasoning</span></li><li><span class="dpr-home-dashboard-paper-title" title="Evidence-Bound Reasoning: Neuro-Semantic Verification of Biomedical AI in Glioblastoma Radiogenomics">Evidence-Bound Reasoning: Neuro-Semantic Verification of Biomedical AI in Glioblastoma Radiogenomics</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">fbn <strong>4</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">fbn <strong>6</strong></span></div>
 </section>
 </div>
 
