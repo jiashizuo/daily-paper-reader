@@ -1,0 +1,138 @@
+Title: SADL: A Size-Adaptive Decision Layer for Chronic Stroke Lesion Segmentation in ISLES 2026
+
+URL Source: https://arxiv.org/pdf/2610.13422v1
+
+Published Time: Mon, 12 Oct 2026 01:07:25 GMT
+
+Number of Pages: 6
+
+Markdown Content:
+# SADL: A Size-Adaptive Decision Layer for Chronic Stroke Lesion Segmentation in ISLES 2026 
+
+Marek Wodzinski 1,2[0000 −0002 −8076 −6246] , Gniewosz Drwiega 1[0000 −0002 −1968 −2238] , and Wojciech Szymanski 1,2[0009 −0001 −2043 −9104]  
+
+> 1
+
+Sano – Centre for Computational Personalised Medicine International Research Foundation, Krakow, Poland  
+
+> 2
+
+AGH University of Krakow, Krakow, Poland 
+
+wodzinski@agh.edu.pl 
+
+Abstract. Chronic ischemic stroke lesions are difficult to segment on T1-weighted MRI. Their appearance overlaps with healthy tissue, and their volumes span four orders of magnitude, so voxel-level and lesion-level metrics often disagree. We build an eleven-member nnU-Net ensem-ble that covers five design axes: a baseline dice + top-K loss, heavy aug-mentation, per-lesion-volume loss re-weighting, stochastic weight aver-aging, and a sampling-and-architecture block that pairs cohort-balanced sampling with a residual-encoder backbone. Weighted soft-map fusion of the members feeds a tuned decision layer, SADL , that estimates lesion volume, applies an adaptive per-lesion-size threshold, prunes components by voxel count and peak probability, and adds a never-empty rescue. All fusion weights and per-bucket parameters are fitted on out-of-fold (OOF) predictions, so tuning never touches the held-out test set. On a site-disjoint 91-case holdout, SADL reaches Dice 0.7322, lesion-F1 0.7461 and PR-AUC 0.8430 when scored offline with the challenge’s released evaluation code. A paired non-parametric bootstrap against a reference single ensemble member confirms the lesion-F1 gain at p=0 .024 , and the gain is largest in the small-lesion regime, where the rescue step recovers cases that a fixed threshold would silently discard. 
+
+Keywords: Chronic stroke · Lesion segmentation · T1-weighted MRI · Ensemble learning · nnU-Net · Decision-layer post-processing · ATLAS · ISLES 2026. 
+
+## 1 Introduction 
+
+Chronic stroke lesion segmentation on T1-weighted MRI feeds directly into out-come prediction, neuro-restorative studies, and post-stroke rehabilitation plan-ning. Manual delineation is slow and rater-variable, and the task itself is gen-uinely hard: chronic lesions look very close to normal tissue, their volumes span from a fraction of a millilitre to several hundred, and public cohorts are pooled across scanners with different acquisition protocols. In that regime, voxel-level arXiv:2610.13422v1 [cs.CV] 9 Oct 2026 2 M. Wodzinski et al. 
+
+metrics such as Dice can overstate performance on cases whose small lesions dominate lesion-wise recognition [6]. Since the release of ATLAS v2, most published models for this task have been variations around nnU-Net [2,3] and its residual-encoder update. Once the backbone plateaus around Dice 0.72 on ATLAS-derived holdouts, further gains typically come from three levers: training-side variants (loss re-weighting, heavier augmentation, weight-space averaging, cohort balancing), architectural diversity (residual and transformer-hybrid encoders), and post-hoc calibration of the decision layer that turns soft ensembles into binary masks. This paper works on the third lever. We assemble an eleven-member nnU-Net ensemble that covers five design axes and, on top of a weighted soft-map fusion of its outputs, add a decision layer we call SADL . The layer estimates lesion volume, applies an adaptive per-lesion-volume threshold, prunes connected components, and adds a never-empty rescue. Every fusion weight and per-bucket parameter is fitted on out-of-fold predictions inside a 5-fold cross-validation, so the 91-case site-disjoint holdout is only used for reporting. Under the ISLES 2026 released evaluation code [6], the tuned layer beats the Dice-strongest single ensemble member (BucketWeighted, vref = 3 mL) by +0 .6 pp Dice and +5 .4 pp lesion-F1 overall, and by +7 .4 pp lesion-F1 on the < 0.5 mL bucket; a paired bootstrap against a separate reference member ( vref = 5 mL) gives a lesion-F1 lift of 
+
++2 .9 pp at p=0 .024 , and the improvement concentrates in the small-lesion regime where the rescue step earns its keep. 
+
+## 2 Methods 
+
+2.1 Dataset and splits 
+
+Training data comes from ATLAS v2.0 [7] together with the Stroke Outcome Optimization Project (SOOP, 169 sessions) [1], aggregated and released through ISLES 2026 [4]: 1,453 T1-weighted sessions across 55 sites, each with a manually delineated binary lesion mask. The pool is built from three main cohorts (Train-ing: 653 sessions; ATLAS3, which subsumes SOOP: 496; Testing: 299) plus a residual of five sessions with missing or auxiliary cohort labels, absorbed into the main cohorts using their modal label. We reserve three sites (R018, R027, R047) as a site-disjoint 91-case holdout that is large enough for a per-lesion-size analysis while still fitting the CPU budget of our decision-layer tuner, and we run 5-fold cross-validation on the remaining 1,362 sessions. All models are trained in nnU-Net’s plans space at 1 mm isotropic; predictions are resampled back to native T1w geometry before scoring. 
+
+2.2 Backbone 
+
+Every member of our pool is a subclass of nnU-Net v2.7.0 [2]. The upstream codebase is kept unmodified and all our extensions live in a thin wrapper package, so training and inference follow nnU-Net’s established recipe (deep supervision, SADL for ISLES 2026 3
+
+Gaussian sliding-window inference, mirror-based test-time augmentation) unless a specific member deliberately overrides it. Two encoder families appear in the pool: the default PlainConvUNet, and the residual-encoder variant from the “nnU-Net Revisited” update [3]. 
+
+2.3 Ensemble pool 
+
+The eleven members span five design axes chosen to inject complementary er-ror modes: a baseline (dice-plus-top-K cross-entropy); an augmentation member (DA5 heavy schedule, 700 epochs); a loss re-weighting axis ( BucketWeighted )with per-sample weight wi = clip( vref / max( vi, ε ), 0.5, 4.0) at three reference vol-umes vref ∈ { 2, 3, 5} mL; weight-space averaging (SWA [5] from epoch 350, com-bined with the loss re-weighting); and a sampling-and-architecture block gath-ering cohort-balanced sampling, curriculum-by-lesion-size, a cohort-conditioned mixture-of-experts head, synthetic-lesion diffusion augmentation, and the Res-Enc backbone. All eleven members are trained independently on the standard nnU-Net 5-fold split of the training pool, and every fold’s raw soft-max is written to disk so that the decision layer can be tuned offline. 
+
+2.4 SADL decision layer 
+
+Given the eleven per-member foreground probability maps pm(x) for a case, we first take a weighted fusion ¯p = P 
+
+> m
+
+wm pm with wm ≥ 0 and P 
+
+> m
+
+wm = 1 , and then feed ¯p into the four-stage SADL decision layer (Fig. 1): (i) a volume estimate 
+
+obtained by binarising ¯p > 0.5, extracting 26-connected components, and reading the total foreground volume V ⋆; (ii) an adaptive threshold τB selected from a lookup table indexed by the size bucket B(V ⋆) ∈ { < 0.5, 0.5–5, 5–50 , ≥ 50 } mL ;(iii) connected-component pruning that drops components below a per-bucket voxel count nB or a per-CC peak-probability gate; and (iv) a never-empty rescue 
+
+that reinstates the highest-probability component whenever step (iii) leaves an empty mask, preventing catastrophic zero predictions on very small lesions. The tunable parameters ( wm, τB , nB , per-CC gates) are all fitted per fold on the OOF validation set: weights by coordinate ascent on the simplex against a Dice-plus-lesion-F1 composite, and per-bucket parameters by a coarse grid followed by coordinate ascent. The tuner runs in minutes on a modest CPU allocation, so we re-tune whenever a new member joins the pool. The fitted thresholds sit around 0.29 on the two small-lesion buckets and 0.41 on the mid and large buckets: the small-lesion gate is deliberately more permissive to compensate for the ensemble’s under-confidence there. 
+
+2.5 Evaluation 
+
+Every configuration is scored offline with the evaluation code released by the ISLES 2026 organisers alongside the challenge, built on top of panoptica [6]. No challenge-server submission or leaderboard number is involved. Dice is the 4 M. Wodzinski et al.                   
+
+> Ensemble pool
+> (11 nnU-Net members)
+> •Baseline
+> •Augmentation (DA5)
+> •Loss re-weighting
+> •SWA
+> •Sampling / ResEnc
+> Weighted fusion
+> ¯p(x) = 11 P
+> m=1
+> wmpm(x)
+> wm≥0,P
+> mwm= 1
+> SADL decision layer
+> (i) Volume estimate →B
+> (ii) Threshold ¯p > τ B
+> (iii) CC pruning ( nB, peak-prob gate) (iv) Never-empty rescue
+> Mask
+> ˆy(x)∈ { 0,1}
+
+Fig. 1. Overview of the pipeline. Eleven nnU-Net members spanning five design axes feed a weighted-mean soft fusion; the fused foreground field enters the SADL decision layer, which estimates the lesion volume, selects a per-bucket threshold, prunes low-confidence connected components, and rescues cases that would otherwise collapse to an empty prediction. 
+
+panoptica global binary Dice coefficient over the full foreground mask; lesion-F1 is panoptica’s recognition quality under naive greedy 1:1 matching at IoU ≥ 0.25 ;absolute lesion count and volume differences come from the same evaluation; PR-AUC is computed on the fused foreground soft map. We report the mean over the 91-case holdout and stratify by lesion size (bucket populations range from 5 cases in < 0.5 mL to 33 in 5–50 mL). 
+
+## 3 Results 
+
+Table 1 compares the tuned SADL ensemble against a curated subset of the eleven-member pool and against the uniform-mean-fusion baseline. The table keeps one row per ensemble axis rather than listing every member, since the axes motivate the pool and the individual differences within an axis (for example, the three reference-volume variants of the volume-weighted loss) are of secondary interest here. SADL tops every metric except absolute volume difference. Against the Dice-strongest single member (BucketWeighted with vref = 3 mL) the gain is +0 .62 pp Dice and +5 .4 pp lesion-F1; against the uniform-mean ensemble the gain is 
+
++1 .03 pp Dice, +6 .1 pp lesion-F1, and +0 .14 pp PR-AUC. The absolute lesion count difference also drops from 0.98 to 0.86 , or about eleven fewer spurious components across the 91-case holdout. The uniform-mean ensemble averages the eleven soft maps and thresholds them at 0.5 before a modest per-bucket clean-up, and it gains only +0 .5 pp Dice over the vanilla dice + top-K baseline. Almost the whole SADL gain therefore comes from the decision layer, not from adding one more ensemble member. Table 2 slices the same 91 cases into four size buckets and reports both Dice and lesion-F1. Two things stand out. SADL wins three of the four buckets on Dice; on the 0.5–5 mL bucket BucketWeighted ( vref = 3 mL) retains a small edge (0.596 vs 0.579). SADL’s margin over that BucketWeighted variant is small on ≥ 50 mL cases (0.877 vs 0.874) and largest on < 0.5 mL cases ( +4 .4 pp). Lesion-F1 is where the decision layer really earns its keep: at < 0.5 mL SADL scores 0.767 , about 7.4 pp above the strongest single-model config and 17 .4 pp above the uniform-mean ensemble. The rescue step is why. Without it, a fixed SADL for ISLES 2026 5
+
+Table 1. Overall ablation on the 91-case site-disjoint holdout, scored offline with the ISLES 2026 released evaluation code. Higher is better for Dice / lesion-F1 / PR-AUC, lower is better for the two absolute-difference metrics. Best per column in bold .Configuration Dice ↑ LF1 ↑ PR-AUC ↑ ∆Vol. mL ↓ ∆Count ↓
+
+Baseline (dice + top-K) 0.7171 0.6746 0.8358 5.15 0.98 ResEnc 0.7118 0.6731 0.8352 5.33 1.02 DA5 (heavy augmentation) 0.7241 0.6743 0.8236 5.36 1.23 BucketWeighted ( vref = 3 mL) 0.7260 0.6920 0.8351 5.35 0.96 BucketWeighted × SWA 0.7212 0.7018 0.8304 5.32 0.98 Uniform-fusion ensemble (top-11) 0.7219 0.6851 0.8416 5.13 0.98 SADL tuned (ours) 0.7322 0.7461 0.8430 5.47 0.86 
+
+0.5 threshold silently drops the small-lesion cases where no voxel reaches the plurality vote, and lesion-F1 collapses. SADL also tightens mid-size masks, as Figure 2 illustrates on a 5.4 mL case. 
+
+Table 2. Per-lesion-size breakdown for Dice and lesion-F1. Bucket populations: <
+
+0.5 mL: 5 cases, 0.5–5 mL: 29, 5–50 mL: 33, ≥ 50 mL: 24. Best per row and metric in 
+
+bold .Baseline Bwt-3 Uniform ens. SADL Bucket Dice LF1 Dice LF1 Dice LF1 Dice LF1 
+
+< 0.5 mL 0.530 0.693 0.548 0.693 0.535 0.593 0.592 0.767 
+
+0.5–5 mL 0.567 0.614 0.596 0.666 0.575 0.642 0.579 0.682 
+
+5–50 mL 0.764 0.684 0.759 0.727 0.768 0.699 0.783 0.792 
+
+≥ 50 mL 0.873 0.731 0.874 0.675 0.875 0.737 0.877 0.756 T1w + GT contour Baseline (Dice 0.41) SADL (Dice 0.66) 
+
+Fig. 2. Case at 5.4 mL: SADL produces a tighter, more complete mask than the base-line. GT contour and TP in green, FP in blue, FN in red. 
+
+A paired non-parametric bootstrap (10,000 resamples, BCa-adjusted CIs) against a reference single member (BucketWeighted with the default vref = 5 mL) at threshold 0.5 confirms this pattern; the bootstrap uses per-case Dice and lesion-F1 because panoptica’s global metrics are aggregated over the whole hold-out and are not paired at the case level. SADL gains +2 .90 pp in lesion-F1 with a 95% CI of [+0 .17 , +6 .25] pp ( p=0 .024 , significant at α=0 .05 ); the Dice gain 6 M. Wodzinski et al. 
+
+of +0 .31 pp is directionally consistent, but its 95% CI [−1.55 , +1 .72] pp in-cludes zero. The decision layer therefore reliably improves lesion recognition ; its voxel-Dice effect is holdout-dependent. 
+
+## 4 Discussion and Conclusion 
+
+A well-tuned decision layer is a low-cost gain on top of uniform mean fusion of a mature nnU-Net ensemble. SADL adds no new training run and no new member: it re-uses the soft-max outputs already on disk, and because its parameters are fitted on OOF predictions the tuner is cheap to re-run whenever a new member joins the pool. Two caveats: our 91-case site-disjoint holdout is not the hid-den challenge cohort, and not every pool strategy paid off (diffusion-augmented synthesis ranked last despite promising training-time Dice). The three ideas to carry over are the size-bucket-conditioned threshold, the never-empty rescue on the handful of < 0.5 mL cases per fold, and the OOF-fitted fusion weights. The tuned policy is a small JSON blob that any team running an nnU-Net ensemble can drop on top of their own fusion, and it drives our submission container as-is. 
+
+Acknowledgments. This work was supported by the National Science Centre, Poland, under Grant “MultiGeoMed” No. 2024/55/D/ST6/02081. We gratefully acknowledge the Polish high-performance computing infrastructure PLGrid, HPC Center: ACK Cyfronet AGH, for providing computational resources and support within computa-tional grant No. PLG/2025/018770. The work was partially supported by the Excel-lence Initiative – Research University program at the AGH University of Krakow. 
+
+Disclosure of Interests. The authors have no competing interests to declare that are relevant to the content of this article. 
+
+## References 
+
+1. Absher, J., et al.: The stroke outcome optimization project: Acute ischemic strokes from a comprehensive stroke center. Scientific Data 11 (1), 839 (2024) 2. Isensee, F., Jaeger, P.F., Kohl, S.A.A., Petersen, J., Maier-Hein, K.H.: nnU-Net: a self-configuring method for deep learning-based biomedical image segmentation. Nature Methods 18 (2), 203–211 (2021) 3. Isensee, F., Wald, T., Ulrich, C., Baumgartner, M., Roy, S., Maier-Hein, K., Jaeger, P.F.: nnU-Net revisited: A call for rigorous validation in 3D medical image segmenta-tion. In: Medical Image Computing and Computer Assisted Intervention (MICCAI). pp. 488–498. Springer (2024) 4. ISLES 2026 Challenge Organisers: ISLES 2026: chronic stroke lesion segmentation from T1w MRI – dataset descriptor (2026), manuscript in preparation. https:// isles-26.grand-challenge.org/dataset/ 5. Izmailov, P., Podoprikhin, D., Garipov, T., Vetrov, D., Wilson, A.G.: Averaging weights leads to wider optima and better generalization. In: Conference on Uncer-tainty in Artificial Intelligence (UAI). pp. 876–885 (2018) 6. Kofler, F., Möller, H., Buchner, J.A., et al.: Panoptica – instance-wise evaluation of 3D semantic and instance segmentation maps. arXiv preprint arXiv:2312.02608 (2023) 7. Liew, S.L., et al.: A large, curated, open-source stroke neuroimaging dataset to improve lesion segmentation algorithms. Scientific Data 9, 320 (2022)

@@ -51,14 +51,14 @@
       <span class="dpr-home-dashboard-kicker">2026-10-13</span>
       <h3 class="dpr-home-dashboard-title">今日汇总</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">共 8 篇</strong>
+    <strong class="dpr-home-dashboard-count">共 9 篇</strong>
   </div>
   <dl class="dpr-home-dashboard-stats">
-    <div class="dpr-home-dashboard-stat"><dt>累计更新</dt><dd>1 次</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>累计更新</dt><dd>2 次</dd></div>
     <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>2</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>6</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>7</dd></div>
   </dl>
-  <p class="dpr-home-dashboard-body">最近更新：2026-10-13 01:14:58 UTC<br>状态：成功</p>
+  <p class="dpr-home-dashboard-body">最近更新：2026-10-13 23:11:31 UTC<br>状态：成功</p>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-brief-card">
   <div class="dpr-home-dashboard-header">
@@ -69,9 +69,10 @@
     <strong class="dpr-home-dashboard-count">AI</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<p>10月13日脑影像AI日报：8篇中精读2篇，聚焦家族性阿尔茨海默病连接组与连续脑连接建模。</p>
-<p>最值得看的是两篇8分精读：一项关联突变特异性Aβ聚集与连接组建模，另一项用Log-Gaussian Cox过程做连续脑连接贝叶斯估计；速读中的MRI检索与纵向多模态临床推理也值得扫一眼。</p>
-<p>普通读者可先读这两篇精读的摘要与关键图，再按需关注MRI检索、临床推理工具是否开源可用。</p>
+<p>今日共生成 9 篇推荐（精读 2 篇，速读 7 篇）</p>
+<p>精读：《Connectome-Based Modeling of Mutation-Specific Amyloid-$β$ Aggregation in Familial Alzheimer&#x27;s Disease》（8.0/10）, 《Bayesian Estimation of Continuous Brain Connectivity with Log-Gaussian Cox Processes》（8.0/10）</p>
+<p>速读：《CoPoE: Multimodal Fusion via Decomposable Disease-Coordinate Product-of-Experts for Missing-Modality Alzheimer&#x27;s Diagnosis》（7.0/10）, 《NeuroCBIR: A Fast and Accurate Image Retrieval System for Whole-Brain and Region-Specific MRI》（6.0/10）, 《BrainTRACE: Tracing Longitudinal, Multimodal, and Volumetric Evidence in Brain MRI Clinical Reasoning》（6.0/10）</p>
+<p>这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。</p>
   </div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-deep-card">
@@ -93,12 +94,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">速读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">6 篇</strong>
+    <strong class="dpr-home-dashboard-count">7 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="NeuroCBIR: A Fast and Accurate Image Retrieval System for Whole-Brain and Region-Specific MRI">NeuroCBIR: A Fast and Accurate Image Retrieval System for Whole-Brain and Region-Specific MRI</span></li><li><span class="dpr-home-dashboard-paper-title" title="BrainTRACE: Tracing Longitudinal, Multimodal, and Volumetric Evidence in Brain MRI Clinical Reasoning">BrainTRACE: Tracing Longitudinal, Multimodal, and Volumetric Evidence in Brain MRI Clinical Reasoning</span></li><li><span class="dpr-home-dashboard-paper-title" title="Evidence-Bound Reasoning: Neuro-Semantic Verification of Biomedical AI in Glioblastoma Radiogenomics">Evidence-Bound Reasoning: Neuro-Semantic Verification of Biomedical AI in Glioblastoma Radiogenomics</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="CoPoE: Multimodal Fusion via Decomposable Disease-Coordinate Product-of-Experts for Missing-Modality Alzheimer&#x27;s Diagnosis">CoPoE: Multimodal Fusion via Decomposable Disease-Coordinate Product-of-Experts for Missing-Modality Alzheimer&#x27;s Diagnosis</span></li><li><span class="dpr-home-dashboard-paper-title" title="NeuroCBIR: A Fast and Accurate Image Retrieval System for Whole-Brain and Region-Specific MRI">NeuroCBIR: A Fast and Accurate Image Retrieval System for Whole-Brain and Region-Specific MRI</span></li><li><span class="dpr-home-dashboard-paper-title" title="BrainTRACE: Tracing Longitudinal, Multimodal, and Volumetric Evidence in Brain MRI Clinical Reasoning">BrainTRACE: Tracing Longitudinal, Multimodal, and Volumetric Evidence in Brain MRI Clinical Reasoning</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">fbn <strong>6</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">fbn <strong>7</strong></span></div>
 </section>
 </div>
 
