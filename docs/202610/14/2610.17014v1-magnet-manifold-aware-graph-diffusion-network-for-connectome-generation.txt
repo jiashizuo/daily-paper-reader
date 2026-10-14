@@ -1,0 +1,3348 @@
+MAGNET: Manifold-Aware Graph Diffusion Network
+for Connectome Generation
+Protyay Dey1∗† Ayush Roy1∗
+Hyuna Cho2
+Won Hwa Kim3
+Vishnu Suresh Lokhande1
+1University at Buffalo, SUNY, USA
+2National Institutes of Health, USA
+3POSTECH, South Korea
+Abstract
+Functional brain connectome represents neural connectivity as a matrix of pair-
+wise interactions between brain regions. Generation of functional connectomes
+is not only a question of validity; rather, having satisfied the constraints on the
+correlation matrix, the next step is to recover the class-conditional geometry buried
+under coarse labels. We propose MAGNET, a Manifold-Aware Graph Diffusion
+Network which uses a normalized-Cholesky representation of the manifold of
+correlation matrices that guarantees validity. MAGNET lifts noisy latent states into
+ROI-level region tokens and performs denoising with a relational inductive bias
+over brain atlas regions. To deal with structural problems induced by coarse labels,
+MAGNET employs class-anchored conditioning, amortized structural bridge, and
+relevance-preserving corruption. Across ABIDE, ADNI, and OASIS-3, MAGNET
+consistently achieves favorable results compared to previous manifold-aware ap-
+proaches, demonstrating improvements of 7 −21% in class-conditional fidelity
+(α, β-F1) across three cohorts and better sampling efficiency. Moreover, while
+training only with strict binary labels, MAGNET is capable of maintaining clinical
+heterogeneity through fine substructure of the connectomes in a zero-shot setting,
+improving subclass covariance alignment (λ-MSE) by over 30%. These results
+suggest that geometric validity is a necessary but insufficient condition for clinical
+utility in connectome synthesis. Moreover, efforts in making the diffusion denoising
+class-conditional manifold aware finds utility beyond the highly curved brain con-
+nectome generation as this is a critical problem in various general settings. The code
+repository can be found at https://github.com/protyayofficial/MAGNET.
+1
+Introduction
+A brain connectome is a comprehensive map of neural connectivity [73], formalized as a relational
+object where each entry encodes interactions between pairs of distinct brain regions. Resting-state
+functional connectomes play a central role in biomarker discovery, cohort analysis, and personalized
+prognosis in modern neuroimaging [71, 14]. Conditional generative model for connectomes enables
+key applications in data-scarce settings, including augmentation [22], synthesis of underrepresented
+populations [56], and construction of synthetic cohorts [76]. Such a model must satisfy two criterias:
+(i) samples must be valid correlation matrices (symmetric, positive definite, with unit diagonals) [61,
+2]; and (ii) must lie within the valid class-conditional regions of the connectome manifold, ensuring
+both geometric validity and clinical consistency [7, 64, 18]. While manifold-aware generative models
+address validity, accurately recovering class-conditional support remains a key challenge.
+Riemannian score models approximate distributions with manifold support [23], while Riemannian
+flow matching and pullback-based pipelines enable efficient transport without leaving the mani-
+fold [38, 18]. Recent work on manifold-preserving diffusion, guidance, and Lie group methods
+∗Equal contribution.
+†Corresponding authors: protyayd@buffalo.edu and vishnulo@buffalo.edu.
+40th Conference on Neural Information Processing Systems (NeurIPS 2026).
+arXiv:2610.17014v1  [cs.LG]  12 Oct 2026
+
+
+further emphasizes that geometry is intrinsic to the learning problem [33, 16, 8, 32]. For connec-
+tomes, the normalized-Cholesky pullback [2, 18] guarantees validity by construction, ensuring every
+decoded sample is a proper correlation matrix. As illustrated in Fig. 1, valid structures are clinically
+meaningful, and the primary manifold direction smoothly stratifies diagnostic groups across cohorts.
+Figure 1: 1D manifold projection. Density estimates along
+the primary manifold direction across ABIDE, ADNI, and OASIS-
+3. A consistent diagnostic shift along the dominant geometric
+axis confirms that valid manifold structure carries clinical signal.
+Healthy controls are anchored in green.
+In neuroimaging, binary labels often collapse
+structurally diverse subpopulations into a sin-
+gle conditioning signal [76, 82, 81]. This
+challenge is further exacerbated by inter-
+cohort distribution shifts and covariate imbal-
+ances, which can obscure clinically meaning-
+ful heterogeneity in neuroimaging datasets
+[17]. Fig. 2 shows class-conditional distribu-
+tions are not centered around a single proto-
+type but instead span directions orthogonal
+to the main diagnostic axis, reflecting sub-
+stantial variability that binary labels cannot capture. Conditioning a generator on such coarse labels
+(e.g., labeling a scan simply as “Alzheimer’s” without accounting for different subtypes or disease
+stages) forces the model to blur these distinct subgroups together into an unrealistic average [31].
+Moreover, even when the generator produces samples in the correct geometric region, it may still fail
+to capture the underlying structure [7, 64]. Thus, the challenge of support recovery, i.e., correctly
+assigning probability mass to the appropriate class-conditional regions on the manifold of valid
+connectomes, remains unresolved (cannot be assessed by geometric validity alone).
+Figure 2: Latent structural heterogeneity. 2D projections of
+connectomes across ABIDE, ADNI, and OASIS-3. Key observation:
+The extensive vertical spread (residual variation) and severe overlap
+within individual clinical labels demonstrate that coarse categories
+collapse diverse subpopulations. This off-axis variation proves classes
+lack a single prototype, visually confirming the core challenge of
+conditional support recovery.
+Core challenges in conditional support
+recovery.
+While a valid chart is nec-
+essary, conditional connectome synthesis
+faces three inherent challenges. The la-
+bel challenge arises because coarse bi-
+nary labels collapse structurally hetero-
+geneous subpopulations, forcing feature
+blending [76, 82, 81, 39, 12, 42, 13]. The
+global-context challenge occurs because
+local noisy states lack sufficient informa-
+tion to recover global structure under lim-
+ited reverse steps, while standard classifier-
+free guidance can overspecialize and re-
+duce coverage [49, 44, 16, 36, 45]. The
+coordinate challenge stems from isotropic
+corruption in a nonlinear chart, where equal-variance noise distorts informative coordinates and prac-
+tically degrades class-conditional structure, making recovery increasingly difficult under constrained
+few-step sampling regimes [38, 8, 59, 74, 83, 72].
+All three challenges are compounded by a structural mismatch inherent to the chart: connectomes
+are relational objects [6], but the normalized-Cholesky parameterization imposes a strict ordering on
+brain regions, making latent coordinates explicitly not permutation-equivariant [85, 50]. Graph-based
+inductive biases are therefore motivated not by permutation invariance [11] but by the structured
+dependencies among ordered Cholesky coefficients. Each zij encodes the orthogonalized partial
+correlation of region i with respect to the preceding j −1 regions in the atlas ordering. Moreover,
+ROI-level attention with learned anatomical positional embeddings [32, 30] consistently outperforms
+flat denoisers that ignore this relational structure [41, 9, 21, 10]. Together, these shift the focus
+beyond geometric feasibility: the core difficulty is conditional support recovery.
+Keeping the aforementioned points in mind, we introduce MAGNET, a Manifold-Aware Graph
+Network diffusion framework operating in a normalized-Cholesky chart [2, 18], where denoising is
+performed over region tokens rather than flattened coordinates. The central insight is that geometric
+validity is a necessary but insufficient condition and the binding constraint is conditional support
+recovery. It requires jointly resolving label ambiguity, missing global context, and coordinate
+corruption within the valid manifold. MAGNET addresses this through three coupled mechanisms:
+2
+
+
+• We address the label challenge via class-anchored conditioning: each class is modeled as a
+Gaussian mixture [51, 29, 24], assigning subtype tokens to explicitly factor latent structural
+heterogeneity before conditioning reaches the denoiser [76, 82, 26, 86].
+• For the global-context challenge, we introduce an amortized structural bridge, a lightweight
+predictor that provides subtype-specific structural summaries derived from correlation statistics
+at each reverse step. This compensates for the inability of local noisy states to encode global
+connectivity under few-step regimes, while avoiding the diversity collapse typically induced by
+classifier-free guidance in limited-step inference [36, 16, 45, 67].
+• Finally, the coordinate challenge is handled via relevance-preserving corruption, a condition-
+adaptive forward process that uses the conditional–unconditional denoising gap to identify in-
+formative chart coordinates and reduce their corruption variance early. Unlike auxiliary-prior or
+conditioning-annealing approaches [74, 67], we directly modulate corruption covariance, ensuring
+class-relevant structure survives into the reverse trajectory where it is most recoverable [38, 59].
+Sec. 2 formalizes generation as a support-recovery problem, decoupling geometric validity from
+clinical fidelity. We establish theoretical guarantees and provide ablations (App. F) validating our
+class-anchored conditioning, amortized bridge, and relevance-preserving corruption. Empirically
+(see Sec. 3), MAGNET demonstrates robust conditional fidelity across ABIDE, ADNI, and OASIS-3,
+achieving superior zero-shot subclass recovery alongside accelerated sampling times.
+2
+Methodology
+We construct MAGNET using four coupled components, targeting the three challenges identified in
+Sec. 1 - label ambiguity from coarse supervision, missing global context under few-step inference,
+and coordinate-space corruption in the nonlinear chart. Sec. 2.1–2.2 establish the validity-preserving
+chart and ROI-level graph denoiser; Sec. 2.3.1–2.3.3 introduce the three controllers that address label
+ambiguity, missing global context, and coordinate-space corruption respectively. Sec. 3.2 evaluates
+zero-shot subclass preservation. All proofs, ablations, and geometric analyses are in App. B–H.
+2.1
+From validity to support recovery
+Let Cd =
+
+C ∈Rd×d : C = C⊤, C ≻0, diag(C) = 1
+	
+denote the manifold of valid correlation
+connectomes [61]. We study conditional generation C ∼pθ(C | y), where y is a coarse label. Once
+validity is ensured, the central challenge shifts to support recovery: generating samples from the
+correct class-conditional regions of the connectome manifold (Figure 2). This is difficult under
+coarse labels, which collapses structurally heterogeneous subpopulations into a single label [76,
+82, 81]. As this issue is orthogonal to geometric validity, validity-preserving transport alone is
+insufficient [18]. Consequently, models may produce geometrically valid but clinically implausible
+samples by averaging across distinct modes [31, 7], reducing diversity needed for downstream
+tasks [56, 82]. MAGNET addresses this via three components: (i) a validity-preserving latent chart,
+(ii) an ROI-level graph denoiser, and (iii) controllers targeting coarse-label ambiguity, missing global
+context, and early corruption of condition-relevant coordinates.
+Geometry-preserving latent chart. Instead of diffusing directly on C, we operate in the normalized-
+Cholesky chart [18], which bijectively parameterizes the free degrees of freedom of correlation
+matrices and guarantees valid outputs upon inversion [2]. Let C = LL⊤with L lower triangular and
+positive diagonal, and define eL = diag(L)−1L. The chart coordinate is z = χ(C) := vech0(eL) ∈
+Rm, where m = d(d−1)
+2
+. Diffusion is performed on standardized coordinates x = (z −µz)/σz, with
+statistics computed from training data [2, 63, 18]. Decoding reverses this process: we reconstruct bL,
+form G = bLbL⊤, and renormalize to obtain bC = diag(G)−1/2 G diag(G)−1/2. By construction, bC
+is symmetric, positive definite, and unit-diagonal [2, 18], so validity is enforced intrinsically rather
+than via post-hoc projection. We reserve χ for this chart, while structural feature extractors used in
+the bridge and spectral loss are denoted separately by φ(·).
+2.2
+ROI-level graph denoising in the validity-preserving chart
+Validity-preserving charts guarantee geometrical feasibility but lack the relational inductive biases
+required to recover class-conditional interactions in flat latent spaces [6, 30, 32, 18, 8]. Because
+functional connectomes inherently require representing nodes alongside relationship patterns [41, 9,
+3
+
+
+Figure 3: Illustration of MAGNET Architecture. The pipeline maps raw correlation matrices to validity-preserving
+coordinates (xt), which are tokenized and merged with additive context embeddings (time, subtype, and bridge). The Trans-
+former core then performs graph-aware denoising, modulated by three dedicated controllers: Class-Anchored Conditioning,
+Amortized Structural Bridge, and Relevance-Preserving Corruption. Finally, row projection and symmetrization guarantee
+the predicted structure remains on the valid correlation manifold.
+21], MAGNET denoises ROI tokens directly. This successfully combines geometric feasibility with
+necessary structural biases [6] (validated against flat charts in Appendix 3.3).
+Given xt, we reshape xt into a symmetric, zero-diagonal matrix A(xt) ∈Rd×d. Each row of this
+matrix is then used as an initial region token [41, 78]. Concatenating orthogonal signals like timestep,
+class, and context often entangles their semantic roles. Instead, MAGNET uses additive token-level
+conditioning, ensuring each channel is independently optimizable [62, 60, 58, 37]. Defining pi as
+the learned anatomical positional embedding, et as the timestep embedding [37], es as the subtype
+embedding, and eb = Embedspec(bt) as the bridge embedding, where bt = Bψ(xt, t, s). Here, xt
+is the noisy normalized cholesky state, t is the diffusion timestep, s is the class-anchored subtype,
+and Bψ (.) is the amortized bridge predictor (see sec. 2.3.2). MAGNET forms a shared conditioning
+vector and initializes ROI tokens as:
+ct = et + es + ξ(eb) ⊙eb,
+h(0)
+i
+= Winai(xt) + pi + ct,
+(1)
+where ξ(·) is a learned gating map and Win is a row projection. A pre-norm transformer stack [78, 84]
+with QK-normalized attention [34] and GeGLU feed-forward layers [70] produces the final token
+matrix H(L). MAGNET then applies a row-wise output projection followed by symmetrization:
+R = WoutH(L),
+E = 1
+2
+ R + R⊤
+,
+bvθ = vech0(E).
+(2)
+Eq. (2) maps the region-level representation back to chart coordinates. Fig. 3 summarizes this full
+architecture. The chart enforces valid correlation matrix output geometry [18], while Transformer
+backbone performing ROI-level graph denoising supplies the relational inductive bias [6] needed for
+conditional support recovery. Detailed component implementations are provided in App. E.
+2.3
+MAGNET Framework
+2.3.1
+Class-anchored conditioning
+First problem arises due to coarse labels, where the application of one label to multiple latent
+structural subpopulations [76, 82, 81] results in sample points located in different off-axis sub-
+regions rather than a single prototype (Fig. 2). Conditional on such labels, generator has no choice
+but to create a mean representation for each mode within the class [31], generating geometrically
+valid yet clinically unrealistic samples [7, 64, 56]. Existing works on subpopulation identification
+and disease heterogeneity modeling shows that an explicit decomposition of the coarse labels into
+latent substructures significantly alleviates mode-averaging [76, 82, 81]. Ignoring this sub-manifold
+structure harms generalization, analogous to label conflation in classification [39, 12], and biases the
+denoiser toward majority modes, compressing diversity toward dominant structural patterns [13, 42].
+MAGNET refines each coarse class y with a train-only subtype variable s. For each class, we fit a
+diagonal-covariance Gaussian mixture in standardized chart coordinates via expectation maximiza-
+tion [24]: p(x | y) ≈PKy
+s=1 πy,s p(x | y, s). We select Ky by BIC [68, 29] and assign hard subtype
+4
+
+
+labels si = arg maxs p(s | xi, yi) [51]. At generation, we sample s ∼p(s | y) and condition the
+denoiser on the corresponding token. This variable s captures latent within-class structure rather than
+a validated biological taxonomy [82, 81].
+Proposition 1 (Subtype refinement monotonically reduces Bayes denoising risk). Assume E∥X0∥2
+2 <
+∞. Let X0 be the clean latent variable, Xt its noisy version, Y the coarse class label, and S a
+class-anchored subtype variable. Under squared loss, we define the Bayes denoising risk
+R⋆
+Y = inf
+f E
+
+∥X0 −f(Xt, Y )∥2
+2
+
+,
+R⋆
+Y,S = inf
+g E
+
+∥X0 −g(Xt, Y, S)∥2
+2
+
+.
+(3)
+Then
+R⋆
+Y −R⋆
+Y,S = E
+h
+∥E[X0 | Xt, Y, S] −E[X0 | Xt, Y ]∥2
+2
+i
+≥0.
+(4)
+In particular, subtype refinement is beneficial exactly when it captures within-class structure unre-
+solved by the coarse label.
+Remark. Eq. 4 demonstrates that subtype refinement improves denoising exactly when S captures
+within-class structure unresolved by the coarse label Y (Fig. 2). Proofs are in App. B.1 and F.4.
+2.3.2
+Amortized structural bridge
+Subtype conditioning is a solution for the problem of labeling, but it does not have the required global
+structural knowledge to use a few-step reverse sampling technique, hence creating a dilemma for
+the choice of either out-of-distribution averaging [7] or constrained manifold learning [67, 45, 16].
+In order to resolve this ambiguity without additional forward samples, we condense a structural
+feature of the subtype from a pre-trained dictionary of data into an amortized predictor [35, 15].
+Unlike self-conditioning, which recycles recursive denoiser outputs [15], this bridge provides an
+independently supervised, compact structural prior to offset the limitations of the noisy input xt.
+Let φ(C) ∈R16 denote the proxy structural feature extractor, combining spectral properties (e.g.,
+moments, rank, condition number) and off-diagonal connectivity statistics. For each subtype s,
+MAGNET fits a summary atom set As = {as,1, . . . , as,Ks} ⊂R16 (Ks ∈{1, 2}) using either the
+subtype mean or two principal-split means, depending on training support. Given a clean latent x0,
+the teacher bridge target is a distance-weighted convex combination of these atoms: b⋆(x0, s, t) =
+PKs
+k=1 wk(x0, s, t) as,k. Because x0 is unavailable at inference, MAGNET amortizes this process
+by predicting the target directly from the noisy state: bt = Bψ(xt, t, s) = fψ(φcheap(xt), et, es).
+Here, φcheap is a low-cost proxy of the noisy chart coordinates. Trained to match the teacher target,
+Bψ is injected via Eq. 1. By entirely replacing the teacher during sampling, Bψ bypasses repeated
+clean-state estimations, yielding a 24 −33× speedup (Table 5).
+Lbridge = ∥Bψ(xt, t, s) −b⋆(x0, s, t)∥2
+2 .
+(5)
+At inference time, Bψ replaces the teacher entirely, yielding the approximately 25 −32× sampling
+speedup over teacher-bridge alternatives shown in Tab. 5.
+Proposition 2 (Bridge-assisted denoising risk and amortization error). Let U = (Xt, t, S), where Xt
+is the noisy latent state, t is diffusion time, and S is the subtype token. Let B⋆= b⋆(X0, S, t) denote
+the teacher bridge target. Under squared loss, define
+R⋆
+U = inf
+f E
+
+∥X0 −f(U)∥2
+2
+
+,
+R⋆
+U,B⋆= inf
+g E
+
+∥X0 −g(U, B⋆)∥2
+2
+
+.
+(6)
+Then
+R⋆
+U −R⋆
+U,B⋆= E
+h
+∥E[X0 | U, B⋆] −E[X0 | U]∥2
+2
+i
+≥0.
+(7)
+Moreover, if the Bayes regressor η(u, b) = E[X0 | U = u, B⋆= b] is L-Lipschitz in b, then the
+plug-in estimator b
+X0(U) = η(U, Bψ(U)) satisfies
+E
+h
+∥X0 −b
+X0(U)∥2
+2
+i
+−R⋆
+U,B⋆≤L2 E
+
+∥Bψ(U) −B⋆∥2
+2
+
+.
+(8)
+Remark.
+Prop. 2 shows that conditioning on the teacher bridge B⋆reduces denoising risk [53, 28]
+(Eq. 7), while minimizing Lbridge bounds the inference gap (Eq. 5). As shown later in Tab. 5
+(App. F.1), lower distillation error directly improves α, β-F1, emprirically validating the amortization
+bound (Eq. 8). Furthermore, omitting Lbridge spikes tracking error by two orders of magnitude with
+no fidelity gain, confirming this active bridge mode is essential rather than optional (App. F.1, B.2).
+5
+
+
+2.3.3
+Relevance-preserving corruption
+The third failure mode is geometric. Although the chart χ guarantees validity after decoding,
+isotropic corruption in chart coordinates is not geometry-neutral: because χ is nonlinear, equal-
+variance perturbations can move the noisy state away from the local class-conditional support
+that the reverse process must recover. This is especially harmful in the few-step regime where
+interpolation steps are larger. Motivated by geometry-aware diffusion and on-manifold correction
+methods [38, 8, 33, 47, 59, 65], we therefore replace isotropic corruption with a manifold-faithful,
+condition-adaptive noising rule as trajectory deviation at any timestep leads to accumulation of
+deviations away from the manifold [65, 59].
+Starting from a provisional isotropic sample ˜xt = √¯αt x0 + √1 −¯αt ϵ, ϵ ∼N(0, I), we estimate
+condition-relevant directions from the conditional-unconditional denoising gap
+dt = Gθ(˜xt, t, s, bt) −Gθ(˜xt, t, ∅, ∅),
+mt,j =
+|dt,j|
+maxk |dt,k| + ε,
+(9)
+where mt ∈[0, 1]m scores chart coordinates by conditional relevance. Following the auxiliary-prior
+view of diffusion guidance [74], we define a task-specific manifold-faithfulness prior
+πt(xt | x0, ˜xt, s, bt) ∝exp
+
+−λt
+√mt ⊙
+ xt −√¯αtx0
+2
+2
+
+,
+λt =
+κρ(t)
+2(1 −¯αt),
+(10)
+where ρ(t) ∈[0, 1] is a monotonically decreasing protection schedule. Equation (10) penalizes
+corruption away from the support-aligned coordinates indicated by mt: directions judged condition-
+relevant are protected most strongly early in diffusion. 3
+Multiplying the isotropic Gaussian kernel by this prior yields a diagonal Gaussian corruption law,
+qmf(xt | x0, ˜xt, s, bt) = N
+ √¯αtx0, (1 −¯αt) Diag(σ2
+t )
+
+, with coordinate-wise variance σ2
+t,j =
+clip
+ 1 −κρ(t)mt,j, σ2
+min, 1
+
+. The implemented forward corruption is therefore xt = √¯αt x0 +
+√1 −¯αt (σt ⊙ϵ), ϵ ∼N(0, I).
+This rule is annealed in the spirit of [67]: protection is strongest at early timesteps, where coarse
+corruption can erase condition-defining structure, and vanishes later so that the process reverts
+to standard isotropic noising near the clean end. Unlike [67], however, we anneal the corruption
+covariance rather than the conditioning signal itself. Thus MAGNET reduces off-support drift at
+its source: coordinates that matter most for conditional denoising retain higher signal-to-noise ratio
+early in the trajectory, while asymptotically recovering the standard diffusion kernel as ρ(t) →0.
+Intuitively, preserving condition-relevant structure for longer keeps the noisy state closer to the local
+class-conditional manifold at each timestep, making it easier for the reverse process to remain on,
+and return to, the correct support. A Gaussian surrogate analysis formalizing this is in App. B.3 and
+corresponding ablations are reported in App. F.2.
+2.4
+Full Training Objective
+Our training objective is L = Ldiff + λbridgeLbridge + λspecLspec. Here, Ldiff corresponds to the
+diffusion loss, Lbridge is the bridge distillation error (Eq. 5), and Lspec = ∥φ(bx0) −φ(x0)∥2
+2 steers
+the predicted latent to retain structural features. Ldiff uses min-SNR reweighting and inverse subject-
+frequency weights for longitudinal cohorts. Lbridge is additionally weighted by ¯αt and masked to
+conditioned examples only and Lspec is mean-reduced over the minibatch.
+We sample with DDIM [72], using six reverse steps as the primary setting. Generation begins by
+sampling a subtype s ∼p(s | y) and initializing from Gaussian noise, followed by reverse denoising
+with subtype and bridge conditioning at every step. Instead of the standard linear CFG approach, we
+use a diversity-preserving variant that orthogonalizes the unconditional residual from the guidance
+direction (see App. E for details), using γ = 1.5 (App. F.3). This directly addresses the global-context
+failure discussed in Sec. 2.3.2: plain linear CFG [36] adds a fixed displacement along the guidance
+direction with a scale that can cause over-specialization toward narrow manifold regions [16, 45].
+Our formulation decomposes the unconditional prediction into components parallel and orthogonal
+to g, and replaces the parallel variant with tanh-saturated guidance instead of adding it. In standard
+CFG, the full unconditional prediction ˆv∅is retained and γg is added which can keep the parallel
+3During training, Gθ in Equation 9 is evaluated with a stop-gradient, so the relevance mask mt does not back propagate
+through the denoizer and diffusion marginals remain tractable.
+6
+
+
+Table 1: Quantitative comparison of validity-preserving generative models under matched low-step budgets. We
+compare MAGNET against GDD-proj[40], TriangCFM, DiffeoGauss, and DiffeoCFM[18] on ABIDE [27], ADNI [80], and
+OASIS-3 [46]. We report α-Precision, β-Recall, and α, β-F1 [1] to evaluate class-conditional support fidelity, ROC-AUC and
+F1 to evaluate downstream utility, and wall-clock sampling time per split. The Real Data row provides the empirical oracle
+from split-wise real-data comparisons, and the MAGNET row highlights our method. Bold denotes the best generative model
+for each metric and underlining denotes the runner-up. Supporting geometric analyses are given in Appendix G–H.
+Dataset
+Method
+Quality Metrics
+CAS Metrics
+Time (s.)
+α-Precision ↑
+β-Recall ↑
+α, β-F1 ↑
+ROC-AUC ↑
+F1 ↑
+Sampling ↓
+ABIDE
+Real Data
+0.80 ± 0.04
+0.81 ± 0.04
+0.80 ± 0.01
+0.66 ± 0.04
+0.58 ± 0.06
+N/A
+TriangCFM
+0.21 ± 0.21
+0.24 ± 0.35
+0.20 ± 0.29
+0.50 ± 0.05
+0.40 ± 0.13
+7.16 ± 1.17
+TriangDDPM
+0.25 ± 0.04
+0.22 ± 0.06
+0.23 ± 0.04
+0.52 ± 0.05
+0.43 ± 0.08
+5.45 ± 0.19
+DiffeoGauss
+0.51 ± 0.04
+0.23 ± 0.03
+0.32 ± 0.03
+0.66 ± 0.05
+0.56 ± 0.06
+0.06 ± 0.01
+DiffeoCFM
+0.81 ± 0.05
+0.50 ± 0.04
+0.62 ± 0.05
+0.60 ± 0.04
+0.52 ± 0.07
+9.04 ± 0.86
+GDSS-proj
+0.00 ± 0.00
+0.28 ± 0.07
+0.00 ± 0.00
+0.47 ± 0.05
+0.29 ± 0.31
+1.05 ± 0.02
+MAGNET (ours)
+0.80 ± 0.04
+0.59 ± 0.04
+0.68 ± 0.03
+0.64 ± 0.07
+0.56 ± 0.06
+0.38 ± 0.02
+ADNI
+Real Data
+0.87 ± 0.09
+0.87 ± 0.02
+0.87 ± 0.05
+0.58 ± 0.03
+0.59 ± 0.03
+N/A
+TriangCFM
+0.23 ± 0.31
+0.25 ± 0.35
+0.23 ± 0.33
+0.52 ± 0.05
+0.37 ± 0.10
+21.70 ± 3.35
+TriangDDPM
+0.27 ± 0.06
+0.30 ± 0.02
+0.28 ± 0.03
+0.54 ± 0.08
+0.43 ± 0.05
+13.92 ± 0.93
+DiffeoGauss
+0.02 ± 0.01
+0.50 ± 0.08
+0.04 ± 0.02
+0.58 ± 0.03
+0.28 ± 0.13
+1.42 ± 0.40
+DiffeoCFM
+0.68 ± 0.12
+0.75 ± 0.04
+0.71 ± 0.05
+0.57 ± 0.04
+0.40 ± 0.09
+36.08 ± 5.84
+GDSS-proj
+0.57 ± 0.05
+0.38 ± 0.07
+0.45 ± 0.05
+0.48 ± 0.07
+0.53 ± 0.36
+1.70 ± 0.01
+MAGNET (ours)
+0.71 ± 0.13
+0.84 ± 0.06
+0.76 ± 0.06
+0.57 ± 0.07
+0.61 ± 0.05
+0.86 ± 0.28
+OASIS-3
+Real Data
+0.89 ± 0.04
+0.88 ± 0.05
+0.88 ± 0.01
+0.71 ± 0.04
+0.61 ± 0.06
+N/A
+TriangCFM
+0.22 ± 0.27
+0.26 ± 0.37
+0.23 ± 0.32
+0.51 ± 0.05
+0.45 ± 0.17
+15.29 ± 2.51
+TriangDDPM
+0.26 ± 0.08
+0.31 ± 0.05
+0.28 ± 0.05
+0.55 ± 0.07
+0.48 ± 0.03
+8.79 ± 1.31
+DiffeoGauss
+0.52 ± 0.06
+0.31 ± 0.02
+0.39 ± 0.03
+0.68 ± 0.03
+0.40 ± 0.09
+1.88 ± 1.10
+DiffeoCFM
+0.63 ± 0.06
+0.38 ± 0.04
+0.47 ± 0.05
+0.68 ± 0.03
+0.53 ± 0.04
+23.24 ± 2.55
+GDSS-proj
+0.01 ± 0.02
+0.04 ± 0.01
+0.01 ± 0.01
+0.51 ± 0.03
+0.30 ± 0.32
+1.44 ± 0.01
+MAGNET (ours)
+0.75 ± 0.07
+0.47 ± 0.06
+0.57 ± 0.06
+0.68 ± 0.03
+0.56 ± 0.04
+0.63 ± 0.00
+Figure 4: Spatial mismatch of cortical hubs. Cortical surface maps illustrating the structural deviation of generated
+samples relative to a held-out real test scan (left). Brighter regions indicate a larger spatial mismatch compared to the real
+reference, while darker regions signify higher fidelity. MAGNET consistently produces the darkest surfaces across all cohorts,
+visually confirming superior support recovery and yielding the lowest quantitative hub errors (shown below each panel).
+component of ˆv∅(might point in a conflicting direction to g) and can dilute directional control. By
+instead using ˆvγ = ˆv⊥
+∅+ γ tanh(∥g∥2)g, the guidance direction is unambiguous and the tanh factor
+prevents over-steering for large ∥g∥2. The calibration is fit on the training split by matching class-
+conditional latent moments, and validity is preserved because decoding still proceeds through the
+normalized-Cholesky correlation chart (see App. F for ablations and sampling sensitivity analyses).
+7
+
+
+Table 2: Zero-shot recovery of fine-grained clinical structure. Generators are trained using only binary labels, but
+evaluated on resolved four-class clinical spaces: CN/SMC/MCI/AD for ADNI and CDR 0/0.5/1/2+ for OASIS-3. Real
+held-out samples retain their metadata subclass labels, while generated samples are mapped into the same subclass space
+using a classifier trained only on real training data. Macro α-precision, β-recall, and α, β-F1 measure support recovery on the
+resolved subclass manifolds; multiclass CAS macro-F1 measures downstream utility; class KL divergence and Bhattacharyya
+distance measure preservation of subclass balance; and λ-MSE measures alignment of subclass-specific covariance structure.
+Bold and underlining denote the best and second-best generative models for each metric.
+Method
+Quality (Macro-Averaged)
+CAS
+Distributional Preservation ↓
+α-Prec. ↑
+β-Recall ↑
+α, β-F1 ↑
+Macro F1 ↑
+Class DKL
+Class DB
+λ-MSE
+ADNI
+TriangCFM
+0.51 ± 0.11
+0.21 ± 0.05
+0.25 ± 0.05
+0.19 ± 0.04
+0.19 ± 0.07
+0.05 ± 0.02
+9.16 ± 0.16
+DiffeoGauss
+0.00 ± 0.00
+0.54 ± 0.04
+0.01 ± 0.01
+0.26 ± 0.03
+0.05 ± 0.06
+0.01 ± 0.01
+11.37 ± 0.64
+DiffeoCFM
+0.38 ± 0.16
+0.48 ± 0.06
+0.33 ± 0.07
+0.27 ± 0.03
+0.06 ± 0.08
+0.01 ± 0.01
+14.30 ± 0.89
+GDSS-proj
+0.27 ± 0.10
+0.30 ± 0.06
+0.20 ± 0.04
+0.19 ± 0.03
+0.34 ± 0.16
+0.09 ± 0.03
+13.47 ± 10.59
+MAGNET (ours)
+0.34 ± 0.07
+0.56 ± 0.14
+0.35 ± 0.04
+0.28 ± 0.02
+0.05 ± 0.03
+0.01 ± 0.01
+6.08 ± 0.53
+OASIS-3
+TriangCFM
+0.59 ± 0.05
+0.19 ± 0.06
+0.26 ± 0.07
+0.25 ± 0.05
+0.03 ± 0.03
+0.01 ± 0.01
+1.75 ± 0.83
+DiffeoGauss
+0.61 ± 0.06
+0.15 ± 0.04
+0.21 ± 0.05
+0.34 ± 0.05
+0.03 ± 0.03
+0.01 ± 0.01
+2.24 ± 0.14
+DiffeoCFM
+0.60 ± 0.06
+0.18 ± 0.05
+0.26 ± 0.06
+0.34 ± 0.04
+0.03 ± 0.03
+0.01 ± 0.01
+1.93 ± 0.46
+GDSS-proj
+0.00 ± 0.00
+0.02 ± 0.01
+0.00 ± 0.00
+0.22 ± 0.07
+0.11 ± 0.09
+0.03 ± 0.02
+4.00 ± 3.04
+MAGNET (ours)
+0.65 ± 0.14
+0.21 ± 0.05
+0.28 ± 0.05
+0.36 ± 0.04
+0.02 ± 0.02
+0.01 ± 0.00
+1.61 ± 0.97
+3
+Experimental Results
+We evaluate MAGNET on three neuroimaging cohorts: ABIDE [27], ADNI [80], and OASIS-3 [46].
+Regional time series are extracted using Nilearn [19] with the MSDL atlas [77] (d = 39), z-scored,
+and converted to correlation matrices via OAS-estimated covariances [22]. The dataset comprises
+4989 scans with strict subject-level splits: ABIDE (846 scans; 455 control, 391 positive), ADNI
+(2343 scans; 980 control, 1363 positive), and OASIS-3 (1800 scans; 1047 control, 753 positive).
+In the primary benchmark, we use binary labels (control = 0, all diagnoses = 1), intentionally imposing
+coarse labels to test recovery of within-class structure (Sec. 3.1). A separate zero-shot multiclass
+evaluation assesses whether finer clinical subtypes are preserved despite binary training (Sec. 3.2).
+Baseline details and experimental setup are provided in App. C and App. D respectively.
+3.1
+Main Benchmark
+Under matched sampling budgets, MAGNET improves upon prior baselines, delivering up to a 21%
+relative increase in class-conditional fidelity (α, β-F1) over the strongest validity-preserving baselines
+(Tab. 1). These gains are most pronounced on heterogeneous cohorts: 21% on OASIS-3 and 7% on
+ADNI. This suggests that MAGNET better captures the within-class clinical variation that confounds
+support recovery in these cohorts. Furthermore, this strict geometric fidelity directly translates to
+downstream utility: MAGNET achieves the highest or tied-best classifier-based F1 scores across all
+three cohorts. Crucially, MAGNET establishes this performance while simultaneously accelerating
+generation. Computational graph reparameterizations have similarly been explored to improve the
+efficiency of probabilistic deep learning [57]. The primary speedup over flow-matching baselines
+arises from the graph-denoiser architecture operating in discrete diffusion steps rather than continuous
+ODE integration; the amortized structural bridge provides an additional approximately 25 −32×
+reduction relative to teacher-bridge alternatives (Tab. 5).
+Fig. 4 further confirms these gains topologically by visualizing the spatial mismatch of cortical
+hubs relative to real test scans. While baselines exhibit brighter surface regions indicative of larger
+spatial deviations, MAGNET generates noticeably darker surfaces that closely resemble the real
+distributions, yielding the lowest hub errors across all three cohorts. Finally, we note that generic
+discrete graph models (e.g., GDSS) fail to achieve this level of fidelity. Because these models are
+natively designed for sparse networks with discrete edge attributes, they cannot inherently enforce
+the strict positive-definite and unit-diagonal constraints of correlation matrices. Consequently, their
+reliance on post-hoc projection to force outputs into valid dense, continuous functional connectomes
+severely disrupts the generative trajectory and destroys subtle structural patterns, rendering them
+fundamentally insufficient for conditional support recovery (see App. C for detailed analysis).
+3.2
+Zero-Shot Recovery of Fine-Grained Clinical Subclasses
+To test if binary-trained generators natively preserve unseen fine-grained clinical structure, we map
+generated samples into these subclasses using a classifier trained exclusively on real data. Because
+no generator is exposed to these labels during training, this zero-shot setting isolates the preservation
+of classifier-resolved clinical organization rather than validating biological taxonomy. This confound
+is controlled across methods by applying the same real-data-trained resolver to every generator.
+8
+
+
+Table 3: Backbone and controller ablation. All variants use the same normalized-Cholesky validity chart and a 6-step
+sampling budget. Controller columns denote class-anchored conditioning (Subtype), amortized bridge conditioning (Bridge),
+relevance-preserving noise (Noise), and diversity-preserving classifier-free guidance (Guidance). The vector row tests whether
+the validity chart alone is sufficient with a flat denoiser. The graph row restores the region-level graph denoiser but disables the
+controller. The individual controller rows activate one mechanism at a time on top of the graph denoiser. The penultimate row
+uses the integrated controller without diversity preserving classifier-free guidance, and the final row is full MAGNET.
+Dataset
+Backbone
+Controller
+Quality
+Sampling (s.) ↓
+Subtype
+Bridge
+Noise
+Guidance
+α-Prec. ↑
+β-Rec. ↑
+α, β-F1 ↑
+ABIDE
+Vector
+✗
+✗
+✗
+✗
+0.52 ± 0.05
+0.18 ± 0.03
+0.26 ± 0.03
+0.04 ± 0.00
+Graph
+✗
+✗
+✗
+✗
+0.70 ± 0.05
+0.46 ± 0.06
+0.56 ± 0.05
+0.36 ± 0.01
+Graph
+✓
+✗
+✗
+✗
+0.72 ± 0.05
+0.50 ± 0.06
+0.59 ± 0.05
+0.39 ± 0.01
+Graph
+✗
+✓
+✗
+✗
+0.73 ± 0.06
+0.48 ± 0.06
+0.58 ± 0.06
+0.38 ± 0.01
+Graph
+✗
+✗
+✓
+✗
+0.71 ± 0.05
+0.50 ± 0.04
+0.59 ± 0.03
+0.38 ± 0.00
+Graph
+✓
+✓
+✓
+✗
+0.77 ± 0.06
+0.54 ± 0.05
+0.63 ± 0.04
+0.38 ± 0.06
+Graph
+✓
+✓
+✓
+✓
+0.80 ± 0.04
+0.59 ± 0.04
+0.68 ± 0.03
+0.38 ± 0.02
+ADNI
+Vector
+✗
+✗
+✗
+✗
+0.52 ± 0.01
+0.25 ± 0.04
+0.34 ± 0.04
+0.07 ± 0.00
+Graph
+✗
+✗
+✗
+✗
+0.61 ± 0.08
+0.54 ± 0.08
+0.57 ± 0.06
+0.72 ± 0.01
+Graph
+✓
+✗
+✗
+✗
+0.63 ± 0.06
+0.72 ± 0.10
+0.67 ± 0.06
+0.74 ± 0.04
+Graph
+✗
+✓
+✗
+✗
+0.62 ± 0.14
+0.78 ± 0.07
+0.69 ± 0.11
+0.76 ± 0.02
+Graph
+✗
+✗
+✓
+✗
+0.64 ± 0.10
+0.76 ± 0.08
+0.69 ± 0.07
+0.75 ± 0.02
+Graph
+✓
+✓
+✓
+✗
+0.68 ± 0.12
+0.80 ± 0.04
+0.74 ± 0.09
+0.72 ± 0.01
+Graph
+✓
+✓
+✓
+✓
+0.71 ± 0.13
+0.84 ± 0.06
+0.76 ± 0.06
+0.86 ± 0.28
+OASIS-3
+Vector
+✗
+✗
+✗
+✗
+0.58 ± 0.09
+0.26 ± 0.04
+0.36 ± 0.05
+0.05 ± 0.00
+Graph
+✗
+✗
+✗
+✗
+0.67 ± 0.08
+0.44 ± 0.07
+0.54 ± 0.08
+0.60 ± 0.01
+Graph
+✓
+✗
+✗
+✗
+0.68 ± 0.08
+0.44 ± 0.07
+0.54 ± 0.06
+0.61 ± 0.02
+Graph
+✗
+✓
+✗
+✗
+0.70 ± 0.06
+0.46 ± 0.06
+0.55 ± 0.06
+0.60 ± 0.02
+Graph
+✗
+✗
+✓
+✗
+0.70 ± 0.08
+0.47 ± 0.05
+0.56 ± 0.06
+0.61 ± 0.02
+Graph
+✓
+✓
+✓
+✗
+0.72 ± 0.07
+0.46 ± 0.05
+0.56 ± 0.06
+0.59 ± 0.00
+Graph
+✓
+✓
+✓
+✓
+0.75 ± 0.07
+0.47 ± 0.06
+0.57 ± 0.06
+0.63 ± 0.00
+Results. As detailed in Tab. 2, MAGNET achieves the strongest subclass covariance alignment
+in this zero-shot setting, reducing λ-MSE on ADNI by 33 −57% relative to baselines. Also,
+TriangCFM (a continuous euclidean baseline) over-indexes on precision at the severe expense of
+coverage. MAGNET also attains the best macro β-recall, α, β-F1, and CAS macro-F1 on ADNI,
+while sweeping all support-recovery, CAS, and λ-MSE metrics on OASIS-3. Across both datasets,
+MAGNET preserves subclass balance with the lowest KL divergence and tied Bhattacharyya distance.
+Distributional alignment has also been studied through optimal transport regularization [52]. Results
+indicate MAGNET better preserves fine-grained clinical organization under coarse binary supervision.
+Crucially, after generated samples are assigned to the resolved subclass space, λ-MSE directly
+compares subclass covariance spectra rather than classifier accuracy, providing complementary
+evidence of subclass preservation. In stark contrast, the generic discrete graph baseline (GDSS-proj)
+suffers catastrophic degradation in this fine-grained setting (e.g., dropping to zero F1 on OASIS-
+3), further emphasizing that post-hoc projection severely disrupts the subtle topological variations
+necessary for resolving unseen clinical subclasses (see App. C for details).
+3.3
+Graph Backbone and Controller Necessity
+MAGNET relies on two core pillars: a validity-preserving chart for mathematical feasibility [18] and a
+graph-structured denoiser for relational inductive biases [22, 21, 55]. Tab. 3 isolates these components
+under a fixed six-step generation budget [72] to evaluate backbone necessity and controller synergy
+in resolving coarse-label deficits.
+The structural gains of the graph backbone. Switching from the vector denoiser to the graph back-
+bone yields substantial gains across all datasets. While the pullback chart guarantees mathematical
+validity, it lacks a mechanism for modeling ROI relationships; the graph denoiser supplies this crucial
+inductive bias, bridging mathematical soundness with anatomical relevance [22, 21, 55].
+Coupled controller dynamics. The control components: subtype conditioning, amortized bridge,
+relevance-preserving noise, and classifier-free guidance [36] act as interdependent latent transforms
+rather than strictly additive modules. Individually, the amortized bridge provides the largest im-
+provement, particularly on the highly diverse ADNI dataset (α, β-F1 improves from 0.57 to 0.69).
+9
+
+
+Table 4: Generalization to higher-resolution ABIDE parcellations. We evaluate MAGNET and the competing generators
+on AAL116, an anatomically defined 116-region atlas, and CC200, a functionally derived parcellation with approximately 200
+regions. Both settings use the same quality-controlled 831-scan ABIDE cohort and 10-split group-aware evaluation protocol.
+We report class-conditional support fidelity, downstream classifier-based utility, and wall-clock sampling time. Results are
+mean ± standard deviation across splits. The Real Data row provides the empirical reference, and bold denotes the best
+generative model within each atlas.
+Atlas
+Method
+α-Prec.↑
+β-Rec.↑
+α, β-F1↑
+ROC-AUC↑
+F1↑
+Time (s)↓
+AAL116
+Real Data
+0.78 ± 0.06
+0.77 ± 0.09
+0.77 ± 0.05
+0.72 ± 0.09
+0.63 ± 0.07
+N/A
+TriangCFM
+0.34 ± 0.09
+0.02 ± 0.01
+0.04 ± 0.02
+0.49 ± 0.05
+0.42 ± 0.19
+3.80 ± 0.21
+TriangDDPM
+0.41 ± 0.05
+0.12 ± 0.07
+0.37 ± 0.08
+0.53 ± 0.08
+0.48 ± 0.12
+3.21 ± 0.32
+DiffeoGauss
+0.55 ± 0.05
+0.35 ± 0.07
+0.43 ± 0.05
+0.53 ± 0.07
+0.32 ± 0.12
+1.94 ± 0.39
+DiffeoCFM
+0.58 ± 0.12
+0.62 ± 0.08
+0.59 ± 0.05
+0.65 ± 0.08
+0.54 ± 0.13
+4.16 ± 0.24
+GDSS-proj
+0.05 ± 0.02
+0.21 ± 0.01
+0.08 ± 0.03
+0.51 ± 0.03
+0.34 ± 0.09
+1.43 ± 0.12
+MAGNET
+0.78 ± 0.05
+0.62 ± 0.08
+0.69 ± 0.05
+0.68 ± 0.06
+0.58 ± 0.07
+1.12 ± 0.07
+CC200
+Real Data
+0.79 ± 0.06
+0.66 ± 0.06
+0.71 ± 0.02
+0.76 ± 0.02
+0.68 ± 0.04
+N/A
+TriangCFM
+0.39 ± 0.02
+0.12 ± 0.05
+0.18 ± 0.06
+0.48 ± 0.03
+0.47 ± 0.09
+4.21 ± 0.13
+TriangDDPM
+0.43 ± 0.02
+0.21 ± 0.12
+0.28 ± 0.11
+0.55 ± 0.02
+0.52 ± 0.11
+3.71 ± 0.16
+DiffeoGauss
+0.57 ± 0.03
+0.41 ± 0.02
+0.48 ± 0.02
+0.58 ± 0.01
+0.41 ± 0.08
+1.73 ± 0.19
+DiffeoCFM
+0.65 ± 0.05
+0.53 ± 0.03
+0.58 ± 0.03
+0.63 ± 0.04
+0.54 ± 0.07
+3.78 ± 0.13
+GDSS-proj
+0.08 ± 0.03
+0.26 ± 0.11
+0.12 ± 0.04
+0.55 ± 0.06
+0.41 ± 0.04
+1.56 ± 0.07
+MAGNET
+0.77 ± 0.09
+0.58 ± 0.09
+0.66 ± 0.06
+0.68 ± 0.05
+0.59 ± 0.05
+1.42 ± 0.05
+However, their full integration is required to achieve peak performance across ABIDE, ADNI, and
+OASIS-3, demonstrating strong synergistic effects.
+Generalization across atlas resolutions. To test whether MAGNET’s gains depend on the com-
+pact parcellation, we repeat the ABIDE benchmark on two higher-resolution atlases: AAL116, an
+anatomically defined 116-region parcellation, and CC200, a functionally derived parcellation with
+approximately 200 regions. Both experiments use a common quality-controlled ABIDE cohort of
+831 scans with CPAC preprocessing, band-pass filtering, and no global signal regression, together
+with the same 10-split group-aware evaluation protocol. These settings increase the dimensionality of
+the generation problem while varying the construction of the atlas.
+MAGNET remains the strongest generator at higher atlas resolutions, achieving the best α, β-F1 on
+AAL116 and CC200, with relative gains of 17% and 14% over DiffeoCFM, respectively (Tab. 4).
+Biological plausibility and clinical structure. Beyond distributional fidelity, we evaluate neurosci-
+entific plausibility through cortical hub preservation and network topology, established descriptors
+of biologically meaningful brain organization [75, 66]. Fig. 4 measures hub preservation, while
+Figs. 11-12 compare connectivity over fixed, real edge patterns. MAGNET further achieves the
+lowest subclass covariance error on ADNI and OASIS-3, including a 33–57% reduction in λ-MSE on
+ADNI (Tab. 2), while its gains persist on the higher-resolution AAL116 and CC200 atlases (Tab. 4).
+4
+Conclusion
+Geometric validity is necessary for conditional connectome synthesis, but it is not sufficient for
+structural recovery. In this paper, we introduced MAGNET, a structure-aware generator that uses
+the normalized-Cholesky chart for validity and focuses the modeling problem on recovering class-
+conditional organization inside the valid correlation manifold. MAGNET combines an ROI-level
+graph denoiser with class-anchored subtype conditioning, an amortized structural bridge, and
+relevance-preserving corruption to reduce ambiguity from coarse labels, global structural context,
+and condition-relevant coordinates. Across three cohorts, MAGNET improves distributional fidelity,
+support recovery, zero-shot clinical alignment, and few-step sampling efficiency over strong baselines.
+MAGNET combines an ROI-level graph denoiser with class-anchored subtype conditioning, an
+amortized structural bridge, and relevance-preserving corruption to address ambiguity from coarse
+labels, missing global context, and corruption of condition-relevant coordinates. Future directions
+include multi-modal imaging inputs, longitudinal trajectory generation, and evaluation of synthetic
+cohort utility in downstream clinical prediction. More broadly, the amortized bridge principle of dis-
+tilling structural summaries into fast inference-time predictors could be extended to other constrained
+generative settings beyond connectomes.
+Acknowledgment Prof. Lokhande acknowledges support from University at Buffalo startup funds,
+an Adobe Research Gift, an NVIDIA Academic Grant, and the National Center for Advancing
+Translational Sciences of the NIH (award UM1TR005296 to the University at Buffalo).
+10
+
+
+References
+[1] Ahmed Alaa, Boris Van Breugel, Evgeny S Saveliev, and Mihaela Van Der Schaar. How Faithful
+is your Synthetic Data? Sample-level Metrics for Evaluating and Auditing Generative Models.
+In International conference on machine learning, pages 290–306. PMLR, 2022.
+[2] Ilya Archakov and Peter Reinhard Hansen. A new parametrization of correlation matrices.
+Econometrica, 89(4):1699–1715, 2021.
+[3] Vincent Arsigny, Pierre Fillard, Xavier Pennec, and Nicholas Ayache. Log-euclidean metrics
+for fast and simple calculus on diffusion tensors. Magnetic Resonance in Medicine: An Official
+Journal of the International Society for Magnetic Resonance in Medicine, 56(2):411–421, 2006.
+[4] Vincent Arsigny, Pierre Fillard, Xavier Pennec, and Nicholas Ayache. Geometric means in a
+novel vector space structure on symmetric positive-definite matrices. SIAM journal on matrix
+analysis and applications, 29(1):328–347, 2007.
+[5] Peter L Bartlett, Dylan J Foster, and Matus J Telgarsky. Spectrally-normalized margin bounds
+for neural networks. Advances in neural information processing systems, 30, 2017.
+[6] Peter W Battaglia, Jessica B Hamrick, Victor Bapst, Alvaro Sanchez-Gonzalez, Vinicius Zam-
+baldi, Mateusz Malinowski, Andrea Tacchetti, David Raposo, Adam Santoro, Ryan Faulkner,
+et al. Relational Inductive Biases, Deep Learning, and Graph Networks. arXiv preprint
+arXiv:1806.01261, 2018.
+[7] Yaniv Benny, Tomer Galanti, Sagie Benaim, and Lior Wolf. Evaluation metrics for conditional
+image generation. International Journal of Computer Vision, 129(5):1712–1731, 2021.
+[8] Marco Bertolini, Tuan Le, and Djork-Arné Clevert. Diffusion generative modeling on lie group
+representations. arXiv preprint arXiv:2502.02513, 2025.
+[9] Alaa Bessadok, Mohamed Ali Mahjoub, and Islem Rekik. Graph neural networks in network
+neuroscience. IEEE Transactions on Pattern Analysis and Machine Intelligence, 45(5):5833–
+5848, 2022.
+[10] Michael M Bronstein, Joan Bruna, Yann LeCun, Arthur Szlam, and Pierre Vandergheynst.
+Geometric Deep Learning: Going beyond Euclidean data. IEEE Signal Processing Magazine,
+34(4):18–42, 2017.
+[11] Michael M. Bronstein, Joan Bruna, Taco Cohen, and Petar Velickovic. Geometric deep learning:
+Grids, groups, graphs, geodesics, and gauges. arXiv preprint arXiv:2104.13478, 2021.
+[12] Mateusz Buda, Atsuto Maki, and Maciej A Mazurowski. A systematic study of the class
+imbalance problem in convolutional neural networks. Neural networks, 106:249–259, 2018.
+[13] Jonathon Byrd and Zachary Lipton. What is the effect of importance weighting in deep learning?
+In International conference on machine learning, pages 872–881. PMLR, 2019.
+[14] F Xavier Castellanos, Adriana Di Martino, R Cameron Craddock, Ashesh D Mehta, and
+Michael P Milham. Clinical applications of the functional connectome. Neuroimage, 80:
+527–540, 2013.
+[15] Ting Chen, Ruixiang Zhang, and Geoffrey Hinton. Analog bits: Generating discrete data using
+diffusion models with self-conditioning. arXiv preprint arXiv:2208.04202, 2022.
+[16] Hyungjin Chung, Jeongsol Kim, Geon Yeong Park, Hyelin Nam, and Jong Chul Ye.
+CFG++: Manifold-constrained classifier free guidance for diffusion models. arXiv preprint
+arXiv:2406.08070, 2024.
+[17] Sotirios Panagiotis Chytas, Vishnu Lokhande, and Vikas Singh. Pooling image datasets with
+multiple covariate shift and imbalance. In International Conference on Learning Representa-
+tions, volume 2024, pages 57282–57304, 2024.
+11
+
+
+[18] Antoine Collas, Ce Ju, Nicolas Salvy, and Bertrand Thirion. Riemannian flow matching for
+brain connectivity matrices via pullback geometry. In The Thirty-ninth Annual Conference on
+Neural Information Processing Systems, 2025. URL https://openreview.net/forum?id=
+NY3LzmUXl7.
+[19] Nilearn contributors. nilearn. URL https://github.com/nilearn/nilearn.
+[20] Thomas Cover and Peter Hart. Nearest neighbor pattern classification. IEEE transactions on
+information theory, 13(1):21–27, 1967.
+[21] Hejie Cui, Wei Dai, Yanqiao Zhu, Xuan Kan, Antonio Aodong Chen Gu, Joshua Lukemire,
+Liang Zhan, Lifang He, Ying Guo, and Carl Yang. BrainGB: a benchmark for brain network
+analysis with graph neural networks. IEEE transactions on medical imaging, 42(2):493–506,
+2022.
+[22] Kamalaker Dadi, Mehdi Rahim, Alexandre Abraham, Darya Chyzhyk, Michael Milham,
+Bertrand Thirion, Gaël Varoquaux, Alzheimer’s Disease Neuroimaging Initiative, et al. Bench-
+marking functional connectome-based predictive models for resting-state fmri. NeuroImage,
+192:115–134, 2019.
+[23] Valentin De Bortoli, Emile Mathieu, Michael Hutchinson, James Thornton, Yee Whye Teh,
+and Arnaud Doucet. Riemannian Score-based Generative Modelling. Advances in neural
+information processing systems, 35:2406–2422, 2022.
+[24] Arthur P Dempster, Nan M Laird, and Donald B Rubin. Maximum likelihood from incomplete
+data via the em algorithm. Journal of the royal statistical society: series B (methodological), 39
+(1):1–22, 1977.
+[25] Luc Devroye, László Györfi, and Gábor Lugosi. A probabilistic theory of pattern recognition,
+volume 31. Springer Science & Business Media, 2013.
+[26] Prafulla Dhariwal and Alexander Nichol. Diffusion models beat gans on image synthesis.
+Advances in neural information processing systems, 34:8780–8794, 2021.
+[27] Adriana Di Martino, Chao-Gan Yan, Qingyang Li, Erin Denio, Francisco X Castellanos, Kaat
+Alaerts, Jeffrey S Anderson, Michal Assaf, Susan Y Bookheimer, Mirella Dapretto, et al. The
+autism brain imaging data exchange: towards a large-scale evaluation of the intrinsic brain
+architecture in autism. Molecular psychiatry, 19(6):659–667, 2014.
+[28] Bradley Efron. Tweedie’s formula and selection bias. Journal of the American Statistical
+Association, 106(496):1602–1614, 2011.
+[29] Chris Fraley and Adrian E Raftery. Model-based clustering, discriminant analysis, and density
+estimation. Journal of the American statistical Association, 97(458):611–631, 2002.
+[30] Yisen Gao, Xingcheng Fu, Qingyun Sun, Jianxin Li, and Xianxian Li. Toward a unified
+geometry understanding: Riemannian diffusion framework for graph generation and prediction.
+arXiv preprint arXiv:2510.04522, 2025.
+[31] Ian Goodfellow.
+Nips 2016 tutorial: Generative adversarial networks.
+arXiv preprint
+arXiv:1701.00160, 2016.
+[32] Neil He, Jiahong Liu, Buze Zhang, Ngoc Bui, Ali Maatouk, Menglin Yang, Irwin King, Melanie
+Weber, and Rex Ying. Position: Beyond Euclidean–Foundation Models Should Embrace
+Non-Euclidean Geometries. arXiv preprint arXiv:2504.08896, 2025.
+[33] Yutong He, Naoki Murata, Chieh-Hsin Lai, Yuhta Takida, Toshimitsu Uesaka, Dongjun Kim,
+Wei-Hsiang Liao, Yuki Mitsufuji, J Zico Kolter, Ruslan Salakhutdinov, et al. Manifold Preserv-
+ing Guided Diffusion. arXiv preprint arXiv:2311.16424, 2023.
+[34] Alex Henry, Prudhvi Raj Dachapally, Shubham Shantaram Pawar, and Yuxuan Chen. Query-key
+normalization for transformers. In Findings of the Association for Computational Linguistics:
+EMNLP 2020, pages 4246–4253, 2020.
+12
+
+
+[35] Geoffrey Hinton, Oriol Vinyals, and Jeff Dean. Distilling the knowledge in a neural network.
+arXiv preprint arXiv:1503.02531, 2015.
+[36] Jonathan Ho and Tim Salimans.
+Classifier-free diffusion guidance.
+arXiv preprint
+arXiv:2207.12598, 2022.
+[37] Jonathan Ho, Ajay Jain, and Pieter Abbeel. Denoising Diffusion Probabilistic Models. Advances
+in neural information processing systems, 33:6840–6851, 2020.
+[38] Chin-Wei Huang, Milad Aghajohari, Joey Bose, Prakash Panangaden, and Aaron C Courville.
+Riemannian Diffusion Models. Advances in Neural Information Processing Systems, 35:
+2750–2761, 2022.
+[39] Nathalie Japkowicz and Shaju Stephen. The class imbalance problem: A systematic study.
+Intelligent data analysis, 6(5):429–449, 2002.
+[40] Jaehyeong Jo, Seul Lee, and Sung Ju Hwang. Score-based generative modeling of graphs via
+the system of stochastic differential equations. In International conference on machine learning,
+pages 10362–10383. PMLR, 2022.
+[41] Xuan Kan, Wei Dai, Hejie Cui, Zilong Zhang, Ying Guo, and Carl Yang. Brain Network
+Transformer. Advances in Neural Information Processing Systems, 35:25586–25599, 2022.
+[42] Bingyi Kang, Saining Xie, Marcus Rohrbach, Zhicheng Yan, Albert Gordo, Jiashi Feng, and
+Yannis Kalantidis. Decoupling representation and classifier for long-tailed recognition. arXiv
+preprint arXiv:1910.09217, 2019.
+[43] Leonid V Kantorovich. The mathematical method of production planning and organization.
+Management Science, 6(4):363–422, 1939.
+[44] Tauhid Khan. Isokinetic flow matching for pathwise straightening of generative flows. arXiv
+preprint arXiv:2604.04491, 2026.
+[45] Tuomas Kynkäänniemi, Miika Aittala, Tero Karras, Samuli Laine, Timo Aila, and Jaakko
+Lehtinen. Applying guidance in a limited interval improves sample and distribution quality in
+diffusion models. Advances in Neural Information Processing Systems, 37:122458–122483,
+2024.
+[46] Pamela J LaMontagne, Tammie LS Benzinger, John C Morris, Sarah Keefe, Russ Hornbeck,
+Chengjie Xiong, Elizabeth Grant, Jason Hassenstab, Krista Moulder, Andrei G Vlassenko,
+et al. OASIS-3: longitudinal neuroimaging, clinical, and cognitive dataset for normal aging and
+alzheimer disease. medrxiv, page 12, 2019.
+[47] Kyowoon Lee and Jaesik Choi. Local manifold approximation and projection for manifold-
+aware diffusion planning. arXiv preprint arXiv:2506.00867, 2025.
+[48] Ziyun Li, Huancheng Hu, Soon Hoe Lim, Xuyu Li, Fei Gao, Enmao Diao, Zezhen Ding,
+Michalis Vazirgiannis, and Henrik Bostrom. A kinetic-energy perspective of flow matching.
+arXiv preprint arXiv:2602.07928, 2026.
+[49] Yaron Lipman, Ricky TQ Chen, Heli Ben-Hamu, Maximilian Nickel, and Matt Le. Flow
+Matching for Generative Modeling. arXiv preprint arXiv:2210.02747, 2022.
+[50] Haggai Maron, Heli Ben-Hamu, Nadav Shamir, and Yaron Lipman. Invariant and equivariant
+graph networks. arXiv preprint arXiv:1812.09902, 2018.
+[51] Geoffrey J McLachlan, Sharon X Lee, and Suren I Rathnayake. Finite Mixture Models. Annual
+review of statistics and its application, 6(1):355–378, 2019.
+[52] Ronak Mehta, Jeffery Kline, Vishnu Suresh Lokhande, Glenn Fung, and Vikas Singh. Efficient
+discrete multi marginal optimal transport regularization. In The Eleventh International Con-
+ference on Learning Representations, 2023. URL https://openreview.net/forum?id=
+R98ZfMt-jE.
+13
+
+
+[53] Koichi Miyasawa et al. An empirical bayes estimator of the mean of a normal population. Bull.
+Inst. Internat. Statist, 38(181-188):1–2, 1961.
+[54] Takeru Miyato, Toshiki Kataoka, Masanori Koyama, and Yuichi Yoshida. Spectral normalization
+for generative adversarial networks. arXiv preprint arXiv:1802.05957, 2018.
+[55] Hamed Mohammadi and Waldemar Karwowski. Graph neural networks in brain connectivity
+studies: Methods, challenges, and future directions. Brain Sciences, 15(1):17, 2024.
+[56] Zeinab Navidi, Akshaya Thoutam, Madeline Hughes, Srivatsan Raghavan, Peter S Winter, Lorin
+Crawford, and Ava P Amini. Adaptive resampling for improved machine learning in imbalanced
+single-cell datasets. bioRxiv, page 11, 2025.
+[57] Jurijs Nazarovs, Ronak R Mehta, Vishnu Suresh Lokhande, and Vikas Singh. Graph reparam-
+eterizations for enabling 1000+ monte carlo iterations in bayesian deep neural networks. In
+Uncertainty in Artificial Intelligence, pages 118–128. PMLR, 2021.
+[58] Alexander Quinn Nichol and Prafulla Dhariwal. Improved denoising diffusion probabilistic
+models. In International conference on machine learning, pages 8162–8171. PMLR, 2021.
+[59] Youngrok Park, Hojung Jung, Sangmin Bae, and Se-Young Yun. Temporal alignment guidance:
+On-manifold sampling in diffusion models. arXiv preprint arXiv:2510.11057, 2025.
+[60] William Peebles and Saining Xie. Scalable diffusion models with transformers. In Proceedings
+of the IEEE/CVF international conference on computer vision, pages 4195–4205, 2023.
+[61] Xavier Pennec, Pierre Fillard, and Nicholas Ayache. A riemannian framework for tensor
+computing. International Journal of computer vision, 66(1):41–66, 2006.
+[62] Ethan Perez, Florian Strub, Harm De Vries, Vincent Dumoulin, and Aaron Courville. FiLM:
+Visual reasoning with a general conditioning layer. In Proceedings of the AAAI conference on
+artificial intelligence, volume 32, 2018.
+[63] Sean Pinkney. A short note on a flexible cholesky parameterization of correlation matrices.
+arXiv preprint arXiv:2405.07286, 2024.
+[64] Lyle Regenwetter, Akash Srivastava, Dan Gutfreund, and Faez Ahmed. Beyond statistical
+similarity: Rethinking metrics for deep generative models in engineering design. Computer-
+Aided Design, 165:103609, 2023.
+[65] Ayush Roy, Wei-Yang Alex Lee, Rudrasis Chakraborty, and Vishnu Suresh Lokhande. Mani-
+foldGD: Training-free hierarchical manifold guidance for diffusion-based dataset distillation.
+arXiv preprint arXiv:2602.23295, 2026.
+[66] Mikail Rubinov and Olaf Sporns. Complex network measures of brain connectivity: uses and
+interpretations. Neuroimage, 52(3):1059–1069, 2010.
+[67] Seyedmorteza Sadat, Jakob Buhmann, Derek Bradley, Otmar Hilliges, and Romann M Weber.
+CADS: Unleashing the diversity of diffusion models through condition-annealed sampling.
+arXiv preprint arXiv:2310.17347, 2023.
+[68] Gideon Schwarz. Estimating the dimension of a model. The annals of statistics, pages 461–464,
+1978.
+[69] David W Scott. Multivariate density estimation and visualization. In Handbook of computational
+statistics: Concepts and methods, pages 549–569. Springer, 2011.
+[70] Noam Shazeer. GLU variants improve transformer. arXiv preprint arXiv:2002.05202, 2020.
+[71] Stephen M Smith, Diego Vidaurre, Christian F Beckmann, Matthew F Glasser, Mark Jenkinson,
+Karla L Miller, Thomas E Nichols, Emma C Robinson, Gholamreza Salimi-Khorshidi, Mark W
+Woolrich, et al. Functional connectomics from resting-state fmri. Trends in cognitive sciences,
+17(12):666–682, 2013.
+14
+
+
+[72] Jiaming Song, Chenlin Meng, and Stefano Ermon. Denoising diffusion implicit models. arXiv
+preprint arXiv:2010.02502, 2020.
+[73] Olaf Sporns, Giulio Tononi, and Rolf Kötter. The Human Connectome: a structural description
+of the human brain. PLoS computational biology, 1(4):e42, 2005.
+[74] Duo Su, Huyu Wu, Huanran Chen, Yiming Shi, Yuzhu Wang, Xi Ye, and Jun Zhu. Diffusion
+models as dataset distillation priors. arXiv preprint arXiv:2510.17421, 2025.
+[75] Martijn P Van den Heuvel and Olaf Sporns. Network hubs in the human brain. Trends in
+cognitive sciences, 17(12):683–696, 2013.
+[76] Erdem Varol, Aristeidis Sotiras, Christos Davatzikos, Alzheimer’s Disease Neuroimaging
+Initiative, et al. HYDRA: Revealing heterogeneity of imaging and genetic patterns through a
+multiple max-margin discriminative analysis framework. Neuroimage, 145:346–364, 2017.
+[77] Gaël Varoquaux, Alexandre Gramfort, Fabian Pedregosa, Vincent Michel, and Bertrand Thirion.
+Multi-subject dictionary learning to segment an atlas of brain spontaneous activity. In Bien-
+nial International Conference on information processing in medical imaging, pages 562–573.
+Springer, 2011.
+[78] Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones, Aidan N Gomez,
+Łukasz Kaiser, and Illia Polosukhin. Attention is all you need. Advances in neural information
+processing systems, 30, 2017.
+[79] Clement Vignac, Igor Krawczuk, Antoine Siraudin, Bohan Wang, Volkan Cevher, and Pas-
+cal Frossard. DiGress: Discrete denoising diffusion for graph generation. arXiv preprint
+arXiv:2209.14734, 2022.
+[80] Michael W Weiner, Dallas P Veitch, Paul S Aisen, Laurel A Beckett, Nigel J Cairns, Robert C
+Green, Danielle Harvey, Clifford R Jack Jr, William Jagust, John C Morris, et al.
+The
+Alzheimer’s Disease Neuroimaging Initiative 3: Continued innovation for clinical trial im-
+provement. Alzheimer’s & Dementia, 13(5):561–571, 2017.
+[81] Junhao Wen, Mathilde Antoniades, Zhijian Yang, Gyujoon Hwang, Ioanna Skampardoni,
+Rongguang Wang, and Christos Davatzikos. Dimensional neuroimaging endophenotypes:
+neurobiological representations of disease heterogeneity through machine learning. Biological
+psychiatry, 96(7):564–584, 2024.
+[82] Thomas Wolfers, Nhat Trung Doan, Tobias Kaufmann, Dag Alnæs, Torgeir Moberget, Ingrid
+Agartz, Jan K Buitelaar, Torill Ueland, Ingrid Melle, Barbara Franke, et al. Mapping the
+heterogeneous phenotype of schizophrenia and bipolar disorder using normative models. JAMA
+psychiatry, 75(11):1146–1155, 2018.
+[83] Yu-Han Wu, Quentin Berthet, Gérard Biau, Claire Boyer, Romuald Elie, and Pierre Marion.
+Optimal stopping in latent diffusion models. arXiv preprint arXiv:2510.08409, 2025.
+[84] Ruibin Xiong, Yunchang Yang, Di He, Kai Zheng, Shuxin Zheng, Chen Xing, Huishuai Zhang,
+Yanyan Lan, Liwei Wang, and Tieyan Liu. On layer normalization in the transformer architecture.
+In International conference on machine learning, pages 10524–10533. PMLR, 2020.
+[85] Manzil Zaheer, Satwik Kottur, Siamak Ravanbakhsh, Barnabas Poczos, Russ R Salakhutdinov,
+and Alexander J Smola. Deep sets. Advances in neural information processing systems, 30,
+2017.
+[86] Zhengli Zhao, Sameer Singh, Honglak Lee, Zizhao Zhang, Augustus Odena, and Han Zhang.
+Improved consistency regularization for gans. In Proceedings of the AAAI conference on
+artificial intelligence, volume 35, pages 11033–11041, 2021.
+15
+
+
+A
+Notations
+We summarize the main notation used.
+Symbol
+Meaning
+χ(C)
+Normalized-Cholesky chart coordinate of C
+xt
+Noisy latent state at diffusion time t
+s
+Train-only subtype token within class y
+bt
+Amortized bridge state at time t
+φ(·)
+Structural feature extractor used by the bridge and spectral loss
+Bψ(xt, t, s)
+Amortized bridge predictor
+b⋆(x0, s, t)
+Teacher bridge target
+Lbridge
+Bridge distillation loss
+α, β-F1
+Harmonic mean of α-precision and β-recall
+Cd
+Set of d × d valid correlation connectomes
+C ∈Cd
+A correlation connectome
+y ∈{0, 1}
+Class label
+P y
+val
+Held-out real distribution for class y
+Qy
+m
+Generated distribution for method m, class y
+Φ(C) = log C
+Log-Euclidean map to Sym(d)
+dLE(C1, C2)
+Log-Euclidean distance (Eq. 14)
+µlog,val
+y
+Mean of log C under P y
+val
+¯Cval
+LE,y
+Log-Euclidean Fréchet mean
+ry(C)
+Radial distance from real mean (Eq. 15)
+νval
+y , νm
+y
+Radial pushforward distributions
+W m,y
+rad
+Radial Wasserstein distance (Eq. 16)
+Em,y
+rad
+Radial quantile calibration error (Eq. 17)
+zval,y
+i
+Log-centered vectorized connectome
+Wy
+PCA basis (top 2 directions from real data)
+uy(C)
+2D chart coordinate (Eq. 19)
+ISRm,y
+Inside-support rate (Eq. 21)
+Cy
+m,t
+Generated sample at reverse-time t
+ISRm,y(t)
+Time-dependent inside-support rate (Eq. 22)
+¯Cy
+m,t
+Generated mean connectome at time t
+¯Cy
+val
+Real mean connectome
+My
+Real-defined edge mask
+MAEy
+m,t
+Mean absolute error on mask (Eq. 24)
+Corry
+m,t
+Correlation on masked edges (Eq. 25)
+B
+Proofs of Formal Results
+This appendix collects the proofs of the formal results stated in Section 2. The main text uses these
+statements to justify the design of class-anchored conditioning, the amortized structural bridge, and
+relevance-preserving corruption while keeping the method section visually compact.
+16
+
+
+B.1
+Proof of Proposition 1
+The result follows from the L2-projection property of conditional expectation which is a generalization
+of the Rao-Blackwell theorem to the squared-loss denoising setting. We include the derivation for
+completeness. The key non-trivial empirical content is that the gain is strictly positive whenever S
+encodes structure that Y collapses. Fig. 2 also confirms visually for all three cohorts.
+Proof. For squared loss, the Bayes estimators are the conditional means: f ⋆(Xt, Y ) = E[X0 | Xt, Y ]
+and g⋆(Xt, Y, S) = E[X0 | Xt, Y, S]. We decompose the coarser residual as
+X0 −E[X0 | Xt, Y ] = X0 −E[X0 | Xt, Y, S]
+|
+{z
+}
+A
++ E[X0 | Xt, Y, S] −E[X0 | Xt, Y ]
+|
+{z
+}
+B
+.
+Since A is the residual from the finer predictor, E[A | Xt, Y, S] = 0. Because B is σ(Xt, Y, S)-
+measurable, the cross term E[⟨A, B⟩] = 0. Taking squared norms and expectations yields Eq. (4)
+directly. Strict positivity holds whenever B̸ ≡0 with positive probability, i.e., whenever S resolves
+within-class structure unresolved by Y .
+Remark (empirical content). The identity converts the entire visual motivation of Fig. 2 into a
+concrete optimality criterion. The gain is zero iff the subtype provides no additional information
+beyond the coarse label. The heterogeneity entropy H analysis in App. F.4 confirms this is non-zero
+and scales with dataset complexity.
+B.2
+Proof of Proposition 2
+Proof. The risk improvement identity Eq. (7) follows by the same L2-projection argument as Prop. 1,
+with (U) in place of (Xt, Y ) and (U, B⋆) in place of (Xt, Y, S); we omit the repetition. The result is
+the amortization bound of Eq. (8), which is proved below.
+f ⋆(U) = E[X0 | U],
+g⋆(U, B⋆) = E[X0 | U, B⋆].
+Substituting these into Eq. 6 we get
+R⋆
+U = E
+
+∥X0 −E[X0 | U]∥2
+2
+
+,
+R⋆
+U,B⋆= E
+
+∥X0 −E[X0 | U, B⋆]∥2
+2
+
+.
+Now we decompose the coarser residual as
+X0 −E[X0 | U] = X0 −E[X0 | U, B⋆]
+|
+{z
+}
+A
++ E[X0 | U, B⋆] −E[X0 | U]
+|
+{z
+}
+B
+.
+Now, upon squaring we get
+∥X0 −E[X0 | U]∥2
+2 = ∥A∥2
+2 + ∥B∥2
+2 + 2⟨A, B⟩.
+We now condition on (U, B⋆). Since A = X0 −E[X0 | U, B⋆], we have
+E[A | U, B⋆] = 0.
+Because B is measurable with respect to (U, B⋆), we get
+E[⟨A, B⟩| U, B⋆] = ⟨E[A | U, B⋆], B⟩= 0.
+Now, we take the conditional expectation followed by an expectation again, we get
+R⋆
+U = R⋆
+U,B⋆+ E
+h
+∥E[X0 | U, B⋆] −E[X0 | U]∥2
+2
+i
+,
+which proves Eq. 7.
+We now prove the amortization bound in Eq. 8. Let η(u, b) = E[X0 | U = u, B⋆= b] and we define
+the plug-in predictor b
+X0(U) = η(U, Bψ(U)). Inserting and subtracting the bridge-aware Bayes
+predictor, we get:
+X0 −b
+X0(U) = X0 −η(U, B⋆)
+|
+{z
+}
+A
++ η(U, B⋆) −η(U, Bψ(U))
+|
+{z
+}
+B
+.
+17
+
+
+Now, we take the square and the expectation to yield
+E
+h
+∥X0 −b
+X0(U)∥2
+2
+i
+= E
+
+∥A∥2
+2
+
++ E
+
+∥B∥2
+2
+
++ 2 E[⟨A, B⟩] .
+Further, we condition on (U, B⋆, Bψ(U)). Since η(U, B⋆) = E[X0 | U, B⋆], the residual A has zero
+conditional mean given (U, B⋆), and therefore also given (U, B⋆, Bψ(U)). Hence
+E[⟨A, B⟩| U, B⋆, Bψ(U)] = ⟨E[A | U, B⋆, Bψ(U)], B⟩= 0.
+Thus the cross term vanishes, and the first term is exactly R⋆
+U,B⋆, so
+E
+h
+∥X0 −b
+X0(U)∥2
+2
+i
+−R⋆
+U,B⋆= E
+
+∥η(U, B⋆) −η(U, Bψ(U))∥2
+2
+
+.
+By the assumed Lipschitz property of η in its bridge argument, we get
+∥η(U, B⋆) −η(U, Bψ(U))∥2 ≤L ∥B⋆−Bψ(U)∥2.
+Again, upon squaring and taking the expectation we get,
+E
+
+∥η(U, B⋆) −η(U, Bψ(U))∥2
+2
+
+≤L2 E
+
+∥Bψ(U) −B⋆∥2
+2
+
+.
+By finally combining the last two equations, we prove Eq. 8.
+Lipschitz condition on the Bayes regressor. The L-Lipschitz condition on η(·, b) = E[X0 |
+U, B⋆= b] is a regularity assumption on the underlying data distribution: it requires that the
+population-level conditional expectation varies smoothly with the bridge input. This is a standard
+smoothness assumption in nonparametric estimation [53]. Separately, to confirm that the error bound
+in Eq. (8) remains finite in practice, we note that the deployed bridge predictor Bψ, parameterized
+as a D-layer MLP with weight matrices {Wd} and σ-Lipschitz activations, satisfies Lip(Bψ) ≤
+σD−1 QD
+d=1 ∥Wd∥op, which is finite under ℓ2 weight regularization [5, 54]. This confirms numerical
+tractability but does not substitute for the distributional regularity assumption on η. Because b⋆is a
+convex combination of atoms from a compact set As with diameter δs = maxj,k ∥as,j −as,k∥2 < ∞,
+the bridge input is bounded: ∥b⋆∥2 ≤maxk ∥as,k∥2. Because b⋆is a convex combination of atoms
+from the finite set As, the bridge input is restricted to the compact domain conv(As) and is therefore
+bounded. Compactness alone does not imply Lipschitz continuity of the Bayes regressor; accordingly,
+Eq. (8) explicitly assumes that η(u, b) = E[X0 | U = u, B⋆= b] is L-Lipschitz in b on the relevant
+bridge domain. A sufficient condition is that η be continuously differentiable with respect to b on
+a neighborhood of this domain with uniformly bounded Jacobian. The bounded bridge domain
+therefore controls where this regularity assumption is required, rather than implying the assumption
+itself. This is a distributional property and cannot be inferred from the Lipschitz constant of the
+deployed approximator Bψ.
+Although our amortized bridge is trained against a teacher target (drawing directly on the principles
+of knowledge distillation [35]), our structural objective is entirely different. In traditional distillation,
+the capacity is shrunk in the same output space, while we use the structure for addressing a lack
+of context, to provide a macroscopic overview of the conditional probability distribution which
+cannot be captured by an isolated state Xt via few-step sampling [36, 15]. Equation 8 represents
+this difference by constraining the amortization tracking error rather than shrinking the capacity. As
+shown in Appendix F.1, tracking the teacher target effectively leads to increased generative accuracy,
+allowing us to maintain structural properties of the teacher bridge with up to approximately 25 −32×
+savings in sampling cost.
+Note. i) Prop. 1 and 1 are design-justification results, not end-to-end generalization guarantees
+with the purpose of showing the information-theoretic direction of MAGNET: adding a subtype
+variable or a structural bridge can only reduce Bayes denoising risk, and cannot hurt in the oracle
+limit. This rules out the possibility that the architecture is fundamentally misspecified even under
+ideal conditions, which is a nontrivial baseline to establish before empirical validation. ii) For the
+learned regime, we deliberately rely on empirical evidence: Tab. 5 shows that lower amortization
+tracking error directly correlates with higher α, β-F1, empirically validating the amortization bound
+(Eq. 8) in the regime where it matters. Appendix F.4 shows that the class-anchored conditioning gain
+scales with dataset heterogeneity entropy H, empirically validating that the learned subtypes capture
+within-class structure rather than being a regularization artifact. App. B.2 discusses why finiteness of
+L is guaranteed on the relevant domain by compactness of the atom set As, and we clarify there that
+this is a distributional regularity condition rather than a claim about the deployed network.
+18
+
+
+B.3
+A surrogate result for relevance-preserving corruption
+The adaptive corruption rule in Section 2.3.3 is data-driven: the relevant directions are estimated
+from the conditional–unconditional guidance difference introduced in Section 2.3.3. To formalize the
+underlying design principle, we analyze a stylized Gaussian surrogate.
+Lemma 1 (Adaptive corruption preserves class separation under a Gaussian surrogate). Let the
+clean latent decompose as X0 = (U, V ), where U ∈Rr is the class-relevant subspace and V ∈Rq
+is the nuisance subspace. Assume that conditioned on Y = y, U | Y = y ∼N(µy, ΣU) and
+V | Y = y ∼N(0, ΣV ), with ΣU ≻0, ΣV ≻0, and U ⊥V | Y . For fixed diffusion time t, consider
+the anisotropic corruption model
+Xt = √¯αt X0 +
+√
+1 −¯αt ξ,
+ξ ∼N
+
+0,
+
+σ2
+relIr
+0
+0
+σ2
+nuiIq
+
+.
+(11)
+Let ∆= µ1 −µ0, and define the class-separation functional
+Dt(σ2
+rel) = (µt,1 −µt,0)⊤Σ−1
+t (µt,1 −µt,0),
+(12)
+where µt,y and Σt are the class-conditional mean and covariance of Xt. Then
+Dt(σ2
+rel) = ¯αt ∆⊤ ¯αtΣU + (1 −¯αt)σ2
+relIr
+−1 ∆,
+(13)
+which is strictly decreasing in σ2
+rel whenever ∆̸ = 0.
+Proof. Under Eq. 11, the conditional distribution of Xt given Y = y is Gaussian with mean
+µt,y = √¯αt
+
+µy
+0
+
+and covariance
+Σt =
+
+¯αtΣU + (1 −¯αt)σ2
+relIr
+0
+0
+¯αtΣV + (1 −¯αt)σ2
+nuiIq
+
+.
+Since only the relevant block carries class-dependent means,
+µt,1 −µt,0 = √¯αt
+
+∆
+0
+
+.
+Substituting these expressions into Eq. 12 yields Eq. 13.
+To prove monotonicity, write A = ¯αtΣU, s = σ2
+rel, and β = 1 −¯αt. Then
+Dt(s) = ¯αt ∆⊤(A + βsIr)−1∆.
+Differentiate with respect to s. Using the matrix derivative identity
+d
+ds(A + βsIr)−1 = −β(A + βsIr)−2,
+we obtain
+d
+dsDt(s) = −¯αtβ ∆⊤(A + βsIr)−2∆.
+Because A + βsIr is positive definite, (A + βsIr)−2 is positive definite as well. Therefore the
+quadratic form above is strictly positive whenever ∆̸ = 0, and hence
+d
+dsDt(s) < 0
+for ∆̸ = 0.
+This proves that Dt(σ2
+rel) is strictly decreasing in σ2
+rel.
+Remark. Lemma 1 is a population-level surrogate statement that explains why protecting a sparse set
+of class-relevant directions is preferable to isotropic corruption when the reverse budget is small. In
+the full model, those directions are estimated from the guidance signal rather than assumed known.
+19
+
+
+C
+Baselines
+We compare MAGNET against baselines designed to isolate the roles of validity-preserving geometry,
+learned transport, and structure-aware conditional recovery. All baselines are evaluated on the same
+splits, preprocessing pipeline, and sampling budgets as MAGNET, so differences reflect model design
+rather than data handling or integration depth.
+DiffeoCFM. DiffeoCFM [18] is the strongest prior validity-preserving baseline in our setting. It
+performs conditional flow matching in a global pullback chart of the correlation manifold induced by
+the normalized-Cholesky parameterization. This baseline tests whether validity-preserving transport
+alone is sufficient for conditional connectome generation.
+DiffeoGauss. DiffeoGauss is a structural ablation of DiffeoCFM in which the learned transport
+dynamics are replaced by a class-conditional Gaussian model fit directly in the same pullback chart. It
+therefore preserves the geometry of DiffeoCFM while removing learned flow dynamics. Comparing
+against DiffeoGauss isolates the contribution of learned transport beyond the validity-preserving
+coordinate system itself.
+TriangCFM. TriangCFM is a Euclidean flow-matching baseline defined directly on the strict lower-
+triangular coordinates, without a validity-preserving correlation-manifold chart. Generated samples
+must therefore be mapped back to the correlation manifold through post-hoc projection. This baseline
+isolates the importance of validity-preserving geometry by retaining continuous transport while
+removing the pullback construction.
+Real Data. The real-data row is not a generative model, but an empirical oracle computed by
+comparing disjoint real-data splits under the same evaluation pipeline. It quantifies the finite-sample
+ceiling induced by split-wise estimation and provides a reference point for interpreting generative
+fidelity and downstream utility.
+Why not generic graph generative baselines? We do not include graph generative models such as
+GDSS [40] or DiGress [79] because they are designed for sparse graphs with discrete edge labels,
+while our task requires the generation of dense, continuous-valued functional connectomes. In
+functional connectomes, every ROI pair carries a real-valued dependency, and the output must satisfy
+symmetry and unit-diagonal structure. These requirements fall outside the design assumptions of such
+baselines. Adapting them to this setting would require a nontrivial redesign of their representation,
+denoising objective, and output parameterization, along with additional procedures to force a valid
+connectome structure. This would make the comparison hard to interpret, since any performance
+degradation could come either from the underlying model or from the adaptation stack needed to fit a
+fundamentally different data type. We therefore focus on baselines that are inherently designed for
+continuous connectome generation under comparable structural assumptions.
+To make this limitation concrete, we also implemented an adaptation of GDSS. We trained the
+official GDSS adjacency score network on dense signed ROI adjacency matrices and applied post-
+hoc projection to force each generated output back to the correlation-matrix domain. We denote
+this adapted baseline as GDSS-proj. This is not a native connectome generator: the projection
+step is required because generic graph diffusion does not enforce positive definiteness or unit-
+diagonal correlation structure. The results in Tables 1–2 support the design choice behind MAGNET.
+Although GDSS-proj is fast, it substantially underperforms validity-aware connectome generators on
+support fidelity and zero-shot subclass recovery, indicating that generic graph diffusion plus post-hoc
+projection is insufficient for dense functional connectome synthesis.
+D
+Experimental Setup
+Evaluation metrics. We assess class-conditional support recovery using α-precision (fidelity to
+held-out support) and β-recall (coverage of that support), summarizing the trade-off with their
+harmonic mean, α, β-F1 [1]. Because generative fidelity alone does not guarantee the preservation of
+task-relevant structures, we also evaluate downstream utility by training a logistic regression classifier
+on Riemannian tangent-space features extracted from generated samples, reporting ROC-AUC and
+F1 on real validation connectomes.
+20
+
+
+Zero-shot subclass covariance metric.
+To evaluate whether generated samples reproduce the
+dominant covariance spectrum of resolved clinical subclasses (e.g., in ADNI [80] or OASIS-3 [46]),
+we report λ-MSE. For each subclass ℓ∈L, we collect held-out real connectomes Rℓand generated
+connectomes Gℓassigned to ℓby the real-data-trained resolver. We project each matrix to a valid
+correlation manifold and vectorize its strictly upper-triangular entries via ψ(C) = vech0(ΠCd(C)) ∈
+Rp, where p = d(d −1)/2. After mean-centering these features to form Xℓand b
+Xℓ, we compute
+their top covariance eigenvalues from singular values sℓ,k and bsℓ,k as λreal
+ℓ,k = s2
+ℓ,k/(nℓ−1) and
+λgen
+ℓ,k = bs2
+ℓ,k/(bnℓ−1). For Kℓ= min(5, nℓ−1, bnℓ−1, p), the metric is defined as λ-MSE =
+|Lvalid|−1 P
+ℓ∈Lvalid K−1
+ℓ
+PKℓ
+k=1(λreal
+ℓ,k −λgen
+ℓ,k )2, where Lvalid contains subclasses with ≥5 real and
+generated samples. Unlike CAS macro-F1, this strictly isolates the alignment of subclass-specific
+covariance spread rather than evaluating classifier accuracy.
+Training and sampling protocol. All methods are evaluated across 10 disjoint train/validation
+splits (10% validation). Experiments were conducted on a single NVIDIA A6000 GPU. Wall-clock
+sampling times in Table 1 are measured as the mean time to generate one full split’s worth of samples,
+averaged over 10 splits on the same hardware. For ADNI and OASIS-3, train/test disjointness
+is strictly enforced at the subject level [18]. MAGNET utilizes balanced class sampling, inverse
+subject-frequency weighting on repeated-subject cohorts, and min-SNR loss reweighting. To isolate
+model design rather than integration depth, we fix the computational budget: MAGNET samples via
+a 6-step DDIM chain [72], while DiffeoCFM and its ablations use matched 6-point ODE grids.
+E
+Architectural Details
+MAGNET couples the validity-preserving normalized-Cholesky chart with a region-aware denoising
+backbone. In the MSDL setting, each connectome has 39 regions, giving 741 chart coordinates.
+Rather than processing the noisy latent state xt as a flat vector, the denoiser first lifts it into a
+symmetric ROI-level matrix A(xt). The chart coordinates are written into the strict lower triangle,
+reflected across the diagonal, and the diagonal is set to zero. The ith row, denoted ai(xt), is then
+interpreted as the current noisy connectivity profile of region i.
+Each region is represented as one token. The initial token combines the row-wise connectivity profile
+with anatomical identity and global conditioning: h(0)
+i
+= Winai(xt)+pi +ct. Here, Win is a learned
+row projection, pi is a learned ROI positional embedding, and ct is a shared conditioning broadcast to
+all regions. The conditioning vector combines the diffusion timestep embedding, the class-anchored
+subtype embedding, and the amortized structural bridge embedding. In the implementation, the
+bridge embedding is passed through a learned gate before being injected, allowing the denoiser to
+modulate how strongly the global structural summary affects each reverse step.
+The token sequence is processed by a pre-norm Transformer encoder with hidden size 128, four
+layers, four QK-normalized attention heads, GeGLU feed-forward blocks of width 512, and dropout
+0.1. Because attention is applied across all ROI tokens, each region updates its representation using
+information from the full current connectome. This gives the denoiser a relational inductive bias
+without hard-coding an anatomical edge graph. The learned positional embeddings preserve ROI
+identity, so the model remains tied to the atlas-defined ordering of brain regions.
+After the transformer stack, MAGNET maps the final token matrix H(L) back to chart coordinates.
+A row-wise output projection produces a square matrix R, which is symmetrized and vectorized over
+the strict lower triangle: E = 1
+2(R + R⊤), bvθ = vech0(E). Thus, the denoiser predicts a diffusion
+target in the same normalized-Cholesky chart used by the sampler. The chart itself, rather than the
+denoiser output alone, is what guarantees that decoded samples are valid correlation matrices.
+The same graph denoiser is used for conditional and unconditional predictions during classifier-free
+guidance. Let bvc and bv∅denote the conditional and unconditional denoiser outputs, and let g =
+bvc −bv∅be the guidance direction. MAGNET retains the component of the unconditional prediction
+that is orthogonal to g: bv⊥
+∅= bv∅−⟨bv∅,g⟩
+∥g∥2
+2+εg. The guided prediction is then bvγ = bv⊥
+∅+γ tanh(∥g∥2) g.
+The tanh(∥g∥2) factor limits over-steering when the conditional and unconditional predictions are
+close, while the orthogonal residual preserves variation not aligned with the class-discriminative
+direction.
+21
+
+
+Table 5: Bridge ablations across ABIDE, ADNI, and OASIS-3. We compare six structural-conditioning variants: no
+bridge, self-conditioned bridge, teacher bridge at inference, amortized bridge without Lbridge, amortized bridge with Lbridge,
+and the full MAGNET objective. We report α, β-F1, ROC-AUC, F1, bridge distillation error where applicable, and sampling
+time. Lower bridge error tracks stronger structural fidelity, while removing Lbridge causes severe bridge-tracking failure.
+Gray rows denote the real-data reference. Bold highlights the best generative model for each metric.
+Dataset
+Method
+Quality
+CAS Metrics
+Bridge Distillation
+Error ↓
+Time (s.)
+α, β-F1 ↑
+ROC-AUC ↑
+F1 ↑
+Sampling ↓
+ABIDE
+Real Data
+0.80 ± 0.01
+0.66 ± 0.04
+0.58 ± 0.06
+N/A
+N/A
+No bridge
+0.58 ± 0.05
+0.66 ± 0.06
+0.57 ± 0.09
+-
+0.10 ± 0.00
+Self-conditioning
+0.51 ± 0.06
+0.66 ± 0.06
+0.56 ± 0.11
+-
+3.01 ± 0.01
+Teacher bridge
+0.64 ± 0.06
+0.66 ± 0.06
+0.57 ± 0.09
+-
+3.00 ± 0.01
+Amortized bridge (Lbridge)
+0.65 ± 0.05
+0.66 ± 0.05
+0.57 ± 0.08
+0.48 ± 0.04
+0.12 ± 0.00
+Amortized bridge w/o bridge loss
+0.59 ± 0.07
+0.66 ± 0.06
+0.56 ± 0.09
+14.81 ± 0.53
+0.13 ± 0.00
+Proposed (Lbridge + Lspec)
+0.68 ± 0.04
+0.67 ± 0.06
+0.58 ± 0.09
+0.46 ± 0.04
+0.12 ± 0.00
+ADNI
+Real Data
+0.87 ± 0.05
+0.58 ± 0.03
+0.59 ± 0.03
+N/A
+N/A
+No bridge
+0.59 ± 0.12
+0.58 ± 0.06
+0.66 ± 0.05
+-
+0.22 ± 0.00
+Self-conditioning
+0.41 ± 0.15
+0.58 ± 0.04
+0.55 ± 0.22
+-
+8.99 ± 0.04
+Teacher bridge
+0.67 ± 0.11
+0.58 ± 0.05
+0.65 ± 0.05
+-
+8.09 ± 0.08
+Amortized bridge (Lbridge)
+0.68 ± 0.12
+0.58 ± 0.06
+0.65 ± 0.06
+0.05 ± 0.00
+0.25 ± 0.00
+Amortized bridge w/o bridge loss
+0.48 ± 0.11
+0.58 ± 0.05
+0.67 ± 0.05
+14.67 ± 1.16
+0.25 ± 0.00
+Proposed (Lbridge + Lspec)
+0.74 ± 0.08
+0.58 ± 0.07
+0.67 ± 0.06
+0.05 ± 0.00
+0.25 ± 0.00
+OASIS-3
+Real Data
+0.88 ± 0.01
+0.71 ± 0.04
+0.61 ± 0.06
+N/A
+N/A
+No bridge
+0.49 ± 0.07
+0.69 ± 0.05
+0.58 ± 0.05
+-
+0.18 ± 0.00
+Self-conditioning
+0.46 ± 0.06
+0.69 ± 0.04
+0.57 ± 0.04
+-
+6.38 ± 0.05
+Teacher bridge
+0.54 ± 0.06
+0.69 ± 0.04
+0.58 ± 0.04
+-
+6.28 ± 0.02
+Amortized bridge (Lbridge)
+0.55 ± 0.05
+0.69 ± 0.05
+0.57 ± 0.05
+0.09 ± 0.00
+0.20 ± 0.00
+Amortized bridge w/o bridge loss
+0.49 ± 0.05
+0.69 ± 0.04
+0.57 ± 0.05
+14.90 ± 1.06
+0.21 ± 0.00
+Proposed (Lbridge + Lspec)
+0.57 ± 0.05
+0.68 ± 0.04
+0.58 ± 0.05
+0.08 ± 0.00
+0.20 ± 0.00
+Finally, MAGNET applies class-wise coordinate-affine calibration to the final sampled latent before
+decoding. This calibration is fitted on the training split by matching class-conditional latent means
+and variances between uncalibrated generated samples and real training latents. The calibrated latent
+is clipped and then decoded through the normalized-Cholesky inverse map, so validity is still enforced
+by the chart-based decoder.
+F
+Framework Analysis
+F.1
+Amortized Structural Bridge
+To evaluate the role of the amortized structural bridge, we compare six variants: no bridge, self-
+conditioned bridge, teacher bridge at inference, amortized bridge without Lbridge, amortized bridge
+with Lbridge, and the full MAGNET objective. For bridge-enabled variants, we report the Bridge
+Distillation Error ∥Bψ(xt, t, s) −b⋆(x0, s, t)∥2
+2, which measures how well the amortized bridge
+tracks the time-dependent teacher target.
+Table 5 shows a clear bridge-quality versus structural-fidelity pattern. Lower distillation error is
+consistently associated with stronger α, β-F1, while removing Lbridge causes a severe bridge-tracking
+failure without yielding a corresponding fidelity gain. This is the regime the bridge is designed for,
+and the ablation matches the Remark of proposition 2: the amortized bridge is useful to the extent
+that it tracks the teacher target well.
+The efficiency gap is equally important. Teacher-bridge and self-conditioned alternatives are sub-
+stantially slower because they require a second structural pass at inference, whereas the amortized
+bridge preserves the few-step sampling regime. In practice, the bridge-enabled MAGNET variants
+retain roughly 30 −60× lower sampling cost than the teacher and self-conditioned alternatives while
+delivering the strongest overall fidelity profile. Taken together, these results justify the amortized
+bridge as the primary structural-conditioning mechanism in MAGNET. It provides the gains of
+explicit structural guidance without sacrificing the speed advantages of few-step generation.
+22
+
+
+Table 6: Relevance-preserving corruption ablation across ABIDE, ADNI, and OASIS-3. We compare standard isotropic
+diffusion against three temporal variations of our adaptive protection schedule (Low, Adaptive, and High density decay).
+Performance remains stable across all adaptive regimes, demonstrating that structural recovery is invariant to the exact decay
+curve provided early-stage topological protection is active.
+Dataset
+Configuration
+Decay (p)
+Quality
+CAS Metrics
+Sampling Time (s) ↓
+α, β-F1 ↑
+ROC-AUC ↑
+F1 ↑
+ABIDE
+Isotropic (Baseline)
+N/A
+0.62 ± 0.03
+0.60 ± 0.07
+0.50 ± 0.09
+0.36 ± 0.00
+Low Density
+1
+0.68 ± 0.03
+0.64 ± 0.07
+0.55 ± 0.06
+0.44 ± 0.12
+Adaptive (Ours)
+3
+0.68 ± 0.03
+0.64 ± 0.07
+0.56 ± 0.06
+0.38 ± 0.02
+High Density
+5
+0.69 ± 0.03
+0.64 ± 0.07
+0.55 ± 0.05
+0.39 ± 0.03
+ADNI
+Isotropic (Baseline)
+N/A
+0.69 ± 0.09
+0.52 ± 0.07
+0.55 ± 0.05
+0.73 ± 0.01
+Low Density
+1
+0.75 ± 0.07
+0.57 ± 0.06
+0.61 ± 0.06
+0.76 ± 0.02
+Adaptive (Ours)
+3
+0.76 ± 0.06
+0.57 ± 0.07
+0.61 ± 0.05
+0.86 ± 0.28
+High Density
+5
+0.76 ± 0.06
+0.56 ± 0.06
+0.61 ± 0.05
+0.76 ± 0.02
+OASIS-3
+Isotropic (Baseline)
+N/A
+0.53 ± 0.06
+0.64 ± 0.04
+0.49 ± 0.05
+0.60 ± 0.00
+Low Density
+1
+0.58 ± 0.06
+0.68 ± 0.03
+0.55 ± 0.04
+0.63 ± 0.01
+Adaptive (Ours)
+3
+0.59 ± 0.06
+0.68 ± 0.03
+0.56 ± 0.04
+0.63 ± 0.00
+High Density
+5
+0.57 ± 0.06
+0.68 ± 0.03
+0.56 ± 0.04
+0.63 ± 0.01
+Figure 5: Classifier-free guidance scale ablation for MAGNET. We vary the guidance scale γ from 0.5 to 3.0 and plot
+class-conditional fidelity (α-Precision, β-Recall) together with downstream utility (CAS F1) on ABIDE, ADNI, and OASIS-3.
+Across datasets, performance is strongest in the moderate-guidance regime, with γ = 1.5 giving the most stable fidelity–utility
+trade-off. Larger guidance scales tend to increase precision at the expense of recall, consistent with overspecialization to a
+narrower region of the class manifold.
+F.2
+Relevance-Preserving Corruption Ablation
+Our relevance-preserving corruption relies on a monotonically decreasing protection schedule, ρ(t),
+to shield condition-defining coordinates during early forward diffusion. To evaluate the framework’s
+sensitivity to this mechanism, we parameterize the decay curve as ρ(t) = (1 −τt)p, where τt ∈[0, 1]
+is the normalized continuous diffusion time (i.e., τt = t/T). The hyperparameter p strictly controls
+the temporal density of the protection, dictating how quickly structural coordinates yield to Gaussian
+noise, rather than the total magnitude of protection applied.
+We ablate this schedule across four distinct regimes: (i) Isotropic (Baseline): No adaptive manifold
+preservation; (ii) Low Density (p = 1): Gradual, linear relaxation of constraints; (iii) Adaptive
+(p = 3, Ours): Our primary, balanced decay schedule; and (iv) High Density (p = 5): Aggressive,
+early release of structural constraints.
+Table 6 highlights a clear trend across ABIDE, ADNI, and OASIS-3: MAGNET is robust to the
+exact shape of the decay curve. Generative fidelity (α, β-F1) and downstream utility (CAS) remain
+consistently stable across the Low, Adaptive, and High density regimes. The adaptive schedule
+provides consistent improvement over isotropic diffusion across all three cohorts. Crucially, the
+robustness to the exact decay shape (p = 1, 3, 5) confirms that the mechanism is not sensitive
+to hyperparameter tuning — any protection schedule that shields condition-relevant coordinates
+during the high-noise phase suffices. The primary contribution of relevance-preserving corruption
+is providing a cleaner latent trajectory for the bridge and guidance components to operate on, as
+evidenced by the full-system results in Table 3.
+F.3
+Classifier-Free Guidance Scale
+The classifier-free guidance scale γ controls how strongly reverse-time sampling is steered toward the
+conditional branch. In MAGNET, guidance is not implemented as plain linear extrapolation. Instead,
+23
+
+
+the sampler scales the conditional steering direction while retaining an orthogonal residual from the
+unconditional prediction. Figure 5 shows that performance is strongest in the moderate-guidance
+regime.
+On ADNI, γ = 1.5 gives the best overall fidelity–utility trade-off, improving clearly over both
+weak guidance (γ = 0.5) and overly strong guidance (γ ≥2.5). The main failure mode at high
+guidance is not precision but coverage: α-precision increases, but β-recall drops sharply, indicating
+overspecialization to a narrower subset of the class manifold. OASIS-3 follows the same pattern,
+though less sharply, with γ = 1.5 again near-optimal. ABIDE is less sensitive once guidance is
+enabled, consistent with its simpler binary structure.
+A useful implementation detail is that γ = 1.0 in Fig. 5 is implemented as a discrete branch skip (the
+unconditional forward pass is omitted entirely), rather than as a continuous evaluation of the guidance
+formula at that scale. Consequently, the transition from γ = 1.0 to γ = 0.5 represents a qualitative
+mode change, not a smooth interpolation, which accounts for the performance gap observed at that
+boundary. This explains both its lower runtime and its weaker fidelity relative to the moderately
+guided regime. We therefore use γ = 1.5 throughout the paper.
+F.4
+Class-Anchored Conditioning
+To evaluate the necessity of Class-Anchored Conditioning, we quantify using the complexity of the
+datasets. The heterogeneity entropy H of a dataset is the Shannon Entropy of the discovered structural
+subtypes S conditioned on coarse labels C as H = −P
+c∈C P(c) PKc
+k=1 P(sk|c) log P(sk|c) where
+sk represents the latent sub-manifolds within a given class c. As H increases, the variance in a single
+label expands, leading to denoising ambiguity.
+Figure 6: Efficacy of Class-Anchored Conditioning against class-
+only, random-subtype, and global clustering baselines. The perfor-
+mance gain of Class-Anchored Conditioning strictly scales with struc-
+tural heterogeneity H.
+We ablate against three paradigms (Fig. 6)
+to isolate performance gains.
+Class-
+only utilizes the class coarse labels, Ran-
+dom Subtypes reassigns tokens randomly
+within a class to measure if gains are a
+regularizing artifact of the noise injection,
+and Global Clustering to discover M la-
+tent structural clusters across the dataset.
+On highly heterogeneous cohort like ADNI
+and OASIS-3, the global clustering fails to
+differentiate between structurally similar
+but clinically distinct states. Our proposed
+Class-Anchored Conditioning enforces a
+stricter hierarchy to find K distinct clus-
+ters only within the bounds of a specific
+clinical label ensuring the diffusion pro-
+cess is guided by latent substructures, not
+violating the broader class condition. The
+performance gain in generative fidelity confirms high-quality connectome generation in complex
+clinical datasets requires sub-manifold conditioning that remains strictly anchored to the coarse class
+constraint.
+F.5
+Self-conditioning probability
+We also tested the fallback self-conditioning probability psc, which in earlier non-amortized variants
+controls how often a first-pass denoiser estimate is reused as auxiliary structural context during
+training. In the final MAGNET configuration, however, structural context is supplied primarily by the
+amortized bridge, so this fallback mechanism is no longer central to the active model.
+Empirically, varying psc from 0.2 to 0.8 produces no meaningful change in generative fidelity or
+downstream performance across ABIDE, ADNI, and OASIS-3: all three datasets remain effectively
+invariant at the precision reported in the main benchmark, with only minor variation in runtime. We
+therefore treat psc as a secondary implementation parameter and use psc = 0.5 throughout the paper.
+This confirms that, once the amortized bridge is active, structural recovery is largely insensitive to the
+scheduling of the fallback self-conditioning branch.
+24
+
+
+F.6
+Training and Sampling Efficiency
+MAGNET trades additional training cost for substantially faster repeated sampling. On a single
+NVIDIA A6000 GPU, training requires 532.08 ± 16.66 s per split on ABIDE, 1593.63 ± 27.99 s
+on ADNI, and 1242.53 ± 18.49 s on OASIS-3, corresponding to approximately 9–27 minutes per
+trained split. This is roughly an order of magnitude more training time than the DiffeoCFM and
+TriangCFM baselines under the same hardware setting.
+The inference regime is substantially different. MAGNET uses a six-step DDIM sampler and requires
+0.38 s, 0.86 s, and 0.63 s per generated split on ABIDE, ADNI, and OASIS-3, respectively, compared
+with 9.04 s, 36.08 s, and 23.24 s for DiffeoCFM (Table 1). This corresponds to approximately 24×,
+42×, and 37× faster sampling, respectively. The additional training cost is therefore incurred once
+when fitting a checkpoint, whereas the sampling advantage is retained whenever that checkpoint is
+subsequently used for synthetic cohort generation.
+Importantly, this efficiency does not arise from sacrificing conditional fidelity: MAGNET simul-
+taneously improves α, β-F1 by 7–21% over the strongest validity-preserving baseline across the
+primary cohorts and achieves the lowest zero-shot subclass covariance error in Table 2. These results
+characterize the computational trade-off of MAGNET as higher one-time training cost in exchange
+for improved support recovery and substantially lower repeated inference cost.
+F.7
+Sensitivity to λbridge and λspec
+The full MAGNET objective combines the diffusion loss with bridge supervision and structural
+regularization, L = Ldiff + λbridgeLbridge + λspecLspec. We therefore evaluate whether the gains
+of the proposed framework depend on narrowly tuned auxiliary-loss weights. For each loss, we
+vary its coefficient over {0, 0.025, 0.05, 0.1, 0.2, 0.4} while holding the other coefficient fixed at its
+default value of 0.1. The nonzero sweep spans a 16× range around the default operating regime. All
+remaining training, sampling, and evaluation settings are unchanged.
+Table 7 reveals two complementary properties. First, both auxiliary objectives make a material
+contribution to support recovery. Removing the spectral term decreases α, β-F1 from 0.68 to 0.51 on
+ABIDE, from 0.76 to 0.68 on ADNI, and from 0.57 to 0.49 on OASIS-3, corresponding to relative
+reductions of approximately 11–25%. Removing bridge supervision produces similarly consistent
+degradation, reducing α, β-F1 to 0.53, 0.65, and 0.42, respectively. These ablations are consistent
+with the intended roles of the two losses: Lbridge constrains the amortized predictor to track its
+structural target, while Lspec encourages the denoised latent to preserve global structural statistics.
+Second, once either loss is enabled, performance is insensitive to its precise weighting. Across the
+nonzero λspec sweep, α, β-F1 varies by at most 0.02 on each cohort; across the nonzero λbridge
+sweep, the maximum variation is 0.03. These changes are smaller than, or comparable to, the
+split-to-split variability reported in the main benchmark. ROC-AUC and downstream F1 exhibit the
+same qualitative stability. This behavior is also consistent with the construction of the objective:
+Lbridge is restricted to conditioned examples and weighted by ¯αt, while Lspec is mean-reduced over
+the minibatch.
+Thus, the auxiliary objectives are important through their presence rather than through a narrowly
+selected coefficient. The default choice λbridge = λspec = 0.1 lies within a broad stable region across
+all three cohorts, indicating that MAGNET’s performance is not dependent on fine-grained tuning of
+either loss weight.
+G
+Geometric Analysis of Conditional Connectome Generation
+In this section, we analyze whether the generated connectomes are in the same class-conditional
+geometric space through a series of experiments to compare against the held-out real validation
+data. In order to keep occupancy, overlap, and support recovery non self-referential, we fix all the
+coordinate system, support contours, and local scales using the real data and ensure valid comparison
+between Qy
+m and P y
+val.
+25
+
+
+Table 7: Sensitivity to bridge-supervision and spectral-regularization weights. We vary λspec and λbridge independently
+while fixing the other coefficient at its default value of 0.1. All remaining training and evaluation settings are unchanged.
+Results are mean ± standard deviation across the same splits used in the main benchmark. Setting either coefficient to zero
+measures removal of the corresponding objective, while the nonzero values test sensitivity over a 16× range.
+Dataset
+λspec sensitivity
+λbridge sensitivity
+λspec
+α, β-F1 ↑
+ROC-AUC ↑
+F1 ↑
+λbridge
+α, β-F1 ↑
+ROC-AUC ↑
+F1 ↑
+ABIDE
+0
+0.51 ± 0.04
+0.52 ± 0.06
+0.43 ± 0.01
+0
+0.53 ± 0.03
+0.56 ± 0.06
+0.41 ± 0.09
+0.025
+0.66 ± 0.06
+0.62 ± 0.09
+0.55 ± 0.03
+0.025
+0.66 ± 0.05
+0.63 ± 0.05
+0.55 ± 0.06
+0.05
+0.67 ± 0.01
+0.62 ± 0.06
+0.55 ± 0.09
+0.05
+0.66 ± 0.03
+0.64 ± 0.08
+0.55 ± 0.05
+0.1 (default)
+0.68 ± 0.03
+0.64 ± 0.07
+0.56 ± 0.06
+0.1 (default)
+0.68 ± 0.03
+0.64 ± 0.07
+0.56 ± 0.06
+0.2
+0.67 ± 0.02
+0.63 ± 0.02
+0.56 ± 0.12
+0.2
+0.66 ± 0.03
+0.64 ± 0.02
+0.54 ± 0.01
+0.4
+0.68 ± 0.07
+0.64 ± 0.01
+0.55 ± 0.07
+0.4
+0.66 ± 0.04
+0.65 ± 0.01
+0.55 ± 0.04
+ADNI
+0
+0.68 ± 0.03
+0.49 ± 0.01
+0.53 ± 0.08
+0
+0.65 ± 0.06
+0.45 ± 0.03
+0.47 ± 0.07
+0.025
+0.75 ± 0.09
+0.57 ± 0.03
+0.61 ± 0.09
+0.025
+0.73 ± 0.01
+0.56 ± 0.01
+0.61 ± 0.03
+0.05
+0.75 ± 0.02
+0.55 ± 0.08
+0.61 ± 0.03
+0.05
+0.75 ± 0.09
+0.57 ± 0.02
+0.60 ± 0.02
+0.1 (default)
+0.76 ± 0.06
+0.57 ± 0.07
+0.61 ± 0.05
+0.1 (default)
+0.76 ± 0.06
+0.57 ± 0.07
+0.61 ± 0.05
+0.2
+0.75 ± 0.03
+0.56 ± 0.01
+0.60 ± 0.08
+0.2
+0.75 ± 0.04
+0.57 ± 0.06
+0.60 ± 0.09
+0.4
+0.76 ± 0.09
+0.56 ± 0.03
+0.60 ± 0.01
+0.4
+0.74 ± 0.02
+0.55 ± 0.04
+0.59 ± 0.04
+OASIS-3
+0
+0.49 ± 0.09
+0.59 ± 0.07
+0.47 ± 0.01
+0
+0.42 ± 0.01
+0.53 ± 0.04
+0.42 ± 0.06
+0.025
+0.57 ± 0.08
+0.67 ± 0.05
+0.56 ± 0.09
+0.025
+0.55 ± 0.04
+0.68 ± 0.08
+0.56 ± 0.03
+0.05
+0.56 ± 0.06
+0.68 ± 0.08
+0.55 ± 0.04
+0.05
+0.55 ± 0.09
+0.65 ± 0.06
+0.57 ± 0.01
+0.1 (default)
+0.57 ± 0.06
+0.68 ± 0.03
+0.56 ± 0.04
+0.1 (default)
+0.57 ± 0.06
+0.68 ± 0.03
+0.56 ± 0.04
+0.2
+0.57 ± 0.07
+0.67 ± 0.01
+0.55 ± 0.08
+0.2
+0.56 ± 0.03
+0.67 ± 0.09
+0.56 ± 0.09
+0.4
+0.58 ± 0.01
+0.65 ± 0.09
+0.54 ± 0.07
+0.4
+0.57 ± 0.06
+0.66 ± 0.01
+0.55 ± 0.08
+G.1
+Visualization Setup
+Let Cd =
+
+C ∈Rd×d : C = C⊤, C ≻0, diag(C) = 1
+	
+denote the symmetric positive definite
+correlation matrix manifold on the MSDL atlas [77]. Let P y
+val denote the held-out real validation
+distribution and Qy
+m denote the class-conditional distribution generated by method m where y ∈
+{0, 1} is the dataset specific class label. We compare Qm(· | Y = y) against Pval(· | Y = y) to make
+class-conditional comparisons. This is essential because a conditional generator can appear globally
+plausible while still failing to reproduce the support or geometry of a particular class [7, 64].
+G.2
+Geometry, Assumptions, and why this analysis
+Log-Euclidean representation.
+Since C⌈is not a vector space, euclidean operations in matrix space
+do not capture the geometry of connectomes faithfully. Standard operations on C1, C2 ∈C⌈treat the
+objects as points in a flat vector space, ignoring the intrinsic geometric structure of the set. Hence,
+we adopt the log-euclidean representation [3, 4] and define Φ : C⌈→Sym(d),
+Φ(C) = log C
+where Sym(d) is the vector space of real symmetric matrices and log C is the matrix logarithm. The
+log-euclidean distance is
+dLE(C1, C2) = ∥Φ(C1) −Φ(C2)∥F .
+(14)
+Moreover, every C
+∈
+Cd has strictly positive eigenvalues and log C is well defined via
+the spectral decomposition.
+If, C = U diag(λ1, . . . , λd)U ⊤with λi > 0, then log C =
+U diag(log λ1, . . . , log λd)U ⊤. Because log C is symmetric, the image of Φ lies in Sym(d). Thus,
+instead of comparing the connectomes in euclidean matrix space, we first map them to Sym(d) and
+then utilize euclidean geometry via the Frobenius norm.
+Assumptions.
+All the visual analysis is based on the following assumptions.
+A1. SPD Validity. The basic structural assumption required by the log-euclidean model is that all
+connectomes lie in Cd, making Φ(C) well defined.
+A2. Class-conditional evaluation. We evaluate Qy
+m against P y
+val for each class y. Enforcing this
+allows us to differentiate between models that mixes structures while still appearing globally
+close to the pooled real distribution.
+A3. Real-derived reference geometry. All references for evaluations are derived from the real
+data only to prevent the reference from adapting to the generated samples.
+26
+
+
+A4. Local regularity of held-out support. The density of Φ#P y
+val is assumed to be locally bounded
+away from 0 and ∞to support interior of Pval. We adapted the regime from [20, 25] where
+nearest-neighbor radii consistently estimate local spacing.
+Why these assumptions enter the analysis.
+A1, A2, and A3 ensure that every visual object
+remains fixed across methods and is well defined in a valid geometry. A4 is the standard condition to
+estimate negative local spacing in the nearest neighbor radii. Each assumption allows to interpret
+the visualization in regards to the class-conditional distributional agreement in addition to summary
+statistics.
+G.3
+Global geometric fidelity through radial calibration
+We want to identify if the generated samples have the correct global geometric understanding as
+per the held-out real center. For class y, the log-domain mean is µy
+log,val = EC∼P y
+val[Φ(C)], and the
+corresponding log-Euclidean Fréchet mean is ¯Cy
+LE,val = exp(µy
+log,val). The radial coordinate of a
+connectome is
+ry(C) = dLE(C, ¯Cy
+LE,val) = ∥Φ(C) −µy
+log,val∥F .
+(15)
+Utilizing Eq. 15, we map the full manifold-valued distribution to a one-dimensional law to summarize
+the mass as a function of distance from the held-out real center. This is a push-forward construction,
+νy
+val = (ry)#P y
+val, νy
+m = (ry)#Qy
+m where (ry)#µ denotes the pushforward of the distribution µ
+under the map ry. This allows us to sample a matrix from the distribution, compute its radial distance
+ry(C), and study the resulting distribution on R≥0. The radial curves in Fig. 7 highlight these
+pushforward laws. To account for radial mismatch, we use the 1-Wasserstein distance [43]:
+W rad
+m,y = W1
+ νm
+y , νval
+y
+
+,
+(16)
+and the log-quantile calibration error
+Erad
+m,y =
+1
+|Q|
+X
+q∈Q
+log
+Qνm
+y (q) + ε
+Qνval
+y (q) + ε
+ ,
+(17)
+where Q ⊂(0, 1) is a fixed quantile grid and Qν(q) denotes the quantile function of a distribution ν.
+Proposition 3. ¯CLE,val
+y
+= exp(µlog,val
+y
+) minimizes the expected squared log-Euclidean distance to
+the held-out real distribution:
+¯CLE,val
+y
+∈arg min
+C∈Cd EX∼P val
+y
+
+dLE(X, C)2
+.
+Proof. For any fixed C ∈Cd, by Eq. 14, dLE(X, C)2 = ∥log X −log C∥2
+F . Therefore the optimiza-
+tion problem is
+min
+C∈Cd E
+
+∥log X −log C∥2
+F
+
+.
+Now let M = log C. Because every C ∈Cd is SPD, the matrix logarithm log C is well defined
+and maps Cd injectively into Sym(d); the image is a proper submanifold of Sym(d). We relax the
+constraint and minimize over the ambient space Sym(d), so the unconstrained minimizer ¯CLE,val
+y
+=
+exp(µlog,val
+y
+) serves as a reference point in the broader SPD manifold rather than a minimizer strictly
+within Cd. Hence the problem becomes: minM∈Sym(d) E
+
+∥log X −M∥2
+F
+
+.
+Eq. 16 measures the minimal transport cost required to transform the generated radial space into
+the held-out real radial space. Eq. 17 provides a scale-sensitive comparison of the two distributions
+across their entire support.
+Let Z = log X. Then Z is a random element of the Euclidean vector space Sym(d), and the objective
+becomes f(M) = E
+
+∥Z −M∥2
+F
+
+. We now expand this expression. Recall that for any matrices
+A, B, ∥A −B∥2
+F = ⟨A −B, A −B⟩F , where the Frobenius inner product is ⟨A, B⟩F = tr(A⊤B).
+Since all matrices here are symmetric, this is just the standard Euclidean inner product on Sym(d).
+27
+
+
+Expanding the square gives ∥Z −M∥2
+F = ∥Z∥2
+F −2⟨Z, M⟩F + ∥M∥2
+F . Taking expectation on both
+sides, f(M) = E[∥Z∥2
+F ] −2⟨E[Z], M⟩F + ∥M∥2
+F . The first term, E[∥Z∥2
+F ], does not depend on
+M, so it is a constant for the optimization. Thus minimizing f(M) is equivalent to minimizing
+g(M) = ∥M∥2
+F −2⟨E[Z], M⟩F .
+Now we explain why this objective is convex, and in fact strictly convex. The term ∥M∥2
+F is a strictly
+convex quadratic function of M, because for any distinct M1, M2 ∈Sym(d) and any t ∈(0, 1),
+∥tM1 + (1 −t)M2∥2
+F < t∥M1∥2
+F + (1 −t)∥M2∥2
+F .
+The linear term −2⟨E[Z], M⟩F is both convex and concave, since linear functions do not affect strict
+convexity. Therefore g(M), and hence f(M), is strictly convex. A strictly convex function has at
+most one minimizer.
+To find the minimizer explicitly, we complete the square:
+∥M∥2
+F −2⟨E[Z], M⟩F = ∥M −E[Z]∥2
+F −∥E[Z]∥2
+F .
+Therefore f(M) = E[∥Z∥2
+F ] −∥E[Z]∥2
+F + ∥M −E[Z]∥2
+F . Again, the first two terms are constants
+with respect to M. So f(M) is minimized exactly when ∥M −E[Z]∥2
+F = 0, that is, M = E[Z].
+Recalling that Z = log X, we obtain M = E[log X] = µlog,val
+y
+. Since M = log C, this gives
+C = exp(µlog,val
+y
+) = ¯CLE,val
+y
+. By strict convexity, this minimizer is unique.
+Proposition 4. If the generated class-conditional distribution matches the held-out real distribution,
+i.e., Qm
+y = P val
+y , then the induced radial laws are identical: νm
+y = νval
+y . Consequently, W rad
+m,y =
+0
+and
+Erad
+m,y = 0.
+Proof. Recall Eq. 14, the matrix logarithm is continuous on Cd, subtraction by a fixed matrix is contin-
+uous, and the Frobenius norm is also continuous. Therefore ry is continuous, hence measurable. By
+definition of pushforward, for any measurable set A ⊆R≥0, νm
+y (A) = Qm
+y
+ r−1
+y (A)
+
+,
+νval
+y (A) =
+P val
+y
+ r−1
+y (A)
+
+.
+If Qm
+y
+= P val
+y
+as probability measures on Cd, then for every measurable A,
+Qm
+y
+ r−1
+y (A)
+
+= P val
+y
+ r−1
+y (A)
+
+. Hence νm
+y (A) = νval
+y (A), which implies νm
+y = νval
+y .
+If two probability distributions are identical, then any proper distance or discrepancy between them
+must vanish. The 1-Wasserstein distance W1(νm
+y , νval
+y ) is zero if and only if the two measures are
+identical. The quantile functions also coincide, i.e., Qνm
+y (q) = Qνval
+y (q)
+for all q ∈(0, 1), which
+implies every term in Eq. 17 is zero. Therefore, W rad
+m,y = 0 and Erad
+m,y = 0.
+Remark. Proposition 4 establishes a one-directional necessity: matching radial laws is required, but
+fundamentally insufficient, for full distribution agreement. Intuitively, the radial mapping ry acts as
+an isotropic aggregator, collapsing the d(d−1)
+2
+-dimensional tangent space of Sym(d) into a single
+non-negative scalar. Because this operation strips away all angular information, two distributions
+can easily share identical radial profiles while occupying completely disjoint directional regions.
+Geometrically, this is analogous to comparing a uniform spherical shell to a narrow, dense equatorial
+ring; both share the same radial distance from the center, yet their structures differ entirely. In the
+context of connectomes, this implies that a generator might perfectly replicate the correct magnitude
+of overall network deviation from the mean class state, but allocate those topological changes to
+entirely incorrect functional edges or subnetworks. Therefore, while vanishing radial discrepancy
+(W rad
+m,y = 0) provides a rigorous, necessary confirmation that global variance is calibrated, it must be
+paired with directional or topological evaluations to guarantee true conditional support recovery.
+Empirical Takeaway. Figure 7 visualizes the full radial pushforward distributions and their Wasser-
+stein distances to the real held-out center. Table 8 reports the corresponding median log-Euclidean
+radial distances for MAGNET, DiffeoCFM, and DiffeoGauss. TriangCFM is excluded from the
+table because its severe overdispersion (median radial distances exceeding 40 units, visible as inset
+annotations in Fig. 7) places it far outside the axis range of the remaining methods, making a shared
+table misleading. Across all three datasets, MAGNET achieves the smallest deviation from the real
+center, confirming tighter global geometric alignment. If a generator matches the true distribution,
+then this radial law must match exactly, and both Wasserstein and quantile discrepancies vanish.
+However, radial agreement alone does not guarantee full geometric fidelity.
+28
+
+
+Figure 7: Global radial calibration in log-Euclidean geometry. We plot the distribution of distances from the held-out
+real data center for each class and dataset. A systematic left shift relative to Real (grey) indicates manifold contraction, while a
+right shift indicates overdispersion. MAGNET (blue) consistently demonstrates the closest alignment to the real distribution
+across all datasets, while baselines like TriangCFM (insets) exhibit significant overdispersion.
+G.4
+Local Support Occupancy via Tangent Charts
+While radial analysis verifies that the generated samples exhibit the correct global scale around the
+real class center (Appendix G.3), it does not reveal whether the generated probability mass correctly
+aligns with the true support of the data distribution. To investigate this local occupancy, we construct
+a low-dimensional tangent chart using held-out real data and evaluate how the generated samples
+project onto this localized coordinate space.
+Log-domain centering and vectorization. For each held-out real connectome Cval,y
+i
+, we define
+zval,y
+i
+= vech0
+ log Cval,y
+i
+−µlog,val
+y
+
+∈Rp,
+p = d(d −1)
+2
+(18)
+Here vech0(M) denotes vectorization of the nonredundant off-diagonal entries of M. This step
+converts each connectome into a vector in a Euclidean space, centered at the held-out real mean.
+A real-defined tangent chart. Let Wy ∈Rp×2 denote the first two principal directions (PCA) of the
+held-out real vectors {zval,y
+i
+}. We define the two-dimensional chart coordinate of any connectome C
+29
+
+
+by
+uy(C) = W ⊤
+y vec△
+ log C −µlog,val
+y
+
+(19)
+Importantly, the basis Wy is computed using held-out real data only. Generated samples are projected
+into a chart they did not define.
+Real support region in the chart. Let bρval
+y
+be a kernel density estimate of the distribution of
+{uy(Cval,y
+i
+)}. For a chosen threshold τy, the support region:
+Sy = { u ∈R2 : bρval
+y (u) ≥τy }
+(20)
+The KDE uses a Gaussian kernel with Scott’s bandwidth [69] hy = n−1/6
+y
+and empirical covariance
+bΣy of the real chart points [25].
+The threshold τy
+= Quantile0.10
+
+{bρval
+y (uy(Cval,y
+i
+))}i
+
+is the 10th percentile of real KDE scores,
+so Sy
+approximates a central 90% real-
+support
+region;
+all
+parameters
+are
+derived
+from
+held-out
+real
+data
+only.
+Intu-
+itively,
+Sy captures the region where held-out real data is concentrated in the chart.
+Table 8: Geometric Fidelity Analysis. Median log-
+Euclidean radial distances to the held-out real class center
+(Eq. 15). Red deltas (∆) indicate the shift relative to the
+ground-truth median. TriangCFM is excluded due to severe
+overdispersion (see Fig. 7 insets). D-CFM is DiffeoCFM;
+D-Gauss is DiffeoGauss. CI indicates the class index.
+Data
+CI
+Real
+MAGNET
+D-CFM
+D-Gauss
+ABIDE
+C0
+4.22
+4.65 (+.43)
+4.76 (+.53)
+5.05 (+.83)
+C1
+4.17
+4.70 (+.54)
+4.85 (+.68)
+5.15 (+.98)
+ADNI
+C0
+5.54
+7.15 (+1.6)
+7.43 (+1.9)
+10.1 (+4.5)
+C1
+5.62
+7.80 (+2.2)
+7.71 (+2.1)
+10.5 (+4.9)
+OASIS
+C0
+4.84
+5.27 (+.43)
+5.54 (+.70)
+5.83 (+.98)
+C1
+4.88
+5.35 (+.48)
+5.70 (+.82)
+5.98 (+1.1)
+Inside-support rate.
+We measure how much gen-
+erated mass falls inside this real-defined region via
+ISRm,y = PC∼Qm
+y
+ uy(C) ∈Sy
+
+(21)
+This is a simple and interpretable quantity: the
+fraction of generated samples that lie inside the
+held-out real support in the tangent chart.
+Proposition 5. Suppose the chart distributions
+agree, i.e., (uy)#Qm
+y = (uy)#P val
+y , and assume
+that the boundary of Sy has zero probability un-
+der the held-out real chart distribution.
+Then
+ISRm,y = PC∼P val
+y
+ uy(C) ∈Sy
+
+.
+Proof. The map uy(C) = W ⊤
+y vec△(log C −µlog,val
+y
+) is a composition of continuous operations
+(logarithm, subtraction, linear projection), hence it is continuous and therefore measurable. The set
+Sy is defined through a density threshold and is therefore measurable. By assumption, (uy)#Qm
+y =
+(uy)#P val
+y . This means that for any measurable set A ⊆R2,
+PC∼Qm
+y (uy(C) ∈A) = PC∼P val
+y (uy(C) ∈A).
+Taking A = Sy, we obtain
+PC∼Qm
+y (uy(C) ∈Sy) = PC∼P val
+y (uy(C) ∈Sy),
+provided that Sy is a continuity set of the distribution. This holds if the boundary of Sy has zero
+probability, which is assumed. Thus, ISRm,y = PC∼P val
+y (uy(C) ∈Sy).
+Remark. According to proposition 5, samples generated by a generator that perfectly aligns with
+the distribution will also align with the validation support data. Thus, the empirical results of
+Inside-Support Rate, defined as ISRm,y supported by Eq. 21 directly helps us to identify the two
+geometric failures: over-dispersion where the generator decides to place distribution mass outside the
+high-density real regions denoted by Sy and under-coverage where the generator fails to cover the
+distribution of the true support set.
+Empirical Takeaway. Figure 8 and Table 9 quantify the spatial alignment of the generated density
+using the inside-support rate (ISRm,y) defined in Equation 21. It can be observed that the atlas (see
+Figure 8) shows distinct behavioral structures across the baselines. TriangCFM (T-CFM in Table 9)
+shows severe mode collapse and fails to populate the interior real support contour (Sy), generating
+ISRm,y near zero across all clinical cohorts.
+30
+
+
+Figure 8: Held-out real tangent-manifold occupancy atlas. We project generated samples into a 2D tangent chart
+defined strictly by held-out real data to evaluate local support occupancy. Visual guide: Gray contours represent the true data
+distribution (real support, Sy). The colormap indicates the density difference (generated minus real), where red highlights
+areas of over-generation (excess mass) and blue indicates under-generation (missing mass). Takeaway: MAGNET tightly
+bounds its generated samples within the valid real contours, consistently achieving the highest Inside-Support Rate (ISR,
+Eq. 21). Conversely, DiffeoCFM leaks mass beyond the true boundaries, TriangCFM exhibits severe mode collapse, and
+DiffeoGauss hallucinates out-of-distribution samples under the high heterogeneity of the ADNI cohort.
+31
+
+
+Table 9: Quantitative tangent-manifold support re-
+covery. Inside-support rate (ISRm,y ↑) measures the
+fraction of generated samples falling within the held-out
+real support region (Eq. 21).This quantifies whether a
+model accurately allocates probability mass to validation-
+supported regions of the tangent-manifold atlas (Fig. 8)
+without relying on regions it defined itself.
+Dataset Class
+MAGNET D-CFM T-CFM D-Gauss
+ABIDE
+Class 0
+1.000
+0.879
+0.008
+0.996
+Class 1
+1.000
+0.787
+0.008
+0.983
+Avg.
+1.000
+0.833
+0.008
+0.990
+ADNI
+Class 0
+0.896
+0.762
+0.000
+0.083
+Class 1
+0.821
+0.721
+0.000
+0.029
+Avg.
+0.859
+0.742
+0.000
+0.056
+OASIS-3
+Class 0
+0.988
+0.879
+0.000
+0.925
+Class 1
+0.967
+0.875
+0.000
+0.996
+Avg.
+0.978
+0.877
+0.000
+0.961
+Overall avg.
+0.945
+0.817
+0.003
+0.669
+DiffeoGauss (D-Gauss in Table 9) populates the real
+support contour very well on ABIDE and OASIS-3,
+but completely hallucinates on ADNI due to the se-
+vere heterogeneity present inside the dataset and ends
+up projecting beyond the true contours. On the other
+hand, DiffeoCFM (D-CFM in Table 9) tracks the cor-
+rect macroscopic structure but leaks the probability
+mass just outside the real boundaries. In contrast, our
+proposed method, MAGNET, localizes the generated
+density inside the dominant contour of held-out real
+support which allows us to achieve the highest ISR
+across all the datasets.
+H
+Reverse-time refinement
+In the preceding analysis, we established that gener-
+ated samples from the different baselines showcase
+distinct behaviors. The radial calibration (Appendix
+G.3) helped to identify the global scale mismatch and the tangent occupancy (Appendix G.4) revealed
+the local issues of over-dispersion and under-coverage with respect to true support Sy. However, we
+can only assess the terminal samples (t = 0) of the generative process using those analysis. We also
+need to understand how the probability mass navigates towards the held-out real manifold during
+the denoising. Hence, we now move beyond the static endpoints and inspect the dynamics of the
+reverse-time path Cy
+m,t as t →0.
+H.1
+Reverse-time tangent-manifold trajectory
+Let Cy
+m,t denote the connectome generated by method m at reverse-time checkpoint t
+∈
+{5, 4, 3, 2, 1, 0} for class y. We project each checkpoint through the same held-out real chart (Eq. 19):
+uy
+m,t = uy(Cy
+m,t). The reverse-time trajectory plots in Fig. 9 and 10 therefore answer a sharply
+defined question: as reverse time progresses, does the generated cloud move into the same held-out
+real support region identified in the final-sample occupancy atlas?
+The associated checkpoint-wise inside-support rate is
+ISRm,y(t) = P
+ uy
+m,t ∈Sy
+
+.
+(22)
+Remark. Note, we do not assume that t 7→ISRm,y(t) is monotone. The reverse-time quality
+metrics in diffusion and flow-based generative trajectories need not to evolve monotonically with
+time [83, 48]. The regime the path follows is much more important.
+Empirical Takeaway. Trajectory manifolds are shown for split 0 using all held-out validation subjects
+of the selected class: ABIDE (n0=52, n1=33), ADNI (n0=103, n1=145), and OASIS-3 (n0=109,
+n1=65). DiffeoCFM enters the vicinity of the real contour support earlier but MAGNET finishes
+with tighter support alignment in the second half of the reverse process to ensure high alignment
+to the real support contour. On OASIS-3, we see a modest gap between the two methods with
+MAGNET remaining near the real support contour and DiffeoCFM decaying mildly from 1.00 to
+0.91. However, ABIDE highlights different dynamics. Both the methods remain inside the support
+contour throughout the denoising trajectory, indicating easier adaptability to the data as compared to
+the previous two datasets.
+H.2
+Stepwise residual refinement on a fixed held-out real edge mask
+The reverse trajectory is geometric but it is not able to show edge-specific generation by the methods.
+We examine the residual mean connectomes on a fixed real-defined edge mask to understand how the
+first order structure is refined by each method over the denoising timesteps.
+For class y, let ¯Cy
+val = EC∼P y
+val[C] be the held-out real class mean. Let My be the binary mask
+containing the top held-out real edges according to | ¯Cy
+val(a, b)|. For method m at checkpoint t, we
+32
+
+
+Figure 9: Dynamic support alignment for healthy controls (Class 0). We track the generated probability mass over the
+reverse-time denoising trajectory (T = 5 →0). Each checkpoint is projected into the fixed, real-data-defined tangent chart
+established in our occupancy atlas. Visual Guide: The solid gray contour demarcates the true held-out data support (Sy); the
+colormap tracks localized density error. Takeaway: MAGNET strictly bounds its trajectory within the interior of the true
+held-out data contour, achieving near-perfect inside-support rates without the boundary leakage typical of transport baselines.
+define the generated class mean ¯Cy
+m,t = E[Cy
+m,t]. We compare the fixed-mask residual
+Ry
+m,t =
+  ¯Cy
+m,t −¯Cy
+val
+
+⊙My.
+(23)
+First column of Fig. 11 and 12 shows the real held-out mean on the mask itself. Each subsequent
+column shows the “generated - real” residual using the same fixed mask. Since we keep the mask
+and the color scale constant across columns, we can directly compare across denoising checkpoints,
+avoiding any threshold drift that can arise if the support definition changes. We report two scalar
+statistic on the masked edges:
+MAEy
+m,t =
+1
+|My|
+X
+(a,b)∈My
+ ¯Cy
+m,t(a, b) −¯Cy
+val(a, b)
+ ,
+(24)
+and
+Corry
+m,t = Corr
+ { ¯Cy
+m,t(a, b)}(a,b)∈My, { ¯Cy
+val(a, b)}(a,b)∈My
+
+.
+(25)
+Proposition 6. For fixed m, t, and y, the following statements are equivalent: ❶Ry
+m,t = 0, ❷
+MAEy
+m,t = 0, ❸¯Cy
+m,t(a, b) = ¯Cy
+val(a, b) for all (a, b) ∈My.
+Proof. We reutilize the definitions discussed in Eq. 23 and 24.
+❶⇒❸If Ry
+m,t = 0, then every masked entry of the difference is zero (Eq. 23). Hence ¯Cy
+m,t(a, b) =
+¯Cy
+val(a, b)
+for all (a, b) ∈My.
+33
+
+
+Figure 10: Dynamic support alignment for heterogeneous disease cohorts (Class 1). Tracking the reverse-time trajectory
+(T = 5 →0) against the fixed real-data tangent chart. Visual Guide: The solid gray contour demarcates the true held-out data
+support (Sy); the colormap tracks localized density error. Takeaway: The high structural heterogeneity of diseased subjects
+causes baselines like DiffeoCFM to stagnate early and bleed mass outside valid clinical regions. Conversely, MAGNET actively
+tightens its alignment during the critical final denoising steps, successfully navigating complex, multi-modal topologies to
+terminate securely within the true clinical support.
+❸⇒❷If all masked entries match exactly, then every absolute difference in the MAE (Eq. 24) is
+zero, so MAEy
+m,t = 0.
+❷⇒❶The MAE is an average of nonnegative terms. If the average is zero, then every term must be
+zero, implying that all masked residuals vanish. Therefore Ry
+m,t = 0.
+Thus all three statements are equivalent.
+Remark. Using proposition 6, it is easily understandable what the connectome strip measures and
+what it does not. The connectome strips are first order structural refinement view on a held-out real
+edge set. Note, this is not a substitute for full-distribution fidelity. By anchoring the evaluation to a
+fixed, real-defined mask My, we guarantee that MAEy
+m,t serves as a faithful, unconfounded proxy
+for the residual heatmaps Ry
+m,t.
+Empirical Takeaway. Figures 11 and 12 extend the main-text qualitative evidence from one scan
+per class to three additional held-out scans per class. The same pattern persists. ADNI remains the
+clearest separation: DiffeoGauss oversmooths, TriangCFM often collapses toward a narrow core, and
+DiffeoCFM preserves some dominant edges but more frequently distorts their global arrangement.
+MAGNET is more consistent at preserving the leading cross-hemispheric and frontal-posterior
+structure while maintaining lower or competitive ∆values. ABIDE is visually easier, with all valid
+baselines closer to the target, but MAGNET remains competitive under the same held-out mask.
+OASIS-3 is more mixed, yet MAGNET still preserves the most stable global edge geometry across
+34
+
+
+Figure 11: Held-out connectome comparisons for class 0. Top to bottom: ABIDE, ADNI, and OASIS-3. For each dataset,
+we show three held-out scans, comparing the real connectome against DiffeoGauss, TriangCFM, DiffeoCFM, and MAGNET.
+Each row uses the top-45 edges of the corresponding real scan and reuses the same real-defined color scale across methods. ∆
+denotes the upper-triangular MAE to the real correlation matrix, with smaller values indicating closer agreement.
+scans. These additional examples reduce the risk that the main-text qualitative result is driven by a
+single curated scan and support the same structural-recovery conclusion.
+I
+Broader Impacts
+Conditional connectome synthesis lies at the intersection of two broader challenges: generating valid
+samples on constrained manifolds and recovering class-conditional structure under coarse supervision.
+MAGNET addresses both, with implications beyond neuroimaging.
+On the positive side, generating geometrically valid, class-conditional connectomes supports data-
+scarce clinical research by augmenting underrepresented groups, enabling multi-site studies, and
+facilitating privacy-preserving data sharing. By modeling within-class heterogeneity via subtype
+conditioning, MAGNET avoids a key failure of binary-supervised generators, producing unrealistic
+averaged samples, thereby improving the reliability of synthetic augmentation. More broadly,
+the work highlights a general problem: class-conditional manifold awareness. In domains where
+35
+
+
+Figure 12: Held-out connectome comparisons for class 1. Top to bottom: ABIDE, ADNI, and OASIS-3. For each dataset,
+we show three held-out scans, comparing the real connectome against DiffeoGauss, TriangCFM, DiffeoCFM, and MAGNET.
+Each row uses the top-45 edges of the corresponding real scan and reuses the same real-defined color scale across methods. ∆
+denotes the upper-triangular MAE to the real correlation matrix, with smaller values indicating closer agreement.
+outputs must lie on nonlinear manifolds and labels collapse diverse subpopulations (e.g., molecular
+generation, materials science, medical imaging), validity alone is insufficient as models may remain
+manifold-valid while producing implausible samples due to support averaging. MAGNET provides a
+transferable framework for such settings. In particular, relevance-preserving corruption ensures class-
+relevant structure persists during generation, with implications for diffusion-based distillation and
+continual learning, and potential extensions to mitigating hallucinations and poor-quality synthesis.
+Limitations and risks remain. Synthetic connectomes may amplify demographic biases present in
+source datasets, and discovered subtypes are statistical rather than clinically validated. Additionally,
+highly realistic synthetic data closely mimicking real data samples (memorization) could be misused
+(e.g., fabricating cohorts), necessitating careful validation before deployment in sensitive applications
+concerning privacy.
+36
+
+
+NeurIPS Paper Checklist
+1. Claims
+Question: Do the main claims made in the abstract and introduction accurately reflect the
+paper’s contributions and scope?
+Answer: [Yes]
+Justification: The abstract and main text state the central claims on validity-preserving
+conditional support recovery, few-step sampling, and preservation of fine-grained clinical
+structure. The main benchmark is supported by three cohorts, while Table 4 additionally
+evaluates robustness to higher-resolution anatomical and functional parcellations.
+2. Limitations
+Question: Does the paper discuss the limitations of the work performed by the authors?
+Answer: [Yes]
+Justification: The limitations of the proposed MAGNET framework is present in the Conclu-
+sion (sec. 4).
+3. Theory assumptions and proofs
+Question: For each theoretical result, does the paper provide the full set of assumptions and
+a complete (and correct) proof?
+Answer: [Yes]
+Justification: The paper formally states propositions in Section 2 and provides complete
+mathematical proofs alongside structural assumptions in Appendices B, G, and F.
+4. Experimental result reproducibility
+Question: Does the paper fully disclose all the information needed to reproduce the main ex-
+perimental results of the paper to the extent that it affects the main claims and/or conclusions
+of the paper (regardless of whether the code and data are provided or not)?
+Answer: [Yes]
+Justification: The paper thoroughly details the experimental setup, dataset splits, prepro-
+cessing steps (MSDL atlas, z-scoring), sampling budgets, and network hyperparameters in
+Section D and Appendix E.
+5. Open access to data and code
+Question: Does the paper provide open access to the data and code, with sufficient instruc-
+tions to faithfully reproduce the main experimental results, as described in supplemental
+material?
+Answer: [Yes]
+Justification: Section D and Appendix E specify the data splits, preprocessing, architecture,
+training and sampling procedures, evaluation protocol, and principal hyperparameters. The
+accompanying code repository provides the implementation and scripts used for the reported
+benchmarks and ablations.
+6. Experimental setting/details
+Question: Does the paper specify all the training and test details (e.g., data splits, hyperpa-
+rameters, how they were chosen, type of optimizer) necessary to understand the results?
+Answer: [Yes]
+Justification: Experimental details, including the 10 disjoint train/test splits, balanced class
+sampling protocols, SNR loss reweighting, and precise neural architecture dimensions are
+documented in Section D and Appendix E.
+7. Experiment statistical significance
+Question: Does the paper report error bars suitably and correctly defined or other appropriate
+information about the statistical significance of the experiments?
+Answer: [Yes]
+37
+
+
+Justification: All empirical tables (e.g., Tables 1, 2, 5, etc.) report standard deviations
+computed across the 10 disjoint train/validation splits for every metric.
+Guidelines:
+8. Experiments compute resources
+Question: For each experiment, does the paper provide sufficient information on the com-
+puter resources (type of compute workers, memory, time of execution) needed to reproduce
+the experiments?
+Answer: [Yes]
+Justification: Wall-clock sampling times are reported in Table 1. Hardware details (single
+NVIDIA A6000 GPU, 48GB VRAM) are specified in Section D.
+9. Code of ethics
+Question: Does the research conducted in the paper conform, in every respect, with the
+NeurIPS Code of Ethics https://neurips.cc/public/EthicsGuidelines?
+Answer: [Yes]
+Justification: The research relies strictly on standard, pre-anonymized public datasets
+(ABIDE, ADNI, OASIS-3) and complies fully with ethical guidelines regarding human data
+and research conduct.
+10. Broader impacts
+Question: Does the paper discuss both potential positive societal impacts and negative
+societal impacts of the work performed?
+Answer: [Yes]
+Justification: Broader impacts including potential negative societal risks (demographic bias
+amplification, misuse of synthetic cohorts in clinical settings) and mitigation strategies are
+discussed in the Broader Impacts in Appendix I.
+11. Safeguards
+Question: Does the paper describe safeguards that have been put in place for responsible
+release of data or models that have a high risk for misuse (e.g., pre-trained language models,
+image generators, or scraped datasets)?
+Answer: [N/A]
+Justification: The models generated in this research (synthetic functional connectomes)
+are highly domain-specific and do not pose the generalized high-risk for malicious misuse
+associated with large language models or deepfake image generators.
+12. Licenses for existing assets
+Question: Are the creators or original owners of assets (e.g., code, data, models), used in
+the paper, properly credited and are the license and terms of use explicitly mentioned and
+properly respected?
+Answer: [Yes]
+Justification: The creators of the utilized datasets (ABIDE, ADNI, OASIS-3) and software
+libraries (e.g., Nilearn) are properly credited with citations throughout the text.
+13. New assets
+Question: Are new assets introduced in the paper well documented and is the documentation
+provided alongside the assets?
+Answer: [N/A]
+Justification: The research utilizes existing datasets and does not introduce new primary
+data assets.
+14. Crowdsourcing and research with human subjects
+Question: For crowdsourcing experiments and research with human subjects, does the paper
+include the full text of instructions given to participants and screenshots, if applicable, as
+well as details about compensation (if any)?
+38
+
+
+Answer: [N/A]
+Justification: This research relies entirely on retrospective analysis of existing, de-identified
+databases and does not involve primary crowdsourcing or new human subject interaction.
+15. Institutional review board (IRB) approvals or equivalent for research with human
+subjects
+Question: Does the paper describe potential risks incurred by study participants, whether
+such risks were disclosed to the subjects, and whether Institutional Review Board (IRB)
+approvals (or an equivalent approval/review based on the requirements of your country or
+institution) were obtained?
+Answer: [N/A]
+Justification: Because the study strictly utilizes pre-collected, fully anonymized public
+neuroimaging datasets, new Institutional Review Board (IRB) approval is not required.
+16. Declaration of LLM usage
+Question: Does the paper describe the usage of LLMs if it is an important, original, or
+non-standard component of the core methods in this research? Note that if the LLM is used
+only for writing, editing, or formatting purposes and does not impact the core methodology,
+scientific rigor, or originality of the research, declaration is not required.
+Answer: [N/A]
+Justification: Large Language Models were not utilized as a component of the core generative
+methodology or scientific evaluation in this research.
+39
