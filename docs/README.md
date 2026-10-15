@@ -48,17 +48,17 @@
 <section class="dpr-home-dashboard-card dpr-home-report-card">
   <div class="dpr-home-dashboard-header">
     <div>
-      <span class="dpr-home-dashboard-kicker">2026-10-14</span>
+      <span class="dpr-home-dashboard-kicker">2026-10-15</span>
       <h3 class="dpr-home-dashboard-title">今日汇总</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">共 10 篇</strong>
+    <strong class="dpr-home-dashboard-count">共 4 篇</strong>
   </div>
   <dl class="dpr-home-dashboard-stats">
     <div class="dpr-home-dashboard-stat"><dt>累计更新</dt><dd>1 次</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>2</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>8</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>1</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>3</dd></div>
   </dl>
-  <p class="dpr-home-dashboard-body">最近更新：2026-10-14 22:46:29 UTC<br>状态：成功</p>
+  <p class="dpr-home-dashboard-body">最近更新：2026-10-15 22:10:58 UTC<br>状态：成功</p>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-brief-card">
   <div class="dpr-home-dashboard-header">
@@ -69,9 +69,7 @@
     <strong class="dpr-home-dashboard-count">AI</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<p>1）今日盘点10篇脑影像AI进展，精读2篇、速读8篇，焦点直指fMRI连接组基础模型与连接组生成。</p>
-<p>2）最值得看的是CoFlu-Brain用共波动预训练fMRI连接基础模型（10分），以及MAGNET用流形感知图扩散生成连接组（9分），它们把“基础模型+生成模型”推向脑连接分析前沿。</p>
-<p>3）普通读者可优先关注这些方法能否提升阿尔茨海默/帕金森MRI分类、稀疏dMRI分析等</p>
+<p>今日精读1篇、速读3篇脑影像论文，聚焦脑老化、皮层重建与扩散MRI视野扩展。最值得看的是用时间校准贝叶斯推断刻画脑老化协方差轨迹（8.0分），以及条件流匹配实现扩散MRI视野可泛化扩展。普通读者可先关注脑老化建模思路，再了解MRI重建与视野扩展如何提升数据可用性。</p>
   </div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-deep-card">
@@ -80,12 +78,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">精读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">2 篇</strong>
+    <strong class="dpr-home-dashboard-count">1 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="CoFlu-Brain: An fMRI Connectivity Foundation Model with Cofluctuation-Based Pretraining">CoFlu-Brain: An fMRI Connectivity Foundation Model with Cofluctuation-Based Pretraining</span></li><li><span class="dpr-home-dashboard-paper-title" title="MAGNET: Manifold-Aware Graph Diffusion Network for Connectome Generation">MAGNET: Manifold-Aware Graph Diffusion Network for Connectome Generation</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Longitudinal Brain Aging in Covariance Space: Temporally Calibrated Bayesian Inference for Adaptive Covariance Operators">Longitudinal Brain Aging in Covariance Space: Temporally Calibrated Bayesian Inference for Adaptive Covariance Operators</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">fbn <strong>2</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">fbn <strong>1</strong></span></div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-skim-card">
   <div class="dpr-home-dashboard-header">
@@ -93,12 +91,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">速读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">8 篇</strong>
+    <strong class="dpr-home-dashboard-count">3 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="HybridDualPathNet: Cross-Fusion Attention of EfficientNetV2 and Swin Transformer for Brain MRI Classification of Alzheimer&#x27;s and Parkinson&#x27;s Disease">HybridDualPathNet: Cross-Fusion Attention of EfficientNetV2 and Swin Transformer for Brain MRI Classification of Alzheimer&#x27;s and Parkinson&#x27;s Disease</span></li><li><span class="dpr-home-dashboard-paper-title" title="dMRI-F: A Foundation Model for Generalizable Diffusion MRI Analysis from Sparse Acquisitions">dMRI-F: A Foundation Model for Generalizable Diffusion MRI Analysis from Sparse Acquisitions</span></li><li><span class="dpr-home-dashboard-paper-title" title="CANDLE: Cortical Null-Space Decomposition for Noninvasive Brain Source Imaging">CANDLE: Cortical Null-Space Decomposition for Noninvasive Brain Source Imaging</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Uncertainty-Aware Cortical Surface Reconstruction and Spherical Registration for Heterogeneous Brain MRI">Uncertainty-Aware Cortical Surface Reconstruction and Spherical Registration for Heterogeneous Brain MRI</span></li><li><span class="dpr-home-dashboard-paper-title" title="Generalizable field of view extension for diffusion MRI via conditional flow matching">Generalizable field of view extension for diffusion MRI via conditional flow matching</span></li><li><span class="dpr-home-dashboard-paper-title" title="Simulating Alzheimer&#x27;s amyloid-like pathology on a fly central nervous system connectome">Simulating Alzheimer&#x27;s amyloid-like pathology on a fly central nervous system connectome</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">fbn <strong>8</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">fbn <strong>3</strong></span></div>
 </section>
 </div>
 
