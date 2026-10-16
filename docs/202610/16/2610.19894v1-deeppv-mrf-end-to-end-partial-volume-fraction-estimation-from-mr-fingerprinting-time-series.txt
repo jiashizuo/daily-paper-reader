@@ -1,0 +1,1669 @@
+DeepPV-MRF: End-to-End Partial-Volume Fraction
+Estimation from MR Fingerprinting Time Series
+Tianyi Ding1, Yang Gao1,2, Zhuang Xiong3,
+Feng Liu1, Martijn A. Cloos4,5,Jin Jin6, Hongfu Sun1,7
+1 School of Electrical Engineering and Computer Science, University of Queensland, QLD 4072, Australia
+2 School of Computer Science and Engineering, Central South University, Changsha 410083, China
+3 Image X Institute, Sydney School of Health Sciences, Faculty of Medicine and Health, University of
+Sydney, NSW 2006, Australia
+4 Donders Institute for Brain Cognition and Behaviour, Radboud University, Nijmegen, Netherlands
+5 Australian Institute for Bioengineering and Nanotechnology, University of Queensland, St Lucia, QLD,
+Australia
+6 Siemens Healthineers Pty Ltd, Brisbane, Queensland, Australia
+7 School of Engineering, University of Newcastle, Callaghan, NSW 2308, Australia
+Corresponding author: Hongfu Sun
+School of Engineering, University of Newcastle, Callaghan, NSW 2308, Australia
+Email: hongfu.sun@newcastle.edu.au
+Abstract
+Background: Accurate partial volume (PV) estimation, i.e., subvoxel tissue fractions,
+from Magnetic Resonance Fingerprinting (MRF) remains challenging, as conventional meth-
+ods such as dictionary matching or segmentation tools like FSL FAST rely on multi-stage
+iterative pipelines, where inaccuracies in early steps (e.g., parametric map estimation) can
+propagate and compromise the final tissue fraction maps.
+Purpose: This study introduces DeepPV-MRF, a deep learning framework designed to
+directly map raw MRF signals to voxel-wise tissue fraction maps. The goal is to provide
+a more accurate and efficient alternative to existing iterative and dictionary-based PV
+estimation methods.
+Methods: DeepPV-MRF employs a cascaded spatial-temporal neural network trained
+on subject-derived simulations generated through Bloch modeling with radial k-space un-
+dersampling. The integrates voxel-wise temporal encoding with spatial U-Net refinement
+to estimate CSF, GM, and WM fractions without intermediate T1/T2 maps. Performance
+was evaluated against PV dictionary matching (PV-DM), and PV pseudoinverse (PV-Pinv),
+using both simulated and in vivo data.
+Results:
+The proposed method substantially outperformed competing methods
+across all acquisition settings.
+In single-shot simulations, the CSF/WM/GM MAEs
+were
+0.0418/0.0744/0.0757,
+compared
+with
+0.1281/0.2443/0.2958
+for
+PV-DM
+and
+0.2021/0.2793/0.2630 for PV-Pinv; the corresponding SSIM values were 0.960/0.916/0.922.
+The in vivo experiments qualitatively showed sharper anatomical boundaries and smoother
+tissue transitions, while the cross-shot analysis supported improved consistency across
+volunteers.
+Conclusions: In conclusion, DeepPV-MRF offers a robust, accurate, and efficient frame-
+work for direct partial volume estimation in MRF. By eliminating reliance on intermediate
+reconstructions and improving performance particularly in low-shot scenarios, the method
+addresses critical weaknesses of existing approaches. These results support the practical
+feasibility of DeepPV-MRF and motivate further validation before clinical deployment.
+Keywords: Magnetic Resonance Fingerprinting, Partial Volume Estimation, Deep Learning,
+Tissue Quantification
+1
+arXiv:2610.19894v1  [eess.SP]  14 Oct 2026
+
+
+1
+Introduction
+Quantitative MRI (qMRI) is a non-invasive imaging framework that enables numerical charac-
+terization of tissue microstructure1. Broadly, qMRI applications fall into two major categories:
+parametric mapping and tissue composition estimation. The former focuses on extracting intrin-
+sic tissue properties such as longitudinal relaxation time (T1) and transverse relaxation time
+(T2), which serve as biophysical biomarkers for disease diagnosis. The latter aims to estimate
+metrics such as volume or thickness of tissue such as gray matter (GM), white matter (WM),
+and cerebrospinal fluid (CSF) in the brain.
+While parametric maps provide valuable insights into tissue biophysics, they do not directly
+account for tissue mixing within a voxel2. Conventionally, tissue composition estimation assumes
+that each voxel contains a single homogeneous tissue type3. However, this assumption fails in
+regions where voxels span across anatomical boundaries. This limitation becomes particularly
+important in clinical brain imaging, where partial volume (PV) effects are prevalent due to the
+limited spatial resolution of MRF4,5,6. PV effects can substantially impair the accuracy of tissue
+quantification2, lesion size estimations7, and brain atrophy assessment8.
+To characterize sub-voxel tissue heterogeneity, voxel-wise tissue fraction estimation—i.e.,
+quantifying the relative proportions of GM, WM, and CSF in each voxel—is essential. Traditional
+approaches to PV estimation typically rely on regularized statistical models, such as Gaussian
+mixture models (GMMs) combined with expectation-maximization (EM)9,10,11,12, often applied
+to multi-contrast structural MRI. These methods assume that each tissue class exhibits a well-
+defined intensity distribution across modalities and that voxel intensities result from a linear
+mixture of pure tissue responses. While effective in structural imaging, these assumptions do
+not hold in quantitative techniques like Magnetic Resonance Fingerprinting (MRF), where voxel
+signals represent non-linear temporal evolutions rather than static intensities.
+MRF13 signal representation captures multi-parametric information in a single scan, making it
+an attractive candidate for direct tissue composition estimation. One early attempt to incorporate
+PV modeling into MRF is the partial volume dictionary matching (PV-DM) method3,13, which
+estimates tissue fractions through dictionary matching. While promising, this method inherits
+several limitations from the underlying dictionary-based paradigm. First, dictionary-based
+MRF reconstruction becomes computationally demanding as the size and resolution of the
+dictionary increase, especially for applications involving partial volume modeling where dense
+sampling of tissue parameter space may be necessary13,14,15,16. Second, PV-DM relies on a strong
+“pure-tissue” assumption, requiring manually defined reference clusters with fixed relaxation
+times for GM, WM, and CSF. This introduces subjectivity and operational complexity, making
+it difficult to deploy in automated or clinical pipelines. These challenges motivate the need
+for more flexible, data-driven approaches to sub-voxel tissue fraction estimation in the MRF
+context.
+Recent studies have explored deep learning as an alternative to dictionary-based MRF
+reconstruction, demonstrating improved efficiency and scalability17,18,19,20,21,22,23,24.
+These
+methods typically train convolutional or transformer-based models to map MRF time-series
+signals to voxel-wise tissue parameters such as T1 and T2. For example, DRONE17 first introduced
+a fully connected neural network to directly regress quantitative maps from signal evolutions.
+SCQ18 extended this approach using convolutional architectures. More recent transformer-based
+models21 have shown further improvements in spatial consistency and generalization. However,
+most existing models are designed with a single-compartment model and do not explicitly
+estimate tissue fractions in partial volume voxels. While these models have demonstrated strong
+performance in parametric map reconstruction, they are not designed to resolve sub-voxel tissue
+mixing. As a result, partial volume effects remain unaddressed in most existing MRF-based deep
+learning pipelines, limiting their utility in tasks that require accurate tissue composition analysis.
+2
+
+
+This limitation motivates the need for models capable of explicitly estimating sub-voxel tissue
+fractions from MRF signals.
+To this end, we present DeepPV-MRF, an end-to-end deep learning framework for directly
+estimating voxel-wise tissue fraction maps from aliased MRF signal evolutions. The goal is
+to estimate the relative fractions of CSF, GM, and WM within each voxel, without relying
+on intermediate T1 or T2 maps. Extending the methodology proposed in MRF-Mixer24, we
+construct a fully simulated training dataset in which each voxel is assigned reference tissue
+fractions derived from high-resolution anatomical segmentations and corresponding pure-tissue
+relaxometry estimated from in vivo acquisitions. Unlike conventional partial volume estimation
+techniques such as partial volume pseudoinverse (PV-Pinv) and PV-DM3, which depend on
+predefined pure tissue fingerprints and manually designed subdictionaries, our method learns
+the mapping from MRF signals to tissue fractions directly from data, removing the need for
+dictionary construction, signal matching, or parameter discretization.
+2
+Related Work
+2.1
+Magnetic Resonance Fingerprinting Parameter Mapping
+MRF represents an approach to MRI data acquisition and analysis that enables simultaneous
+quantification of multiple tissue parameters through a single abbreviated scan13. During the
+dictionary matching (DM) process, the signal evolution observed in each voxel i, termed the
+tissue fingerprint, is represented as si ∈C1×t, comprising t time points. This fingerprint is
+systematically compared against a precomputed dictionary DMRF ∈Ct×n, where each column
+dj ∈Ct represents a signal evolution simulated from a unique combination of tissue parameters
+{T1, T2}. The best-matching dictionary entry di,MRF match is identified as the one that maximizes
+the normalized dot product magnitude with the observed signal3. Mathematically, this matching
+procedure can be expressed as:
+di,MRF match = arg max
+j=1,...,n |⟨si, dj⟩| .
+(1)
+The tissue parameters corresponding to the selected dictionary entry are then assigned to voxel
+i. To accelerate the DM process, many approaches have been proposed14,15,25,26.Recently, deep
+learning methodologies have been proposed to bypass the DM process altogether17,18,19,21,23,24.
+However, these deep learning approaches typically do not address the partial volume estimation.
+2.2
+Partial Volume Estimation
+Conventional approaches to addressing the PV effect typically model the voxel intensity as a
+linear combination of signals from constituent tissue types, weighted by their fractional volumes
+within the voxel1,27. Mathematically, this relationship is described by:
+Xi =
+K
+X
+k=1
+fi,kxi,k,
+subject to
+K
+X
+k=1
+fi,k = 1,
+(2)
+where Xi denotes the observed intensity at voxel i, xi,k represents the pure intensity of tissue
+type k at voxel i, fi,k denotes the fractional volume of tissue type k within voxel i, and K
+indicates the total number of tissue types present.
+Given a sufficient number of independent data channels, fractional tissue volumes can be
+directly estimated by solving this linear system via a least squares approach.
+3
+
+
+2.3
+Integrating Partial Volume Estimation with MRF
+Within the MRF framework, PV estimation has been approached by modeling each voxel’s
+signal as a linear combination of pure tissue fingerprints. Let si denote the MRF signal at voxel
+i, and let Dsub ∈Ct×m represent a subdictionary of signal evolutions for m tissue types. Then,
+the signal can be modeled as:
+si = Dsubwi,
+(3)
+where wi is the vector of tissue volume fractions. Based on this formulation, two representative
+approaches have been developed. The first, partial volume pseudoinverse (PV-Pinv)3, uses a
+pseudoinverse projection to estimate wi. The second, PV-DM3, constructs a dictionary of signal
+evolutions corresponding to all possible tissue fraction combinations and applies conventional
+dictionary matching to recover wi.
+While both methods provide a mathematically grounded approach to PV estimation in MRF,
+they depend heavily on predefined pure-tissue relaxation parameters and manual clustering for
+ROI selection. These assumptions complicate robust application across large datasets containing
+many subjects scanned on a variety of systems.
+3
+Methodology
+As illustrated in Figure 1, DeepPV-MRF consists of two main modules: (1) a voxel-wise complex-
+valued multilayer perceptron (cMLP) that compresses the temporal fingerprint at each voxel into
+a low-dimensional latent representation, and (2) a spatial refinement module based on a U-Net
+architecture that predicts tissue fraction maps. To train the network, we generated a synthetic
+dataset using forward Bloch simulations based on subject-derived PV maps and estimated
+pure-tissue relaxation parameters. The dataset incorporates radial-arm k-space undersampling
+and complex-valued signal formation to closely mimic real-world MRF acquisitions. We validated
+the proposed method using both simulated and in vivo test data.
+The remainder of this section is organized as follows: Section 3.1 details the network structure,
+Section 3.2 describes the synthetic data generation pipeline, Section 3.3 describes the training
+data, Section 3.4 outlines the synthetic testing data and in vivo data acquisition process,
+Section 3.5 covers the network training process, Section 3.6 presents the evaluation metrics, and
+Section 3.7 describes the baseline comparison methods.
+3.1
+Network Architecture
+The overall structure of DeepPV-MRF follows a two-stage design derived from the MRF-Mixer
+framework24,28. The original MRF-Mixer was developed to jointly extract spatial and temporal
+features from aliased MRF data. In this study, we adapted and extended that architecture to
+explicitly target voxel-wise partial volume estimation. Figure 1 provides an overview of the
+network, including the complex-valued temporal encoder and spatial tissue-fraction decoder.
+The network consisted of two sequential modules: a voxel-wise temporal encoder and a spatial
+refinement module. The encoder was implemented as a complex-valued multilayer perceptron
+(cMLP) that independently processes each voxel’s 200-point MRF fingerprint obtained after
+temporal compression via singular value decomposition (SVD). It comprised four complex-valued
+Conv2D layers with kernel size set to 1 × 1, effectively functioning as point-wise MLPs that
+reduce the temporal dimension to 16 latent channels. The real and imaginary parts of the
+resulting features were then concatenated to form a 32-channel per-voxel embedding, which was
+passed to the spatial decoder.
+4
+
+
+Complex Linear
+Complex Linear
+Complex Linear
+Complex Linear
+Complex Linear
+Concatenation
+Encoder
+Conv2D-r
+Conv2D-i
+Conv2D-r
+Conv2D-i
+BatchNorm
+ReLU
+BatchNorm
+ReLU
+Decoder
+2 x 2 Max Pooling
+Concatenation
+3 x 3 Conv, BNorm, ReLU
+2 x 2 Unpooling, BNorm, ReLU
+1 x 1 Conv
+(a)
+(b)
+Figure 1: (a) Overview of the DeepPV-MRF framework, including real and imaginary input channels
+and tissue-fraction (TF) prediction. (b) U-Net encoder structure with channel depths and block functions
+(left), and decoder structure for TF prediction (right).
+The refinement module adopted a modified U-Net to incorporate spatial context and regress
+tissue fraction maps. The encoder comprised four downsampling blocks with increasing channel
+widths [32, 64, 128, 256], each consisting of a 3 × 3 convolution, batch normalization, ReLU
+activation, and 2 × 2 max pooling. The decoder was constructed symmetrically using transposed
+convolutions for upsampling and skip connections for spatial resolution recovery. A SoftMax
+activation was applied to the tissue fraction decoder output to enforce probabilistic constraints
+across CSF, GM, and WM fractions.
+For completeness, we also evaluated an auxiliary-head variant that added B0 and PD
+prediction branches during training. These branches were introduced as an additional supervisory
+signal to regularize the shared encoder, but, as shown in the ablation study, they did not improve
+the primary PV estimation task under the current setting. Therefore, all main simulation and
+in vivo results use the no-auxiliary-head model. Overall, DeepPV-MRF enabled direct inference
+of PV maps from aliased MRF signals, without relying on intermediate parameter maps or
+dictionary matching.
+3.2
+Pre-processing Synthetic Dataset
+To supervise voxel-level PV estimation, we constructed a synthetic dataset with reference PV
+maps and corresponding MRF signal evolutions (Figure 2 (a)). Although specialized phantoms
+can be designed with known tissue mixing29, acquiring accurate voxel-wise PV maps and pure-
+tissue relaxation parameters from in vivo human subjects remains extremely challenging in
+practice. Therefore, we adopted a forward simulation strategy that generates synthetic MRF
+data from tissue compositions and relaxation values derived from real subject anatomy. This
+5
+
+
+Random Cropping
+Bloch Simulation
+FSL
+FAST
+Reference Label
+𝑤𝐶𝑆𝐹
+𝑤𝑊𝑀
+𝑤𝐺𝑀
+T1
+T2
+𝑇1𝑙=
+𝑇1 𝑖
+𝑖
+⋅𝑀𝑙𝑖
+𝑀𝑙𝑖
+𝑖
+𝑇2𝑙=
+𝑇2 𝑖
+𝑖
+⋅𝑀𝑙𝑖
+𝑀𝑙𝑖
+𝑖
+Tissue-wise T1/T2 Extraction
+CSF:
+𝑇1𝐶𝑆𝐹,𝑇2𝐶𝑆𝐹
+WM:
+𝑇1𝑊𝑀,𝑇2𝑊𝑀
+GM:
+𝑇1𝐺𝑀,𝑇2𝐺𝑀
+BLOCH
+BLOCH
+BLOCH
+𝑑𝐶𝑆𝐹
+𝑑𝑊𝑀
+𝑑𝐺𝑀
+𝑠𝑖𝑚𝑎𝑔𝑒
+NUFFT
+Radial
+Subsampling
+S
+V
+D
+R
+C
+×
+×
+×
+𝑤𝐶𝑆𝐹
+𝑤WM
+𝑤𝐺𝑀
+N
+U
+F
+F
+T
+Training Input
+FAs & TRs
+⋯
+⋯
+TR (1)
+TR (2)
+TR (N)
+111.24
+°
+⋯
+⋯
+⋯
+Shot 1:
+Shot 2:
+Shot X:
+180°
+Shot
+192
+192
+(64*64*200)
+200
+1 Shot
+3 Shots
+6 Shots
+B0
+PD
+Imaginary Channel
+Real Channel
+𝟔𝟒×𝟔𝟒×𝟒𝟎𝟎
+(a)
+(b)
+(c)
+(d)
+(e)
+Figure 2: (a) Synthetic data generation pipeline, (b) inversion recovery balanced steady-state free
+precession sequence, (c) radial subsampling trajectory, (d) random cropping, and (e) examples of the first
+four real and imaginary channels of the training input data.
+provides a practical supervisory signal for network training while maintaining precise control
+over the signal formation process.
+Under this framework, the MRF signal si ∈Ct at voxel i was generated using the following
+linear mixture model:
+si =
+m
+X
+l=1
+wi,ldl = Dsubwi.
+(4)
+which is mathematically equivalent to the partial volume dictionary matching (PV-DM)
+formulation3. Here, wi,l represents the tissue fraction of type l (CSF, GM, or WM), and dl
+denotes the pure-tissue fingerprint simulated by the Bloch equation. In this study, both wi
+and Dsub were treated as known during data generation, providing precise supervision for the
+learning model.
+We began by extracting the tissue fraction maps from high-resolution ME-MP2RAGE
+datasets30. Specifically, FMRIB’s Automated Segmentation Tool (FAST)31 was applied to
+subject-specific T1 maps to segment each voxel into fractional volumes of CSF (wCSF ), WM
+(wWM), and GM (wGM). These maps were treated as reference tissue composition maps wi at
+voxel i for supervision during synthetic data generation.
+To estimate realistic pure-tissue T1 and T2 values, we identified high-confidence regions for
+each tissue type using a threshold p ≥0.99 on the FSL FAST output:
+Ml(i) =
+
+
+
+1,
+pl(i) ≥0.99
+0,
+otherwise
+.
+(5)
+These binary masks Ml(i) were then used to compute average relaxation values.
+Because quantitative T2 maps were not available in the source data, approximate T2 maps
+were heuristically generated from the available T2* maps for MRF signal simulation. The T2*
+6
+
+
+maps were first scaled using a subject-level random factor sampled between 1.2 and 1.7, followed
+by empirical corrections to keep the resulting values within plausible simulation ranges. These
+corrections included enforcing T2 < T1, compressing unusually large T2 values (i.e., > 1000 ms),
+applying an additional global rescaling.
+The resulting ranges were selected to be broadly
+consistent with representative 3T brain relaxation values reported in prior studies32,33,34. This
+procedure was not intended as a tissue-specific physical conversion from T2* to T2, but rather
+as a heuristic step to introduce subject-level variability and generate approximate relaxation
+parameters for synthetic training-data generation.
+To introduce natural variability and prevent overfitting, smooth spatial perturbations were
+added to ¯
+T1l and ¯
+T2l before Bloch simulation. These perturbations mimic intra-tissue hetero-
+geneity and improve the realism of the synthetic signals.
+Each perturbed pure-tissue relaxation pair ( ¯
+T1l, ¯
+T2l) was passed through Bloch simulation
+to generate the corresponding fingerprint:
+dl = PD · Bloch( ¯
+T1l, ¯
+T2l, B0, FAs, TRs).
+(6)
+where PD is the voxel-wise proton density scaling factor at voxel i, flip angles (FAs) and
+repetition times (TRs) are the time-varying flip angles and repetition times, and B0 is the local
+off-resonance frequency. The same B0 value was applied to all tissue components within each
+voxel as a voxel-level approximation of the dominant local field condition. This assumption was
+adopted to keep the multi-component signal model identifiable and computationally tractable,
+while acknowledging that component-specific microscopic frequency differences may exist in
+practice.
+To emulate realistic acquisition conditions, we simulated undersampled MRF using radial
+k-space trajectories24,35, as shown in Figure 2(c). The image time series Simage was transformed
+into k-space using non-uniform fast Fourier transform (NUFFT):
+Skspace_radial = NUFFT(Simage, utrj).
+(7)
+and the aliased image series was reconstructed via:
+Simage_aliased = NUFFT−1(Skspace_radial, utrj).
+(8)
+The aliased MRF signal Simage_aliased served as the network input.
+3.3
+Synthetic Training Dataset
+We applied the above procedure to ten subjects from the ME-MP2RAGE dataset30 for training.
+All imaging procedures were approved by the institutional ethics committee, and written informed
+consent was obtained.
+To reduce memory usage and accelerate training, we applied temporal compression using
+SVD14, reducing the original 1000 time points to 200 dominant components. This choice was
+guided by prior MRF studies showing that, for bSSFP-based dictionaries, the first 200 singular
+components retain nearly all dominant signal energy14. Accordingly, we used 200 components
+as a robust and computationally efficient setting for evaluating the core feasibility of deep
+learning-based partial volume estimation from undersampled MRF signals, rather than treating
+SVD dimensionality itself as a primary optimization target in this study.
+The SVD basis was computed once from the precomputed MRF dictionary rather than from
+the training or testing image data. The same fixed temporal basis was then applied to the
+training, synthetic testing, and in vivo datasets. Therefore, the temporal compression step was
+7
+
+
+independent of the image-level training/testing split and did not introduce information leakage
+from the test subjects into model training.
+The final training dataset contained 1200 paired samples of size 192 × 192, each consisting
+of compressed aliased MRF signals as input and the corresponding CSF, WM, and GM tissue
+fraction maps as labels. To enhance spatial diversity and improve generalization, we applied
+random cropping during training, as illustrated in Figure 2(d).
+Specifically, each original
+sample was randomly cropped five times, resulting in a total of 30,000 training samples of size
+64 × 64 × 200.
+3.4
+Testing Dataset
+To evaluate model performance under controlled conditions, we first constructed a synthetic
+test set using three subjects from the ME-MP2RAGE dataset30, which were not used during
+training. For each subject, we selected slices primarily located in the central brain region to
+ensure anatomical diversity. A total of 120 synthetic test samples were generated, each of
+size 192 × 192. These samples were used exclusively during inference to provide quantitative
+comparisons of reconstruction accuracy across different models.
+In addition to the synthetic test data, in vivo datasets were acquired from three healthy
+volunteers (sub 01, sub 02, sub 03). The sub 01 dataset was acquired on a 3 T Siemens Prisma
+scanner, whereas the sub 02 and sub 03 datasets were acquired after the scanner system was
+upgraded to a 3 T Siemens MAGNETOM Cima.X Fit platform. Each volunteer was scanned
+using single-shot, three-shot, and six-shot MRF acquisitions, resulting in nine in vivo datasets
+in total. Imaging was performed across 32 slices using a 1000-point IR-bSSFP sequence with
+varying radial undersampling strategies, an in-plane resolution of 1 mm, and a slice thickness of
+3 mm. Written informed consent was obtained from all volunteers prior to participation. The
+trained models were directly applied to these datasets without retraining or fine-tuning, and
+the results were used to evaluate cross-shot consistency and multi-volunteer in vivo robustness
+across the expanded scanner/protocol setting.
+3.5
+Network Training
+The DeepPV-MRF network was trained using the Adam optimizer on an NVIDIA GeForce RTX
+5090 GPU for 100 epochs. All model parameters were initialized from a normal distribution with
+a mean of 0 and a standard deviation of 0.01, and the full training process required approximately
+one hour under the current implementation settings. After training, computational profiling
+of the final model showed that it contained 7.14 million trainable parameters and required
+approximately 201.81 GFLOPs for one 192×192 slice. On the same GPU, the inference time was
+3.06 ms per slice, with peak GPU memory usage of 0.243 GB allocated and 0.303 GB reserved.
+The network was trained by minimizing a tissue fraction estimation loss. This loss contains
+two terms: an L1 loss for voxel-wise tissue fraction accuracy and a spatial gradient consistency
+loss for preserving tissue boundaries:
+LPV = LL1( ˆW, W) + λspatial · Lspatial( ˆW, W),
+(9)
+where ˆW and W denote the predicted and reference tissue fraction maps, respectively.
+The L1 loss promotes voxel-wise accuracy and is defined as:
+LL1( ˆW, W) = 1
+N
+N
+X
+i=1
+ ˆWi −Wi
+ .
+(10)
+8
+
+
+To enforce spatial smoothness, we used a first-order gradient consistency loss:
+Xx,i,j =
+∇x ˆWi,j −∇xWi,j
+ ,
+(11)
+Xy,i,j =
+∇y ˆWi,j −∇yWi,j
+ ,
+(12)
+Lspatial( ˆW, W) = 1
+N
+X
+i,j
+(Xx,i,j + Xy,i,j) ,
+(13)
+where ∇x and ∇y denote finite difference approximations of spatial gradients in the horizontal
+and vertical directions, respectively.
+The hyperparameter λspatial controls the trade-off between zeroth-order voxel-wise fidelity
+and first-order spatial gradient consistency. In the main experiments, we used λspatial = 0.05 as a
+default setting because it provided stable training and satisfactory reconstruction quality during
+model development. As shown later in the ablation study, performance remained relatively
+stable across a range of values.
+For the auxiliary-head ablation only, the objective was extended as:
+Laux
+Total = LPV + LB0 + LPD,
+(14)
+where LB0 = MSE( ˆ
+B0, B0) and LPD = MSE( ˆ
+PD, PD) represent voxel-wise mean squared
+errors between predicted and reference B0 and PD maps, respectively.
+3.6
+Evaluation Metrics
+To evaluate estimation performance, we employed voxel-wise metrics to reflect numerical accuracy.
+These quantitative voxel-wise metrics were computed for the synthetic test data, where reference
+tissue fraction maps were available. For the in vivo data, no voxel-wise reference PV maps
+were available; therefore, metrics requiring reference tissue fractions were not computed in that
+setting. Instead, an expert manually delineated the brain contour in ImageJ36 to generate a
+brain mask, which was used to restrict the analysis and visualization to the brain region.
+3.6.1
+Voxel-wise Accuracy Metrics
+We used the following voxel-wise metrics to quantify the accuracy of the estimated tissue fraction
+maps on the synthetic test set: root mean square error (RMSE), tissue-specific mean absolute
+error (MAE), peak signal-to-noise ratio (PSNR), structural similarity index (SSIM), and weighted
+Pearson correlation coefficient (rweighted). These metrics collectively assess both numerical fidelity
+(RMSE, MAE, PSNR) and structural similarity (SSIM). Because these quantities require voxel-
+wise reference tissue fractions, they were not computed for the in vivo data.
+For a given tissue t ∈{CSF, WM, GM}, let wt(i) denote the reference fraction of tissue t at
+voxel i, and let ypred,t,i and ytrue,t,i denote the predicted and reference values, respectively. The
+tissue-specific partial-volume mask was defined as
+ΩPV,t = { i | 0 < wt(i) < 1, i ∈Ωbrain },
+(15)
+where Ωbrain denotes the brain mask, and NPV,t is the number of voxels in ΩPV,t.
+• Tissue-specific Mean Absolute Error (MAE): The tissue-specific MAE was evaluated
+on the corresponding partial-volume region to assess accuracy in transition areas:
+MAEt =
+1
+NPV,t
+X
+i∈ΩP V,t
+|ypred,t,i −ytrue,t,i| .
+(16)
+9
+
+
+In addition to the PV-restricted tissue-specific MAE, we also report whole-brain metrics
+computed over all voxels within the brain mask to facilitate comparison with related work
+in Supplementary Table 2.
+• Weighted Pearson Correlation (rweighted): We computed a tissue-specific weighted
+Pearson correlation on ΩPV,t, with weights defined by
+ωt,i = wt(i)
+ 1 −wt(i)
+.
+(17)
+The weighted correlation was then computed as
+˜yt,i = ytrue,t,i −¯ytrue,t,
+(18)
+ˆyt,i = ypred,t,i −¯ypred,t,
+(19)
+rweighted,t =
+P
+i∈ΩP V,t ωt,i ˜yt,iˆyt,i
+qP
+i∈ΩP V,t ωt,i˜y2
+t,i
+qP
+i∈ΩP V,t ωt,iˆy2
+t,i
+.
+(20)
+In addition to quantitative evaluations, we generated voxel-wise error maps for qualitative
+analysis, enabling visual inspection of regional estimation errors and anatomical plausibility.
+3.7
+Comparison with Other Methods
+To comprehensively assess the performance of the proposed method, we conducted comparative
+analyses against several established approaches, including PV-Pinv3, and PV-DM3. Because
+these competing methods operate on different signal representations and require different prior
+information, we explicitly distinguish below between matched and unmatched comparison
+conditions.
+In the simulation experiments, DeepPV-MRF, PV-Pinv, and PV-DM were evaluated using
+the same synthetic MRF inputs generated from the same underlying tissue composition and
+relaxation parameter framework. For PV-Pinv and PV-DM, the required dictionaries Dsub and
+DPV were constructed from the same reference tissue parameters used in the simulation setup.
+Therefore, the simulation comparison among these MRF-based methods was performed under
+closely matched input conditions and parameter assumptions.
+For the in vivo experiment, some differences in preconditions were unavoidable because the
+methods operate in different input domains. Following the original PV-DM study3, we first
+generated T1 and T2 maps through dictionary matching and then applied k-means clustering
+with k = 11 to select representative T1 and T2 values for constructing Dsub and DPV for
+PV-Pinv and PV-DM. The value k = 11 was adopted from the original PV-DM implementation
+rather than tuned in this study. The resulting cluster centers were used as representative
+T1/T2 parameter candidates spanning the observed tissue distribution, not as eleven final tissue
+classes. Candidate centers corresponding to CSF, GM, and WM were then used to construct
+the three-component PV dictionary for tissue fraction estimation. In contrast, DeepPV-MRF
+directly used aliased MRF time-series signals as input.
+Accordingly, the comparison with PV-Pinv and PV-DM can be regarded as an MRF-based
+methodological comparison under closely aligned simulation settings. We have made these
+distinctions explicit to clarify both the fairness and the limitations of the comparative evaluation.
+10
+
+
+CSF
+Difference Map
+Single-Shot
+Three-Shot
+Six-Shot
+0
+1
+0
+0.2
+WM
+GM
+Difference Map
+Difference Map
+Reference
+PV-DM
+PV-Pinv
+DeepPV-MRF
+Reference
+PV-DM
+PV-Pinv
+DeepPV-MRF
+Reference
+PV-DM
+PV-Pinv
+DeepPV-MRF
+Difference Map
+Difference Map
+Difference Map
+Difference Map
+Difference Map
+Difference Map
+0
+1
+0
+0.2
+0
+1
+0
+0.2
+0
+1
+0
+0.2
+0
+1
+0
+0.2
+0
+1
+0
+0.2
+0
+1
+0
+0.2
+0
+1
+0
+0.2
+0
+1
+0
+0.2
+Figure 3: Qualitative comparison of tissue fraction maps for cerebrospinal fluid (CSF), white matter
+(WM), and gray matter (GM) under single-shot, three-shot, and six-shot acquisitions in the synthetic
+test set. For each tissue type and acquisition setting, four methods are compared: Reference Label,
+partial volume dictionary matching (PV-DM), partial volume pseudoinverse (PV-Pinv), and the proposed
+DeepPV-MRF. Corresponding absolute difference maps are shown in the second row for each acquisition
+setting to visualize voxel-wise reconstruction errors. All maps are displayed using a common intensity
+window of [0, 1] for tissue fractions and [0, 0.2] for difference maps.
+4
+Results
+4.1
+Simulation Results
+Figure 3 shows a qualitative comparison of partial volume estimation results from PV-DM,
+PV-Pinv, and DeepPV-MRF across single-shot, three-shot, and six-shot acquisitions. For each
+method, CSF, WM, and GM tissue fraction maps are shown along with their corresponding
+difference maps against the reference labels. For all shot settings, DeepPV-MRF consistently
+showed the best image contrasts compared with the reference labels, especially around tissue
+boundaries and regions with partial volume effects. The improvement is most noticeable in the
+single-shot case, where PV-DM and PV-Pinv showed clear structural errors, as was confirmed
+in Table 1 which summarized the quantitative comparisons of different methods. Particularly,
+DeepPV-MRF outperformed both PV-DM and PV-Pinv on all metrics. For example, under the
+single-shot setting, DeepPV-MRF achieved lower MAE values (41.76×10−3 for CSF, 74.39×10−3
+for WM, and 75.69×10−3 for GM) and higher SSIM scores (0.960, 0.916, and 0.922 respectively).
+Figure 4 shows scatter plots of predicted PV values of DeepPV-MRF against the reference labels.
+As the number of shots increases from 1 to 6, the data points become more concentrated around
+the diagonal line, indicating better agreement with the reference labels. Correlation values
+and trend line slopes also increased accordingly. For the 6-shot case, DeepPV-MRF achieved
+MAE values of 22.93 × 10−3 (CSF), 43.16 × 10−3 (WM), and 43.96 × 10−3 (GM), with PSNR
+values reaching 35.12 dB (CSF), 29.35 dB (WM), and 28.22 dB (GM). These results confirm
+that DeepPV-MRF provides more accurate and stable partial volume estimation under different
+acquisition settings, especially in low-shot scenarios.
+To further assess statistical robustness, paired non-parametric statistical tests were performed
+across the synthetic test slices. The Holm-adjusted Friedman tests and post-hoc paired Wilcoxon
+signed-rank tests are reported in Supplementary Table 1. These results support the quantitative
+11
+
+
+Table 1: Performance comparison of different tissue fraction estimation methods under different shot
+numbers using simulated magnetic resonance fingerprinting (MRF) signals. Quantitative results are
+reported as mean ± standard deviation across all synthetic test slices pooled from the 3 unseen test
+subjects.
+Tissue
+Method
+MAE (×103) (↓)
+PSNR (↑)
+SSIM (↑)
+rweighted (↑)
+Single-Shot
+CSF
+DeepPV-MRF
+41.76 ± 5.39
+30.81 ± 1.37
+0.960 ± 0.014
+0.957 ± 0.013
+PV-DM
+128.07 ± 28.60
+19.93 ± 1.72
+0.643 ± 0.081
+0.71 ± 0.103
+PV-Pinv
+202.10 ± 35.96
+15.22 ± 1.27
+0.396 ± 0.076
+0.338 ± 0.314
+WM
+DeepPV-MRF
+74.39 ± 10.65
+24.80 ± 1.38
+0.916 ± 0.018
+0.846 ± 0.034
+PV-DM
+244.25 ± 35.03
+12.57 ± 1.22
+0.527 ± 0.039
+0.414 ± 0.096
+PV-Pinv
+279.27 ± 26.89
+11.76 ± 0.79
+0.448 ± 0.047
+0.346 ± 0.105
+GM
+DeepPV-MRF
+75.69 ± 9.41
+23.84 ± 1.33
+0.922 ± 0.014
+0.879 ± 0.026
+PV-DM
+295.82 ± 54.10
+11.51 ± 1.46
+0.525 ± 0.073
+0.337 ± 0.116
+PV-Pinv
+263.02 ± 28.97
+12.03 ± 0.67
+0.47 ± 0.066
+0.325 ± 0.138
+Three-Shot
+CSF
+DeepPV-MRF
+25.26 ± 6.26
+34.48 ± 2.04
+0.978 ± 0.011
+0.981 ± 0.007
+PV-DM
+113.91 ± 28.91
+21.17 ± 1.89
+0.694 ± 0.092
+0.772 ± 0.096
+PV-Pinv
+173.54 ± 18.62
+16.27 ± 0.87
+0.462 ± 0.047
+0.574 ± 0.133
+WM
+DeepPV-MRF
+53.42 ± 8.74
+27.69 ± 1.38
+0.947 ± 0.011
+0.924 ± 0.016
+PV-DM
+204.97 ± 37.88
+14.02 ± 1.59
+0.586 ± 0.045
+0.557 ± 0.127
+PV-Pinv
+266.49 ± 37.60
+12.28 ± 1.25
+0.472 ± 0.058
+0.409 ± 0.137
+GM
+DeepPV-MRF
+52.63 ± 9.61
+26.64 ± 1.46
+0.946 ± 0.013
+0.935 ± 0.019
+PV-DM
+256.91 ± 63.73
+12.86 ± 1.99
+0.592 ± 0.089
+0.431 ± 0.149
+PV-Pinv
+272.08 ± 40.94
+12.10 ± 1.13
+0.451 ± 0.090
+0.297 ± 0.180
+Six-Shot
+CSF
+DeepPV-MRF
+22.93 ± 4.93
+35.12 ± 1.80
+0.980 ± 0.010
+0.984 ± 0.007
+PV-DM
+110.91 ± 29.51
+21.41 ± 1.95
+0.709 ± 0.094
+0.782 ± 0.096
+PV-Pinv
+171.64 ± 19.55
+16.34 ± 0.92
+0.468 ± 0.050
+0.584 ± 0.136
+WM
+DeepPV-MRF
+43.16 ± 6.25
+29.35 ± 1.39
+0.954 ± 0.011
+0.946 ± 0.012
+PV-DM
+194.39 ± 36.41
+14.44 ± 1.59
+0.606 ± 0.042
+0.601 ± 0.120
+PV-Pinv
+263.58 ± 39.68
+12.41 ± 1.36
+0.482 ± 0.061
+0.430 ± 0.145
+GM
+DeepPV-MRF
+43.96 ± 6.97
+28.22 ± 1.36
+0.958 ± 0.011
+0.954 ± 0.013
+PV-DM
+246.49 ± 63.81
+13.25 ± 2.02
+0.613 ± 0.088
+0.456 ± 0.150
+PV-Pinv
+270.98 ± 44.04
+12.18 ± 1.23
+0.455 ± 0.096
+0.308 ± 0.192
+Arrows (↑/↓) indicate whether higher or lower values are better for each metric. Bold indicates the best
+performance per tissue and metric.
+trends in Table 1, showing consistent improvements of DeepPV-MRF over PV-DM and PV-Pinv
+across shot settings.
+4.2
+in vivo results
+Figure 5 shows the in vivo tissue fraction maps for PV-DM, PV-Pinv, and DeepPV-MRF under
+single-shot, three-shot, and six-shot acquisitions from sub 01. CSF, WM, and GM maps are
+displayed in separate columns. Qualitatively, PV-DM produced relatively stable CSF maps
+across shot settings, but the WM and GM maps exhibited visible noise and aliasing, particularly
+in the single-shot and three-shot acquisitions. PV-Pinv generated smoother CSF maps, yet
+the WM and GM maps appeared spatially blurred and showed reduced structural detail across
+all acquisition settings. In contrast, DeepPV-MRF produced tissue fraction maps with more
+consistent intensity distributions and clearer anatomical structures for CSF, WM, and GM under
+all three shot settings.
+Figure 6 shows the corresponding DeepPV-MRF results from the two additional volunteers,
+sub 02 and sub 03, to further evaluate the model performance under in vivo acquisition conditions.
+As shown in Figure 6, the proposed method produced visually consistent CSF, WM, and GM
+fraction maps across both subjects and different acquisition settings, including single-shot,
+three-shot, and six-shot scans. The main anatomical structures, including the ventricles, cortical
+GM, and deep WM regions, were well preserved in all three tissue fraction maps. Compared
+12
+
+
+Figure 4: Scatter plots comparing DeepPV-MRF predicted tissue fraction values against reference
+FSL-FAST labels for cerebrospinal fluid (CSF), white matter (WM), and gray matter (GM) across
+single-shot (top row), three-shot (middle row), and six-shot (bottom row) acquisition settings. Each
+plot displays voxel-wise predictions (y-axis) versus corresponding reference values (x-axis). Quantitative
+metrics include Pearson correlation coefficient, MAE, coefficient of determination (R2), and the slope of
+the fitted regression line. The red dashed line indicates the line of perfect agreement.
+Figure 5: Comparison of predicted tissue fraction maps for cerebrospinal fluid (CSF), white matter
+(WM), and gray matter (GM) across single-shot, three-shot, and six-shot in vivo MRF acquisitions for
+sub 01. For each tissue type, results from three methods—partial volume dictionary matching (PV-DM),
+partial volume pseudoinverse (PV-Pinv), and the proposed DeepPV-MRF—are shown from left to right.
+Each row corresponds to a different acquisition setting, with intensity values mapped from 0 to 1.
+with the single-shot results, the three-shot and six-shot acquisitions showed improved spatial
+13
+
+
+CSF
+WM
+GM
+CSF
+WM
+GM
+Single Shot
+Three Shot
+Six Shot
+sub02
+sub03
+0
+1
+Figure 6:
+Representative in vivo partial-volume maps from two volunteers (sub 02 and sub 03)
+reconstructed using the proposed DeepPV-MRF model under 1-shot, 3-shot, and 6-shot acquisitions. For
+each volunteer, the same anatomical slice is shown across shot settings to qualitatively assess consistency
+across acquisition schemes. Separate maps are shown for CSF, WM, and GM tissue fractions. All maps
+are displayed on the same scale from 0 to 1.
+Table 2: Cross-shot consistency of DeepPV-MRF in the three in vivo volunteers, using the six-shot
+prediction as an internal high-shot reference.
+Lower mean absolute error (MAE) indicates greater
+agreement between the lower-shot and six-shot predictions. The six-shot prediction is used only as an
+internal consistency reference and should not be interpreted as in vivo ground truth.
+Tissue
+Subject
+1-shot vs. 6-shot
+3-shot vs. 6-shot
+Improvement (%)
+CSF
+sub01
+0.164
+0.138
+15.9
+sub02
+0.131
+0.126
+3.5
+sub03
+0.130
+0.109
+16.5
+WM
+sub01
+0.245
+0.179
+27.1
+sub02
+0.227
+0.194
+14.8
+sub03
+0.191
+0.181
+5.1
+GM
+sub01
+0.317
+0.226
+28.7
+sub02
+0.286
+0.247
+13.6
+sub03
+0.256
+0.225
+12.1
+Improvement denotes the relative MAE reduction from 1-shot vs. 6-shot to 3-shot vs. 6-shot.
+smoothness and clearer tissue boundaries, while maintaining a similar overall tissue distribution
+pattern.
+To complement this qualitative assessment, Table 2 summarizes the cross-shot consistency of
+DeepPV-MRF across the three in vivo volunteers by using each subject’s six-shot prediction as an
+internal high-shot reference. Across all nine subject-tissue pairs, the three-shot predictions showed
+lower MAE than the corresponding single-shot predictions, with an average MAE reduction of
+15.3%, supporting improved agreement with the six-shot reference as the acquisition increased
+from single-shot to three-shot. These results suggest that DeepPV-MRF can provide stable tissue
+fraction estimation across different subjects, anatomical instances, and the scanner/protocol
+settings included in this in vivo evaluation.
+To further assess robustness under degraded acquisition conditions, we performed an ad-
+ditional in vivo noise-sensitivity analysis for the 1-shot setting across the three volunteers by
+perturbing the input MRF signals with complex Gaussian noise over a range of SNR levels. As
+shown in Figure 7, the MAE between noisy-input predictions and the corresponding clean-input
+14
+
+
+0.00
+0.01
+0.02
+0.03
+0.04
+sub01 CSF MAE
+(a)
+0.00
+0.01
+0.02
+0.03
+0.04
+0.05
+0.06
+0.07
+sub01 WM MAE
+(b)
+0.01
+0.02
+0.03
+0.04
+0.05
+0.06
+0.07
+0.08
+sub01 GM MAE
+(c)
+0.00
+0.01
+0.02
+0.03
+0.04
+0.05
+sub02 CSF MAE
+(d)
+0.00
+0.01
+0.02
+0.03
+0.04
+0.05
+0.06
+0.07
+0.08
+sub02 WM MAE
+(e)
+0.00
+0.02
+0.04
+0.06
+0.08
+sub02 GM MAE
+(f)
+10
+15
+20
+25
+30
+35
+40
+SNR (dB)
+0.00
+0.01
+0.02
+0.03
+0.04
+0.05
+sub03 CSF MAE
+(g)
+10
+15
+20
+25
+30
+35
+40
+SNR (dB)
+0.00
+0.01
+0.02
+0.03
+0.04
+0.05
+0.06
+0.07
+0.08
+sub03 WM MAE
+(h)
+10
+15
+20
+25
+30
+35
+40
+SNR (dB)
+0.00
+0.02
+0.04
+0.06
+0.08
+sub03 GM MAE
+(i)
+Figure 7: In vivo noise-sensitivity analysis for the single-shot setting across the three volunteers. The
+input MRF signals were perturbed with complex Gaussian noise over signal-to-noise ratio (SNR) levels
+from 10 dB to 40 dB. Rows correspond to sub01, sub02, and sub03, and columns show cerebrospinal fluid
+(CSF), white matter (WM), and gray matter (GM). The plotted values represent the mean absolute error
+(MAE) between predictions from noisy inputs and the corresponding clean-input predictions. Solid lines
+indicate the mean across slices, and shaded regions denote the 95% confidence intervals.
+predictions decreased monotonically as SNR increased for CSF, WM, and GM in all three
+volunteers, indicating that the proposed framework remained stable under progressively noisier
+inputs.
+4.3
+Ablation Study
+To quantify the contribution of the main architectural and loss design choices, we conducted
+ablation experiments on the one-shot external evaluation set, including removal of the spatial
+refinement module, addition of auxiliary B0/PD heads to the final model, removal of the spatial
+gradient loss, variation of the latent dimension, and a sweep of the spatial regularization weight
+λspatial. The results are summarized in Table 3.
+Among the core ablations, removing the spatial refinement module led to the largest per-
+formance drop, confirming that spatial context is essential for accurate PV estimation. The
+temporal encoder alone increased the macro tissue-wise MAE from 63.95 to 89.54 and reduced
+average PSNR/SSIM from 26.48/0.933 to 23.95/0.890, indicating that the main performance
+gain arises from the joint temporal-spatial design rather than from voxel-wise temporal encoding
+alone.
+15
+
+
+Table 3: Ablation study on the external 1-shot simulation test set. Mean absolute error (MAE) denotes
+tissue-wise MAEtissue and is reported in ×103. Macro-averaged Peak Signal-to-Noise Ratio (PSNR) and
+Structural Similarity Index Measure (SSIM) are unweighted averages across cerebrospinal fluid (CSF),
+white matter (WM), and gray matter (GM). The best value for each metric within each ablation family is
+shown in bold, with lower MAE and higher PSNR/SSIM indicating better performance. The full model
+denotes the architecture used for the main results; the B0/PD-head row adds auxiliary heads to this
+model.
+Family
+Setting
+CSF MAE
+WM MAE
+GM MAE
+Avg. MAE
+Avg. PSNR
+Avg. SSIM
+Core ablations
+Full model
+41.76
+74.39
+75.69
+63.95
+26.48
+0.933
+With B0/PD heads
+43.42
+77.70
+78.51
+66.55
+26.14
+0.922
+Temporal encoder only
+52.12
+110.25
+106.26
+89.54
+23.95
+0.890
+No spatial gradient loss
+44.45
+77.69
+79.55
+67.23
+26.05
+0.925
+Latent dimension sweep
+Latent dim = 8
+41.10
+73.62
+75.11
+63.28
+26.61
+0.933
+Latent dim = 16
+41.76
+74.39
+75.69
+63.95
+26.48
+0.933
+Latent dim = 32
+38.32
+84.34
+80.72
+67.79
+25.92
+0.919
+Latent dim = 64
+42.13
+88.46
+85.54
+72.05
+25.53
+0.911
+Latent dim = 128
+43.41
+87.44
+85.54
+72.13
+25.63
+0.911
+Spatial regularization sweep
+λspatial = 0.01
+40.89
+76.35
+76.94
+64.73
+26.45
+0.932
+λspatial = 0.05
+41.76
+74.39
+75.69
+63.95
+26.48
+0.933
+λspatial = 0.10
+39.22
+78.75
+77.23
+65.07
+26.20
+0.925
+λspatial = 0.50
+41.29
+76.25
+77.13
+64.89
+26.38
+0.929
+The final full model does not include auxiliary B0/PD heads. Adding these heads slightly
+degraded PV estimation performance in the current setting, increasing the macro tissue-wise
+MAE from 63.95 to 66.55 and reducing average PSNR/SSIM from 26.48/0.933 to 26.14/0.922.
+This suggests that, although these auxiliary branches were originally introduced to regularize
+the shared encoder, their supervision was not optimally aligned with the primary PV estimation
+objective and may have introduced mild optimization competition37. Removing the spatial
+gradient loss also caused a modest degradation relative to the full model, increasing the macro
+tissue-wise MAE to 67.23. In the latent-dimension sweep, latent dimensions of 8 and 16 produced
+comparable performance, with the latent dimension of 8 yielding the lowest macro tissue-wise
+MAE on this one-shot external set, whereas larger latent dimensions of 32, 64, and 128 degraded
+the WM and GM metrics. For the spatial regularization sweep, performance remained relatively
+stable across a range of nonzero λspatial values, and the default setting of λspatial = 0.05 provided
+the best macro-averaged performance among the tested nonzero weights.
+5
+Discussion
+This study presents DeepPV-MRF, a deep learning framework for direct partial volume estimation
+from undersampled MRF signals. Unlike conventional methods such as PV-DM, PV-Pinv, and
+FSL FAST, the proposed approach avoids strong reliance on hand-crafted priors and multi-step
+intermediate processing. By directly mapping aliased MRF time-series signals to tissue fraction
+maps, DeepPV-MRF simplifies the workflow and reduces the risk of error propagation from
+intermediate reconstructions or model assumptions.
+The performance gains of DeepPV-MRF appear to arise from two main factors. First, the
+simulation-based training pipeline combines subject-derived tissue property maps and volumetric
+fraction maps with realistic radial undersampling, allowing the network to learn tissue-specific
+signal behavior under practical aliasing conditions. Second, the network architecture combines
+voxel-wise temporal encoding with spatial refinement, which is particularly important in regions
+with complex tissue mixing. The ablation study supports this interpretation: removing the
+16
+
+
+Figure 8: in vivo comparison of T1 and T2 maps from MRF-Mixer (left) and composite maps derived
+from DeepPV-MRF (middle), with their absolute difference shown on the right. The composite maps
+combine estimated tissue fractions with pure-tissue relaxation values. The difference maps confirm that
+the largest discrepancies are concentrated at tissue boundaries, consistent with partial volume effects.
+spatial refinement module caused the largest performance drop, whereas adding auxiliary B0/PD
+heads and removing the spatial gradient loss had smaller effects on the final PV estimation
+accuracy.
+The simulation results demonstrated clear advantages of DeepPV-MRF over PV-DM and
+PV-Pinv across all shot settings, with particularly strong performance under the more challenging
+single-shot condition. The in vivo results further supported these findings, as DeepPV-MRF
+produced tissue fraction maps with smoother transitions and better anatomical continuity,
+especially in GM and WM regions.
+The multi-volunteer in vivo cross-shot consistency analysis provided additional support for
+this interpretation. Because voxel-wise in vivo tissue-fraction ground truth was unavailable, the
+six-shot prediction was used only as an internal high-shot reference rather than as an accuracy
+standard. Across all nine subject-tissue pairs, the three-shot estimates showed lower MAE
+relative to the six-shot reference than the single-shot estimates, with an average MAE reduction
+of 15.3%. This trend indicates that increasing the number of shots improved agreement with the
+high-shot reference across subjects and tissues, while preserving the visually observed anatomical
+structures in the estimated fraction maps.
+The comparison between composite multi-component T1/T2 maps and single-component
+MRF-Mixer estimates further highlights the value of explicit partial volume modeling. As shown
+in Figure 8, the largest discrepancies were observed near tissue interfaces, where partial volume
+effects are expected to be strongest. This suggests that mixed-tissue MRF voxels are not always
+well represented by single-component relaxation estimates, and that explicit PV estimation may
+support future frameworks for joint estimation of tissue fractions and intrinsic tissue parameters.
+From a practical perspective, the inference benchmark reported in the Network Training
+section indicates that DeepPV-MRF can generate tissue-fraction maps with low per-slice latency
+and modest GPU memory usage. In addition, the three-volunteer in vivo noise perturbation
+analysis showed monotonically decreasing prediction deviation as SNR increased, providing
+preliminary evidence of robustness to moderate noise variation.
+Several limitations should be acknowledged. Although the in vivo evaluation included three
+healthy volunteers acquired from two different scanner platforms (one from 3T Prisma and
+two from 3T Cima.x Fit), the validation does not yet establish full generalizability across
+sites, vendors, acquisition protocols, or pathological populations. In addition, the supervisory
+tissue fraction maps were derived from FSL FAST on high-resolution anatomical images, so
+they should be regarded as surrogate references rather than absolute ground truth, and some
+FAST-related bias may therefore be inherited by the model. The synthetic signal model also
+assumes linear combinations of pure-tissue fingerprints3, which may not fully capture effects
+such as magnetization transfer, exchange, or other multi-compartment nonlinearities in real
+tissues. Future work should therefore include broader validation across scanners, protocols, B1
+17
+
+
+conditions, motion levels, and pathological tissues, together with more independent reference
+standards such as phantoms or expert-curated annotations.
+6
+Conclusion
+In summary, we proposed a deep learning-based method for partial volume estimation that
+directly maps MRF signals to tissue fraction maps in an end-to-end approach. By integrating
+subject-specific simulation data with radial arm undersampling and employing a spatial-temporal
+cascaded network architecture, the method achieves improved accuracy and robustness compared
+to traditional approaches such as PV-DM and PV-Pinv. These advantages simplify the processing
+pipeline and improve its suitability for practical applications.
+Future work will focus on
+validating the method across more diverse anatomical regions and clinical conditions, exploring
+self-supervised or unsupervised training strategies, and extending the approach to additional
+acquisition sequences.
+References
+1 J. Tohka, Partial volume effect modeling for segmentation and tissue classification of brain
+magnetic resonance images: A review, World journal of radiology 6, 855 (2014).
+2 E. Plante and L. Turkstra,
+Sources of error in the quantitative analysis of MRI scans,
+Magnetic resonance imaging 9, 589–595 (1991).
+3 A. Deshmane, D. F. McGivney, D. Ma, Y. Jiang, C. Badve, V. Gulani, N. Seiberlich, and
+M. A. Griswold, Partial volume mapping using magnetic resonance fingerprinting, NMR in
+Biomedicine 32, e4082 (2019).
+4 B. J. Bedell and P. A. Narayana, Volumetric analysis of white matter, gray matter, and CSF
+using fractional volume analysis, Magnetic resonance in medicine 39, 961–969 (1998).
+5 M. E. Shenton, C. C. Dickey, M. Frumin, and R. W. McCarley, A review of MRI findings in
+schizophrenia, Schizophrenia research 49, 1–52 (2001).
+6 M. W. Weiner et al., The Alzheimer’s Disease Neuroimaging Initiative: a review of papers
+published since its inception, Alzheimer’s & Dementia 9, e111–e194 (2013).
+7 R. Kikinis, C. R. Guttmann, D. Metcalf, W. M. Wells III, G. J. Ettinger, H. L. Weiner, and
+F. A. Jolesz, Quantitative follow-up of patients with multiple sclerosis using MRI: technical
+aspects, Journal of Magnetic Resonance Imaging: An Official Journal of the International
+Society for Magnetic Resonance in Medicine 9, 519–530 (1999).
+8 K. C. Gao, G. Nair, I. C. Cortese, A. Koretsky, and D. S. Reich, Sub-millimeter imaging of
+brain-free water for rapid volume assessment in atrophic brains, Neuroimage 100, 370–378
+(2014).
+9 W. Wells, W. Grimson, R. Kikinis, and F. Jolesz, Adaptive segmentation of MRI data, IEEE
+Transactions on Medical Imaging 15, 429–442 (1996).
+10 J. Tohka, A. Zijdenbos, and A. Evans, Fast and robust parameter estimation for statistical
+partial volume models in brain MRI, Neuroimage 23, 84–97 (2004).
+11 M. B. Cuadra, L. Cammoun, T. Butz, O. Cuisenaire, and J.-P. Thiran, Comparison and
+validation of tissue modelization and statistical classification methods in T1-weighted MR
+brain images, IEEE transactions on medical imaging 24, 1548–1565 (2005).
+12 M. A. Chappell, A. R. Groves, B. J. MacIntosh, M. J. Donahue, P. Jezzard, and M. W.
+Woolrich, Partial volume correction of multiple inversion time arterial spin labeling MRI
+data, Magnetic resonance in medicine 65, 1173–1183 (2011).
+18
+
+
+13 D. Ma, V. Gulani, N. Seiberlich, K. Liu, J. L. Sunshine, J. L. Duerk, and M. A. Griswold,
+Magnetic resonance fingerprinting, Nature 495, 187–192 (2013).
+14 D. F. McGivney, E. Pierre, D. Ma, Y. Jiang, H. Saybasili, V. Gulani, and M. A. Griswold, SVD
+compression for magnetic resonance fingerprinting in the time domain, IEEE transactions on
+medical imaging 33, 2311–2322 (2014).
+15 M. Yang, D. Ma, Y. Jiang, J. Hamilton, N. Seiberlich, M. A. Griswold, and D. McGivney, Low
+rank approximation methods for MR fingerprinting with large scale dictionaries, Magnetic
+resonance in medicine 79, 2392–2400 (2018).
+16 M. E. Poorman, M. N. Martin, D. Ma, D. F. McGivney, V. Gulani, M. A. Griswold, and
+K. E. Keenan, Magnetic resonance fingerprinting Part 1: Potential uses, current challenges,
+and recommendations, Journal of Magnetic Resonance Imaging 51, 675–692 (2020).
+17 O. Cohen, B. Zhu, and M. S. Rosen, MR fingerprinting deep reconstruction network (DRONE),
+Magnetic resonance in medicine 80, 885–894 (2018).
+18 Z. Fang, Y. Chen, M. Liu, L. Xiang, Q. Zhang, Q. Wang, W. Lin, and D. Shen, Deep
+learning for fast and spatially constrained tissue quantification from highly accelerated data
+in magnetic resonance fingerprinting, IEEE transactions on medical imaging 38, 2364–2374
+(2019).
+19 M. Golbabaee, D. Chen, P. A. Gómez, M. I. Menzel, and M. E. Davies, Geometry of deep
+learning for magnetic resonance fingerprinting, in ICASSP 2019-2019 IEEE International
+Conference on Acoustics, Speech and Signal Processing (ICASSP), pages 7825–7829, IEEE,
+2019.
+20 P. Cao, D. Cui, V. Vardhanabhuti, and E. S. Hui,
+Development of fast deep learning
+quantification for magnetic resonance fingerprinting in vivo, Magnetic Resonance Imaging
+70, 81–90 (2020).
+21 P. Li and Y. Hu, Deep magnetic resonance fingerprinting based on local and global vision
+transformer, Medical Image Analysis 95, 103198 (2024).
+22 P. Li and Y. Hu, Enhancing MRF Reconstruction: A Model-Based Deep Learning Approach
+Leveraging Learned Sparsity and Physics Priors, IEEE Transactions on Computational
+Imaging (2024).
+23 P. Li and Y. Hu, Deep graph embedding based on Laplacian eigenmaps for MR fingerprinting
+reconstruction, Medical Image Analysis , 103481 (2025).
+24 T. Ding, Y. Gao, Z. Xiong, F. Liu, M. A. Cloos, and H. Sun, MRF-Mixer: A Simulation-Based
+Deep Learning Framework for Accelerated and Accurate Magnetic Resonance Fingerprinting
+Reconstruction, Information 16, 218 (2025).
+25 D. Wang, J. Ostenson, and D. S. Smith, snapMRF: GPU-accelerated magnetic resonance
+fingerprinting dictionary generation and matching using extended phase graphs, Magnetic
+resonance imaging 66, 248–256 (2020).
+26 S. F. Cauley, K. Setsompop, D. Ma, Y. Jiang, H. Ye, E. Adalsteinsson, M. A. Griswold, and
+L. L. Wald, Fast group matching for MR fingerprinting reconstruction, Magnetic resonance
+in medicine 74, 523–528 (2015).
+27 H. S. Choi, D. R. Haynor, and Y. Kim, Partial volume tissue classification of multichannel
+magnetic resonance images-a mixel model,
+IEEE Transactions on Medical Imaging 10,
+395–407 (1991).
+28 Y. Gao, T. Ding, M. Cloos, and H. Sun, MRF-Mixer: A Self-Supervised Deep Learning
+MRF Framework,
+Proc. Intl. Soc. Mag. Reson. Med. 31, 954 (2023), 2023,
+Available:
+https://archive.ismrm.org/2023/0954.html.
+19
+
+
+29 S. Tang, C. Fernandez-Granda, S. Lannuzel, B. Bernstein, R. Lattanzi, M. Cloos, F. Knoll,
+and J. Assländer, Multicompartment magnetic resonance fingerprinting, Inverse problems
+34, 094005 (2018).
+30 H. Sun, J. O. Cleary, R. Glarin, S. C. Kolbe, R. J. Ordidge, B. A. Moffat, and G. B. Pike,
+Extracting more for less: multi-echo MP2RAGE for simultaneous T1-weighted imaging, T1
+mapping, mapping, SWI, and QSM from a single acquisition, Magnetic resonance in medicine
+83, 1178–1191 (2020).
+31 Y. Zhang, M. Brady, and S. Smith, Segmentation of brain MR images through a hidden
+Markov random field model and the expectation-maximization algorithm, IEEE transactions
+on medical imaging 20, 45–57 (2001).
+32 A. M. Peters, M. J. Brookes, F. G. Hoogenraad, P. A. Gowland, S. T. Francis, P. G. Morris,
+and R. Bowtell, T2* measurements in human brain at 1.5, 3 and 7 T, Magnetic resonance
+imaging 25, 748–753 (2007).
+33 J. P. Wansapura, S. K. Holland, R. S. Dunn, and W. S. Ball Jr, NMR relaxation times in
+the human brain at 3.0 tesla, Journal of Magnetic Resonance Imaging: An Official Journal of
+the International Society for Magnetic Resonance in Medicine 9, 531–538 (1999).
+34 G. J. Stanisz, E. E. Odrobina, J. Pun, M. Escaravage, S. J. Graham, M. J. Bronskill, and R. M.
+Henkelman, T1, T2 relaxation and magnetization transfer in tissue at 3T, Magnetic Resonance
+in Medicine: An Official Journal of the International Society for Magnetic Resonance in
+Medicine 54, 507–512 (2005).
+35 M. A. Cloos, J. Assländer, B. Abbas, J. Fishbaugh, J. S. Babb, G. Gerig, and R. Lattanzi,
+Rapid radial T1 and T2 mapping of the hip articular cartilage with magnetic resonance
+fingerprinting, Journal of Magnetic Resonance Imaging 50, 810–815 (2019).
+36 C. A. Schneider, W. S. Rasband, and K. W. Eliceiri, NIH Image to ImageJ: 25 years of image
+analysis, Nature methods 9, 671–675 (2012).
+37 S. Ruder,
+An overview of multi-task learning in deep neural networks,
+arXiv preprint
+arXiv:1706.05098 (2017).
+20
+
+
+Supplementary Material
+Supplementary Table 1: Paired statistical analysis using the same simulation slices as in main
+manuscript Table 1. For each shot setting, tissue, and metric, we report the Holm-adjusted Friedman
+p-value across the three methods and the median paired difference (∆) of DeepPV-MRF relative to each
+baseline. For MAE, negative values indicate lower error; for PSNR, SSIM, and rweighted, positive values
+indicate improved performance. Across all post-hoc paired Wilcoxon signed-rank tests, the Holm-adjusted
+p-value was 6.83 × 10−20.
+Shot setting
+Tissue
+Metric
+Friedman pHolm
+∆vs PV-DM
+∆vs PV-Pinv
+Single-shot
+CSF
+MAE (×103)
+2.78 × 10−52
+−0.094
+−0.153
+PSNR
+2.78 × 10−52
+11.434
+16.549
+SSIM
+1.37 × 10−52
+0.332
+0.554
+rweighted
+1.37 × 10−52
+0.259
+0.477
+WM
+MAE (×103)
+6.01 × 10−51
+−0.165
+−0.209
+PSNR
+1.93 × 10−48
+12.611
+13.350
+SSIM
+1.37 × 10−52
+0.379
+0.467
+rweighted
+3.85 × 10−48
+0.424
+0.509
+GM
+MAE (×103)
+2.91 × 10−42
+−0.233
+−0.181
+PSNR
+4.03 × 10−42
+12.749
+12.262
+SSIM
+4.33 × 10−44
+0.414
+0.430
+rweighted
+4.03 × 10−42
+0.582
+0.528
+Three-shot
+CSF
+MAE (×103)
+1.43 × 10−51
+−0.090
+−0.150
+PSNR
+6.01 × 10−52
+13.099
+18.162
+SSIM
+1.37 × 10−52
+0.302
+0.509
+rweighted
+1.43 × 10−51
+0.218
+0.402
+WM
+MAE (×103)
+2.78 × 10−52
+−0.157
+−0.231
+PSNR
+2.75 × 10−51
+14.640
+16.480
+SSIM
+1.37 × 10−52
+0.363
+0.486
+rweighted
+2.78 × 10−52
+0.391
+0.544
+GM
+MAE (×103)
+2.62 × 10−42
+−0.221
+−0.235
+PSNR
+3.65 × 10−43
+14.765
+15.502
+SSIM
+1.37 × 10−52
+0.371
+0.514
+rweighted
+1.92 × 10−49
+0.557
+0.691
+Six-shot
+CSF
+MAE (×103)
+1.43 × 10−51
+−0.082
+−0.149
+PSNR
+1.43 × 10−51
+13.155
+18.550
+SSIM
+1.37 × 10−52
+0.282
+0.508
+rweighted
+1.43 × 10−51
+0.197
+0.389
+WM
+MAE (×103)
+6.01 × 10−52
+−0.152
+−0.238
+PSNR
+2.75 × 10−51
+15.773
+17.881
+SSIM
+1.37 × 10−52
+0.347
+0.479
+rweighted
+2.78 × 10−52
+0.363
+0.545
+GM
+MAE (×103)
+2.69 × 10−43
+−0.206
+−0.241
+PSNR
+1.13 × 10−43
+15.351
+16.838
+SSIM
+1.37 × 10−52
+0.357
+0.524
+rweighted
+4.10 × 10−49
+0.536
+0.701
+21
+
+
+Supplementary Table 2: Whole-brain error metrics for the DeepPV-MRF model under different shot
+settings. Metrics were computed over all voxels within the brain mask across the same 123 external
+synthetic test slices used for the main simulation evaluation. Values are reported as mean ± standard
+deviation.
+Shot setting
+Tissue
+MAE (×103) (↓)
+RMSE (×103) (↓)
+Single-shot
+CSF
+19.25 ± 3.62
+43.35 ± 7.50
+WM
+38.98 ± 7.53
+83.00 ± 13.41
+GM
+55.34 ± 10.12
+95.24 ± 15.34
+Three-shot
+CSF
+12.56 ± 3.26
+28.90 ± 7.57
+WM
+29.23 ± 5.24
+59.49 ± 9.15
+GM
+39.88 ± 8.06
+69.26 ± 12.51
+Six-shot
+CSF
+11.53 ± 2.59
+26.66 ± 6.30
+WM
+24.49 ± 4.47
+49.19 ± 8.25
+GM
+33.71 ± 6.11
+57.57 ± 9.55
+22
