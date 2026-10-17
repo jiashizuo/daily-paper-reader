@@ -48,17 +48,17 @@
 <section class="dpr-home-dashboard-card dpr-home-report-card">
   <div class="dpr-home-dashboard-header">
     <div>
-      <span class="dpr-home-dashboard-kicker">2026-10-16</span>
+      <span class="dpr-home-dashboard-kicker">2026-10-17</span>
       <h3 class="dpr-home-dashboard-title">今日汇总</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">共 3 篇</strong>
+    <strong class="dpr-home-dashboard-count">共 4 篇</strong>
   </div>
   <dl class="dpr-home-dashboard-stats">
     <div class="dpr-home-dashboard-stat"><dt>累计更新</dt><dd>1 次</dd></div>
     <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>1</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>2</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>3</dd></div>
   </dl>
-  <p class="dpr-home-dashboard-body">最近更新：2026-10-16 21:57:24 UTC<br>状态：成功</p>
+  <p class="dpr-home-dashboard-body">最近更新：2026-10-17 21:26:57 UTC<br>状态：成功</p>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-brief-card">
   <div class="dpr-home-dashboard-header">
@@ -69,7 +69,7 @@
     <strong class="dpr-home-dashboard-count">AI</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<p>2026-10-16日报共3篇，精读1篇、速读2篇，核心聚焦量子与经典机器学习在神经精神疾病中的比较。最值得看的是8分精读《Quantum Versus Classical Machine Learning for Neuropsychiatric Disorders: A Feature-Matched Multi-Cohort Evaluation》，速读可顺带关注StimFlow的图像生成脑活动与DeepPV-MRF的MR指纹部分体积估计。普通读者建议先读8分那篇，重点看特征匹配和多队列评估是否公平，再按兴趣选读速读文章。</p>
+<p>今日精读1篇、速读3篇，共4篇脑科学与AI交叉论文。最值得关注的是用监督变分自编码器基于DWI连接组进行性别分类（8.0分），以及fMRI解码自然语音与脑MRI基础模型隐私风险两个方向。普通读者可先读精读篇了解连接组特征提取思路，再浏览速读篇把握脑机解码与隐私评估的最新动向。</p>
   </div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-deep-card">
@@ -81,7 +81,7 @@
     <strong class="dpr-home-dashboard-count">1 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Quantum Versus Classical Machine Learning for Neuropsychiatric Disorders: A Feature-Matched Multi-Cohort Evaluation">Quantum Versus Classical Machine Learning for Neuropsychiatric Disorders: A Feature-Matched Multi-Cohort Evaluation</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="DWI Connectome-based Sex Classification in Young using Supervised Variational Autoencoder">DWI Connectome-based Sex Classification in Young using Supervised Variational Autoencoder</span></li></ul>
   </div>
   <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">fbn <strong>1</strong></span></div>
 </section>
@@ -91,12 +91,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">速读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">2 篇</strong>
+    <strong class="dpr-home-dashboard-count">3 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="StimFlow: Synthesizing Brain Activity from Images via Stimulus-conditioned Flow Matching">StimFlow: Synthesizing Brain Activity from Images via Stimulus-conditioned Flow Matching</span></li><li><span class="dpr-home-dashboard-paper-title" title="DeepPV-MRF: End-to-End Partial-Volume Fraction Estimation from MR Fingerprinting Time Series">DeepPV-MRF: End-to-End Partial-Volume Fraction Estimation from MR Fingerprinting Time Series</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Decoding Naturalistic Speech from fMRI with Temporal Modeling and Multimodal Alignment">Decoding Naturalistic Speech from fMRI with Temporal Modeling and Multimodal Alignment</span></li><li><span class="dpr-home-dashboard-paper-title" title="Quantifying privacy risks in foundation model representations of brain MRI">Quantifying privacy risks in foundation model representations of brain MRI</span></li><li><span class="dpr-home-dashboard-paper-title" title="Decomposing Brain-LLM Alignment with Interpretable Semantic Representations">Decomposing Brain-LLM Alignment with Interpretable Semantic Representations</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">fbn <strong>2</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">fbn <strong>3</strong></span></div>
 </section>
 </div>
 
