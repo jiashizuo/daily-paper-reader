@@ -1,0 +1,1234 @@
+Title: GLOW: General Linear Models Optimized with Ward's Method
+
+URL Source: https://arxiv.org/pdf/2610.24085v1
+
+Published Time: Tue, 20 Oct 2026 00:09:19 GMT
+
+Number of Pages: 40
+
+Markdown Content:
+# GLOW: General Linear Models Optimized with Ward’s Method 
+
+## Matt Higger 1∗
+
+> 1
+
+Khoury College of Computer Sciences, Northeastern University, Boston, MA 02115, USA 
+
+> ∗
+
+Correspondence: mhigger@ccs.neu.edu ORCID: 0000-0001-6384-9114 
+
+## October 20, 2026 
+
+Keywords: general linear model, MANCOVA, permutation inference, family-wise error rate, Ward’s method, hierarchical segmentation 
+
+Abstract: Identifying brain regions whose imaging features correlate with variables of interest (e.g. diagnosis, age) is a central goal of neuroimaging, usually pursued with the General Linear Model (GLM). Region-Based Analysis dilutes or splits any effect which does not fill exactly one atlas region. Voxel-Based Analysis (VBA), with Cluster Extent Thresholding (CET) and Threshold-Free Cluster Enhancement (TFCE) built on it, fits a GLM per voxel and groups adjacent significant voxels. But neighboring voxels can share a statistic without sharing a GLM, and a per-voxel statistic cannot tell them apart. GLOW (General Linear Models Optimized with Ward’s method) instead builds a hierarchy of nested regions by greedily minimizing GLM error, which we show is a special case of Ward’s clustering. Maximum-statistic (Westfall-Young) permutation controls family-wise error over all regions. Significance spreads through the hierarchy, to an effect’s nested fragments and the regions containing it. GLOW’s final step seeks to prune away these distractions to output whole, pure effect extent estimates. We validate GLOW by planting synthetic effects of known extent and varying strength in diffusion images from the Human Connectome Project (HCP) and in white noise. Pruning delivers wholeness on spatially consistent effects: GLOW returns one as a single region on 57% of HCP trials against the best baseline’s 35% ; the baselines recover comparable volume, but in many pure pieces. The cost is positive predictive value (PPV): GLOW is more sensitive (by up to 0.29 ), but its regions overrun the effect, mostly because no region of the hierarchy isolates the effect rather than because of the pruning. On HCP, GLOW’s average Dice gains 0.059 over the best baseline at weaker effects and gives back 0.005 at stronger ones. On white noise, GLOW trails severely, as much as 0.61 : its hierarchy holds the effect, but its permutation test does not certify it. Its runtime grows roughly linearly with voxel count, reaching about four and a half times that of the voxel-wise methods on the full HCP volume. The PPV loss may trace to the assumption of spatially independent residuals. 1arXiv:2610.24085v1 [cs.LG] 16 Oct 2026 2 1 INTRODUCTION 
+
+# 1 Introduction 
+
+A fundamental aim of neuroimaging research is to identify how independent variables (e.g. age, diagnosis, or behavioral measures) influence brain structure (Ashburner & Friston, 2000; Friston et al., 1995). For example, white-matter microstructure, as measured by fractional anisotropy (FA) or mean diffusivity (MD), may differ between clinical groups or correlate with behavioral scores (Smith et al., 2006). Such a study images a set of individuals whose independent variable varies, then registers those images into a common anatomical space (Avants et al., 2011; Jenkinson et al., 2002). Throughout this work, we assume that registration has already been done. The General Linear Model (GLM) provides a unified framework for testing whether image intensities correlate with independent variables after controlling for confounds (Friston et al., 1995; Worsley et al., 2002). By encoding hypotheses in a design-matrix/contrast framework, the GLM supports t-tests, ANOVA, multiple regression, and factorial designs, with nuisance regressors explicitly adjusting for covariates such as age, sex, or acquisition site. Before applying a GLM, one must decide how to group voxels for analysis. Region-Based Analyses (RBA) define regions a priori, typically from anatomical atlases (Desikan et al., 2006; Glasser et al., 2016; Tzourio-Mazoyer et al., 2002). Each region’s GLM tests whether an effect exists uniformly across its voxels. Statistical power suffers in two complementary ways: including non-effect voxels in a region dilutes the signal, while splitting a single effect across atlas boundaries fragments it (Eickhoff et al., 2018). Both errors are to be expected: atlas boundaries track anatomy, not the unknown extent of some effect. Voxel-Based Analyses (VBA) sidestep atlas dependence by fitting a GLM at every voxel and gluing adjacent, significant voxels together post hoc (Ashburner & Friston, 2000; Friston et al., 1995). A central challenge for VBA is incorporating spatial scale: a lone island of significance is more likely to be a false positive than a large, contiguous continent of significant voxels. Cluster Extent Thresholding (CET) (Forman et al., 1995; Friston et al., 1994) and Threshold-Free Cluster Enhancement (TFCE) (Smith & Nichols, 2009) act as spatial regularization steps on top of VBA, favoring continents over islands. CET thresholds the statistic map and keeps those clusters of suprathreshold voxels whose extent is unlikely under the null. TFCE sidesteps the choice of any one threshold by using all of them: each voxel’s statistic is enhanced in proportion to the extent of the suprathreshold clusters containing it, accumulated over every threshold. Because each voxel is tested on its own, the resulting map must be corrected for a massive number of comparisons. The family-wise error rate (FWER) (T. Nichols & Hayasaka, 2003) is controlled either parametrically, via Random Field Theory (Worsley, Marrett, Neelin, Vandal, et al., 1996), or nonparametrically, via permutation (T. E. Nichols & Holmes, 2002; Winkler et al., 2014). Multivariate data fit the same voxel-wise template: PALM tests several imaging features jointly at each voxel, via either classical multivariate statistics or non-parametric combination (Winkler et al., 2016), still leaving the single voxel as the unit of inference. VBA’s first aggregation across voxels comes before any test: each image is smoothed with a Gaussian kernel, so every voxel’s statistic already averages its neighbors. By the matched filter theorem (Turin, 31960), smoothing best detects a signal when the kernel matches the signal’s own extent: wide effects want a wide kernel, narrow effects a narrow one (Friston, 2004; Worsley, Marrett, Neelin, & Evans, 1996). That extent is not known a priori, so the analyst fixes one width in advance for the whole image, and conclusions can turn on the choice: kernels of 0 to 16 mm led one diffusion data set to four different conclusions (Jones et al., 2005). We smooth each voxel-wise baseline at the width which serves it best on our data (Appendix D). VBA and the cluster methods built on it share a clear advantage over RBA: their output regions can mold to the contours of effects present in the data. But pooling per-voxel statistics, as CET and TFCE do, or blurring the images each voxel’s model is fit to, as smoothing does, is not the same as fitting one model across voxels. A per-voxel statistic is all VBA ever sees of a voxel’s GLM, and there is plenty of wiggle room among GLMs which share an F -statistic (Fig 1). F = 100         
+
+> Age Intensity
+> Effect A
+> F= 100
+> Age
+> Effect B
+> F= 100
+> Age
+> Effect C
+> F= 0
+> Age
+> Pooled
+> identical F-statistics
+> Figure 1: Toy example: three voxels whose effects (A, B, C) are distinct yet share the same F-statistic. Pooling across voxels reveals their heterogeneity.
+
+Consider the three neighboring voxels of Fig 1, whose effects A, B, and C are clearly distinct yet produce an identical per-voxel statistic. Seeing three identical statistics, VBA is encouraged to glue the voxels together into a single output. The statistic is a bottleneck: whatever passes through it cannot tell VBA whether neighboring voxels agree on a model, so VBA can neither reward that agreement nor penalize its absence. The bottleneck costs detection power, not only interpretation. Under the null, where imaging features carry no correlation with the independent variables, n contiguous voxels which each reach F = 100 under one shared effect A are rarer than n contiguous voxels which each reach F = 100 under whatever model they please; the first event is contained in the second. A per-voxel test draws its null from the second, looser event, so the permuted images are free to cobble together unrelated GLMs and compete with the observed statistic. Asking the voxels to agree on a model narrows what the null can offer, which is the power GLOW is after. Cluster-wise inference has known weaknesses: Woo et al. (2014) and Eklund et al. (2016) show that it 4 2 PROBLEM & ANALYSIS 
+
+can inflate false-positive rates and pool heterogeneous signals. A more principled remedy comes from All-Resolutions Inference (ARI) and its true-discovery-proportion descendants, which report a lower bound on the fraction of truly active voxels holding simultaneously for any region the analyst selects (Blain et al., 2022; Rosenblatt et al., 2018). Yet the bound is a proportion, not a partition: for whatever region the analyst queries it reports how many voxels are active, never which ones. Data-driven parcellation approaches, including spatially constrained clustering (Craddock et al., 2012; Michel et al., 2012; Schaefer et al., 2018; Thirion et al., 2014), address the atlas-dependence problem but do not optimize regions specifically for GLM fit (Eickhoff et al., 2018). 1 Our objective is to construct regions whose voxels follow one spatially homogeneous GLM. GLOW (General Linear Models Optimized with Ward’s method) does so by building a hierarchical segmentation which greedily minimizes each region’s GLM mean-squared error, via Ward’s agglomerative clustering (Ward Jr, 1963); in practice it measures that error only along the variables of interest (Section 3.2). The significance of all regions is evaluated with the same permutation machinery used for voxel-wise inference: Freedman–Lane residualization (Freedman & Lane, 1983) and Westfall-Young max-statistic FWER (Westfall & Young, 1993), as set out by Winkler et al. (2014). The only change is that this machinery is applied to GLOW’s data-derived regions rather than to fixed voxels or threshold-formed clusters. GLOW is multivariate as well: it analyzes several imaging features jointly (e.g. fractional anisotropy and mean diffusivity) within the GLM/MANCOVA framework (Rencher & Christensen, 2012), as PALM’s multivariate tests do at the voxel level (Winkler et al., 2016). We validate GLOW by imposing synthetic effects onto image sets of known ground truth and comparing detection performance against VBA, CET and TFCE. One image set honors our statistical assumptions (white Gaussian noise); the other carries the spatial correlations of real data (diffusion images from the Human Connectome Project (Van Essen et al., 2013)). In the remainder of the paper we analyze the GLM in the special case here where every voxel shares one design matrix (Section 2), describe GLOW’s method (Section 3), present experiments and results (Sections 4 and 5), and discuss how spatial dependence and region selection limit GLOW (Section 6). 
+
+# 2 Problem & Analysis 
+
+## 2.1 Problem Statement: Multiple-Hypothesis GLM 
+
+Let yv,s ∈ Rb hold the imaging features of voxel v in image s, one of N images registered into a common anatomical space. Each (whole) image carries a vector of independent variables xs ∈ Ra (e.g. diagnostic labels, demographic covariates, or clinical scores). Among these a independent variables, a′ < a are covariates (nuisance variables) whose correlation with the imaging features is not of interest; the remaining a − a′ are the variables of interest. We seek spatially   
+
+> 1Michel et al. are a partial exception: their tree is built by unsupervised connectivity-constrained Ward clustering, but the variable of interest enters only when cutting the tree (selecting the parcellation whose averages best decode the target). We return to this in Section 3.4.
+
+2.2 GLM/MANCOVA via QR Factorization (single-voxel) 5contiguous effect regions r, each a set of voxels, in which xs predicts yv,s through one GLM shared by every v ∈ r:
+
+yv,s = xsβr + ϵ, (1) where βr ∈ Ra×b is the matrix of regression coefficients for region r, and ϵ is additive white Gaussian noise. We test the alternative H1, that some entry of βr is non-zero in the rows belonging to the a − a′
+
+variables of interest, against the null H0 that every such entry is zero. Finding the voxels which reject H0 is only half the job; we also want them collected into output regions holding all, and only, those voxels governed by a single homogeneous GLM. In the language of Metrics Reloaded (Maier-Hein et al., 2024), this is an instance segmentation problem: a GLM’s extent should be neither fragmented across several output regions nor conflated with neighboring voxels. We quantify the two errors with Homogeneity and Completeness scores (Rosenberg & Hirschberg, 2007): completeness = 1 − H(R | T )
+
+H(R) = I(R, T )
+
+H(R) , homogeneity = 1 − H(T | R)
+
+H(T ) = I(R, T )
+
+H(T ) . (2) Here H and I are entropy and mutual information, R is the index of an output region (the output regions being pairwise disjoint) and T is the ground truth effect label ( T = 0 outside every planted effect, T = k
+
+inside effect k). In computing them we assume a uniform distribution of voxels over the union of the output regions. 2 Completeness is the percentage of the uncertainty in R which observing T resolves; it reaches 100% when each whole effect sits inside a single output region. Homogeneity is the percentage of the uncertainty in T which observing R resolves; it reaches 100% when no output region mixes two effects. Both are computed over detected voxels alone, so neither penalizes effect volume that went undetected. We therefore report them alongside sensitivity and PPV. 
+
+## 2.2 GLM/MANCOVA via QR Factorization (single-voxel) 
+
+We first review 3 GLM regression through a QR factorization of the design matrix X ∈ RN ×a; this single-voxel case lays the foundation for the multi-voxel extension which follows. We perform a QR factorization of the design matrix X:
+
+X = QR (3) where Q ∈ RN ×a has orthonormal columns (i.e., QT Q = Ia), and R ∈ Ra×a is upper triangular. Because 
+
+R is upper triangular and invertible (as X has full column rank), the first k columns of X and the first k
+
+columns of Q span the same subspace. Before computing this QR factorization, we re-index the columns 
+
+> 2Weighting voxels rather than matched regions frees these scores from the one-to-one correspondence between output and ground truth regions that Panoptic Quality requires; the discussion of Maier-Hein et al. (2024) places problems where that correspondence is infeasible outside their recommendations, pointing instead to the Variation of Information (Meil˘ a, 2007), a function of the completeness and homogeneity metrics above.
+> 3see the “QR Factorization” section of “Least Squares Problem” in Trefethen and Bau (1997)
+
+6 2 PROBLEM & ANALYSIS 
+
+of X so that covariates appear first, followed by the independent variables of interest. Taken together, these facts let us partition Q:
+
+Q =
+
+h
+
+Q0 | Q1
+
+i
+
+(4) where: 
+
+• Q0 ∈ RN ×a′
+
+spans the space of covariates. Components of Y in this span can be entirely attributed to nuisance variables. 
+
+• Q1 ∈ RN ×(a−a′) spans the independent variables of interest, orthogonalized with respect to covariates. Components of Y in this span are explained by independent variables of interest while also being orthogonal to all nuisance variables. 
+
+• Every direction orthogonal to both spans is residual: no linear combination of the independent variables reaches it. In the univariate case ( b = 1 ), hypothesis testing is typically performed with F -statistics (Kutner et al., 2005). With multiple imaging features ( b > 1) the problem generalizes to MANCOVA, but the spirit of the analysis is unchanged: a GLM’s fit is the ratio of the variance in y it explains (the hypothesis matrix 
+
+H) to the variance left over (the error, or residual, matrix E). We define E precisely: 
+
+E ≡ (Yv − Xβ )T (Yv − Xβ ) = Y Tv (IN − QQ T )Yv, (5) where Yv ∈ RN ×b are the imaging features of voxel v. The second equality is seen by observing that when β is chosen to minimize the mean-squared-error, Xβ is a projection of Yv into the column space of X: Xβ = QQ T Yv. Equivalently, the residual is a projection into the orthogonal complement of X:
+
+Yv − Xβ = ( IN − QQ T )Yv.The hypothesis matrix H captures the portion of the covariance in Yv explained by independent variables of interest, while being orthogonal to all nuisance variables: 
+
+H = Y Tv Q1QT 
+
+> 1
+
+Yv (6) A voxel with a strong effect yields a small E and a large H: much of the variance in Y is explained by the independent variables of interest (the last a − a′ columns of X). MANCOVA offers four generalizations of the F -statistic (Wilks’ Lambda, Pillai’s Trace, Hotelling–Lawley Trace and Roy’s Largest Root), each a function of E and H (Rencher & Christensen, 2012). GLOW instead scores a region by an estimate of its log-likelihood ratio (LLR), drawing the null distribution from permutation (Section 3.3) rather than from parametric theory. To derive it, take the residuals to be independent and identically normal. Appendix A then shows that the log-likelihood of N |r| residuals is −N |r| 
+
+> 2
+
+log | ˆΣ| plus constants depending only on N , b and |r|, where ˆΣ is their maximum-likelihood covariance estimate and |r| is the number of voxels in the region. The residuals under H1, the full model, 2.3 GLM/MANCOVA via QR Factorization (multi-voxel) 7give ˆΣ = E/ (N |r|), while under H0, the reduced model, they give ˆΣ = ( E + H)/(N |r|). Subtracting the two log-likelihoods cancels the shared constants, along with the (N |r|)−1 inside each determinant: LLR = N |r|
+
+2 log |E + H||E| (7) Here | · | denotes a matrix determinant; the region size |r| uses the same bars for cardinality. Equation (7) is an estimate because the true covariance Σ is unknown: each model’s log-likelihood is evaluated at its maximum-likelihood estimate ˆΣ instead of at Σ, so Equation (7) approaches the true log-likelihood ratio only as ˆΣ → Σ.The independence assumption, of course, is rarely valid in practice: residuals depend on one another wherever an image’s spatial autocorrelation is non-zero. This modeling error haunts our results. 
+
+## 2.3 GLM/MANCOVA via QR Factorization (multi-voxel) 
+
+Extending E and H to the multi-voxel case yields insight and, as seen later, desperately needed computational savings. The theme throughout is exploiting redundancy in the block structure of the multi-voxel analogues of X and Y :
+
+X′ =
+
+
+
+XX
+
+...
+
+X
+
+ ∈ RN |r|× a, Y ′ =
+
+
+
+Y1
+
+Y2
+
+...
+
+Y|r|
+
+ ∈ RN |r|× b (8) where region r is a set of voxels v, each with imaging features Yv ∈ RN ×b. As a first example, the minimum-MSE mapping β for a region follows from the spatial average ¯Yr = 1
+
+> |r|
+
+P 
+
+> v∈r
+
+Yv alone, never touching the full Y ′:
+
+β = ( X′T X′)−1X′T Y ′
+
+= ([ XT . . . ]
+
+"X
+
+...
+
+#
+
+)−1[XT . . . ]
+
+"Y1
+
+...
+
+#
+
+= ( |r|XT X)−1XT (X
+
+> v∈r
+
+Yv)= ( XT X)−1XT ¯Yr (9) Extending E and H to a region needs a QR factorization of X′. Thanks again to the redundant structure of X′, we can nearly re-use the one we have for X:
+
+Q′ = 1
+
+p|r|
+
+
+
+QQ
+
+...
+
+ ∈ RN |r|× a, R′ = p|r|R (10) 8 3 METHOD 
+
+which has X′ = Q′R′, upper triangular R′ and Q′T Q′ = Ia as required. Before computing E it helps to define the spatial (image-pooled) covariance matrix S ∈ Rb×b, which measures how Yv varies across the voxels of r:
+
+S = X
+
+> v∈r
+
+(Yv − ¯Yr)T (Yv − ¯Yr)= Y ′T Y ′ − | r| ¯Y Tr ¯Yr
+
+= Y ′T (IN |r| − | r|CT C)Y ′ (11) where IN |r| is the N |r| × N |r| identity matrix and C = 1 
+
+> |r|
+
+[IN , I N , . . . ] is the centering matrix which gives 
+
+¯Yr = CY ′. We leave S un-normalized, for consistency with E and H. The multi-voxel form of E now follows from (5): 
+
+E = Y ′T (IN |r| − Q′Q′T )Y ′ (12) 
+
+= Y ′T (IN |r| − | r|CT C + |r|CT C − Q′Q′T )Y ′
+
+= S + 1
+
+|r|Y ′T
+
+
+
+IN − QQ T · · · IN − QQ T
+
+... . . . ...
+
+IN − QQ T · · · IN − QQ T
+
+ Y ′
+
+= S + |r| ¯Y Tr (IN − QQ T ) ¯Yr (13) where we use (11) in the third equality. Equation (13) splits the error into two sources. The first, |r| ¯Y Tr (IN − QQ T ) ¯Yr, is a regression error on the spatial average: it closely resembles the single-voxel E of (5) and measures how far ¯Yr strays in directions X cannot explain. The second, the spatial variance S, is surprising at first because it does not depend on X at all. Every voxel of region r in image s shares one estimate xsβ, so the observations 
+
+yv,s can only sit close to that estimate by sitting close to each other: variation across space contributes exclusively to E.The multi-voxel Hypothesis Matrix can be derived from (6): 
+
+H = Y ′T Q′
+
+> 1
+
+Q′T 
+
+> 1
+
+Y ′ = |r| ¯Y Tr Q1QT 
+
+> 1
+
+¯Yr (14) 
+
+# 3 Method 
+
+## 3.1 Overview 
+
+GLOW first segments the image into candidate regions, greedily minimizing a variant of the GLM fit’s mean squared error (Section 3.2). It then tests each region with established permutation methods, discarding any whose fit the null hypothesis readily explains (Section 3.3). A final pruning step (Section 3.4) sifts the surviving regions for those which contain all, and only, the voxels of one effect’s extent. 3.2 Hierarchical Segmentation 90 1 2 34 56       
+
+> Hierarchical Segmentation
+> 0123456
+> Significance Testing
+> 0146
+> Region Pruning
+> significant not significant bloomed
+> (output to user)
+> pruned
+> (discarded)
+
+Figure 2: GLOW operating on a 1 × 4 array of voxels. Regions 0 to 3 are single voxels, regions 4 to 6 their merges. GLOW estimates that region 4 (voxels 0 and 1) contains an effect. Regions 0, 1, 4 and 6 were all found significant, but only region 4 is output to the user; the rest are pruned away, their significance explained by their intersection with region 4. The viewer at glow-viewer.web.app is another helpful entry point. 
+
+## 3.2 Hierarchical Segmentation 
+
+We seek regions which show a convincingly non-zero correlation between Y and the independent variables of interest. To that end GLOW uses agglomerative clustering, repeatedly merging the neighboring pair of regions whose GLMs are most alike. Starting from one voxel per region, it merges until a single region remains. The result is a hierarchy of nested regions in which every multi-voxel region splits into exactly two subregions (see the first panel of Fig 2). For a given number of regions, a natural segmentation objective minimizes the mean squared error summed across their GLMs, which agglomerative clustering pursues greedily, one merge at a time: 
+
+arg min X
+
+> r
+
+Tr Er (15) We quantify Er by its trace rather than its determinant 4, which keeps the objective consistent with Ward’s method (Ward Jr, 1963) and inherits its efficient implementation (Murtagh & Legendre, 2014; Pedregosa et al., 2011). Ward’s method minimizes the Within-Cluster-Sum-of-Squares (WCSS), summed over all 
+
+> 4
+
+Computational need aside, minimizing the sum of determinants |Er | would have been preferable, as this (greedily) maximizes the likelihood of the GLM models (see Appendix A). The b = 1 case offers some consolation: trace and determinant agree there. 10 3 METHOD 
+
+clusters: 
+
+arg min X
+
+> r
+
+W CSS (r) = arg min X
+
+> r
+
+X
+
+> z∈r
+
+Tr ( z − μr)( z − μr)T
+
+= arg max X
+
+> r
+
+|r||| μr|| 2 (16) where z are vector-valued observations from cluster r, whose mean is μr. Our objective (15) is nearly identical: 
+
+arg min X
+
+> r
+
+Tr Er = arg min X
+
+> r
+
+Tr Y ′Tr Y ′ 
+
+> r
+
+− Y ′Tr Q′Q′T Y ′
+
+> r
+
+= arg max X
+
+> r
+
+|r||| QT ¯Yr|| 2 
+
+> F
+
+(17) where we use (12) in the first line and the second line uses (10) and observes that P 
+
+> r
+
+Tr Y ′Tr Y ′ 
+
+> r
+
+is constant across all voxel-to-region assignments. GLOW’s segmentation is therefore Ward’s method run on QT Yv, each voxel’s imaging features multiplied by QT and vectorized. In effect GLOW throws away each voxel’s residual component before clustering, which makes sense: that component is GLM error whatever happens, so there is nothing to gain by making it consistent across a region. The same argument raises a second question: should we discard the components of Yr lying in the span of the nuisance variables Q0 as well? Those directions are projected out of both E and H, so LLR is already invariant to shifts along them. Perhaps we would do better to Focus on the components of Yr
+
+which the variables of interest Q1 can explain. We test each objective empirically in Section 5.1; GLOW uses Focus. Method Objective Removes components of ... Naive X
+
+> r
+
+|r| ∥ ¯Yr∥2 
+
+> F
+
+none GLM Error X
+
+> r
+
+|r| ∥ QT ¯Yr∥2 
+
+> F
+
+GLM residuals Focus X
+
+> r
+
+|r| ∥ QT 
+
+> 1
+
+¯Yr∥2 
+
+> F
+
+GLM residuals & Covariates  
+
+> Table 1: Segmentation objectives: three varieties of Ward’s method.
+
+One observation before moving on: the spatial covariance S inside E (13) lends the objective a sense of anatomical relevance. Penalizing spatial covariance discourages merges which conflate distinct tissues, as distinct tissues often carry distinct imaging features. All three objectives apply some such penalty and differ only in the directions of RN along which they measure it, each being Ward’s method on a projected voxel ( Yv, QT Yv or QT 
+
+> 1
+
+Yv). Naive measures spatial covariance in all N directions, GLM Error only in the 
+
+a directions of X, and Focus in the a − a′ directions of interest alone (orthogonalized to the covariates). That description is accurate, but in practice Focus all but ignores spatial covariance when building regions. Analyses conventionally append a bias column of ones to X so that the GLM is robust to feature offsets 3.3 Significance Testing 11 (Bishop, 2006). The bias is usually a covariate, not a variable of interest: treating it as one tests the typically nonsensical hypothesis that some imaging feature is non-zero when averaged across the N
+
+images. The bias column therefore lies in the span of Q0, and since Q1 is orthogonal to Q0, multiplying by QT 
+
+> 1
+
+strips each voxel’s across-image mean. Focus is then measuring spatial covariance among voxels which have each been centered on their own mean, and little covariance survives that centering. Much of the anatomical relevance which motivated the penalty is discarded along with those means. The objectives themselves motivate some pre-processing. Each sums squares over the b imaging features on their native scales, so whichever feature happens to carry the largest variance dominates the merges while the others go overlooked. The objectives also ignore correlations between features, which lets variance shared by two of them be counted twice. We therefore pre-process all Yv by de-meaning, normalizing each feature’s scale, and then applying Principal Component Analysis (PCA). Every voxel of every image goes into the mean and covariance estimates used for pre-processing. 
+
+## 3.3 Significance Testing 
+
+GLOW’s inference follows the framework of Winkler et al. (2014), reusing that machinery (Freedman–Lane residual permutation and Westfall-Young max-statistic FWER) essentially unchanged. We review it before designing around the two GLOW-specific challenges which arise. Permutation testing manipulates the observed data to produce statistics consistent with the null hypothesis. Specifically, we adopt the Freedman–Lane (Freedman & Lane, 1983) approach, in which residuals from a reduced model are shuffled among observations. That is, each voxel’s Yv is replaced with the permuted version: 
+
+Y ∗ 
+
+> v
+
+= P (IN − Q0QT 
+
+> 0
+
+)Yv + Q0QT 
+
+> 0
+
+Yv, (18) where P is a permutation matrix obtained by row-shuffling the identity matrix IN . When testing a single hypothesis (i.e. region), one rejects the null when the original, unpermuted statistic exceeds 5 the 
+
+(1 − α) percentile of the permuted statistics, a reference set which includes the unpermuted statistic itself (Phipson & Smyth, 2010). This ensures the probability of a Type I error is no more than α.Our images are only block-exchangeable (see Winkler et al., 2014): every voxel’s residual from image 
+
+s must be re-assigned together, to one image s′. GLOW therefore applies a single P across all voxels within a permutation. To control the FWER while maintaining statistical power, we apply the Westfall-Young permutation procedure (Westfall & Young, 1993). Each permutation records only the maximum statistic taken across all hypotheses (i.e. regions). A region is declared significant when its unpermuted statistic exceeds the 
+
+1 − α percentile of those maxima. This holds the FWER at or below α under the global null, where no region carries an effect (weak control). Control in the strong sense, over the null regions of an image which also holds an effect, further requires subset pivotality (Westfall & Young, 1993): the null 
+
+> 5Assuming that larger statistics are less consistent with the null hypothesis, which is true for all statistics mentioned here except Wilks’ Lambda.
+
+12 3 METHOD 
+
+regions’ statistics must be distributed the same whether or not the effect is present. GLOW builds its family of regions from the data, so the effect shapes that family and nothing guarantees the condition; Section 5.3 finds it violated on white noise at strong effects. Testing a full hierarchy of nested regions in this way echoes hierarchical testing (Meinshausen, 2008), which localizes an effect by descending a tree of correlated variable clusters under a size-weighted Bonferroni rule; GLOW instead optimizes its hierarchy for GLM fit and controls FWER with a simultaneous max-statistic over all regions rather than a top-down descent. Two issues arise when applying Westfall-Young in GLOW’s context. First, GLOW tailors its regions to the effects present in the unpermuted images. Reusing those same regions on the permuted image sets, for which they were never optimized, would hand the observed statistics an advantage the null draws never had. Selecting regions on the observed data and then testing them there is circular (Kriegeskorte et al., 2009), and it breaks the exchangeability on which the FWER bound rests (Hemerik & Goeman, 2018). GLOW restores exchangeability by building a separate hierarchical segmentation for each permuted image set, then collecting the maximum statistic of each hierarchy into the comparison set. The second issue concerns how each region’s statistic is prepared before the regions compete for the maximum: raw statistics are not comparable across regions of different sizes. Consider the Focus form of (17), which by (14) is just P 
+
+> r
+
+Tr Hr. GLOW builds each region to maximize the LLR ’s numerator, but the optimization does not benefit all region sizes equally. Single-voxel and whole-image regions, for example, are the same in every hierarchy, so their statistics gain nothing from it. Without adjustment, a maximum over raw statistics would be dominated by the region sizes with the most flexibility to fit the data (often, regions of nearly the whole image). We need a way to remove this bias. Permute Images                 
+
+> (Freedman–Lane)
+> Hierarchical (Re)segmentation Permute Images & Compute τr,k ˆzr=τr−mean {τr,k }
+> std {τr,k }
+> k= 1 . . . n inner
+> For each region r:
+> Inner Permutation: Adjust for region’s size
+> zj= max
+> rˆzr
+> Outer Permutation: Westfall–Young Max-Statistic (controls FWER)
+> j= 1 . . . n fwer
+
+Figure 3: GLOW’s nested permutation. Each outer Westfall-Young draw ( j = 1 . . . n fwer ) re-segments the permuted images and records zj = max r ˆzr. Calibrating a region (shaded) nests an inner loop ( k = 1 . . . n inner )that recomputes the region’s statistic as τr,k to form its null {τr,k }, then z-scores the observed τr against it, making ˆzr comparable across region sizes. 
+
+We obtain it with a second, nested 6 permutation loop (Fig 3). Write τr for region r’s observed statistic (GLOW uses its LLR , though any of the MANCOVA statistics would serve). Recomputing it under ninner 
+
+> 6
+
+Please see Section 5.5 for discussion of GLOW’s increasingly urgent computational needs. 3.4 Region Pruning 13 permutations of a fixed hierarchy yields the null draws {τr,k }ninner  
+
+> k=1
+
+. Counting the observed statistic among them as τr, 0 = τr, as a permutation test counts the identity permutation, we calibrate by z-scoring, 
+
+ˆzr = τr − mean {τr,k }ninner 
+
+> k=0
+
+std {τr,k }ninner 
+
+> k=0
+
+, (19) with the sample standard deviation. Each τr is compared against references drawn for its own region, so the inflation that region’s size and shape carry is accounted for. This inner calibration nests inside the outer Westfall-Young loop of the first issue: each outer permutation j re-segments the permuted images, calibrates every region of the resulting hierarchy through its own inner loop, and contributes that hierarchy’s maximum zj = max r ˆzr to the FWER null. A region is significant when its observed ˆzr
+
+exceeds the 1 − α percentile of these per-permutation maxima zj .Reassuringly, the weak FWER bound holds regardless of how well the z-scoring equalizes regions 7. The calibration only steers power, giving regions of every size a fair chance at the maximum; it cannot inflate the false-positive rate under the global null. 
+
+## 3.4 Region Pruning 
+
+If all has gone well, GLOW has flagged a region matching each true effect’s extent as significant. It has almost certainly flagged that region’s relatives in the hierarchy too: a strong effect lends its significance to the smaller fragments nested inside it and to the larger regions which contain it. These overlapping regions are redundant descriptions of one effect, and GLOW’s final step prunes them away, leaving output regions which capture all, and only, the voxels of a single effect’s extent. Let B denote the set of bloomed regions, those output to the user; every other significant region is 
+
+pruned (Fig 4). A valid B must meet two requirements. First, its regions must be pairwise disjoint: homogeneous effects cannot meaningfully overlap, so neither should the regions we report. Second, every significant region must intersect some member of B; otherwise we would silently discard a significant result. Together these make B a tree-cut (similar in spirit to Michel et al. (2012)). One natural choice of B maximizes the likelihood of the observed images. Under this model each voxel follows the βr of whichever bloomed region contains it, while a voxel in no member of B follows the reduced model’s βr, contributing a convenient LLR of zero. Spatial independence of the residuals makes the objective tractable: the log-likelihood ratio over all significant voxels is just the sum of the per-region ratios, P 
+
+> r∈B
+
+LLR( r). Maximizing this sum has a clean global optimum, reached by a bottom-up Dynamic Programming (DP) solution over the hierarchy (Guigues et al., 2006; Salembier & Garrido, 2000). The principled simplicity of DP is, however, too good to be true. Partition a region r into disjoint pieces 
+
+> 7The inner calibration is applied identically on every outer permutation, including the observed (unpermuted) draw, so the per-permutation maxima remain exchangeable under the global null and the Westfall-Young bound is exact there (Hemerik & Goeman, 2018; Lehmann & Romano, 2005).
+
+14 4 EXPERIMENT 0 146
+
+> bloomed
+> (output to user)
+> pruned
+> (discarded)
+
+Figure 4: The pruning result for the running example from Fig 2. Region 4 is bloomed (output to the user). The smaller regions nested inside it (0 and 1) and the larger region containing it (6) are pruned , their significance explained away by their overlap with region 4. 
+
+r1, . . . , r k; the whole-region LLR never exceeds the sum over those pieces: 
+
+LLR( r) ≤
+
+> k
+
+X
+
+> i=1
+
+LLR( ri). (20) A single βr cannot follow the differing spatial means of r1, . . . , r k, so pooling them adds to E while subtracting from H (see Appendix B). DP therefore sacrifices completeness: offered a whole region or a partition of it, DP never prefers the whole. This violates our stated goal of outputting one region per effect; Section 5.2 confirms it empirically. An alternative maximizes LLR greedily: bloom the significant region of maximum LLR , prune every region which intersects it, and repeat until no candidates remain. This errs in the opposite direction, sacrificing homogeneity: it favors a large region, which may absorb non-effect volume alongside an effect’s extent. GLOW adopts greedy pruning on the strength of its empirical results (Section 5.2). Forgoing the maximum-likelihood DP for its greedy approximation is uncomfortable 8; Section 6 blames the ghost of the invalid independence assumption. 
+
+# 4 Experiment 
+
+Evaluating detection performance requires ground truth: to call a significant voxel a true or false positive, and thus to compute sensitivity or PPV, we must know which voxels carry an effect. Real image sets do not supply it. To validate in conditions as close to real images as possible, we impose a synthetic effect    
+
+> 8We spent significant effort trying to redeem the DP with regularization penalties which reward larger regions over their smaller constituents; a geometric prior over |B|, for instance, adds a constant penalty λ|B|to the objective and coexists gracefully with the dynamic program.
+
+15 of known extent onto real data. Imposing an effect also puts its character under our control: turning the effect’s LLR knob up, we watch detection performance change as effects grow from subtle to obvious. We test on two image sets: White Gaussian Noise (WGN), which satisfies our modeling assumptions (independent and identically distributed Gaussian residuals), and diffusion MRI maps from the Human Connectome Project (HCP), which carry the realistic spatial structure of a brain. Section 7 provides the HCP diffusion processing details and instructions on how to repeat our experiments. Each trial aims to plant one effect. For either image set we first sample the effect’s extent, the set of voxels it will occupy. Starting from a single seed voxel chosen uniformly at random, we grow the extent to a target size, at each step annexing whichever neighboring voxel minimizes the resulting region’s spatial variance Tr( S) (Fig 5). We call it the MinVar extent. On HCP the MinVar extent follows tissue, so its voxels share a mean and its spatial variance S stays small; on WGN, which has no tissue to follow, it is a one-voxel-thick dendrite spread through the crop. We also plant a shape which ignores the images: a ball of the same size centered in the crop, grown by repeated face-connected dilation (an octahedron, the ball of the voxel grid’s own metric). Each sphere is planted on the same images as its MinVar twin. On HCP a sphere typically straddles tissue boundaries, so its voxel means differ and S is large, and the offset which brings the whole region to its target LLR must be larger than a MinVar extent of the same size would need. Such a sphere is arguably not one effect but several: the voxels on either side of an anatomical boundary share the planted offset but not a common ¯Y , and so not one GLM in the sense of Section 2.1. HCP, MinVar HCP, sphere WGN, MinVar WGN, sphere  
+
+> Figure 5: The two extent shapes on each source, each of 2,500 voxels, planted on the same images: one seed’s extents (red) on a shared axial slice of one of those images (HCP: FA; WGN: noise).
+
+Within either extent the real images supply the starting data Y ′. We draw the regressors of interest at random from a standard normal, so any initial correlation between the images and X is purely coincidental, and append a bias column of ones as the sole covariate. We then add a spatially constant offset ∆ ∈ RN ×b,the same in every voxel of the extent, chosen to bring the region to a target LLR (Fig 6). Many offsets reach that target; we take the one with the smallest mean-squared change from the original images, keeping the perturbed image set as faithful to the original as we can. Appendix C gives the optimization detail. 16 5 RESULTS 2 1 0 1 2         
+
+> covariate x
+> 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8
+> region mean FA
+> original-data, LLR=0.0003 LLR=0.1 LLR=0.6
+> original-data
+> x= +0.000
+> LLR=0.1
+> x=0.126
+> LLR=0.6
+> x=0.424
+> LLR=0.6
+> x= +0.333
+> LLR=0.1
+> x= +0.100
+> original-data
+> x= +0.000
+> Imposing an effect
+
+Figure 6: Imposing a synthetic effect. Green and red mark moderate and severe effects imposed onto the original image set, in blue. The left column gives one image of the original set alongside its modified versions at each effect strength, each labeled with the FA offset the effect induces, βx . The right column repeats this for another image, the one with maximum x.
+
+# 5 Results 
+
+Unless otherwise noted, all experiments use the following defaults. Each source (WGN or HCP) is cropped to a single connected sphere of 25 ,000 voxels (about a tenth of a full-brain volume at HCP resolution), with N = 100 subjects. Each trial uses a single imaging feature ( b = 1 ), on HCP sampled from our six microstructural maps (FA, MD, MK, ICVF, ISOVF, and OD; see Section 7); the detection experiments also run at b = 2 , drawing two of the maps per seed. Synthetic effects take the MinVar extent unless a sphere is named. The design matrix holds one regressor of interest and the bias column ( a = 2 ,
+
+a′ = 1 ). Synthetic effects span 10% of the crop. We set effect strength with LLR-per-voxel, which is closer to |r|-invariant than raw LLR, sweeping eleven logarithmically spaced values from 0.003 to 0.3.Experiments which do not sweep effect strength use that grid’s midpoint, 0.03 . Both sources sit on a 
+
+2 mm isotropic grid, so a kernel width in millimeters means the same on each. The voxel-wise baselines smooth every image with a 2 mm FWHM Gaussian kernel (Appendix D); GLOW does not smooth. GLOW uses ninner = 250 inner permutations. Each configuration runs 50 random seeds. Significance testing for all methods bounds FWER at α = 0 .05 using nfwer = 500 outer (Westfall-Young) permutations. That is fewer permutations than a single published study ought to use, but it buys us comprehensive testing 5.1 Tuning: Segmentation Objective 17 across many contexts here. All performance comparisons report Dice, sensitivity, and positive predictive value (precision) against the planted ground-truth extent, together with the homogeneity and completeness of Section 2.1. We report PPV rather than specificity because effects cover only a small fraction of the volume: specificity is then dominated by the large true-negative pool and stays near one even for a method which flags many false positives (Maier-Hein et al., 2024). With a single planted effect, homogeneity and completeness each reduce to a simpler question. Com-pleteness asks whether the detection comes back as one region, and is nearly binary. A trial that returns one region leaves no uncertainty in R for T to resolve, so H(R) = 0 and the convention scores it 1.A trial that returns several regions scores near 0, however cleanly those regions tile the effect: both scores see detected voxels alone, so as detection gets cleaner nearly every detected voxel carries the same label T = 1 , and H(T ) vanishes, taking the numerator I(R, T ) ≤ H(T ) with it. Mean completeness is therefore close to the proportion of trials which return a single region. Homogeneity asks whether the region boundaries separate effect voxels from false positives. It credits only what the split into regions tells a reader about T beyond the detected volume taken as a whole, so a single mixed region scores 
+
+0 however much of it is effect, while many small pure regions score near 1. Put plainly, completeness rewards handing the detection back in one piece, homogeneity rewards pieces that are each all effect or all false positive, and neither counts how much of the effect was found, which Dice and sensitivity measure. 
+
+## 5.1 Tuning: Segmentation Objective 
+
+We compare the three Ward’s objectives of Table 1. Ideally a segmentation produces some region which matches the effect’s extent, so we score it by oracle Dice: the largest Dice overlap with the ground truth extent taken across every region of the hierarchy (Fig 7). Of course, oracle Dice cannot be computed in practice; we use it here to isolate segmentation quality. Comfortingly, every objective’s oracle Dice climbs toward one as the effect strengthens. On WGN data, discarding the GLM residuals before segmentation (as both GLM Error and Focus do) consistently improves Dice. On realistic images (HCP), Focus performs admirably at high LLR, suggesting that the reduced model’s GLM error may indeed be a distraction. We suspect its relative underperformance at low LLR is an artifact of how we sample effect extents: they are grown to minimize spatial variance, which is exactly what Naive Ward’s minimizes. GLM Error, whose Q retains that critical bias column ⃗ 1 in the span of Q0,inherits much of the same advantage. Focus is left adrift here because it strips each voxel’s across-image mean (see the Focus discussion of Section 3.2). The GLM Error and Naive objectives are, we would argue, “cheating” here: they reproduce the very mechanism which sampled the effect extent. GLOW therefore uses Focus, on the strength of its high-LLR performance and the fairness concern with the alternatives. 18 5 RESULTS 0.0 0.2 0.4 0.6 0.8 1.0 HCP mean (95% CI)            
+
+> Dice
+> Focus GLM Error Naive
+> 0.0 0.2 0.4 0.6 0.8 1.0 Sensitivity
+> 0.0 0.2 0.4 0.6 0.8 1.0 PPV (Precision)
+> 10 210 1
+> LLR / |r| 0.0 0.2 0.4 0.6 0.8 1.0 WGN mean (95% CI)
+> 10 210 1
+> LLR / |r| 0.0 0.2 0.4 0.6 0.8 1.0
+> 10 210 1
+> LLR / |r| 0.0 0.2 0.4 0.6 0.8 1.0
+
+Figure 7: Segmentation quality. Oracle Dice of the best-matching region in the hierarchy for each of the three Ward’s objectives (Table 1). Markers show the mean across random seeds; error bars give its 95% confidence interval ( ±1.96 standard errors of the mean). 
+
+Neither Focus’s strength at high LLR nor its weakness at low LLR appears on WGN data. There a much higher proportion of the GLM error is spatial variance S (13), so there is less to gain by focusing on the 
+
+Q1 component of ¯Yr.
+
+## 5.2 Tuning: Region Pruning 
+
+We next compare the two pruning rules of Section 3.4: greedily blooming the maximum-LLR significant region, or using Dynamic Programming (DP) to find the disjoint set of significant regions which maximizes likelihood. Segmentation and hypothesis testing cap the Dice any pruning rule can reach, as sometimes no strong candidate sits among the regions declared significant. To quantify that ceiling we add an “Oracle” rule, which selects the B of maximum Dice. The rules share one input: each experiment (a seed, effect strength and source, WGN or HCP) is segmented and tested once, and every rule prunes from that same set of significant regions (Fig 8). On Dice the two rules are hard to separate. HCP’s average is 0.551 for greedy against 0.537 for DP, with DP winning only 15% of seed-paired comparisons. On WGN they tie ( 0.326 each). On whether an output region holds all (completeness) and only (homogeneity) of one effect, the difference is stark. As effect strength rises on HCP, greedy does a fine job of collecting whole effects (completeness → 1)and DP does just the opposite. As Section 3.4 anticipated, partitioning a region into smaller outputs 5.3 Type I Error Control 19 0.0 0.2 0.4 0.6 0.8 1.0 HCP mean (95% CI)                    
+
+> Dice
+> GLOW-dp GLOW-greedy GLOW-oracle
+> 0.0 0.2 0.4 0.6 0.8 1.0 Sensitivity
+> 0.0 0.2 0.4 0.6 0.8 1.0 PPV (Precision)
+> 0.0 0.2 0.4 0.6 0.8 1.0 Completeness
+> 0.0 0.2 0.4 0.6 0.8 1.0 Homogeneity
+> 10 210 1
+> LLR / |r| 0.0 0.2 0.4 0.6 0.8 1.0 WGN mean (95% CI)
+> 10 210 1
+> LLR / |r| 0.0 0.2 0.4 0.6 0.8 1.0
+> 10 210 1
+> LLR / |r| 0.0 0.2 0.4 0.6 0.8 1.0
+> 10 210 1
+> LLR / |r| 0.0 0.2 0.4 0.6 0.8 1.0
+> 10 210 1
+> LLR / |r| 0.0 0.2 0.4 0.6 0.8 1.0
+
+Figure 8: Pruning rule comparison, under the Focus segmentation objective. Markers show the mean across random seeds; error bars give its 95% confidence interval. 
+
+can only raise the LLR which DP maximizes, so completeness suffers. The flaw runs deep: at strong enough effects every individual voxel of an extent is declared significant, and (20) leaves DP no reason to bundle them back together. DP’s homogeneity is certainly higher, though that counts for little in this single-effect setting. At strong effects, where Dice approaches one, almost every output voxel 9 belongs to the one effect, leaving little uncertainty in T for R to resolve. GLOW is therefore built on greedy pruning and Focus segmentation, sidelining a global optimum in favor of its approximation; Section 6 traces that choice back to the false independence assumption in our LLR. 
+
+## 5.3 Type I Error Control 
+
+Before evaluating detection performance, we verify that GLOW controls the FWER. Under the null hypothesis (no imposed effect) we run 1,000 seeds of HCP and WGN images. We report the percentage of experiments which declared any region significant, the empirical FWER, against the nominal rate (Fig 9). On both sources the empirical rejection rate tracks the nominal α across its whole range, the 95% band bracketing the ideal line ( 4.8% on HCP and 5.1% on WGN at α = 0 .05 ), so at these 1,000 seeds GLOW’s FWER under the global null is indistinguishable from nominal. That is weak control. Strong control asks more: in an image which does hold an effect, the chance of rejecting any region containing none of it must still not exceed α. The detection experiments of Section 5.4 measure this directly, since an output region without a single planted voxel is a false rejection of a true null. Table 2 counts the trials which return one. On HCP GLOW’s count never exceeds 5 of 50, indistinguishable from nominal (one-sided binomial p ≥ 0.10 ), though suggestive. On WGN the count holds at or near zero through the weaker effects, then climbs with strength to as many as 25 of 50, well above α. That climb is the risk anticipated in Section 3.3: the effect itself raises the null regions’ chance of reaching significance. VBA’s and CET’s counts do not move with strength, their false regions being 
+
+> 9
+
+Recall that homogeneity and completeness are computed only over voxels output to the user. 20 5 RESULTS 0.0 0.2 0.4 0.6 0.8 1.0 nominal       
+
+> 0.0 0.2 0.4 0.6 0.8 1.0 empirical rejection rate
+> GLOW (HCP)
+> ideal 95% CI
+> 0.0 0.2 0.4 0.6 0.8 1.0 nominal
+> 0.0 0.2 0.4 0.6 0.8 1.0 GLOW (WGN)
+
+Figure 9: FWER control. Shading is the pointwise 95% interval for the true rejection rate given the 1,000 null seeds, so a calibrated method’s band brackets the dashed ideal. 
+
+the same few seeds’ null clusters throughout; VBA-TFCE’s vary more, and on WGN MinVar at b = 2 it too exceeds α at each of the six strongest effects (6 to 9 of 50). HCP WGN MinVar Sphere MinVar Sphere LLR /|r| b=1 b=2 b=1 b=2 b=1 b=2 b=1 b=2 0.0189 1 0 1 0 0 0 3 0
+
+0.0300 1 0 1 1 0 0 2 0
+
+0.0475 1 1 1 0 0 0 5 1
+
+0.0754 1 0 3 1 7 2 4 1
+
+0.1194 1 0 3 1 9 4 5 6
+
+0.1893 1 2 5 4 10 11 9 6
+
+0.3000 2 2 5 3 16 25 11 9
+
+Table 2: GLOW trials (of 50) returning a region which holds no planted voxel, a false rejection of a true null. Bold where the count exceeds α = 0 .05 (one-sided binomial p < 0.05 , i.e. 6 or more). The four weakest strengths of the grid ( 0.0030 to 0.0119 ) are omitted: every count there is 0 or 1. 
+
+GLOW therefore controls FWER in the weak sense, but on white noise not in the strong sense. A further region reported alongside an obvious effect deserves less confidence than its significance suggests. 
+
+## 5.4 Detection Performance 
+
+We compare GLOW against the voxel-wise baselines (VBA, CET, and VBA-TFCE) on detection metrics (Dice, Sensitivity, and PPV) as well as segmentation scores (Completeness and Homogeneity). Each voxel-wise method uses the statistic and smoothing kernel which jointly optimize its mean Dice on HCP (Appendix D). All three smooth at 2 mm FWHM and use Wilks’ Lambda, VBA-TFCE after per-voxel z-scoring; under our single-regressor contrast VBA and CET are invariant to the choice of statistic anyway. CET uses an initial cluster-forming threshold of 10 −3, as recommended by Woo et al. (2014); TFCE 5.4 Detection Performance 21 0.003 0.0048 0.0075 0.0119 0.0189 0.03 0.0475 0.0754 0.1194 0.1893 0.3 
+
+effect strength (LLR / | r|) 
+
+> HCP, MinVar, b=1 HCP, MinVar, b=2 HCP, sphere, b=1 HCP, sphere, b=2 WGN, MinVar, b=1 WGN, MinVar, b=2 WGN, sphere, b=1 WGN, sphere, b=2
+> +0.01
+> C
+> +0.01
+> C
+> +0.05
+> C
+> +0.08
+> C
+> +0.09
+> T
+> +0.00
+> T
+> -0.03
+> T
+> -0.02
+> T
+> -0.01
+> T
+> -0.00
+> C
+> -0.01
+> V
+> +0.02
+> C
+> +0.01
+> C
+> +0.05
+> C
+> +0.11
+> C
+> +0.16
+> T
+> +0.04
+> T
+> +0.01
+> T
+> -0.01
+> T
+> -0.01
+> T
+> -0.01
+> C
+> -0.02
+> V
+> +0.10
+> T
+> +0.16
+> T
+> +0.07
+> T
+> -0.02
+> T
+> -0.03
+> T
+> -0.01
+> T
+> -0.01
+> T
+> -0.01
+> C
+> -0.00
+> C
+> -0.02
+> V
+> -0.01
+> V
+> -0.00
+> T
+> +0.00
+> T
+> +0.05
+> T
+> +0.05
+> T
+> +0.02
+> T
+> +0.01
+> T
+> +0.00
+> T
+> +0.00
+> T
+> +0.00
+> C
+> -0.01
+> V
+> -0.01
+> V
+> +0.00
+> T
+> +0.00
+> T
+> +0.00
+> C
+> +0.01
+> C
+> -0.02
+> C
+> -0.17
+> C
+> -0.34
+> T
+> -0.24
+> T
+> -0.22
+> C
+> -0.20
+> V
+> -0.16
+> V
+> +0.01
+> V
+> +0.00
+> V
+> +0.01
+> T
+> +0.01
+> C
+> +0.01
+> C
+> -0.05
+> C
+> -0.15
+> T
+> -0.25
+> T
+> -0.17
+> C
+> -0.19
+> C
+> -0.27
+> V
+> +0.02
+> C
+> +0.02
+> C
+> -0.00
+> C
+> -0.21
+> T
+> -0.56
+> T
+> -0.54
+> T
+> -0.29
+> T
+> -0.09
+> T
+> -0.10
+> C
+> -0.11
+> V
+> -0.09
+> V
+> +0.03
+> T
+> +0.02
+> C
+> +0.02
+> C
+> -0.06
+> T
+> -0.52
+> T
+> -0.61
+> T
+> -0.39
+> T
+> -0.14
+> T
+> -0.11
+> C
+> -0.06
+> V
+> -0.08
+> V
+> −0.6 −0.4 −0.2 0.0 0.2 0.4 0.6
+> GLOW minus best baseline, Dice
+
+Figure 10: GLOW’s Dice minus the best baseline’s, by source, extent shape, b and effect strength. The best baseline is the one with the highest mean Dice in that cell (letter: V for VBA, T for VBA-TFCE, C for CET), and each entry is the mean of the 50 seed-paired differences, bold where its 95% confidence interval excludes zero. 
+
+uses extent and height exponents e = 0 .5 and h = 2 , the standard three-dimensional settings (Smith & Nichols, 2009). We sweep effect strength in four modes, crossing the two sources with the two extent shapes of Section 4, at b = 1 and b = 2 . Fig 10 summarizes every cell as GLOW’s Dice minus that of the baseline with the best mean Dice there, paired by seed; Figs 11 and 12 give the curves behind it. The source decides GLOW’s standing. On HCP, GLOW leads on Dice wherever the effect is hard to see and ties once it is easy: averaged over the effect strengths below LLR /|r| = 0 .03 it gains 0.059 (MinVar extent, b = 1 and 2), up to 0.16 in a single cell, and from LLR /|r| = 0 .03 up it stays within 0.04 of the best baseline in every HCP cell. On WGN it trails from moderate strengths up, by as much as 0.34 on the MinVar extent and 0.61 on the sphere; at strong effects its Dice plateaus while the best baselines converge to 1.00 . At a given nominal LLR /|r| the HCP sphere is easier to detect than the other three cells. A sphere straddling tissue boundaries has voxels whose means differ; fit with a common mean, that spread enters the error as the spatial variance S (13), so reaching a given LLR /|r| takes a larger offset than a MinVar extent would need. A voxel-wise test fits each voxel its own mean, so it sees the larger offset without the spread: recomputed with each voxel centered on its own mean, the same region’s LLR /|r| is a median 2.7 times its nominal value across the HCP sphere’s trials at b = 1 (2.3 at b = 2 ), against 1.3 for the MinVar extent on HCP and 1.0 on WGN, where voxel means do not differ. On WGN neither shape meets an anatomical boundary, so both carry the same per-voxel strength. What still separates them is their geometry, which matters to the baselines because they pool signal over 22 5 RESULTS 0.00 0.25 0.50 0.75 1.00 
+
+> Dice
+
+HCP, MinVar HCP, sphere WGN, MinVar WGN, sphere   
+
+> 0.00 0.25 0.50 0.75 1.00
+> Sensitivity
+> 0.00 0.25 0.50 0.75 1.00
+> PPV (detecting)
+> 0.00 0.25 0.50 0.75 1.00
+> Completeness
+> .003 .03 .3
+
+LLR / | r|  
+
+> 0.00 0.25 0.50 0.75 1.00
+> Homogeneity
+> .003 .03 .3
+
+LLR / | r|  
+
+> .003 .03 .3
+
+LLR / | r|  
+
+> .003 .03 .3
+
+LLR / | r|   
+
+> GLOW VBA VBA-TFCE CET
+
+Figure 11: Detection performance versus effect strength ( b = 1 ), one metric per row and one source and extent shape per column. Each curve is the mean across random seeds, shaded with the 95% confidence interval of that mean. PPV, completeness and homogeneity average over the trials which detect some effect voxel. 5.4 Detection Performance 23 0.00 0.25 0.50 0.75 1.00 
+
+> Dice
+
+HCP, MinVar HCP, sphere WGN, MinVar WGN, sphere 
+
+0.00 0.25 0.50 0.75 1.00 
+
+> Sensitivity
+
+0.00 0.25 0.50 0.75 1.00 
+
+> PPV (detecting)
+
+0.00 0.25 0.50 0.75 1.00 
+
+> Completeness
+
+.003 .03 .3 
+
+LLR / | r|
+
+0.00 0.25 0.50 0.75 1.00 
+
+> Homogeneity
+
+.003 .03 .3 
+
+LLR / | r|
+
+.003 .03 .3 
+
+LLR / | r|
+
+.003 .03 .3 
+
+LLR / | r|
+
+GLOW VBA VBA-TFCE CET 
+
+Figure 12: Fig 11 at b = 2 .24 5 RESULTS 
+
+neighboring voxels: all three smooth the images, and CET and TFCE also pool statistics over clusters. A compact sphere gains from that pooling, while a one-voxel-thick dendrite (the MinVar extent on WGN) loses by it. At LLR /|r| = 0 .0189 , VBA-TFCE’s Dice is 0.67 on the sphere against 0.01 on the dendrite, while GLOW’s rises only from 0.03 to 0.11 .Completeness separates GLOW from the baselines on the MinVar extent. Among trials that detect anything, GLOW returns the effect as one region on 57% of HCP trials against the best baseline’s 35% 
+
+(45 against 40% on WGN), and through the HCP mid-range of effect strengths (LLR /|r| from 0.0189 to 
+
+0.0754 ) it beats the best baseline’s completeness in 70% of seed-paired comparisons. Completeness here is close to the share of trials which return a single region (across all cells the two correlate at 0.990 ). This is the property Section 2.1 asks for and the one Dice cannot see: on such an effect the baselines recover comparable volume but hand it back in pieces rather than as a whole region. On the HCP sphere, which Section 4 argues is several effects rather than one, the gap closes: CET returns it as one region as often as GLOW at b = 1 (70% each) and more often at b = 2 (70 against 49% ). Wholeness costs precision. GLOW is the more aggressive detector on HCP: its sensitivity beats the best alternative by up to 0.24 on the MinVar extent and 0.29 on the sphere, and its PPV is lower at all eleven effect strengths of both, on the MinVar extent winning only 9 of the 402 seed-paired comparisons in which both GLOW and a baseline detect something. GLOW’s PPV loss on HCP is largely undersegmentation: a region captures an effect and then keeps growing, bundling non-effect volume along with it. The alternative explanation, that these false positives make up wholly spurious regions, barely applies on HCP. Averaged over GLOW’s false positive voxels, the region a false voxel sits in holds 72% of the planted MinVar extent ( 64% of the sphere), and only 12 of the 1,793 regions GLOW returned on it hold none of the effect. This is exactly the error Section 3.4 predicted of greedy pruning. It is also why homogeneity runs the other way: on HCP, VBA holds above 0.95 until the effect is strong enough for its smoothed pieces to merge, while GLOW falls from 0.50 to 0.04 by the middle strength effect. Through the HCP mid-range, 99 .7% of VBA’s regions lie wholly inside the planted extent against 
+
+17% of GLOW’s, at a median of 40 regions against GLOW’s 2. The baselines return many pure pieces of one effect; GLOW returns few pieces that straddle its boundary. On WGN the deficit lies in the test rather than the tree. The best single node of GLOW’s own Focus hierarchy matches the MinVar extent about as well on WGN as on HCP (oracle Dice 0.52 against 0.55 at LLR /|r| = 0 .0189 ; Fig 7), yet GLOW declares any region significant in 9 of 50 WGN trials there against 
+
+44 of 50 on HCP, at a median smallest p-value of 0.18 against 0.004 . GLOW’s segmentation, running on both the original and the permuted images, identifies the region whose GLM candidate is most compelling. On HCP data, where the images are smooth, a region’s neighbors offer limited variety from which to assemble a consistent GLM under the null hypothesis. WGN, on the other hand, has ample choice to construct a strong statistic under the null hypothesis, more so on the MinVar extent, whose dendritic tour of the volume offers more neighbors to choose from. GLOW catches up only once the effect is 5.5 Computation 25 strong, and then by returning a region larger than the effect, so its WGN PPV stays at 0.66 to 0.92 from LLR /|r| = 0 .075 up. On HCP, by contrast, the cause of the undersegmentation (low PPV) is mostly upstream of the pruning rule. Fig 13 (left) plots PPV against a budget of k output regions for two Oracles, each choosing, with knowledge of the ground truth, at most k regions whose union maximizes Dice against the planted effect. The first draws only from the FWER-significant regions, the same pool greedy ranks, so no pruning rule could beat it at the same region count; the second draws from any node of the Ward tree. Stepping from GLOW’s output to the first Oracle therefore measures what the pruning rule leaves behind; from the first Oracle to the second, what the significance test withheld; and from the second up to VBA’s PPV, what the segmentation never offered. At weak effects (LLR /|r| = 0 .0189 , MinVar extent) greedy returns a PPV of 0.608 from a mean of 6.6 regions (median 1); with a budget of k = 10 regions the first Oracle reaches 0.686 , the second 0.732 , and VBA reaches 0.998 . Of the 0.390 separating greedy from VBA, greedy pruning accounts for 20% , the significance test for a further 12% , and the segmentation for the remaining 68% . In other words, at weak effects pruning can only do so much when segmentation does not isolate the effect’s extent somewhere in the tree. 2 4 6 8 10     
+
+> regions output
+> 0.2 0.4 0.6 0.8 1.0
+> PPV
+> HCP
+> 246810
+> regions output
+> WGN
+> LLR / |r| = 0.0189 Oracle, significant LLR / |r| = 0.0475 Oracle, whole tree LLR / |r| = 0.3 GLOW, greedy prune
+
+Figure 13: The PPV available to a pruning rule, and to the tree it prunes, for the MinVar extent at b = 1 , over the same seeds as Fig 11. Each line gives the PPV of the union of at most k regions, chosen with knowledge of the ground truth to maximize Dice with the planted extent. Solid lines choose from the FWER-significant regions alone, the pool GLOW’s greedy rule ranks; dashed lines choose from every node of the Ward tree. Circles mark GLOW’s own operating point, its mean region count against its mean PPV. All three are averaged over the trials in which GLOW discovered something. Both Oracles maximize Dice rather than PPV, so the wider pool is not guaranteed to be the more precise one. 
+
+## 5.5 Computation 
+
+As described thus far, GLOW is sorely in need of computational optimization. The central challenge is computing log-likelihood ratios for a hierarchical segmentation quickly. A region’s LLR needs its E and 
+
+H matrices (13, 14), which depend only on |r|, Y ′T Y ′ and ¯Yr. Given these sufficient statistics for two regions, those of their union follow immediately. We may therefore walk the tree in topological order, from single voxels up to the whole image, at a per-region cost which no longer grows with region size |r|.26 5 RESULTS 
+
+Better yet, re-indexing the voxels in the tree’s depth-first order leaves every region spanning a contiguous range of voxel indices. Each of |r|, Y ′T Y ′ and ¯Yr is then the difference between two entries of a single cumulative sum over the voxels, the standard prefix-sum trick. Even so, the inner calibration of Section 3.3 multiplies this workload: every region of every outer (FWER) permutation needs its own ninner inner permutations to estimate the mean and standard deviation that studentize its LLR (19). A fit therefore pays for nfwer tree builds, each carrying ninner +1 LLR computations per region. This multiplier, not the clustering, separates GLOW’s wall time from a voxel-wise test’s. To characterize compute time, we timed each method’s fit on HCP images at analysis-crop sizes ranging from 1,000 to 224,619 voxels (the full connected HCP support), with a single imaging feature ( b = 1 ). A moderate effect (per-voxel LLR of 0.03 over 10% of the crop) was imposed so the pruning step had a genuine effect to process. Each fit ran nfwer = 500 outer (Westfall-Young) permutations, GLOW additionally drawing ninner = 250 inner permutations per region. Every method parallelized its permutation walk across all cores of one workstation (Intel i9-14900K, 24 cores / 32 threads) with a single consumer-grade NVIDIA RTX 4060 GPU; the reported wall time is what a user on such a machine waits for. All methods were tuned, to the author’s limited capability, to their best on that machine. GLOW’s wall time was bound by the GPU computing its LLRs: just 10 threads feeding it hierarchical segmentations were enough to saturate its bandwidth. At the full support GLOW takes about four and a half times as long as the voxel-wise methods. 10 3 10 4 10 5     
+
+> Number of Voxels 10 1
+> 10 0
+> 10 1
+> wall time (min)
+> CET (slope 0.94) GLOW (slope 1.16) VBA (slope 0.95) VBA-TFCE (slope 0.98)
+
+Figure 14: Wall-clock fit time versus analyzed voxel count, on log-log axes. Each curve is the median over three HCP crops (shaded band: min to max). Each legend entry gives that method’s fitted log-log slope over the largest voxel counts (22,462 voxels and up). Note these times use nfwer = 500 outer permutations. 
+
+Fig 14 shows GLOW scaling roughly linearly with voxel count. Two things make that possible: the LLR 27 savings above, and constraining segmentation merges to neighboring regions alone (left unconstrained, Ward’s method scales as the square of the number of voxels (M¨ ullner, 2011)). Extrapolating that linear growth to the full HCP support (225k voxels) at 5,000 permutations, we estimate a GLOW fit at 74 minutes against 16 to 17 minutes for each baseline. A wall time measured on all cores conflates how the algorithm grows with how well the machine parallelizes it. To isolate the growth we re-timed GLOW alone on a single pinned core, with no GPU and BLAS held to one thread, at nfwer = 1 (Fig 15). 10 3 10 4 10 5           
+
+> Number of Voxels
+> 10 −2
+> 10 −1
+> 10 0
+> wall time (min)
+> (a) slope 1.14
+> 10 110 210 3
+> Inner Draws per Tree
+> (b) slope 0.90
+> 123456
+> Number of Imaging Features
+> 10 −2
+> 10 −1
+> 10 0
+> wall time (min)
+> (c)
+> 10 110 2
+> Number of Subjects
+> (d) slope 0.07
+
+Figure 15: GLOW’s per-permutation cost, timed on one core with no GPU and BLAS pinned to one thread. Panels sweep voxel count |V |, inner draws per tree ninner , imaging features b and subjects N , each holding the rest at the shared center ( 25 ,000 voxels, one outer permutation, b = 1 , the full cohort). Median over three HCP crops (band: min to max) on a shared wall-time axis; titles give the fitted log-log slope, for |V | over its largest decade as in Fig 14. 
+
+Per permutation, cost grows roughly linearly in voxel count and a little sublinearly in the inner draws, is nearly free in the number of subjects, and rises most steeply in the number of imaging features b.
+
+# 6 Discussion 
+
+GLOW’s advantage is concentrated where an effect is hard to see, and on real images: on HCP it leads on Dice below LLR /|r| = 0 .03 and ties above it, while on white noise it trails from moderate strengths up. Part of that lead on subtle effects may come from the baselines’ kernel width: each runs at the single width that maximizes its mean Dice pooled over effect strengths, while subtle effects favor a wider one (Appendix D). A wider kernel would narrow GLOW’s lead on subtle effects, but would cost the baselines more Dice on strong effects than it gains on weak effects. GLOW, by contrast, has no kernel to tune, so it 28 6 DISCUSSION 
+
+never needs a guess at the effect’s strength or geometry in advance. Compared to voxel-wise baselines, it does a better job handing a spatially consistent effect’s whole extent back to the user (the completeness gap of Section 5.4), at the cost of bundling more tagalong false positive voxels along with it. GLOW’s keystone ingredient is that it reads imaging features across voxels when judging which GLMs are viable. VBA does great work with per-voxel statistics, but a per-voxel statistic can only characterize so much (Fig 1). Where an effect is strong enough to be noticed in each of its voxels alone, VBA does a great job. Where it is subtle enough to need repeated observation across voxels, GLOW shines. Detection aside, per-voxel statistics make it hard to construct regions holding all, and only, the voxels of one consistent GLM. Adjacency among significant voxels may be too permissive a criterion for the job. Much has been written about a cluster’s poor spatial specificity, that its extent licenses no claim about which of its voxels carry the effect (Rosenblatt et al., 2018; Woo et al., 2014). There is a second difficulty: should two distinct effects happen to lie side by side, adjacency alone will not tell them apart. A sphere planted across a tissue boundary is such a case: a per-voxel test, fitting each voxel its own mean, cannot see the boundary, while GLOW’s region LLR can, since pooling the two sides adds their difference in means to E (24). The Focus objective, which strips each voxel’s mean, does not segment along it, however. A hierarchical segmentation may offer a fruitful vantage point on the problem. The pruning step presented here takes the common statistical approach of maximizing likelihood, and many of GLOW’s troubles trace back to the model generating that likelihood (independent and identically distributed Gaussian residuals): 
+
+LLR = N |r|
+
+2 log |E + H||E| (21) The N |r| factor encapsulates the repeated measurements of a GLM’s deviation from H0; it is the row count of the stacked regression of Y ′ on X′ (8). Given another N images of unrelated subjects showing the same GLM, we would rightly double the LLR. It is concerning that adding |r| consistent voxels has the same impact. Correlation across space explains away part of the repeated measure: the extra voxels may only be mimicking their neighbors rather than independently pointing at one underlying GLM. This raises the essential question: how many independent observations does a region of size |r| over N
+
+images actually provide? TFCE answers implicitly through its e = 0 .5 and h = 2 exponents, trading a signal’s spatial extent against its height. CET does the same with its cluster-forming threshold: higher initial thresholds favor localized effects. VBA’s initial smoothing is clumsy here, requiring one kernel width be chosen a priori even though the optimal width depends on the effect’s strength (Appendix D) and geometry (compact effects prefer wider kernels than branching ones). Compounding the difficulty, any answer must depend on the image’s resolution and spatial autocorrelation, which varies across it, as some anatomy is more consistent than the rest (Hayasaka et al., 2004). Regardless, GLOW is the most naive of all, taking the N |r| count at face value. At some point a method must decide which is less consistent under H0: an intense GLM observed in a handful of voxels or a subtler GLM observed across many more. Let us follow this question, and the 29 spatial independence assumption, through GLOW’s three steps. (1) In practice the segmentation caps GLOW’s performance on real imaging data: at weak effects on HCP, most of the PPV GLOW leaves on the table lies beyond any pruning rule’s reach, because no node of the tree isolates the effect’s extent (Fig 13). Modeling spatial autocorrelation might raise that ceiling. (2) The studentization of (19) allows the hypothesis testing to largely sidestep this question. Observed regions are compared to permuted versions of themselves which, critically, have the same size and spatial autocorrelation (thanks to block-exchangeability). (3) Spatial independence has profound consequences for the pruning method. It makes the likelihood additive across disjoint regions, so no preference is afforded to an intense, localized effect over a diffuse one carrying the same total. Dynamic Programming feels this as (20), where a region’s LLR never exceeds the sum over any partition of it, so the global optimum always fragments; greedy feels it as a raw 
+
+LLR which grows with |r|, so its argmax overshoots the extent. GLOW backs away from the clean global optimum in favor of the greedy placeholder only because the second failure is the more forgiving of the two (Section 5.2). A model which captures spatial dependence, such as a conditional autoregressive (CAR) prior (Besag, 1974), may improve the segmentation and lift these limits. An LLR which priced a region’s own spatial dependence might also be comparable across region sizes on its own, retiring the inner permutation loop which dominates GLOW’s runtime (Section 5.5). 
+
+# 7 Data & Code Availability 
+
+GLOW is implemented in Python 3 and is available for use and modification (MIT license) at github. com/matthigger/glow. The GLOW package would not have been possible without scikit-learn (Pedregosa et al., 2011), NumPy (Harris et al., 2020), SciPy (Virtanen et al., 2020), nibabel (NiBabel Developers, 2025), numba (Lam et al., 2015), PyTorch (Ansel et al., 2024) and joblib (Joblib Developers, 2025); numba compiles the segmentation walk and PyTorch runs the GPU LLR kernels of Section 5.5. Figures are drawn with matplotlib (Hunter, 2007) and seaborn (Waskom, 2021). For validation, we used the 3T diffusion images of the “100 unrelated subjects” in the HCP dataset (balsa.wustl.edu, updated August 2025). Data were provided by the Human Connectome Project, WU-Minn Consortium (Principal Investigators: David Van Essen and Kamil Ugurbil; 1U54MH091657) funded by the 16 NIH Institutes and Centers that support the NIH Blueprint for Neuroscience Research; and by the McDonnell Center for Systems Neuroscience at Washington University. Our pre-processing pipeline (github.com/matthigger/hcp100-dki-noddi-mni, v1.1.0, archived at doi.org/ 10.5281/zenodo.20736203) reconstructs six microstructural maps per subject from the HCP diffusion images, orchestrated reproducibly at scale with BABS (Zhao et al., 2024) over the QSIRecon workflow (Cieslak et al., 2021). DIPY’s diffusion-kurtosis fit (Garyfallidis et al., 2014; Neto Henriques et al., 2021) (shells with b-value ≤ 2000 s /mm 2) yields fractional anisotropy (FA: directional coherence of water 30 7 DATA & CODE AVAILABILITY 
+
+diffusion), mean diffusivity (MD: overall diffusion magnitude), and mean kurtosis (MK: non-Gaussianity of diffusion, reflecting microstructural complexity). AMICO (Daducci et al., 2015) fits the NODDI model (Zhang et al., 2012) to the full multi-shell data, yielding the intra-cellular volume fraction (ICVF: neurite density), the isotropic volume fraction (ISOVF: free-water content), and the orientation dispersion index (OD: angular spread of neurites). All maps are resampled to a common MNI template, registered with ANTs (Avants et al., 2011, 2025). The resulting image set (doi.org/10.5281/zenodo.20736221) is available thanks to the WU-Minn HCP Open Access Data Use Terms, which permit redistribution of HCP-derived data (provided it is shared under those same terms). Every experiment given here can be re-generated programmatically; see the instructions at glow/ extra/benchmark/rerun.md in the repository. The provenance records behind every figure and table (one JSON per computed result, holding its inputs, score and timing) are archived at doi.org/10.5281/zenodo.22664285; the figures and tables redraw from them without the imaging data. The software also includes a dashboard-style viewer, which shows several regions of the hierarchical segmentation at once alongside their GLM models, their extents overlaid on the original images (glow-viewer.web.app). 
+
+# Ethics 
+
+This study is a secondary analysis of de-identified, publicly released data and involved no new data collection. The Human Connectome Project diffusion data were acquired with Washington University Institutional Review Board approval and participants’ written informed consent (Van Essen et al., 2013). Their secondary use here was reviewed by the Northeastern University Institutional Review Board and determined exempt (protocol #26-05-08, exempt category 4). 
+
+# Author Contributions 
+
+All work was carried out by Matt Higger. 
+
+# Funding 
+
+This work received no grant funding. 
+
+# Declaration of Competing Interests 
+
+The author reports no conflicts of interest. 
+
+# Declaration of the use of AI 
+
+Anthropic’s Claude (Anthropic, 2026) was used as a coding assistant for portions of the GLOW software implementation and to help draft and revise the language of this manuscript; AI-assisted commits are REFERENCES 31 labeled in the git commit messages. Claude derived the justification of (20) in Appendix B and identified that the candidate MANCOVA statistics are equivalent under VBA and CET (Appendix D); the author verified both. No AI system generated the experimental results. All AI-assisted text and code were reviewed and verified by the author, who takes full responsibility for the content of this work. 
+
+# References 
+
+Ansel, J., Yang, E., He, H., Gimelshein, N., Jain, A., Voznesensky, M., Bao, B., Bell, P., Berard, D., Burovski, E., Chauhan, G., Chourdia, A., Constable, W., Desmaison, A., DeVito, Z., Ellison, E., Feng, W., Gong, J., Gschwind, M., . . . Chintala, S. (2024). PyTorch 2: Faster machine learning through dynamic Python bytecode transformation and graph compilation. Proceedings of the 29th ACM International Conference on Architectural Support for Programming Languages and Operating Systems, Volume 2 , 929–947. https://doi.org/10.1145/3620665.3640366 Anthropic. (2026). Claude: A family of large language models [Models used: Claude Opus 4.6, 4.7, 4.8 and 5; Claude Sonnet 4.6 and 5; Claude Fable 5. Accessed via the Claude Code CLI]. https://www.anthropic.com/claude Ashburner, J., & Friston, K. J. (2000). Voxel-based morphometry—the methods. Neuroimage , 11 (6), 805–821. Avants, B. B., Cullen, N., & the ANTsX Contributors. (2025). ANTsPyX: A fast medical imaging analysis library in python (Version 0.6.1). https://pypi.org/project/antspyx/ Avants, B. B., Tustison, N. J., Song, G., Cook, P. A., Klein, A., & Gee, J. C. (2011). A reproducible evaluation of ants similarity metric performance in brain image registration. Neuroimage , 54 (3), 2033–2044. Besag, J. (1974). Spatial interaction and the statistical analysis of lattice systems. Journal of the Royal Statistical Society: Series B (Methodological) , 36 (2), 192–236. https://doi.org/10.1111/j.2517-6161.1974.tb00999.x Bishop, C. M. (2006). Pattern recognition and machine learning . Springer. Blain, A., Thirion, B., & Neuvial, P. (2022). Notip: Non-parametric true discovery proportion control for brain imaging. NeuroImage , 260 , 119492. https://doi.org/10.1016/j.neuroimage.2022.119492 Cieslak, M., Cook, P. A., He, X., Yeh, F.-C., Dhollander, T., Adebimpe, A., Aguirre, G. K., Bassett, D. S., Betzel, R. F., Bourque, J., Cabral, L. M., Davatzikos, C., Detre, J. A., Earl, E., Elliott, M. A., Fadnavis, S., Fair, D. A., Foran, W., Fotiadis, P., . . . Satterthwaite, T. D. (2021). QSIPrep: An integrative platform for preprocessing and reconstructing diffusion MRI data. Nature Methods ,
+
+18 (7), 775–778. https://doi.org/10.1038/s41592-021-01185-5 Craddock, R. C., James, G. A., Holtzheimer, P. E., Hu, X. P., & Mayberg, H. S. (2012). A whole brain fMRI atlas generated via spatially constrained spectral clustering. Human Brain Mapping , 33 (8), 1914–1928. https://doi.org/10.1002/hbm.21333 32 REFERENCES 
+
+Daducci, A., Canales-Rodr´ ıguez, E. J., Zhang, H., Dyrby, T. B., Alexander, D. C., & Thiran, J.-P. (2015). Accelerated microstructure imaging via convex optimization (AMICO) from diffusion MRI data. 
+
+NeuroImage , 105 , 32–44. https://doi.org/10.1016/j.neuroimage.2014.10.026 Desikan, R. S., S´ egonne, F., Fischl, B., Quinn, B. T., Dickerson, B. C., Blacker, D., Buckner, R. L., Dale, A. M., Maguire, R. P., Hyman, B. T., Albert, M. S., & Killiany, R. J. (2006). An automated labeling system for subdividing the human cerebral cortex on mri scans into gyral based regions of interest. Neuroimage , 31 (3), 968–980. Eickhoff, S. B., Yeo, B. T. T., & Genon, S. (2018). Imaging-based parcellations of the human brain. 
+
+Nature Reviews Neuroscience , 19 (11), 672–686. https://doi.org/10.1038/s41583-018-0071-7 Eklund, A., Nichols, T. E., & Knutsson, H. (2016). Cluster failure: Why fmri inferences for spatial extent have inflated false-positive rates. Proceedings of the National Academy of Sciences , 113 (28), 7900–7905. Forman, S. D., Cohen, J. D., Fitzgerald, M., Eddy, W. F., Mintun, M. A., & Noll, D. C. (1995). Improved assessment of significant activation in functional magnetic resonance imaging (fMRI): Use of a cluster-size threshold. Magnetic Resonance in Medicine , 33 (5), 636–647. https://doi.org/10. 1002/mrm.1910330508 Freedman, D., & Lane, D. (1983). A nonstochastic interpretation of reported significance levels. Journal of Business & Economic Statistics , 1 (4), 292–298. https://doi.org/10.1080/07350015.1983.10509354 Friston, K. J. (2004). Experimental design and statistical parametric mapping. In R. S. J. Frackowiak, K. J. Friston, C. D. Frith, R. J. Dolan, C. J. Price, S. Zeki, J. T. Ashburner, & W. D. Penny (Eds.), 
+
+Human brain function (2nd ed., pp. 599–632). Academic Press. https://doi.org/10.1016/B978-012264841-0/50033-0 Friston, K. J., Holmes, A. P., Worsley, K. J., Poline, J.-B., Frith, C., & Frackowiak, R. (1995). Statistical parametric maps in functional imaging: A general linear approach. Human brain mapping , 2 (4), 189–210. Friston, K. J., Worsley, K. J., Frackowiak, R. S. J., Mazziotta, J. C., & Evans, A. C. (1994). Assessing the significance of focal activations using their spatial extent. Human Brain Mapping , 1 (3), 210–220. https://doi.org/10.1002/hbm.460010306 Garyfallidis, E., Brett, M., Amirbekian, B., Rokem, A., Van Der Walt, S., Descoteaux, M., & Nimmo-Smith, I. (2014). Dipy, a library for the analysis of diffusion mri data. Frontiers in neuroinformatics , 8, 8. Glasser, M. F., Coalson, T. S., Robinson, E. C., Hacker, C. D., Harwell, J., Yacoub, E., Ugurbil, K., Andersson, J., Beckmann, C. F., Jenkinson, M., Smith, S. M., & Van Essen, D. C. (2016). A multi-modal parcellation of human cerebral cortex. Nature , 536 (7615), 171–178. https://doi.org/ 10.1038/nature18933 Guigues, L., Cocquerez, J. P., & Le Men, H. (2006). Scale-sets image analysis. International Journal of Computer Vision , 68 (3), 289–317. https://doi.org/10.1007/s11263-005-6299-0 REFERENCES 33 Harris, C. R., Millman, K. J., van der Walt, S. J., Gommers, R., Virtanen, P., Cournapeau, D., Wieser, E., Taylor, J., Berg, S., Smith, N. J., Kern, R., Picus, M., Hoyer, S., van Kerkwijk, M. H., Brett, M., Haldane, A., Fern´ andez del R´ ıo, J., Wiebe, M., Peterson, P., . . . Oliphant, T. E. (2020). Array programming with NumPy. Nature , 585 , 357–362. https://doi.org/10.1038/s41586-020-2649-2 Hayasaka, S., Phan, K. L., Liberzon, I., Worsley, K. J., & Nichols, T. E. (2004). Nonstationary cluster-size inference with random field and permutation methods. NeuroImage , 22 (2), 676–687. Hemerik, J., & Goeman, J. J. (2018). Exact testing with random permutations. TEST , 27 (4), 811–825. https://doi.org/10.1007/s11749-017-0571-1 Hunter, J. D. (2007). Matplotlib: A 2D graphics environment. Computing in Science & Engineering , 9 (3), 90–95. https://doi.org/10.1109/MCSE.2007.55 Jenkinson, M., Bannister, P., Brady, M., & Smith, S. (2002). Improved optimization for the robust and accurate linear registration and motion correction of brain images. Neuroimage , 17 (2), 825–841. Joblib Developers. (2025). Joblib: Running python functions as pipeline jobs [GLOW requires version 1.3 or later]. https://joblib.readthedocs.io/ Jones, D. K., Symms, M. R., Cercignani, M., & Howard, R. J. (2005). The effect of filter size on VBM analyses of DT-MRI data. NeuroImage , 26 (2), 546–554. https://doi.org/10.1016/j.neuroimage. 2005.02.013 Kriegeskorte, N., Simmons, W. K., Bellgowan, P. S. F., & Baker, C. I. (2009). Circular analysis in systems neuroscience: The dangers of double dipping. Nature Neuroscience , 12 (5), 535–540. https://doi.org/10.1038/nn.2303 Kutner, M. H., Nachtsheim, C. J., Neter, J., & Li, W. (2005). Applied linear statistical models (5th). McGraw-Hill/Irwin. Lam, S. K., Pitrou, A., & Seibert, S. (2015). Numba: A LLVM-based Python JIT compiler. Proceedings of the Second Workshop on the LLVM Compiler Infrastructure in HPC , 1–6. https://doi.org/10. 1145/2833157.2833162 Lehmann, E. L., & Romano, J. P. (2005). Testing statistical hypotheses (3rd). Springer. Maier-Hein, L., Reinke, A., Godau, P., Tizabi, M. D., Buettner, F., Christodoulou, E., Glocker, B., Isensee, F., Kleesiek, J., Kozubek, M., Reyes, M., Riegler, M. A., Wiesenfarth, M., Kavur, A. E., Sudre, C. H., Baumgartner, M., Eisenmann, M., Heckmann-N¨ otzel, D., R¨ adsch, T., . . . J¨ ager, P. F. (2024). Metrics reloaded: Recommendations for image analysis validation. Nature Methods , 21 (2), 195–212. https://doi.org/10.1038/s41592-023-02151-z Meil˘ a, M. (2007). Comparing clusterings: An information based distance. Journal of Multivariate Analysis ,
+
+98 (5), 873–895. https://doi.org/10.1016/j.jmva.2006.11.013 Meinshausen, N. (2008). Hierarchical testing of variable importance. Biometrika , 95 (2), 265–278. https: //doi.org/10.1093/biomet/asn007 Michel, V., Gramfort, A., Varoquaux, G., Eger, E., Keribin, C., & Thirion, B. (2012). A supervised clustering approach for fMRI-based inference of brain states. Pattern Recognition , 45 (6), 2041– 2049. https://doi.org/10.1016/j.patcog.2011.04.006 34 REFERENCES 
+
+M¨ ullner, D. (2011). Modern hierarchical, agglomerative clustering algorithms. arXiv preprint arXiv:1109.2378 .Murtagh, F., & Legendre, P. (2014). Ward’s hierarchical agglomerative clustering method: Which algorithms implement ward’s criterion? Journal of Classification , 31 (3), 274–295. Neto Henriques, R., Correia, M. M., Marrale, M., Huber, E., Kruper, J., Koudoro, S., Yeatman, J. D., Garyfallidis, E., & Rokem, A. (2021). Diffusional kurtosis imaging in the diffusion imaging in Python project. Frontiers in Human Neuroscience , 15 , 675433. https://doi.org/10.3389/fnhum. 2021.675433 NiBabel Developers. (2025). NiBabel: Neuroimaging file format access in python [GLOW requires version 5.1 or later]. https://doi.org/10.5281/zenodo.591597 Nichols, T., & Hayasaka, S. (2003). Controlling the familywise error rate in functional neuroimaging: A comparative review. Statistical Methods in Medical Research , 12 (5), 419–446. https://doi.org/10. 1191/0962280203sm341ra Nichols, T. E., & Holmes, A. P. (2002). Nonparametric permutation tests for functional neuroimaging: A primer with examples. Human Brain Mapping , 15 (1), 1–25. https://doi.org/10.1002/hbm.1058 Pedregosa, F., Varoquaux, G., Gramfort, A., Michel, V., Thirion, B., Grisel, O., Blondel, M., Prettenhofer, P., Weiss, R., Dubourg, V., Vanderplas, J., Passos, A., Cournapeau, D., Brucher, M., Perrot, M., & Duchesnay, E. (2011). Scikit-learn: Machine learning in Python. Journal of Machine Learning Research , 12 , 2825–2830. Phipson, B., & Smyth, G. K. (2010). Permutation p-values should never be zero: Calculating exact p-values when permutations are randomly drawn. Statistical Applications in Genetics and Molecular Biology , 9 (1), Article39. https://doi.org/10.2202/1544-6115.1585 Rencher, A. C., & Christensen, W. F. (2012). Methods of multivariate analysis (3rd). John Wiley & Sons. Rosenberg, A., & Hirschberg, J. (2007). V-measure: A conditional entropy-based external cluster evaluation measure. Proceedings of the 2007 Joint Conference on Empirical Methods in Natural Language Processing and Computational Natural Language Learning (EMNLP-CoNLL) , 410–420. Rosenblatt, J. D., Finos, L., Weeda, W. D., Solari, A., & Goeman, J. J. (2018). All-resolutions inference for brain imaging. NeuroImage , 181 , 786–796. https://doi.org/10.1016/j.neuroimage.2018.07.060 Salembier, P., & Garrido, L. (2000). Binary partition tree as an efficient representation for image processing, segmentation, and information retrieval. IEEE Transactions on Image Processing , 9 (4), 561–576. https://doi.org/10.1109/83.841934 Schaefer, A., Kong, R., Gordon, E. M., Laumann, T. O., Zuo, X.-N., Holmes, A. J., Eickhoff, S. B., & Yeo, B. T. T. (2018). Local-global parcellation of the human cerebral cortex from intrinsic functional connectivity MRI. Cerebral Cortex , 28 (9), 3095–3114. https://doi.org/10.1093/cercor/bhx179 Smith, S. M., Jenkinson, M., Johansen-Berg, H., Rueckert, D., Nichols, T. E., Mackay, C. E., Watkins, K. E., Ciccarelli, O., Cader, M. Z., Matthews, P. M., & Behrens, T. E. J. (2006). Tract-based spatial statistics: Voxelwise analysis of multi-subject diffusion data. NeuroImage , 31 (4), 1487–1505. https://doi.org/10.1016/j.neuroimage.2006.02.024 REFERENCES 35 Smith, S. M., & Nichols, T. E. (2009). Threshold-free cluster enhancement: Addressing problems of smoothing, threshold dependence and localisation in cluster inference. Neuroimage , 44 (1), 83–98. Thirion, B., Varoquaux, G., Dohmatob, E., & Poline, J.-B. (2014). Which fMRI clustering gives good brain parcellations? Frontiers in Neuroscience , 8, 167. https://doi.org/10.3389/fnins.2014.00167 Trefethen, L. N., & Bau, D. (1997). Numerical linear algebra . Society for Industrial; Applied Mathematics. Turin, G. L. (1960). An introduction to matched filters. IRE Transactions on Information Theory , 6 (3), 311–329. https://doi.org/10.1109/TIT.1960.1057571 Tzourio-Mazoyer, N., Landeau, B., Papathanassiou, D., Crivello, F., Etard, O., Delcroix, N., Mazoyer, B., & Joliot, M. (2002). Automated anatomical labeling of activations in spm using a macroscopic anatomical parcellation of the mni mri single-subject brain. Neuroimage , 15 (1), 273–289. Van Essen, D. C., Smith, S. M., Barch, D. M., Behrens, T. E. J., Yacoub, E., Ugurbil, K., & WU-Minn HCP Consortium. (2013). The wu-minn human connectome project: An overview. Neuroimage ,
+
+80 , 62–79. Virtanen, P., Gommers, R., Oliphant, T. E., Haberland, M., Reddy, T., Cournapeau, D., Burovski, E., Peterson, P., Weckesser, W., Bright, J., van der Walt, S. J., Brett, M., Wilson, J., Millman, K. J., Mayorov, N., Nelson, A. R. J., Jones, E., Kern, R., Larson, E., . . . SciPy 1.0 Contributors. (2020). SciPy 1.0: Fundamental algorithms for scientific computing in python. Nature Methods ,
+
+17 , 261–272. https://doi.org/10.1038/s41592-019-0686-2 Ward Jr, J. H. (1963). Hierarchical grouping to optimize an objective function. Journal of the American statistical association , 58 (301), 236–244. Waskom, M. L. (2021). seaborn: Statistical data visualization. Journal of Open Source Software , 6 (60), 3021. https://doi.org/10.21105/joss.03021 Westfall, P. H., & Young, S. S. (1993). Resampling-based multiple testing: Examples and methods for p-value adjustment . John Wiley & Sons. Winkler, A. M., Ridgway, G. R., Webster, M. A., Smith, S. M., & Nichols, T. E. (2014). Permutation inference for the general linear model. NeuroImage , 92 , 381–397. https://doi.org/10.1016/j. neuroimage.2014.01.060 Winkler, A. M., Webster, M. A., Brooks, J. C., Tracey, I., Smith, S. M., & Nichols, T. E. (2016). Non-parametric combination and related permutation tests for neuroimaging. Human Brain Mapping ,
+
+37 (4), 1486–1511. https://doi.org/10.1002/hbm.23115 Woo, C.-W., Krishnan, A., & Wager, T. D. (2014). Cluster-extent based thresholding in fmri analyses: Pitfalls and recommendations. Neuroimage , 91 , 412–419. Worsley, K. J., Liao, C. H., Aston, J., Petre, V., Duncan, G. H., Morales, F., & Evans, A. C. (2002). A general statistical analysis for fmri data. Neuroimage , 15 (1), 1–15. Worsley, K. J., Marrett, S., Neelin, P., & Evans, A. C. (1996). Searching scale space for activation in PET images. Human Brain Mapping , 4 (1), 74–90. https://doi.org/10.1002/(SICI)1097-0193(1996)4: 1⟨74::AID-HBM5 ⟩3.0.CO;2-M 36 B ERROR AND HYPOTHESIS UNDER REGION POOLING 
+
+Worsley, K. J., Marrett, S., Neelin, P., Vandal, A. C., Friston, K. J., & Evans, A. C. (1996). A unified statistical approach for determining significant signals in images of cerebral activation. Human Brain Mapping , 4 (1), 58–73. https://doi.org/10.1002/(SICI)1097-0193(1996)4:1 ⟨58::AID-HBM4 ⟩3.0.CO;2-O Zhang, H., Schneider, T., Wheeler-Kingshott, C. A. M., & Alexander, D. C. (2012). NODDI: Practical in vivo neurite orientation dispersion and density imaging of the human brain. NeuroImage , 61 (4), 1000–1016. https://doi.org/10.1016/j.neuroimage.2012.03.072 Zhao, C., Jarecka, D., Covitz, S., Chen, Y., Eickhoff, S. B., Fair, D. A., Franco, A. R., Halchenko, Y. O., Hendrickson, T. J., Hoffstaedter, F., Houghton, A., Kiar, G., Macdonald, A., Mehta, K., Milham, M. P., Salo, T., Hanke, M., Ghosh, S. S., Cieslak, M., & Satterthwaite, T. D. (2024). A reproducible and generalizable software workflow for analysis of large-scale neuroimaging data collections using BIDS Apps. Imaging Neuroscience , 2. https://doi.org/10.1162/imag a 00074 
+
+# A Maximized Log-Likelihood of Normal Samples 
+
+Let Y ∈ RN ×b represent a set of N vectors drawn from some unknown normal distribution. The maximum-likelihood estimators ˆμ = 1
+
+> N
+
+P 
+
+> i
+
+yi and ˆΣ = 1
+
+> N
+
+P
+
+> i
+
+(yi − ˆμ)( yi − ˆμ)T provide: 
+
+> N
+
+X
+
+> i=1
+
+(yi − ˆμ)T ˆΣ−1(yi − ˆμ) = Tr 
+
+> N
+
+X
+
+> i=1
+
+(yi − ˆμ)( yi − ˆμ)T ˆΣ−1 = N Tr ˆΣ ˆΣ−1 = N b (22) It follows that the log-likelihood (Bishop, 2006) of all samples under the fitted distribution is: 
+
+log P (Y |ˆμ, ˆΣ) = −N b 
+
+2 log(2 π) − N
+
+2 log | ˆΣ| − 12
+
+> N
+
+X
+
+> i=1
+
+(yi − ˆμ)T ˆΣ−1(yi − ˆμ)= −N b 
+
+2 (1 + log(2 π)) − N
+
+2 log | ˆΣ| (23) 
+
+# B Error and Hypothesis Under Region Pooling 
+
+Consider again a region r partitioned into disjoint regions r1, . . . , r k, writing Er and Hr for (13) and (14) evaluated on r. The mechanism behind (20) is visible in the GLM error Er, the total sum of squares, 
+
+Tr = P 
+
+> v∈r
+
+Y Tv Yv, minus the variance explained by Q:
+
+Er = Tr − | r| ¯Y Tr QQ T ¯Yr
+
+= X
+
+> i
+
+ Eri + |ri| ¯Y Tri QQ T ¯Yri
+
+ − | r| ¯Y Tr QQ T ¯Yr
+
+= X
+
+> i
+
+Eri + X
+
+> i
+
+|ri|( ¯Yri − ¯Yr)T QQ T ( ¯Yri − ¯Yr) (24) 37 where the second equality uses Tr = P 
+
+> i
+
+Tri and each Tri is given by the first equality. The last equality uses |r| ¯Yr = P 
+
+> i
+
+|ri| ¯Yri . The reduced model’s error, E + H, also obeys (24) with Q0 in place of Q:
+
+Er + Hr = X
+
+> i
+
+(Eri + Hri ) + X
+
+> i
+
+|ri|( ¯Yri − ¯Yr)T Q0QT 
+
+> 0
+
+( ¯Yri − ¯Yr) (25) Subtracting (24) from (25) gives: 
+
+Hr = X
+
+> i
+
+Hri − X
+
+> i
+
+|ri|( ¯Yri − ¯Yr)T Q1QT 
+
+> 1
+
+( ¯Yri − ¯Yr) (26) Because QQ T and Q1QT 
+
+> 1
+
+are projections, both corrections are positive semi-definite: pooling can only add to the error and only subtract from the hypothesis, with equality when every block’s spatial mean agrees with ¯Yr within the column space of X. LLR (7) grows with H and shrinks with E, so the whole region’s ratio |Er + Hr|/|Er| cannot exceed the one its parts form together, | P
+
+> i
+
+(Eri + Hri )|/| P 
+
+> i
+
+Eri |.Reaching (20) itself would further require accounting for the weight N |ri| each part carries in (7), which we leave aside. 
+
+# C Imposing an Effect: Constant Offset 
+
+For simplicity, we add a constant offset ∆ ∈ RN ×b to each Yv within the region. Rather than impose an arbitrary effect direction β,10 we scale the existing components of ¯Yr until the region attains the desired effect strength. Letting Q2 denote any orthonormal basis for the residual space (the orthogonal complement of X’s column space, so that Q2QT 
+
+> 2
+
+= IN − QQ T ), we decompose: 
+
+¯Yr =
+
+> 2
+
+X
+
+> i=0
+
+QiQTi ¯Yr (27) so that our offset is: 
+
+∆ = 
+
+> 2
+
+X
+
+> i=0
+
+αiQiQTi ¯Yr (28) where αi ∈ R. Orthonormality gives a convenient formulation of our minimization objective: 
+
+|| ∆|| 2 
+
+> F
+
+=
+
+> 2
+
+X
+
+> i=0
+
+α2 
+
+> i
+
+|| QTi ¯Yr|| 2 
+
+> F
+
+(29) Next, we quantify the constraint that ∆ impose a given LLR . Substituting Yv + ∆ for every Yv modifies the earlier expressions for E (13) and H (14): 
+
+E = S + |r|(1 + α2)2 ¯Y Tr Q2QT 
+
+> 2
+
+¯Yr (30) 
+
+H = |r|(1 + α1)2 ¯Y Tr Q1QT 
+
+> 1
+
+¯Yr (31)        
+
+> 10 Doing so introduces a challenge: Yalready carries an incidental effect direction that, without adjustment, would nudge the minimum MSE βaway from the given β. One could correct this by first subtracting the incidental effect, but that only increases || ∆|| Fand carries the image set further from its realistic origins.
+
+38 D TUNING THE VOXEL-WISE BASELINES 
+
+from which the LLR (7) follows. Because the offset is constant across space, it has no impact on the spatial covariance S (11). Notice, too, that α0 appears in neither equation above. The columns of Q0 hold the nuisance variables, whose correlations are projected away before the analysis; offsetting ∆ along those directions only inflates the objective || ∆|| 2 
+
+> F
+
+without moving the LLR , so the optimum sets α0 = 0 .In summary, we choose α1 and α2 to minimize the offset norm (29) subject to a single constraint: the resulting LLR , computed from (30), (31) and (7), must match the user-provided target. We solve this constrained optimization with the Sequential Least Squares Programming (SLSQP) optimizer in SciPy (Virtanen et al., 2020). 
+
+# D Tuning the Voxel-wise Baselines 
+
+Each voxel-wise baseline (VBA, VBA-TFCE and CET) carries two choices, its statistic and its smoothing kernel, which we tune jointly: picking one at a time would assume the other’s answer. 
+
+Statistic. Four classical MANCOVA statistics generalize the univariate F -statistic: Wilks’ Lambda (entered as 1 − Λ, so it grows with evidence against H0), Pillai’s Trace, Hotelling–Lawley Trace and Roy’s Largest Root (Rencher & Christensen, 2012). The fifth candidate is GLOW’s LLR (7) on a single-voxel region. Each also has a z-scored variant, which standardizes every voxel’s statistic by its mean and standard deviation across the nfwer + 1 permutation rows, the unpermuted row included (Phipson & Smyth, 2010), before the max-statistic null; this puts HCP’s spatially heterogeneous voxels on a common scale. 
+
+Kernel. Before the statistic is computed, every image is smoothed with an isotropic Gaussian of FWHM 
+
+0, 2, 4, 8 or 12 mm ( 0, 1, 2, 4 or 6 voxels). The kernel reads beyond the analyzed crop, and the smoothed images are divided by the identically smoothed brain mask so voxels at the brain’s edge are not dimmed. 
+
+Selection. Each baseline takes the best mean Dice of its 50 variants (5 statistics × 2 scalings × 5kernels) over HCP experiments at b = 1 : five effect strengths ( 0.003 , 0.0075 , 0.03 , 0.12 and 0.3) crossed with 10 seeds, other settings at the defaults of Section 5. With one regressor of interest, H (6) has rank one, so every candidate is an increasing function of its one non-zero eigenvalue θ: 1 − Λ and Pillai’s Trace equal θ/ (1 + θ), Hotelling–Lawley and Roy equal θ, and the LLR is N 
+
+> 2
+
+log(1 + θ). An increasing map preserves the ordering of every voxel’s statistic, which is all VBA and CET read, so unscaled VBA is exactly invariant to the choice and CET nearly so 11 . VBA-TFCE integrates the statistic’s magnitude, and at 2 mm prefers z-scored Wilks’ Lambda (equivalently Pillai’s   
+
+> 11 CET’s cluster-forming threshold interpolates between two order statistics, and interpolation does not commute with a non-linear map, so a boundary voxel can change sides. Z-scoring standardizes each voxel after the map and so reorders voxels slightly, which moves VBA’s and CET’s mean Dice by about 0.001 (Table 4).
+
+39 Trace); VBA and CET adopt the same statistic, unscaled. The preference holds at b = 2 , where H is still rank one (Table 4). All three baselines peak at 2 mm pooled over effect strengths (the mean rows of Table 3), but that width wins only two of the fifteen pairings of baseline and strength. The best width shrinks as effect strength rises, from 4 to 12 mm at the weakest effects to no smoothing at the strongest: smoothing buys sensitivity with spatial precision, and a strong effect needs little of the first. Tuning the width per strength would make each baseline a function of the unknown truth, so each runs at its single best width. FWHM (mm) Method LLR /|r| 0 2 4 8 12 VBA 0.003 0.002 0.004 0.011 0.023 0.031 
+
+0.0075 0.031 0.041 0.087 0.116 0.118 
+
+0.03 0.242 0.277 0.393 0.430 0.397 0.12 0.848 0.866 0.787 0.674 0.597 0.3 0.995 0.992 0.810 0.651 0.559 mean 0.424 0.436 0.417 0.379 0.341 VBA-TFCE 0.003 0.020 0.034 0.051 0.047 0.039 0.0075 0.128 0.145 0.185 0.169 0.152 0.03 0.571 0.620 0.617 0.525 0.421 0.12 0.980 0.970 0.797 0.659 0.574 0.3 0.997 0.962 0.738 0.601 0.526 mean 0.539 0.546 0.478 0.400 0.342 CET 0.003 0.027 0.039 0.070 0.082 0.070 0.0075 0.120 0.140 0.218 0.225 0.183 0.03 0.505 0.567 0.613 0.546 0.454 0.12 0.971 0.967 0.806 0.663 0.579 0.3 0.999 0.978 0.756 0.609 0.531 mean 0.524 0.538 0.492 0.425 0.363    
+
+> Table 3: Mean Dice against kernel width over the 50 tuning experiments (HCP, MinVar extent, b= 1 ), each baseline at its chosen statistic, per effect strength (10 seeds per entry) and pooled over strengths (mean rows). Bolded entries are each row’s maximum. Each strength row is shaded in its baseline’s color, linearly in Dice, from white at the row’s minimum to darkest at its maximum.
+
+40 D TUNING THE VOXEL-WISE BASELINES 
+
+Method Scaling LLR Wilks Pillai Hotelling Roy VBA raw 0.411 0.411 0.411 0.411 0.411 z-scored 0.409 0.409 0.409 0.410 0.410 VBA-TFCE raw 0.464 0.493 0.493 0.411 0.411 z-scored 0.503 0.509 0.509 0.498 0.498 CET raw 0.492 0.492 0.492 0.492 0.492 
+
+z-scored 0.490 0.490 0.490 0.490 0.490

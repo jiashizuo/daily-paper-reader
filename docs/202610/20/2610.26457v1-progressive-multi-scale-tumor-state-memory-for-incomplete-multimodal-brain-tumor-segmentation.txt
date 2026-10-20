@@ -1,0 +1,821 @@
+Title: Progressive multi-scale tumor-state memory for incomplete multimodal brain tumor segmentation
+
+URL Source: https://arxiv.org/pdf/2610.26457v1
+
+Published Time: Tue, 20 Oct 2026 02:55:51 GMT
+
+Number of Pages: 35
+
+Markdown Content:
+# Progressive multi-scale tumor-state memory for incomplete multimodal brain tumor segmentation 
+
+Milad Rostamian a, Mohammadreza Mohammadi a, Mohsen Soryani a, ∗
+
+> aSchool of Computer Engineering, Iran University of Science and Technology (IUST), Hengam Street, Resalat Square, 13114-16846, Tehran, Iran
+
+Abstract 
+
+Brain tumor segmentation uses complementary magnetic resonance imaging (MRI) sequences, but some sequences may be unavailable in practice. Their absence changes the information available for segmenting different tumor re-gions. Fusion methods can support different input subsets. However, fusion at several scales does not by itself specify how tumor evidence is retained and updated to guide fusion at later stages. We propose a progressive multi-scale tumor-state memory network (PMTM) for segmentation from any non-empty subset of T1ce, T1, FLAIR, and T2. PMTM maintains a compact state for the current subject across the encoder stages. At each stage, we use assign-ment maps to pool spatial features into ordered evidence vectors for each available modality. We average these vectors across the available modalities, and a learned gate combines this evidence with the previous state. The up-dated state guides residual fusion at that stage and is used in the state update at the next stage. A modality-token mixer also models interactions among the available modalities at each stage. We apply semantic supervision to the assignment maps at all four stages. We evaluate PMTM on BraTS2018, BraTS2020, and BraTS2023 GLI across all 15 non-empty modality subsets. Averaged over the three tumor regions and the 15 subsets, PMTM achieves Dice scores of 75.31%, 77.54%, and 80.47% on BraTS2018, BraTS2020, and BraTS2023 GLI, respectively. These scores are higher than those of Robust-Seg, RFNet, and mmFormer in our experiments on each dataset. Component ablations and internal state analysis are performed on BraTS2020. 
+
+Keywords: Brain tumor segmentation, Incomplete multimodal learning, Missing MRI modalities, Multimodal fusion, Tumor-state memory     
+
+> ∗Corresponding author: Mohsen Soryani.
+> Email addresses: milad_rostamian@comp.iust.ac.ir (Milad Rostamian),
+> mrmohammadi@iust.ac.ir (Mohammadreza Mohammadi), soryani@iust.ac.ir
+> (Mohsen Soryani) arXiv:2610.26457v1 [eess.IV] 19 Oct 2026
+
+1. Introduction 
+
+Glioma segmentation on MRI supports diagnosis and treatment planning [1]. The tumor regions considered here are the whole tumor (WT), tumor core (TC), and enhancing tumor (ET) [2, 3]. To identify these regions, multimodal brain MRI commonly combines contrast-enhanced T1-weighted (T1ce), T1-weighted (T1), fluid-attenuated inversion recovery (FLAIR), and T2-weighted (T2) images [2, 3]. These sequences provide complementary information about the tumor regions. T1ce is especially informative for TC and ET, while FLAIR and T2 provide information about edema and WT [4, 5]. Many multimodal segmentation models are designed to receive a com-plete set of MRI sequences [6]. However, differences in acquisition protocols, image corruption, resource constraints, and restrictions on contrast admin-istration can leave one or more sequences unavailable [6]. The resulting loss of information affects tumor regions differently [4, 5]. Segmentation from incomplete inputs therefore requires a fusion mechanism that works with the available subset and accounts for the information supplied by each remaining sequence. Existing approaches address this problem in different ways. Latent aggre-gation constructs a common representation from different modality subsets [7, 8]. Region-aware fusion accounts for how each sequence contributes to in-dividual tumor regions [4]. Transformer modules learn interactions between modality representations [9, 10]. Our earlier method, TG-BWSA, exchanges modality features between encoder stages through a shared adapter [11]. These mechanisms determine how the available features are combined. Arelated question is how evidence about tumor regions can be accumulated across encoder stages and used to guide fusion at later stages. Memory mechanisms reuse information during feature extraction and de-coding [12, 13]. In multimodal brain tumor segmentation, MSM-Seg uses memory to model relationships between modalities and across slices [14]. These studies motivate the use of retained context. The role of memory de-pends on what is stored and where the network uses it. Here, we investigate a tumor state built from the available MRI sequences that accumulates tumor evidence across encoder stages and directly guides modality fusion. We propose PMTM, a progressive multi-scale tumor-state memory net-work. PMTM maintains a tumor state, an ordered set of feature vectors called state slots. At each encoder stage, assignment maps pool features 2from each available modality into evidence vectors. We average correspond-ing evidence vectors across the available modalities and use them to update the state. The updated state guides fusion at the current stage and is used in the state update at the next stage. Fusion uses the current modality features together with the state accumulated from preceding stages. At the begin-ning of each forward pass, the state is initialized from a learned tensor. State updates use evidence from the available sequences of the current subject. The contributions of this work are summarized below. 1. We introduce a progressive tumor-state path for segmentation from in-complete multimodal MRI. Ordered state slots accumulate evidence from the available MRI sequences across all four encoder stages. 2. We apply semantic supervision to the assignment maps at all four encoder stages. 3. We introduce residual fusion guided by the updated tumor state. Amodality-token mixer also models interactions among the available modal-ities at each encoder stage. 4. We evaluate PMTM on BraTS2018, BraTS2020, and BraTS2023 GLI across all 15 non-empty modality subsets. Component ablations on BraTS2020 assess the tumor-state path, cross-stage state propagation, semantic supervision, and modality-token interaction. Internal analyses examine the learned assignment maps and state slots. 
+
+2. Related work 
+
+2.1. Fusion in complete multimodal brain tumor segmentation 
+
+Methods for complete inputs differ in when MRI sequences are combined. Pereira et al. [15] processed the four sequences jointly with a patch-based CNN. Separate encoders allow fusion to adjust modality contributions after feature extraction. Zhou et al. [16] use attention and tumor-region context constraints, while Tri-Attention [17] weights modality and spatial features and models correlations between sequences. Transformer fusion models dependencies between modality representa-tions through attention. NestedFormer [18] uses intra-modality and cross-modality attention at higher levels and modality-sensitive gating at lower scales. Zhou et al. [19] combine modality-wise, spatial, and channel-wise 3feature fusion. These designs adjust how features are combined for com-plete inputs. With missing sequences, fusion must also accept different input subsets. 
+
+2.2. Incomplete multimodal brain tumor segmentation 
+
+Supporting different subsets first requires a representation that can be constructed from the available inputs. HeMIS [7] aggregates modality-specific features through their mean and variance. U-HVED [8] instead combines distributions inferred from the available modalities in a probabilis-tic latent space for joint segmentation and modality completion. Beyond accepting different subsets, fusion can also adjust the contribution of the remaining modalities. RobustSeg [20] separates shared and modality-specific representations and applies gated fusion. RFNet [4] makes fusion region-aware, accounting for differences in the information each sequence provides about each tumor region. D 2-Net [21] models modality and region relationships through dual disentanglement. Training can provide additional information for incomplete inputs. ACN [22] couples complete and incomplete configurations through adversarial co-training and representation alignment. LCKD [23] selects teacher modalities according to task performance, so supervision can differ between targets. W. Liu et al. [24] use complete-input predictions to guide partial-input pre-dictions during post-training. Self-supervised learning (SSL) addresses feature learning before super-vised segmentation. M3AE [25] reconstructs masked modalities and image patches during pretraining. It also uses model inversion for modality com-pletion and self-distillation during segmentation training. M3AE combines pretraining with knowledge transfer. UniME [26] combines a shared ViT pretrained through masked image modeling with multi-scale features from modality-specific CNN encoders. The pretrained representation provides global context, while the CNN encoders supply features at higher spatial resolutions. Within the network, interaction modules determine how features ex-change information. mmFormer [9] uses intra-modal and inter-modal trans-formers, while M 2FTrans [10] incorporates modality masking into trans-former fusion to handle different missing patterns. Feature interaction is also modeled with state-space blocks. LS 3M [27] combines differentiable se-quence reordering with state-space blocks for local and long-range dependen-cies. CDMS [28] uses learnable consistency features and fusion at multiple 4scales. LS 3M focuses on spatial ordering, while CDMS incorporates consis-tency information into fusion. Fusion can also receive conditioning information. MIFPN [29] de-rives prompts from modality-invariant features. MPDF-UNET [5] combines learned modality priors with input-dependent features and changes modality-combination sampling during training. MGML [30] uses meta-parameterized fusion to construct soft targets from available modalities, together with consistency regularization. TG-BWSA combines compressed modality features in a shared adapter and returns adapted features to each encoder stream [11]. It learns two scalar weights per modality and stage to combine the original and adapted features. These scalar weights remain fixed across test inputs. PMTM instead updates a tumor state from the available modalities and uses that state to guide fusion. Alongside these fusion mechanisms, we examine how an explicit tumor state can accumulate evidence across encoder stages and guide fusion for different available modality subsets. This connects incomplete multimodal fusion to memory mechanisms in segmentation. 
+
+2.3. Memory mechanisms in medical image segmentation 
+
+Memory provides context whose role depends on what is stored and where it is reused. Memory-Net [12] propagates cell memories through hi-erarchically stacked gated convolutional units and across PET/CT encoder branches. HMDM-Net [13] retains deep semantic representations across de-coder resolutions. Memory-Net reuses intermediate information during fea-ture extraction, while HMDM-Net combines deep and shallow features during decoding. Memory can also retain information across examples. Sim-MPNet [31] updates a prototype bank of category features associated with lesions or or-gans during training. The selective memory network [32] stores and retrieves representative global features across samples for 3D MRI segmentation. Both provide category or global context beyond the features of the current input. In multimodal brain tumor segmentation, MSM-Seg [14] organizes memory around modality and slice relationships. Its memory attention models corre-lations between modalities and dependencies across slices. The method also uses category-agnostic prompting and a modality-adaptive fusion decoder. PMTM builds an ordered tumor state from the available sequences of the current subject, updates it across encoder stages, and uses it to guide 5modality fusion at each stage. 
+
+3. Method 
+
+In this work, we develop PMTM for brain tumor segmentation from in-complete multimodal MRI. We first describe the overall network architecture, followed by the progressive tumor-state memory and state-guided fusion with modality-token interaction. We then present the modality sampling proce-dure and training objectives. 
+
+3.1. Network overview 
+
+Figure 1 shows the overall architecture. PMTM has four modality-specific encoders and a shared segmentation decoder. The encoders have the same architecture but independent parameters. Each encoder has four stages that produce feature maps at different spatial scales. For the current subject, PMTM maintains a tumor state that stores evi-dence from the available MRI sequences. At each encoder stage, the available modality features update this state. Each stage has a fusion module with state-guided fusion and a modality-token mixer. The updated state guides feature fusion, and the mixer models interactions among the available modal-ities. The shared decoder combines the fused features from all four stages and predicts four segmentation classes. During training, each modality branch also has an auxiliary decoder with the same architecture as the shared decoder but independent parameters. It takes the deepest features of its own encoder as input and uses the shal-lower scales through skip connections. Its prediction supervises that modality branch directly. The auxiliary decoders are discarded at inference. Let M = (T1ce , T1 , FLAIR , T2) denote the ordered set of M = 4MRI modalities, and let S ⊆ M denote the non-empty subset avail-able for a subject. Each modality-specific encoder Em produces features 
+
+F sm ∈ RCs×Hs×Ws×Ds at stage s ∈ { 1, 2, 3, 4}. Only modalities in S contribute to state construction and feature fusion. 
+
+3.2. Progressive tumor-state memory 
+
+The tumor state stores evidence from the available MRI sequences. The memory mechanism updates this state across encoder stages, allowing fusion to use both the current features and evidence retained from preceding stages. 6PROGRESSIVE TUMOR-STATE MEMORY T1ce T1 FLAIR T2          
+
+> Aux decoder
+> Aux decoder
+> Aux decoder
+> Aux decoder
+> feature map (3D volume) state-guided fusion tumor-state memory add memory-update flow auxiliary decoder (training only) skip-concat ccc
+> T(0) initial state T(1) T(2) T(3) T(4)
+> State guided fusion
+> Modality token mixer
+> +
+> Stage 1 Stage 2 Stage 3 Stage 4
+> modality-token mixer +
+> State guided fusion
+> Modality token mixer
+> +
+> State guided fusion
+> Modality token mixer
+> +
+> State guided fusion
+> Modality token mixer
+> +
+> Encoder stage 1 Encoder stage 2 Encoder stage 3 Encoder stage 4 Encoder stage 1 Encoder stage 2 Encoder stage 3 Encoder stage 4 Encoder stage 1 Encoder stage 2 Encoder stage 3 Encoder stage 4 Encoder stage 1 Encoder stage 2 Encoder stage 3 Encoder stage 4
+> Shared decoder
+> Fusion modules ŶT1c
+> ŶT1
+> ŶFL
+> ŶT2
+> Conv 1×1×1 Conv 3×3×3 Conv 1×1×1 Conv 3×3×3 Conv 1×1×1 Conv 3×3×3
+> C16
+> 1 × 1 × 1 Conv
+> 16 → 4
+> C4 logits
+> Softmax
+> C128 C64 C32
+> Up ×2 - Conv 3×3×3 Up ×2 - Conv 3×3×3 Up ×2 - Conv 3×3×3
+
+Figure 1: Overview of PMTM. Four modality-specific encoders produce multiscale fea-tures. At each stage, evidence from the available modalities updates the tumor state, which guides fusion with modality-token interaction. The fused features from all four stages are passed to a shared decoder. Auxiliary decoders supervise each modality branch during training and are discarded at inference. The auxiliary skip connections and token-mixer internals are omitted from the diagram. 
+
+Figure 2 shows three operations in each update. First, assignment maps pool each available modality’s features into an ordered set of evidence vec-tors. We then average corresponding vectors across the available modalities. Finally, a learned gate combines this evidence with the previous state. 
+
+3.2.1. Semantic evidence construction 
+
+The tumor state is an ordered set of K = 4 feature vectors, called state slots. Each vector has dimension d = 64. The assignment channels and state slots are intended to follow the class order BG, NCR/NET, ED, and ET. Here, BG is background, NCR/NET is the necrotic and non-enhancing tumor core, ED is peritumoral edema, and ET is enhancing tumor. We apply semantic supervision to the assignment maps as described in Section 3.4. At stage s, a state head processes each available modality’s feature map. Its assignment branch produces a weight for each slot at every spatial lo-cation. Its evidence branch projects the features into the state space. The 7Encoder features 
+
+Assignment branch Evidence branch 
+
+Assignment maps Projected evidence 
+
+4 slots, 64 components per slot MEAN 
+
++   
+
+> Semantic supervision
+> BG NET ED ET
+> BG NET ED ET
+
+Per-modality evidence 
+
+> m
+> ₁⋮
+
+Available modalities (m ∈ S) 
+
+Subset evidence 
+
+1−η 
+
+ₖ
+
+State update (Eq. 3) 
+
+η
+
+ₖ
+
+64 × H ₛ × W ₛ × D ₛ
+
+4 × H ₛ × W ₛ × D ₛ
+
+Cₛ × H ₛ × W ₛ × D ₛ
+
+4 × 64 4 × 64 
+
+State head (Eq. 1) 
+
+At encoder stage s ∈ {1,2,3,4}, for modality m ∈ SK = 4 slots, d = 64 components per vector 
+
+ℓ sem 
+
+Weighted spatial pooling (Eq. 2) 
+
+ε = 10 ⁻⁶
+
+m|S| Across available modalities Eq. (2) 
+
+Previous state Updated state 
+
+Learned initialization 
+
+One gate per slot      
+
+> 1×1×1 Conv Instance norm. LeakyReLU 1×1×1 Conv K=4 logits Softmax ₖ1×1×1 Conv d=64 channels Instance normalization LeakyReLU
+
+𝑒 𝑚 ,𝑘 𝑠 = ∑𝑣 𝐴 𝑚 ,𝑘 𝑠 (𝑣 )𝑃 𝑚 𝑠 (𝑣 )
+
+𝑚𝑎𝑥 ∑ 𝑣 𝐴 𝑚 ,𝑘 𝑠 (𝑣 ), 𝜀 
+
+F ms
+
+A ms P ms
+
+e ms
+
+ē Ss
+
+ē S,k s
+
+T Ss−1 T Ss
+
+T S0 = T 0
+
+Θs
+
+Ψs
+
+> GT
+
+Figure 2: Progressive tumor-state update at stage s. The state head has an assignment branch and an evidence branch (Eq. (1)). Weighted spatial pooling produces four 64-dimensional vectors per modality. The MEAN block averages corresponding vectors over 
+
+m ∈ S (Eq. (2)). Slot-specific gates combine this evidence with the previous state (Eq. (3)). 
+
+outputs are 
+
+Asm = Softmax k(Θ s(F sm)) ∈ [0 , 1] K×Hs×Ws×Ds ,P sm = Ψ s(F sm) ∈ Rd×Hs×Ws×Ds . (1) Here, Asm is the assignment map and P sm is the projected evidence tensor. The softmax operates over the K assignment channels, so their weights sum to one at each spatial location. 8Within a stage, the state head is shared across modality branches. Dif-ferent stages have separate head parameters. Both branches use 1 × 1 × 1convolutions. The layer composition is given in Section 4. We next use each assignment channel to pool the projected features into one evidence vector. Let v index the Ns = HsWsDs spatial locations. For slot k, the evidence within modality m and its average across the available modalities are 
+
+esm,k =
+
+P 
+
+> v
+
+Asm,k (v)P sm(v)max {P 
+
+> v
+
+Asm,k (v), ϵ }, ϵ = 10 −6,
+
+¯esS,k = 1
+
+|S|
+
+X
+
+> m∈S
+
+esm,k .
+
+(2) Each assignment map therefore pools the projected features of its own modal-ity. Only the resulting evidence vectors are averaged across the available modalities. 
+
+3.2.2. Progressive state update 
+
+We use these evidence vectors to update the previous state. The initial state is a learned tensor T 0 ∈ RK×d. For each slot, a learned gate ηk = σ(bηk)weights the previous state and the current evidence. Here, σ denotes the sigmoid function. With T 0 
+
+> S,k
+
+= T 0 
+
+> k
+
+, the update is 
+
+T sS,k = ηkT s−1 
+
+> S,k
+
++ (1 − ηk)¯ esS,k , s ∈ { 1, 2, 3, 4}. (3) A larger ηk gives more weight to the previous state, while a smaller value gives more weight to the current evidence. Each slot has its own gate, shared across stages. The first stage updates the learned initial state. Each later stage updates the state produced by the preceding stage. The updated state T sS is used immediately by the fusion module at stage 
+
+s. At the beginning of every forward pass, the memory is initialized from T 0.The updated state is not carried between subjects. 
+
+3.3. State-guided fusion 
+
+At each encoder stage, the fusion module combines the available modality features through a base path and a gated residual path. The base path averages projected features from the available modalities. The residual path uses two channel gates to adjust each modality’s contribution. 9The local gate uses a modality feature descriptor, a context vector read from the updated tumor state, and the modality availability pattern. The token gate uses interactions among the available modality tokens. We average the two gates to weight each modality’s residual features. The weighted residuals are then averaged over the available modalities, scaled, and added to the base feature. Figure 3 illustrates the local gate, modality-token mixer, and residual path. (a) State-guided residual fusion     
+
+> At stage s ∈{1,2,3,4}, for each available modality m ∈S
+
+(b) Global modality-token interaction (Eq. 5) 
+
+> Encoder features
+
+GAP 
+
+> Assignment map
+
+Spatial mean 
+
+> Updated state
+
+Weighted Sum  
+
+> Presence vector p
+
+Concatenate Local gate MLP (Eq. 4) 
+
+> 2×Linear + LeakyReLU + sigmoid
+
+Mean of two gates Residual projection 
+
+> 1×1×1 Conv δ ₛ
+
+Gated residual 
+
+> Broadcast gate × features
+
+MEAN over m ∈ S× α ₛ
+
+Base projection 
+
+> 1×1×1 Conv φ ₛ
+
+MEAN over m ∈ S
+
++   
+
+> Instance normalization Fused features T1ce T1 FLAIR T2
+
+Descriptor projection χ ₛ   
+
+> Feature descriptor + state context + presence
+> T1ce T1 FLAIR T2
+
+Zero absent tokens  
+
+> Multiply each token by p ₘ
+
+Presence vector p 
+
+> Absent keys and values excluded
+
+Transformer block 𝒯 ₛ
+
+> Pre-LN + masked MHSA (4 heads) Pre-LN + feed-forward network
+
+Channel-gate projection  
+
+> Linear + sigmoid Cₛchannel weights per modality Token gate Eq. 6
+
+F sm
+
+z sm
+
+A sm ā sm
+
+T sS
+
+c sm            
+
+> csm=āsmTsS
+> zsm∥csm∥p
+
+g sm,loc          
+
+> ĝsm= ½( gsm,loc +gsm,tok )
+> RsS
+
+B sS
+
+F̂ sS
+
+q sm = χ ₛ([ z sm ∥ c sm ∥ p]) 
+
+h sm   
+
+> Wₛhsm+ b ₛ
+
+g sm,tok         
+
+> qs
+> T1ce qs
+> T1 qs
+> FLAIR qs
+> T2 One token per modality at stage s
+
+Figure 3: State-guided fusion and modality-token interaction. Panel (a) shows the base path, local gate, residual averaging, scaling, and instance normalization (Eqs. (4) and (6)). Panel (b) shows descriptor projection, masked global interaction among modality tokens, and the token gates (Eq. (5)). Local and token gates are averaged before weighting residual features. 
+
+3.3.1. State-guided residual fusion 
+
+We encode modality availability with a binary vector p ∈ { 0, 1}M , where 
+
+pm = 1 when modality m is available. The base feature BsS averages the projected features of the available modalities. 10 To compute the local gate, we first spatially pool F sm into a feature de-scriptor zsm. We also average the assignment map over spatial locations to obtain slot weights ¯ asm. These weights combine the updated state slots into a context vector csm. We concatenate the feature descriptor, context vector, and presence vector and pass them to an MLP. These operations are written as 
+
+BsS = 1
+
+|S|
+
+X
+
+> m∈S
+
+ϕs(F sm),zsm = GAP( F sm), ¯asm = 1
+
+Ns
+
+X
+
+> v
+
+Asm(v),csm = ¯ asmT sS , gsm, loc = σ(MLP s[zsm∥csm∥p]) .
+
+(4) Here, ϕs is a 1 × 1 × 1 channel projection. GAP denotes global average pooling, and ∥ denotes concatenation. The two-layer MLP is shared across modality branches within a stage. It produces Cs channel logits. The sigmoid converts these logits to the local gate gsm, loc ∈ (0 , 1) Cs .All modalities read from the same updated state T sS . Their context vectors can differ because each modality uses its own slot weights ¯ asm.
+
+3.3.2. Modality-token interaction 
+
+The modality-token mixer allows the available modality tokens to interact before residual fusion. This interaction is global across the available modal-ities within the same encoder stage. At each stage, we construct one token per modality from the feature descriptor, state context, and presence vector used by the local gate. A single transformer encoder block [33] processes the tokens. Its settings are given in Section 4. A shared projection then maps each output to a channel gate. The token and gate computations are 
+
+qsm = χs([ zsm∥csm∥p]) ,
+
+{hsm}Mm=1 = Ts({qsm}Mm=1 ; p),gsm, tok = σ(Wshsm + bs).
+
+(5) Here, χs is a learned linear projection. It maps the concatenated descrip-tor of dimension Cs + d + M to a token qsm ∈ RCs . The transformer block Ts
+
+produces an updated token hsm ∈ RCs . The learned parameters Ws ∈ RCs×Cs
+
+and bs ∈ RCs map each updated token to channel logits. The sigmoid gives a gate gsm, tok ∈ (0 , 1) Cs . The subscript tok identifies the token gate; loc in 11 Eq. (4) identifies the local gate. Both projections are shared across modalities within a stage. The mixer keeps M token positions in the fixed modality order. Before attention, each token is multiplied by its presence indicator pm. A key-padding mask derived from p excludes absent modalities from the attention keys and values. Their output gates are also excluded from the residual average. Only the available modalities contribute to the interaction used for fusion. 
+
+3.3.3. Fusion output 
+
+We average the local and token gates to obtain the channel weights for each modality’s residual features. The gated residuals are then averaged over the available modalities and added to the base feature. 
+
+bgsm = 12 (gsm, loc + gsm, tok ),RsS = 1
+
+|S|
+
+X
+
+> m∈S
+
+bgsm ⊙ δs(F sm),
+
+bF sS = IN s(BsS + αsRsS ), αs = σ(bαs).
+
+(6) Here, δs is a 1 × 1 × 1 projection with parameters separate from the base projection ϕs. The symbol ⊙ denotes multiplication along the channel di-mension. The channel weights are broadcast over spatial locations. Each stage has its own learned residual scale αs. We apply instance normalization after adding the scaled residual to the base feature. The shared decoder receives the fused features bF sS from all four stages. 
+
+3.4. Training objective 
+
+During training, we sample the available subset S uniformly for each example from the 2 M − 1 = 15 non-empty modality combinations. Let 
+
+Y ∈ { 0, 1}4×H×W ×D denote the one-hot segmentation target and bYS the class probabilities predicted from subset S.Training supervises the shared decoder prediction, the auxiliary predic-tions from the available modalities, and the assignment maps at all four stages. The total objective is 
+
+L = Lseg + λaux (u)Laux + λstate Lstate . (7) The three terms are the segmentation loss Lseg , auxiliary loss Laux , and state loss Lstate .12 Here, u ∈ (0 , 1] is the fraction of completed training. The objectives below are expressed for a single subject. The loss coefficients and auxiliary schedule are given in Section 4. 
+
+3.4.1. Segmentation and auxiliary objectives 
+
+The primary segmentation loss combines weighted cross-entropy, multi-class soft Dice, and a region loss. We define it as Lseg = Lwce + Ldice +
+
+λregion Lregion . These terms are evaluated using the shared decoder predic-tion bYS and target Y . The cross-entropy and multiclass Dice terms op-erate on the four disjoint classes. For class c, the cross-entropy weight is 
+
+wc = 1 − N −1 P 
+
+> v
+
+Yc(v), where N = HW D .The region loss operates on the BraTS regions WT, TC, and ET. WT combines NCR/NET, ED, and ET. TC combines NCR/NET and ET, and ET is the enhancing class itself. We use binary soft Dice for WT and TC. ET can occupy a small part of the tumor, so we use focal Tversky loss [34] for this region. We set the Tversky weights to penalize missed enhancing tumor more than false positives. The parameter values are given in Section 4. For a generic four-class probability map bY , the region objective is 
+
+Lregion ( bY , Y ) = ωWT ℓBD ( bYWT , Y WT )+ ωTC ℓBD ( bYTC , Y TC )+ ωET ℓFT ( bYET , Y ET ).
+
+(8) Here, ℓBD denotes binary soft Dice loss and ℓFT denotes focal Tversky loss. Region probabilities and targets are obtained by summing the corresponding disjoint-class channels. The coefficients ωWT , ωTC , and ωET weight the three region terms. Their values and the focal Tversky parameters are reported in Section 4. Let bY aux  
+
+> m
+
+denote the class probabilities predicted by the auxiliary decoder for modality m. The auxiliary objective averages the segmentation terms over the available modalities. 
+
+Laux = 1
+
+|S|
+
+X
+
+> m∈S
+
+h
+
+Lwce ( bY aux  
+
+> m
+
+, Y ) + Ldice ( bY aux  
+
+> m
+
+, Y )+ ρaux λregion Lregion ( bY aux  
+
+> m
+
+, Y )
+
+i
+
+.
+
+(9) Here, ρaux scales the region contribution relative to the primary segmentation objective. The coefficient λaux (u) in Eq. (7) weights the entire auxiliary objective during training. 13 3.4.2. Semantic assignment 
+
+The state loss gives semantic supervision to the assignment maps, en-couraging each channel to correspond to its intended class. At each stage, we area-average the segmentation target to the resolution of the assignment map. This produces local class proportions Y s. We renormalize the target channels to correct small floating-point deviations from a unit sum at each location. For an assignment map A at stage s, the semantic loss for a single subject is 
+
+ℓsem (A, Y s) = −
+
+P 
+
+> c,v
+
+wsem  
+
+> c
+
+Y sc (v) log   max {Ac(v), ϵ }
+
+max {P 
+
+> c,v
+
+wsem  
+
+> c
+
+Y sc (v), ϵ }
+
++ X
+
+> c
+
+ewsem 
+
+> c
+
+
+
+1 − 2 P 
+
+> v
+
+Ac(v)Y sc (v) + ϵ
+
+P 
+
+> v
+
+Ac(v) + P 
+
+> v
+
+Y sc (v) + ϵ
+
+
+
+,
+
+(10) where c indexes the four semantic classes, v indexes spatial locations at stage 
+
+s, and ϵ = 10 −6. The fixed class weights are wsem  
+
+> c
+
+. For the Dice term, we normalize them as ewsem  
+
+> c
+
+= wsem  
+
+> c
+
+/ P 
+
+> j
+
+wsem  
+
+> j
+
+. The first term is cross-entropy normalized by the weighted target mass. The second term is class-weighted soft Dice loss. The semantic class weights are reported in Section 4. We apply ℓsem to the assignment map of each available modality and to their mean, AsS = |S|−1 P 
+
+> m∈S
+
+Asm. The resulting state objective is 
+
+Lstate = 14
+
+> 4
+
+X
+
+> s=1
+
+ℓsem (AsS , Y s) + P 
+
+> m∈S
+
+ℓsem (Asm, Y s)
+
+|S| + 1 . (11) Within each stage, the loss averages the |S| modality assignment terms and the term for their mean. The outer average gives equal weight to all four encoder stages. 
+
+4. Experiments 
+
+We evaluate PMTM on BraTS2018, BraTS2020, and BraTS2023 GLI across all 15 non-empty modality subsets. We first describe the datasets, evaluation protocol, and implementation details. We then compare PMTM with RobustSeg, RFNet, and mmFormer trained in this study and with pub-lished BraTS2020 and BraTS2023 results [27, 30]. We also report component ablations, analyses of assignment maps and tumor states, and segmentation maps under complete and incomplete inputs. 14 4.1. Datasets and evaluation protocol 
+
+We use BraTS2018 and BraTS2020 [2, 3, 35], and the adult glioma task of the BraTS 2023 Challenge (BraTS2023 GLI) [36–38]. The train-ing/validation/test splits contain 205/23/57, 219/50/100, and 875/125/251 subjects, respectively. For BraTS2020, we use the public subject lists from the official M 2FTrans repository [10]; for BraTS2023 GLI, we use the public IM-Fuse subject lists [39]. Within each dataset, all methods trained in this study and component ablations use the same fixed subject-level partitions. Published results retain the training and evaluation protocols reported in their source studies. We evaluate Dice for WT, TC, and ET under each of the 15 non-empty subsets of T1ce, T1, FLAIR, and T2. When the predicted and ground-truth regions are both empty, Dice is set to one. When only one is empty, Dice is set to zero. The overall score is Dice averaged equally over test subjects, the three tumor regions, and all 15 modality subsets. Dice scores are reported as percentages, and differences between scores are reported in percentage points. 
+
+4.2. Implementation details 
+
+Each volume is cropped to a common foreground bounding box defined by the nonzero voxels of the four MRI sequences. The box is expanded to at least 128 voxels along each axis when necessary. Each sequence is standardized over its foreground voxels, with background values kept at zero. PMTM training uses random 128 3 crops, rotations up to 10 ◦, intensity scaling for each modality in [0 .9, 1.1], and intensity shifts in [ −0.1, 0.1]. Each spatial axis is independently flipped with probability 0.5. Rotations use linear interpolation for MRI volumes and nearest-neighbor interpolation for segmentation labels. The four encoder stages have channel widths of 16, 32, 64, and 128. Each stage contains three 3 × 3 × 3 convolutional blocks with instance normal-ization and LeakyReLU. The first block of stages 2–4 uses stride two. The decoder uses trilinear upsampling and skip concatenation. Its convolutional refinement layers have channel widths of 64, 32, and 16. A 1 × 1 × 1 convolu-tion maps the final 16 feature channels to four class logits. Softmax converts these logits to voxel-wise class probabilities. The auxiliary decoders use the same architecture, as described in Section 3. The assignment branch Θ s uses a 1 × 1 × 1 convolution, instance nor-malization, and LeakyReLU, followed by a second 1 × 1 × 1 convolution 15 that produces K logits. The evidence branch Ψ s uses a 1 × 1 × 1 convolu-tion followed by instance normalization and LeakyReLU to produce d = 64 evidence channels. The modality-token mixer uses a single transformer en-coder block with four attention heads, a feed-forward width of max(2 Cs, 64), GELU activation, pre-layer normalization, and zero dropout. Layer normal-ization is applied before the attention and feed-forward sublayers (Pre-LN). All LeakyReLU activations have a negative slope of 0.2. PMTM is implemented in PyTorch and trained using Adam with AMS-Grad. The initial learning rate is 10 −4 and follows polynomial decay with power 0.9. Weight decay is 10 −4, and the effective batch size is two. PMTM experiments use one NVIDIA RTX A6000 GPU with 48 GB memory. In the experiments conducted in this study, all four methods are trained for 1000 epochs on BraTS2018 and BraTS2020 and for 200 epochs on BraTS2023 GLI. We select the checkpoint with the highest average validation Dice across all 15 modality subsets. The comparisons use method-specific crop sizes of 80 3 for RobustSeg and RFNet and 128 3 for mmFormer and PMTM. The sizes for the comparison methods follow their original input configurations. For the objective in Section 3.4, we use λregion = 0 .35 and λstate = 0 .05. The region weights ( ωWT , ω TC , ω ET ) are (0 .20 , 0.30 , 0.50). Focal Tversky loss uses αFT = 0 .3 for false positives, βFT = 0 .7 for false negatives, and γFT =0.75. The loss is (1 − TI) γFT , where TI is the soft Tversky index. The auxiliary region multiplier is ρaux = 0 .15, so ρaux λregion = 0 .0525. The semantic class weights are (0 .25 , 1, 1, 1) for BG, NCR/NET, ED, and ET. The auxiliary coefficient is 0.5 during the first 30% of training. It decreases linearly to 0.2 by 70% and then decreases linearly to 0.1 at the final epoch. PMTM inference uses 128 3 sliding windows with 50% overlap. The tu-mor state is initialized from T 0 separately for each sliding window. Class probabilities are averaged in overlapping regions before applying argmax at each voxel. No test-time augmentation is applied. 
+
+4.3. Comparison with existing methods 
+
+We compare PMTM with RobustSeg [20], RFNet [4], and mmFormer [9]. Table 1 reports the results averaged over all 15 modality subsets on the three datasets. PMTM obtains the highest overall average Dice among the four methods on each dataset. Among the baselines, mmFormer has the highest overall average. The regional differences relative to mmFormer are larger for TC and ET than for WT. We additionally report published results for 16 BraTS2020 and BraTS2023 GLI in Tables 3 and 5. The source column dis-tinguishes our experiments from literature results. Published regional means are preserved, and their three-region averages are computed from those re-ported means. Published results use the training and evaluation settings reported in their original studies. 
+
+Table 1: Results on the three BraTS cohorts, averaged over all 15 non-empty modality subsets. Dice values are percentages; PMTM gains are percentage-point differences. Crop denotes the side length, in voxels, of the cubic training input. Bold marks the highest score and underlining the second-highest distinct score within each dataset. Ties receive the same marking.                                                                                             
+
+> Dataset Method Epochs Crop WT TC ET Avg. PMTM gain BraTS2018 RobustSeg 1000 80 84.55 69.11 51.28 68.32 +6.99 RFNet 1000 80 85.68 74.86 57.17 72.57 +2.74 mmFormer 1000 128 87.50 74.92 57.77 73.40 +1.91
+> Ours 1000 128 86.79 77.17 61.95 75.31 –BraTS2020 RobustSeg 1000 80 84.34 73.60 55.60 71.18 +6.36 RFNet 1000 80 86.80 78.15 57.44 74.13 +3.41 mmFormer 1000 128 87.60 79.32 58.27 75.06 +2.48
+> Ours 1000 128 87.63 81.53 63.47 77.54 –BraTS2023 GLI RobustSeg 200 80 84.69 73.10 60.69 72.82 +7.65 RFNet 200 80 85.68 75.66 61.71 74.35 +6.12 mmFormer 200 128 87.45 79.42 66.21 77.69 +2.78
+> Ours 200 128 87.74 82.72 70.96 80.47 –
+
+4.3.1. BraTS2018 
+
+On BraTS2018, PMTM obtains an average Dice of 75.31%, 1.91 percent-age points higher than mmFormer. TC Dice is higher by 2.25 points and ET Dice by 4.18 points. WT Dice is lower by 0.71 points. Table 2 reports the results for individual modality subsets. Among the four methods, PMTM has the highest three-region average (Avg.) in all 15 subsets. It has the highest ET Dice in all 15 subsets and the highest TC Dice in 14 subsets. mmFormer has the highest WT Dice in all 15 subsets and the highest TC Dice for FLAIR-only input. 17 Table 2: BraTS2018 Dice (%) for all 15 non-empty modality subsets. 
+
+> MFLAIR  r b r r r r r b r b b r b b b
+> Mean T1ce  r r r b r r b b b r r b b r b
+> T1  r r b r r b b r r r b b r b b
+> T2  r r r r b b r r b b r b b b r
+> WT RobustSeg [20]  89.63  86.18  89.39  88.99  88.91  88.69  88.46  84.95  88.42  77.33  85.36  85.86  70.25  73.46  82.40  84.55 RFNet [4]  89.77  87.45  89.84  89.14  88.95  89.01  88.69  86.69  87.91  79.63  86.42  86.82  74.05  75.93  84.83  85.68 mmFormer [9]  90.95 88.47 90.95 90.84 90.39 90.48 90.49 88.16 90.26 80.88 88.16 89.42 78.08 78.19 86.73 87.50 Ours  90.66  87.49  90.64  90.30  90.24  90.16  90.07  87.11  89.92  79.87  87.21  88.82  76.42  77.08  85.89  86.79 TC RobustSeg [20]  81.02  80.49  80.88  64.51  81.22  68.68  61.28  62.31  60.80  78.88  80.36  53.68  48.00  76.98  57.60  69.11 RFNet [4]  82.09  82.56  81.55  70.97  81.35  80.54  70.20  69.77  68.80  80.83  81.74  65.03  60.45  79.70  67.32  74.86 mmFormer [9]  81.23  81.37  81.72  70.10  81.59  81.91  69.40  68.24  70.31  79.95  81.62  66.46  63.25  79.96  66.75  74.92
+> Ours  83.29 83.80 83.16 73.79 83.79 83.46 72.36 72.17 71.54 83.23 83.60  66.27  63.43 82.86 70.87 77.17
+> ET RobustSeg [20]  71.84  71.24  71.02  36.48  70.92  70.44  34.67  32.07  32.19  69.20  69.85  25.74  17.32  67.20  29.03  51.28 RFNet [4]  72.17  72.94  72.21  45.08  71.77  71.84  44.70  43.75  38.22  71.28  72.03  35.21  33.09  70.87  42.33  57.17 mmFormer [9]  72.84  73.59  73.10  43.89  73.39  73.50  43.00  43.44  40.00  73.02  73.71  32.94  36.99  72.70  40.45  57.77
+> Ours  74.83 74.66 74.83 52.49 74.98 74.82 50.94 50.71 47.89 74.38 74.57 42.54 39.11 73.92 48.61 61.95
+> Avg. RobustSeg [20]  80.83  79.30  80.43  63.33  80.35  75.94  61.47  59.78  60.47  75.14  78.52  55.09  45.19  72.55  56.34  68.32 RFNet [4]  81.34  80.98  81.20  68.40  80.69  80.46  67.86  66.74  64.98  77.25  80.06  62.35  55.86  75.50  64.83  72.57 mmFormer [9]  81.67  81.14  81.92  68.28  81.79  81.96  67.63  66.61  66.86  77.95  81.16  62.94  59.44  76.95  64.64  73.40
+> Ours  82.93 81.98 82.88 72.19 83.00 82.82 71.12 69.99 69.79 79.16 81.79 65.87 59.65 77.96 68.46 75.31
+> r = available modality;  b = missing modality. M denotes the tumor-region metric. All results are from this study. References beside method names identify the original methods. Bold marks the highest score and underlining the second-highest distinct score among all methods shown. Ties receive the same marking. Avg. is the arithmetic mean of WT, TC, and ET for each subset. Mean denotes the average over all 15 subsets.
+
+18 4.3.2. BraTS2020 
+
+On BraTS2020, PMTM obtains an average Dice of 77.54%, 2.48 percent-age points higher than mmFormer. WT Dice is higher by 0.03 points, TC Dice by 2.21 points, and ET Dice by 5.20 points in our experiments. Table 3 adds published results from Zou et al. [30] and Zhang et al. [27]. PMTM has an average Dice of 77.54%, compared with 77.19% for LS 3M and 76.53% for IM-Fuse + MGML in these sources. LS 3M has higher WT and ET Dice, while PMTM has higher TC Dice.   
+
+> Table 3: BraTS2020 Dice (%) averaged over all 15 non-empty modality subsets. The Source column identifies experiments conducted in this study and published results. Bold marks the highest score and underlining the second-highest distinct score among all meth-ods shown. Ties receive the same marking.
+
+Method Source WT ↑ TC ↑ ET ↑ Avg. ↑
+
+MMANet [40] [30] 82.64 76.99 56.39 72.01 PASSION [41] [30] 84.28 71.37 53.92 69.86 DMAF-Net [42] [30] 84.71 71.98 54.30 70.33 IM-Fuse [39] [30] 87.08 79.01 61.70 75.93 IM-Fuse + MGML [30] [30] 87.55 79.36 62.67 76.53 LS 3M [27] [27] 88.22 79.76 63.60 77.19 RobustSeg [20] This study 84.34 73.60 55.60 71.18 RFNet [4] This study 86.80 78.15 57.44 74.13 mmFormer [9] This study 87.60 79.32 58.27 75.06 
+
+Ours This study 87.63 81.53 63.47 77.54 
+
+Table 4 reports WT, TC, ET, and three-region averages for individual modality subsets, including the published results. Published WT, TC, and ET means are reproduced from the cited sources. 19 Table 4: BraTS2020 Dice (%) for all 15 non-empty modality subsets. 
+
+> MFLAIR  r b r r r r r b r b b r b b b
+> Mean T1ce  r r r b r r b b b r r b b r b
+> T1  r r b r r b b r r r b b r b b
+> T2  r r r r b b r r b b r b b b r
+> WT MMANet [40] a 89.25  86.38  89.37  87.97  87.92  86.74  87.47  85.33  87.64  70.98  85.64  83.21  64.35  64.46  82.88  82.64 PASSION [41] a 89.74  89.36  88.00  88.82  88.65  76.30  85.62  87.83  87.71  86.90  86.26  70.51  84.22  70.69  83.58  84.28 DMAF-Net [42] a 89.60  89.91  88.27  89.53  88.30  77.57  85.86  88.25  87.60  86.90  86.67  72.92  84.94  70.64  83.64  84.71 IM-Fuse [39] a 91.02  88.79  90.44  90.73  90.44  89.57  89.90  88.03  89.81  81.28  88.01  87.55  77.52  76.90  86.29  87.08 IM-Fuse + MGML [30] a 91.21  89.12  90.61  90.98  90.73  89.95  90.11  88.14  89.93  82.26  88.46  88.22  78.74  78.08  86.80  87.55 LS 3M [27] b 92.15  89.75  91.87 91.45 91.52 91.00 91.45 88.88 90.57  82.58  89.18  88.66  79.32  78.24  87.29 88.22
+> RobustSeg [20]  89.65  86.80  88.86  89.42  89.05  87.50  88.27  85.70  88.28  76.99  86.14  83.04  71.55  71.53  82.36  84.34 RFNet [4]  90.81  87.95  90.70  90.23  90.29  89.89  89.81  87.17  89.02  81.21  87.45  86.97  77.51  78.82  84.16  86.80 mmFormer [9]  91.15  88.50  91.01  90.52  90.82  90.58  90.06  87.43  89.74  82.16  88.00  88.41  79.80  80.00  85.85  87.60
+> Ours  91.33  88.41  91.16  90.78  91.17  90.80  90.43  87.54  90.05  82.54  87.97  88.81  77.89  79.81  85.71  87.63 TC MMANet [40] a 86.63  86.39  85.68  74.48  85.87  85.21  72.65  71.88  72.73  80.99  85.24  65.79  57.47  74.05  70.21  76.99 PASSION [41] a 79.93  79.60  80.54  68.62  79.51  78.21  65.98  67.06  66.17  76.33  78.74  55.47  59.50  73.11  61.76  71.37 DMAF-Net [42] a 80.47  80.30  81.06  68.84  79.44  78.63  66.42  67.34  66.31  76.85  79.98  56.02  60.55  74.31  63.18  71.98 IM-Fuse [39] a 85.51  85.74  85.21  75.50  85.50  85.15  73.81  73.88  73.90  84.64  85.46  70.18  66.46  83.09  71.22  79.01 IM-Fuse + MGML [30] a 85.46  85.52  84.34  75.82  85.41  85.17  74.66  73.90  74.70  84.84  85.78  71.20  67.29  83.44  71.89  79.36 LS 3M [27] b 85.86  85.83  85.84  76.87  86.05  86.32  76.87  74.32  75.25  84.09  85.18  71.98  66.67  83.61  72.30  79.76 RobustSeg [20]  83.04  83.02  82.05  70.60  82.93  82.01  68.34  66.59  68.32  80.44  82.60  60.84  54.41  76.83  62.00  73.60 RFNet [4]  86.13  85.88  86.15  74.80  85.06  85.22  72.85  72.80  72.66  83.57  85.82  66.97  63.95  82.85  67.57  78.15 mmFormer [9]  86.96  86.93  86.91  74.42  86.71  86.55  71.54  73.17  72.92  86.60  86.69  68.69  67.94  86.16  67.61  79.32
+> Ours  88.61 88.41 88.18 78.42 88.44 87.61 76.91 76.68 75.41 87.44 87.90  70.95  67.92  86.33 73.68 81.53
+> ET MMANet [40] a 72.43  71.81  71.98  44.60  71.94  70.43  44.23  43.58  41.50  68.87  71.86  36.40  28.22  66.07  41.91  56.39 PASSION [41] a 69.77  68.97  69.90  42.94  69.27  69.58  40.66  40.85  38.09  68.27  67.86  28.47  31.25  66.71  37.12  53.92 DMAF-Net [42] a 69.45  69.06  70.11  43.35  69.50  70.37  41.66  40.33  38.20  68.62  68.02  30.37  31.64  66.97  36.86  54.30 IM-Fuse [39] a 76.63  77.00  76.29  50.03  76.68  74.81  49.09  49.24  45.41  76.48  76.06  41.21  36.25  73.11  47.37  61.70 IM-Fuse + MGML [30] a 77.72  79.48  77.33  51.68  75.56  76.11  49.17  49.01  46.76  77.84  77.25  41.36  37.77  73.90  49.23  62.67 LS 3M [27] b 80.94 81.53 80.51  51.53  80.75 79.17 51.53  47.04  45.07  79.49 78.69  40.34  36.57  77.68  45.30  63.60
+> RobustSeg [20]  71.66  72.01  71.31  43.99  71.91  70.92  42.27  40.00  39.75  70.25  71.56  34.75  29.05  68.05  36.53  55.60 RFNet [4]  74.19  74.04  74.01  44.43  73.89  73.82  42.99  41.35  40.33  72.42  74.05  34.32  32.07  71.33  38.29  57.44 mmFormer [9]  74.58  75.40  74.62  44.28  74.68  74.55  43.30  41.79  39.42  74.98  75.26  34.43  32.73  75.10  38.90  58.27
+> Ours  77.30  77.54  77.30  52.22  77.16  77.22  50.60  50.50 48.60  76.86  77.67  43.51 40.38  76.76  48.50  63.47 Avg. MMANet [40] a 82.77  81.53  82.34  69.02  81.91  80.79  68.12  66.93  67.29  73.61  80.91  61.80  50.01  68.19  65.00  72.01 PASSION [41] a 79.81  79.31  79.48  66.79  79.14  74.70  64.09  65.25  63.99  77.17  77.62  51.48  58.32  70.17  60.82  69.86 DMAF-Net [42] a 79.84  79.76  79.81  67.24  79.08  75.52  64.65  65.31  64.04  77.46  78.22  53.10  59.04  70.64  61.23  70.33 IM-Fuse [39] a 84.39  83.84  83.98  72.09  84.21  83.18  70.93  70.38  69.71  80.80  83.18  66.31  60.08  77.70  68.29  75.93 IM-Fuse + MGML [30] a 84.80  84.71  84.09  72.83  83.90  83.74  71.31  70.35  70.46  81.65  83.83  66.93  61.27  78.47  69.31  76.53 LS 3M [27] b 86.32 85.70 86.07  73.28  86.11 85.50 73.28  70.08  70.30  82.05  84.35  66.99  60.85  79.84  68.30  77.19 RobustSeg [20]  81.45  80.61  80.74  68.00  81.30  80.14  66.29  64.10  65.45  75.89  80.10  59.54  51.67  72.14  60.30  71.18 RFNet [4]  83.71  82.62  83.62  69.82  83.08  82.98  68.55  67.10  67.34  79.07  82.44  62.75  57.85  77.67  63.34  74.13 mmFormer [9]  84.23  83.61  84.18  69.74  84.07  83.89  68.30  67.46  67.36  81.25  83.32  63.84  60.16  80.42  64.12  75.06
+> Ours  85.74  84.79  85.55  73.81  85.59  85.21  72.65  71.57 71.35 82.28 84.51 67.76 62.07 80.96  69.30  77.54
+> r = available modality;  b = missing modality. M denotes the tumor-region metric. Unmarked rows: this study.  aResults from Zou et al. [30].  bResults from Zhang et al. [27]. References beside method names identify the original methods.  Bold marks the highest score and underlining the second-highest distinct score among all methods shown.  Ties receive the same marking. Avg. is the arithmetic mean of WT, TC, and ET for each subset. Published WT, TC, and ET means are reproduced from the cited sources.
+
+20 4.3.3. BraTS2023 GLI 
+
+On BraTS2023 GLI, PMTM obtains an average Dice of 80.47%, 2.78 percentage points higher than mmFormer. WT Dice is higher by 0.29 points, TC Dice by 3.30 points, and ET Dice by 4.75 points in our experiments. Table 5 also includes the BraTS2023 results reported in the experimental study of Zou et al. [30]. The published rows report IM-Fuse and IM-Fuse + MGML as evaluated in that study. PMTM has an average Dice of 80.47%, compared with 80.28% for IM-Fuse and 81.26% for IM-Fuse + MGML in that study. PMTM has higher ET Dice than these two reported results, but IM-Fuse + MGML has higher WT and TC Dice.  
+
+> Table 5: BraTS2023 GLI Dice (%) averaged over all 15 non-empty modality subsets. The Source column identifies experiments conducted in this study and published results. Bold marks the highest score and underlining the second-highest distinct score among all methods shown. Ties receive the same marking.
+
+Method Source WT ↑ TC ↑ ET ↑ Avg. ↑
+
+IM-Fuse [39] [30] 89.69 81.74 69.41 80.28 IM-Fuse + MGML [30] [30] 90.47 83.01 70.30 81.26 
+
+RobustSeg [20] This study 84.69 73.10 60.69 72.82 RFNet [4] This study 85.68 75.66 61.71 74.35 mmFormer [9] This study 87.45 79.42 66.21 77.69 
+
+Ours This study 87.74 82.72 70.96 80.47 
+
+Table 6 reports the local and published results for individual modality subsets, grouped by WT, TC, ET, and three-region average. Among the four methods evaluated in this study, PMTM has the highest three-region average (Avg.) in all 15 subsets. It also has the highest TC and ET Dice in all 15 subsets within this group. Its WT Dice is the highest in 12 subsets. mmFormer has the highest WT Dice for FLAIR+T1, FLAIR-only, and T1ce-only input. 21 Table 6: BraTS2023 GLI Dice (%) for all 15 non-empty modality subsets. 
+
+> MFLAIR  r b r r r r r b r b b r b b b
+> Mean T1ce  r r r b r r b b b r r b b r b
+> T1  r r b r r b b r r r b b r b b
+> T2  r r r r b b r r b b r b b b r
+> WT IM-Fuse [39] a 93.62  91.46  93.11  92.55  92.73  91.33  92.15  89.47  91.74  84.76  89.89  89.48  82.01  82.22  88.94  89.69 IM-Fuse + MGML [30] a 94.45 92.12 93.81 93.34 93.43 91.92 92.71 90.49 92.48 85.73 90.81 90.95 82.60 82.83 89.42 90.47
+> RobustSeg [20]  89.40  86.00  89.20  88.70  88.90  88.50  88.10  84.70  87.90  77.30  86.60  86.00  72.50  73.80  82.70  84.69 RFNet [4]  89.77  86.89  89.78  89.20  88.65  88.33  89.00  86.39  87.65  79.69  86.58  86.01  76.21  76.35  84.70  85.68 mmFormer [9]  91.21  87.62  91.12  90.89  90.93  90.75  90.60  87.16  90.65  81.33  87.35  89.57  77.84  79.04  85.68  87.45
+> Ours  91.74  88.18  91.67  91.24  91.21  90.98  91.06  87.36  90.47  81.54  87.90  89.24  78.21  78.93  86.31  87.74 TC IM-Fuse [39] a 89.54  88.22  87.31  78.64  87.77  87.22  76.65  76.02  77.03  86.64  87.93  74.91  69.31  84.88  74.01  81.74 IM-Fuse + MGML [30] a 90.02 89.73  88.95  79.33  89.14  88.43  78.25 77.65 78.61  88.09  88.63  75.83  70.22  86.73  75.54 83.01
+> RobustSeg [20]  81.80  80.90  81.30  69.80  81.60  80.90  67.70  65.70  68.00  79.10  79.70  62.10  58.90  77.30  61.70  73.10 RFNet [4]  83.93  84.27  83.67  72.08  82.96  82.18  70.48  70.21  69.53  81.38  83.76  65.21  61.38  78.80  65.05  75.66 mmFormer [9]  87.82  87.44  87.53  74.66  87.44  86.87  73.92  71.05  72.82  86.69  86.77  69.78  65.49  84.96  67.99  79.42
+> Ours  89.65  89.23  89.39  78.99  89.34 88.77  77.62  76.36  77.69  88.28 88.74  73.88  72.21 87.26  73.45  82.72 ET IM-Fuse [39] a 85.41  84.64  83.81  58.83  82.66  81.45  55.88  54.12  52.39  84.57  84.91  49.67  44.26  81.65  56.93  69.41 IM-Fuse + MGML [30] a 86.21 85.46 84.39  59.53  83.18  82.41  56.83  55.27  53.36  85.54 85.73  51.46  45.02  82.59 57.53  70.30 RobustSeg [20]  75.10  74.40  74.30  51.20  75.20  74.20  49.70  46.30  47.70  73.20  73.90  42.80  37.50  71.80  43.00  60.69 RFNet [4]  75.95  76.30  75.45  53.20  75.06  74.02  51.43  50.41  47.87  73.25  75.48  42.70  37.77  70.64  46.06  61.71 mmFormer [9]  80.72  80.51  80.37  56.12  80.64  79.84  54.59  51.41  52.36  79.75  79.92  47.48  43.07  78.34  48.07  66.21
+> Ours  83.08  83.11  82.86  61.67 83.19 82.76 60.20 58.98 59.13  82.32  82.80  54.16 52.53  81.95  55.64  70.96
+> Avg. IM-Fuse [39] a 89.52  88.11  88.08  76.67  87.72  86.67  74.89  73.20  73.72  85.32  87.58  71.35  65.19  82.92  73.29  80.28 IM-Fuse + MGML [30] a 90.23 89.10 89.05 77.40 88.58 87.59  75.93  74.47  74.82  86.45 88.39 72.75  65.95  84.05 74.16 81.26
+> RobustSeg [20]  82.10  80.43  81.60  69.90  81.90  81.20  68.50  65.57  67.87  76.53  80.07  63.63  56.30  74.30  62.47  72.82 RFNet [4]  83.22  82.49  82.97  71.49  82.22  81.51  70.30  69.00  68.35  78.11  81.94  64.64  58.45  75.26  65.27  74.35 mmFormer [9]  86.58  85.19  86.34  73.89  86.34  85.82  73.04  69.87  71.94  82.59  84.68  68.94  62.13  80.78  67.25  77.69
+> Ours  88.16  86.84  87.97  77.30  87.91  87.50  76.29  74.23  75.76  84.05  86.48  72.43  67.65  82.72  71.80  80.47
+> r = available modality;  b = missing modality. M denotes the tumor-region metric. Unmarked rows: this study.  aResults from Zou et al. [30]. References beside method names identify the original methods. Bold marks the highest score and underlining the second-highest distinct score among all methods shown. Ties receive the same marking. Avg. is the arithmetic mean of WT, TC, and ET for each subset. Mean retains the source-reported regional averages and their three-region mean.
+
+22 4.3.4. Effect of modality availability on BraTS2020 
+
+We next examine how modality availability affects PMTM on BraTS2020. We group the 15 subsets in Table 4 by the number of available modalities. Average Dice increases from 70.02% with one modality to 77.93% with two, 82.43% with three, and 85.74% with all four. These averages cover differ-ent modality combinations. They do not imply that adding any sequence improves every regional score. To examine the absence of a specific sequence, we compare complete input with input containing the other three sequences. Without T1ce, the available modalities are T1, FLAIR, and T2. TC Dice decreases from 88.61% to 78.42%, a drop of 10.19 percentage points. ET Dice decreases from 77.30% to 52.22%, a drop of 25.08 percentage points. Average Dice decreases from 85.74% to 73.81%. Without FLAIR, the available modalities are T1ce, T1, and T2. WT Dice decreases from 91.33% to 88.41%, a drop of 2.92 percentage points. Average Dice decreases from 85.74% to 84.79%. ET Dice increases slightly from 77.30% to 77.54%. We also group the incomplete subsets by whether T1ce is available. Av-erage Dice is 84.13% across the seven subsets containing T1ce and 69.79% across the seven subsets without T1ce. The corresponding ET Dice values are 77.22% and 47.76%. These groups also differ in the number and identity of the other available sequences. Their difference therefore does not isolate the effect of removing T1ce. 
+
+4.4. Component ablation on BraTS2020 
+
+We evaluate four variants to examine the tumor-state path, cross-stage state propagation, semantic assignment supervision, and modality-token in-teraction. All variants use the same BraTS2020 subject-level partitions and evaluation protocol as the main comparison. The variant without the tumor-state path removes it from all four stages. It combines the available modality features by averaging and feature pro-jection. The segmentation loss and auxiliary supervision remain unchanged. We use the same training settings and budget as for the full PMTM model. The local state memory variant retains state construction and state-guided fusion. It reinitializes the state at every stage, removing propagation between stages. The remaining two variants remove semantic assignment supervision at all four stages or remove modality-token interaction from all fusion stages. 23 Table 7: Ablation results on BraTS2020, averaged over 100 subjects and all 15 modality subsets. Local state memory removes cross-stage state propagation. Dice values are percentages. Bold marks the highest score and underlining the second-highest distinct score among the variants. 
+
+Variant WT TC ET Avg. w/o tumor-state path 86.74 78.44 59.02 74.73 Local state memory 87.31 80.49 62.08 76.63 w/o semantic assignment supervision 87.42 78.85 60.29 75.52 w/o modality-token interaction 87.58 81.25 63.01 77.28 
+
+Ours 87.63 81.53 63.47 77.54 
+
+Removing semantic supervision changes only the training objective, not the network architecture. Table 7 reports an average Dice of 77.54% for PMTM with all compo-nents, matching Table 1. Removing the tumor-state path reduces average Dice to 74.73%, a decrease of 2.81 percentage points. WT Dice decreases by 0.89 points, TC by 3.09 points, and ET by 4.45 points. Reinitializing the state at each stage reduces average Dice by 0.91 per-centage points. WT Dice decreases by 0.32 points, TC by 1.04 points, and ET by 1.39 points. Removing semantic assignment supervision reduces average Dice by 2.02 percentage points. WT Dice decreases by 0.21 points, TC by 2.68 points, and ET by 3.18 points. Removing modality-token interaction reduces average Dice by 0.26 per-centage points. WT Dice decreases by 0.05 points, TC by 0.28 points, and ET by 0.46 points. 
+
+4.5. Semantic assignment and tumor-state dynamics 
+
+The ablations measure changes in segmentation performance when com-ponents are removed. We next examine the assignment maps and state slots to describe the representations learned by PMTM across encoder stages. 
+
+4.5.1. Analysis protocol 
+
+We use the selected checkpoint to perform the internal state analysis on all 50 subjects in the BraTS2020 validation partition. The analysis includes complete input, FLAIR-only input, and T2-only input. State statistics are 24 computed only for sliding windows containing at least one ground-truth tu-mor voxel. At each of the four stages, we upsample the assignment maps using trilin-ear interpolation. We then average them over the overlapping windows used for segmentation. Applying argmax at each voxel gives hard assignment la-bels. WT combines NCR/NET, ED, and ET. TC combines NCR/NET and ET, while ET uses the enhancing class. We compute Dice for these three re-gions. We also measure the mean activation of each assignment channel for voxels belonging to each ground-truth class. Normalized entropy and mean maximum assignment probability describe how concentrated the assignments are. We measure mean cosine similarity between different state slots within each stage. To examine slot correspondence across stages, we use stage 1 as the reference for stages 2–4. We report diagonal matching and a similarity margin. This margin is the similarity to the corresponding reference slot minus the largest similarity to a different reference slot. We also measure the relative magnitude of state updates. Finally, we compare corresponding slots obtained with complete and incomplete input using cosine similarity. 
+
+4.5.2. Assignment maps and state diagnostics 
+
+Figure 4 shows assignment probabilities for a representative BraTS2020 subject under complete input. The stage 1 maps retain anatomical tex-ture and are more diffuse than the later maps. The stage 4 responses are concentrated around the tumor. At the deeper stages, the BG channel is suppressed within the lesion, while the ED channel has a broader response. The NCR/NET and ET channels overlap within the tumor core. These maps show the internal assignments, not the final decoder segmentation. Table 8 reports the quantitative diagnostics under complete input. Aver-age assignment Dice increases from 10.25% at stage 1 to 58.75% at stage 4. The averages at stages 2 and 3 are similar. ET Dice decreases from 37.12% at stage 2 to 25.96% at stage 3, then reaches 41.50% at stage 4. At stage 4, each ground-truth class has its highest conditional mean acti-vation in the intended assignment channel. The margin over the next-highest channel is 0.47 for BG, 0.09 for NCR/NET, 0.52 for ED, and 0.04 for ET. The channels therefore show a preference for their intended classes, but their responses are not exclusive to those classes. The separation is smaller for NCR/NET and ET. The assignments become more concentrated across stages. Normalized 25 FLAIR Ground truth    
+
+> Stage 1 BG NCR/NET ED ET
+> Stage 2 Stage 3 Stage 4
+> 0.0 0.2 0.4 0.6 0.8 1.0
+
+Figure 4: Assignment probabilities at encoder stages 1–4 for a representative BraTS2020 subject under complete input (axial slice z = 61). The FLAIR image and ground-truth segmentation are shown for reference. White contours mark the boundary of the corre-sponding ground-truth channel. The ordered assignment channels follow BG, NCR/NET, ED, and ET. Table 8: Internal state diagnostics on all 50 subjects in the BraTS2020 validation partition under complete input. Assignment Dice values are percentages. For these Dice columns, bold and underlining mark the highest and second-highest distinct scores across stages. Identity matching uses the corresponding stage 1 slot as the reference.                                        
+
+> Stage WT TC ET Avg. Norm. entropy Mean max probability Mean cosine similarity between different state slots Identity match 115.22 8.18 7.36 10.25 0.974 0.334 -0.286 –248.72 32.93 37.12 39.59 0.939 0.416 -0.215 1.000 355.85 37.79 25.96 39.87 0.883 0.461 -0.049 1.000 470.34 64.40 41.50 58.75 0.729 0.648 0.189 1.000
+
+entropy decreases from 0.974 at stage 1 to 0.729 at stage 4. Mean maximum assignment probability increases from 0.334 to 0.648 over the same stages. Mean cosine similarity between different state slots increases from -0.286 at stage 1 to 0.189 at stage 4. Identity matching relative to stage 1 is reported as 1.000 at stages 2–4. The corresponding similarity margins are 1.163, 1.074, and 0.938. The slots become more similar with depth, but they retain their correspondence to the stage 1 slots. 26 Under complete input, relative state-update magnitudes range from 0.20 to 0.26 across slots and stages. For FLAIR-only and T2-only input, mean cosine similarity to the corresponding complete-input slots ranges from ap-proximately 0.9968 to 0.9999 across slots and stages. 
+
+4.6. Qualitative segmentation comparison 
+
+Figure 5 compares PMTM with RFNet and mmFormer for three BraTS2020 test subjects under complete and incomplete input. These cases are selected for illustration. (a)                                                                        
+
+> Case 346
+> FLAIR+ T2
+> FLAIR T2
+> Ground truth
+> 0.92 0.52 0.02 //
+> RFNet
+> 0.92 0.16 0.00 //
+> mmFormer
+> 0.93 0.79 0.42 //
+> PMTM
+> 0.95 0.97 0.90 //
+> RFNet
+> 0.95 0.96 0.88 //
+> mmFormer
+> 0.96 0.97 0.91 //
+> PMTM
+> (b)
+> Case 046
+> FLAIR+ T1ce
+> FLAIR T1ce
+> 0.55 0.42 0.38 //0.68 0.49 0.48 //0.66 0.81 0.82 //0.63 0.57 0.52 //0.66 0.66 0.64 //0.67 0.79 0.77 //
+> (c)
+> Case 127
+> FLAIR+ T1
+> FLAIR T1
+> 0.92 0.71 0.60 //0.95 0.80 0.68 //0.95 0.83 0.73 //0.95 0.91 0.91 //0.96 0.90 0.90 //0.97 0.95 0.95 //
+> Available MRI sequences Incomplete input Full input
+> Dice: WT / TC / ET; best value in bold NCR/NET ED ET
+
+Figure 5: Segmentation maps for three BraTS2020 test subjects selected for illus-tration under incomplete and complete input. Cases 346, 046, and 127 refer to BraTS20 Training 346, BraTS20 Training 046, and BraTS20 Training 127. The incom-plete subsets are FLAIR+T2 for case 346, T1ce+FLAIR for case 046, and T1+FLAIR for case 127. Red, green, and yellow denote NCR/NET, ED, and ET. Dice values below each prediction are reported on a zero-to-one scale in WT/TC/ET order. The highest displayed values within each input setting are shown in bold, including ties. 
+
+For case 346 with FLAIR+T2, RFNet and mmFormer predict little of the enhancing region. The PMTM prediction more closely matches the ground truth in TC and ET. For case 046 with T1ce+FLAIR, PMTM obtains higher TC and ET Dice than mmFormer. Its WT Dice is slightly lower than that of mmFormer. 27 For case 127 with T1+FLAIR, PMTM obtains the highest TC and ET Dice among the three methods. PMTM and mmFormer both have a dis-played WT Dice of 0.95. With complete input, the predictions are generally more similar in these examples. Visible differences in TC and ET remain for case 046. 
+
+5. Discussion 
+
+In our experiments, the gains over mmFormer are larger for TC and ET than for WT. However, segmentation performance still depends on the available MRI sequences. In BraTS2020, removing T1ce from the complete input mainly reduces TC and ET Dice. Removing FLAIR mainly reduces WT Dice. These observations are consistent with the different information supplied by the sequences [4, 5]. The memory can combine evidence from the remaining inputs, but the results do not establish that it recovers all information from a missing sequence. The local state memory ablation retains state construction and state-guided fusion but removes propagation between stages. Its lower Dice sug-gests that evidence accumulated at earlier stages contributes to segmenta-tion within this architecture. Removing semantic assignment supervision produces a larger decrease than using local state memory. Together, these comparisons support progressive state updates and supervised assignments in the evaluated BraTS2020 configuration. They do not establish how these components would interact in other architectures or under different training settings. The assignment channels show preferences for their intended classes, but the NCR/NET and ET responses overlap. This overlap limits their inter-pretation as exclusive representations of individual tissue classes. Preserved slot correspondence across stages is consistent with an ordered state repre-sentation. The high cosine similarity between states obtained with complete input and with FLAIR-only or T2-only input indicates similar vector direc-tions. It does not establish equivalent information content or segmentation performance. 
+
+5.1. Limitations 
+
+We evaluate PMTM using fixed subject-level splits within three BraTS cohorts. The experiments do not measure sensitivity to alternative splits or establish performance on external imaging protocols. We do not report 28 variability across training seeds. Our experiments compare PMTM with RobustSeg, RFNet, and mmFormer. Additional methods are compared using published scores; these methods were not retrained in our experimental setup. RobustSeg and RFNet use 80 3 crops, while mmFormer and PMTM use 128 3 crops. The comparisons with RobustSeg and RFNet therefore do not separate differences in architecture from differences in input crop size. The comparison with mmFormer uses the same crop size. Internal state analysis includes all 50 BraTS2020 validation subjects un-der complete, FLAIR-only, and T2-only input. The observed assignment preferences and slot correspondence should be interpreted within these set-tings. The experiments evaluate missing-modality subsets. They do not es-tablish performance under other acquisition failures or on other tumor types. 
+
+6. Conclusion 
+
+We developed PMTM for brain tumor segmentation from incomplete mul-timodal MRI. The method accumulates tumor evidence across encoder stages and uses the updated state to guide modality fusion. We evaluated PMTM on BraTS2018, BraTS2020, and BraTS2023 GLI across all 15 non-empty modal-ity subsets. Dice averaged over the three tumor regions and all 15 subsets is 75.31% on BraTS2018, 77.54% on BraTS2020, and 80.47% on BraTS2023 GLI. These averages are higher than those of RobustSeg, RFNet, and mm-Former in our experiments on each dataset. The BraTS2020 ablations support the contributions of the tumor-state path, cross-stage propagation, and semantic assignment supervision within the evaluated configuration. Removing modality-token interaction gives the smallest average Dice decrease among the tested variants, at 0.26 percent-age points. Internal analysis shows that assignments become more concen-trated across stages and that state slots retain their correspondence. The NCR/NET and ET assignment responses still overlap. 
+
+Declaration of competing interest 
+
+The authors declare that they have no known competing financial inter-ests or personal relationships that could have appeared to influence the work reported in this paper. 29 Funding 
+
+This research received no specific grant from funding agencies in the pub-lic, commercial, or not-for-profit sectors. 
+
+Ethics and data use 
+
+This study used existing MRI data and segmentation annotations from the BraTS collections cited in Section 4. No new participant recruitment or image acquisition was performed for this study. Access and reuse are governed by the terms of the respective data providers. 
+
+Data availability 
+
+The BraTS datasets are available through the challenge and data-access procedures of the collections cited in Section 4. The PMTM source code and fixed subject-level split identifiers are available at https://github.com/ milad67/PMTM . Access to the original MRI data remains subject to the terms of the respective data providers. 
+
+References 
+
+[1] Jyothi, P., & Singh, A. R. (2023). Deep learning models and traditional automated techniques for brain tumor segmentation in MRI: A review. 
+
+Artificial Intelligence Review, 56 , 2923–2969. [2] Menze, B. H., Jakab, A., Bauer, S., Kalpathy-Cramer, J., Farahani, K., Kirby, J., Burren, Y., Porz, N., Slotboom, J., Wiest, R., Lanczi, L., Gerstner, E., Weber, M.-A., Arbel, T., Avants, B. B., Ayache, N., Buendia, P., Collins, D. L., Cordier, N., . . . Van Leemput, K. (2015). The multimodal brain tumor image segmentation benchmark (BRATS). 
+
+IEEE Transactions on Medical Imaging, 34 (10), 1993–2024. https:// doi.org/10.1109/TMI.2014.2377694 
+
+[3] Bakas, S., Akbari, H., Sotiras, A., Bilello, M., Rozycki, M., Kirby, J. S., Freymann, J. B., Farahani, K., & Davatzikos, C. (2017). Advancing the cancer genome atlas glioma MRI collections with expert segmentation labels and radiomic features. Scientific Data, 4 , Article 170117. https: //doi.org/10.1038/sdata.2017.117 
+
+30 [4] Ding, Y., Yu, X., & Yang, Y. (2021). RFNet: Region-aware fusion net-work for incomplete multi-modal brain tumor segmentation. In Proceed-ings of the IEEE/CVF International Conference on Computer Vision 
+
+(pp. 3975–3984). [5] Xiao, Y., Fan, X., Liao, Y., Yang, C., & Zhao, Y. (2025). A 3D UNet-based fusion network for brain tumor segmentation with missing modali-ties. Neurocomputing, 657 , Article 131642. https://doi.org/10.1016/ j.neucom.2025.131642 
+
+[6] Zhou, T., Ruan, S., & Hu, H. (2023). A literature survey of MR-based brain tumor segmentation with missing modalities. Computerized Med-ical Imaging and Graphics, 104 , Article 102167. [7] Havaei, M., Guizard, N., Chapados, N., & Bengio, Y. (2016). HeMIS: Hetero-modal image segmentation. In Medical Image Computing and Computer Assisted Intervention – MICCAI 2016 (pp. 469–477). [8] Dorent, R., Joutard, S., Modat, M., Ourselin, S., & Vercauteren, T. (2019). Hetero-modal variational encoder-decoder for joint modality completion and segmentation. In Medical Image Computing and Com-puter Assisted Intervention – MICCAI 2019 (pp. 74–82). [9] Zhang, Y., He, N., Yang, J., Li, Y., Wei, D., Huang, Y., Zhang, Y., He, Z., & Zheng, Y. (2022). mmFormer: Multimodal medical transformer for incomplete multimodal learning of brain tumor segmentation. In Medical Image Computing and Computer Assisted Intervention – MICCAI 2022 
+
+(pp. 107–117). [10] Shi, J., Yu, L., Cheng, Q., Yang, X., Cheng, K.-T., & Yan, Z. (2024). M2FTrans: Modality-masked fusion transformer for incomplete multi-modality brain tumor segmentation. IEEE Journal of Biomedical and Health Informatics, 28 (1), 379–390. [11] Rostamian, M., Mohammadi, M., Konukoglu, E., & Soryani, M. (2026). 
+
+Parameter-Efficient Multimodal Brain Tumor Segmentation With Stage-Wise Shared Adapters (arXiv:2610.18571) [Preprint]. arXiv. https:// arxiv.org/abs/2610.18571 
+
+[12] Wang, M., & Jiang, H. (2023). Memory-Net: Coupling feature maps extraction and hierarchical feature maps reuse for efficient and effective 31 PET/CT multi-modality image-based tumor segmentation. Knowledge-Based Systems, 265 , Article 110399. https://doi.org/10.1016/j. knosys.2023.110399 
+
+[13] Zhang, Z., Xiang, B., Xie, C., & Yuan, F. (2026). High-resolution fu-sion Mamba and deep-feature memory for medical image segmentation. 
+
+Pattern Recognition, 180 , Article 114147. https://doi.org/10.1016/ j.patcog.2026.114147 
+
+[14] Luo, Y., Xu, Q., Huang, H., Ouyang, Y., He, X., Chen, Z., Duan, W., & Luo, J. (2026). Synergistic modality-and-slice memory framework for cross-modal 3D brain tumor segmentation (Version 2) [Preprint]. arXiv. 
+
+https://arxiv.org/abs/2510.10679v2 
+
+[15] Pereira, S., Pinto, A., Alves, V., & Silva, C. A. (2016). Brain tumor segmentation using convolutional neural networks in MRI images. IEEE Transactions on Medical Imaging, 35 (5), 1240–1251. [16] Zhou, T., Canu, S., & Ruan, S. (2020). Fusion based on attention mecha-nism and context constraint for multi-modal brain tumor segmentation. 
+
+Computerized Medical Imaging and Graphics, 86 , Article 101811. [17] Zhou, T., Ruan, S., Vera, P., & Canu, S. (2022). A Tri-Attention fusion guided multi-modal segmentation network. Pattern Recognition, 124 ,Article 108417. [18] Xing, Z., Yu, L., Wan, L., Han, T., & Zhu, L. (2022). NestedFormer: Nested modality-aware transformer for brain tumor segmentation. In 
+
+Medical Image Computing and Computer Assisted Intervention – MIC-CAI 2022 (pp. 140–150). [19] Zhou, T., Wang, Z., Liu, X., Liu, W., & Zhu, S. (2025). Learning deep feature representations for multi-modal MR brain tumor segmentation. 
+
+Neurocomputing, 638 , Article 130162. https://doi.org/10.1016/j. neucom.2025.130162 
+
+[20] Chen, C., Dou, Q., Jin, Y., Chen, H., Qin, J., & Heng, P. A. (2019). Ro-bust multimodal brain tumor segmentation via feature disentanglement and gated fusion. In Medical Image Computing and Computer Assisted Intervention – MICCAI 2019 (pp. 447–456). 32 [21] Yang, Q., Guo, X., Chen, Z., Woo, P. Y. M., & Yuan, Y. (2022). D 2-Net: Dual disentanglement network for brain tumor segmentation with miss-ing modalities. IEEE Transactions on Medical Imaging, 41 (10), 2953– 2964. [22] Wang, Y., Zhang, Y., Liu, Y., Lin, Z., Tian, J., Zhong, C., Shi, Z., Fan, J., & He, Z. (2021). ACN: Adversarial co-training network for brain tu-mor segmentation with missing modalities. In Medical Image Computing and Computer Assisted Intervention – MICCAI 2021 (pp. 410–420). [23] Wang, H., Ma, C., Zhang, J., Zhang, Y., Avery, J., Hull, L., & Carneiro, G. (2023). Learnable cross-modal knowledge distillation for multi-modal learning with missing modality. In Medical Image Computing and Com-puter Assisted Intervention – MICCAI 2023 (pp. 216–226). [24] Liu, W., Hou, J., Zhong, X., Zhan, H., Cheng, J., Fang, Y., & Yue, G. (2025). Improving multi-modal brain tumor segmentation via pre-training and knowledge distillation based post-training. Neurocomput-ing, 640 , Article 130318. https://doi.org/10.1016/j.neucom.2025. 130318 
+
+[25] Liu, H., Wei, D., Lu, D., Sun, J., Wang, L., & Zheng, Y. (2023). M3AE: Multimodal representation learning for brain tumor segmentation with missing modalities. In Proceedings of the AAAI Conference on Artificial Intelligence (pp. 1657–1665). [26] Song, P., Xue, X., Zhang, J., Wang, Z., Liu, J., Fu, S., Bao, F., & Yeo, S. Y. (2026). Uni-encoder meets multi-encoders: Representation before fusion for brain tumor segmentation with missing modalities. In Pro-ceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (pp. 15627–15638). [27] Zhang, Z., Lu, Y., Ma, F., Zhang, Y., Yue, H., & Sun, X. (2025). Incom-plete multi-modal brain tumor segmentation via learnable sorting state space model. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (pp. 25982–25992). [28] Liu, D., Zhang, X., Zhou, H., & Teo, K. L. (2025). Consistency-driven state-space model for incomplete multimodal MRI brain tumor seg-mentation. Meta-Radiology, 3 (4), Article 100185. https://doi.org/ 10.1016/j.metrad.2025.100185 
+
+33 [29] Diao, Y., Fang, H., Yu, H., Li, F., & Xu, Y. (2025). Multimodal invari-ant feature prompt network for brain tumor segmentation with missing modalities. Neurocomputing, 616 , Article 128847. https://doi.org/ 10.1016/j.neucom.2024.128847 
+
+[30] Zou, Y., Liu, B., Zheng, C.-J., Geng, Y.-M., Li, S., Zuo, Q., Wang, S., Zhang, Y., & Hong, J. (2026). MGML: A plug-and-play meta-guided multi-modal learning framework for incomplete multimodal brain tumor segmentation. Neural Networks, 197 , Article 108525. https://doi.org/ 10.1016/j.neunet.2025.108525 
+
+[31] Tang, H., Guo, Z., Wang, L., & Liu, C. (2025). Similarity memory prior is all you need for medical image segmentation. In Proceedings of the IEEE/CVF International Conference on Computer Vision (pp. 23009– 23018). [32] Zhao, L., Bao, X., Xu, C., & Jia, Y. (2026). A selective memory network for medical image segmentation in 3D MRI. Biomedical Signal Process-ing and Control, 119 , Article 109989. https://doi.org/10.1016/j. bspc.2026.109989 
+
+[33] Vaswani, A., Shazeer, N., Parmar, N., Uszkoreit, J., Jones, L., Gomez, A. N., Kaiser, L., & Polosukhin, I. (2017). Attention is all you need. In Advances in Neural Information Processing Systems (Vol. 30, pp. 5998–6008). [34] Abraham, N., & Khan, N. M. (2019). A novel focal Tversky loss function with improved Attention U-Net for lesion segmentation. In 2019 IEEE 16th International Symposium on Biomedical Imaging (ISBI) (pp. 683– 687). https://doi.org/10.1109/ISBI.2019.8759329 
+
+[35] Bakas, S., Reyes, M., Jakab, A., Bauer, S., Rempfler, M., Crimi, A., et al. (2018). Identifying the best machine learning algorithms for brain tumor segmentation, progression assessment, and overall survival pre-diction in the BRATS challenge [Preprint]. arXiv. https://doi.org/ 10.48550/arXiv.1811.02629 
+
+[36] BraTS 2023 Challenge: Segmentation – adult glioma . (2023). Synapse. Retrieved September 8, 2026, from https://www.synapse.org/ Synapse:syn51156910/wiki/622351 
+
+34 [37] Baid, U., Ghodasara, S., Mohan, S., Bilello, M., Calabrese, E., Co-lak, E., Farahani, K., Kalpathy-Cramer, J., Kitamura, F. C., Pati, S., Prevedello, L. M., Rudie, J. D., Sako, C., Shinohara, R. T., Bergquist, T., Chai, R., Eddy, J., Elliott, J., Reade, W., . . . Bakas, S. (2021). The RSNA-ASNR-MICCAI BraTS 2021 benchmark on brain tumor segmentation and radiogenomic classification [Preprint]. arXiv. 
+
+https://doi.org/10.48550/arXiv.2107.02314 
+
+[38] Baid, U., Ghodasara, S., Mohan, S., Bilello, M., Calabrese, E., Co-lak, E., Farahani, K., Kalpathy-Cramer, J., Kitamura, F. C., Pati, S., Prevedello, L., Rudie, J., Sako, C., Shinohara, R., Bergquist, T., Chai, R., Eddy, J., Elliott, J., Reade, W., . . . Bakas, S. (2023). RSNA-ASNR-MICCAI-BraTS-2021 dataset [Data set]. The Cancer Imaging Archive. 
+
+https://doi.org/10.7937/jc8x-9874 
+
+[39] Pipoli, V., Saporita, A., Marchesini, K., Grana, C., Ficarra, E., & Bolelli, F. (2025). IM-Fuse: A Mamba-based fusion block for brain tumor segmentation with incomplete modalities. In Medical Image Computing and Computer Assisted Intervention – MICCAI 2025 (pp. 225–235). 
+
+https://doi.org/10.1007/978-3-032-04984-1_22 
+
+[40] Wei, S., Luo, C., & Luo, Y. (2023). MMANet: Margin-aware distillation and modality-aware regularization for incomplete multimodal learning. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (pp. 20039–20049). [41] Shi, J., Shang, C., Sun, Z., Yu, L., Yang, X., & Yan, Z. (2024). PAS-SION: Towards effective incomplete multi-modal medical image seg-mentation with imbalanced missing rates. In Proceedings of the 32nd ACM International Conference on Multimedia (pp. 456–465). https: //doi.org/10.1145/3664647.3681543 
+
+[42] Lan, L., Li, H., Xia, Z., & Zhang, Y. (2025). DMAF-Net: An effec-tive modality rebalancing framework for incomplete multi-modal medi-cal image segmentation [Preprint]. arXiv. https://doi.org/10.48550/ arXiv.2506.11691 
+
+35
