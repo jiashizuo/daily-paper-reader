@@ -48,17 +48,17 @@
 <section class="dpr-home-dashboard-card dpr-home-report-card">
   <div class="dpr-home-dashboard-header">
     <div>
-      <span class="dpr-home-dashboard-kicker">2026-10-21</span>
+      <span class="dpr-home-dashboard-kicker">2026-10-22</span>
       <h3 class="dpr-home-dashboard-title">今日汇总</h3>
     </div>
     <strong class="dpr-home-dashboard-count">共 5 篇</strong>
   </div>
   <dl class="dpr-home-dashboard-stats">
     <div class="dpr-home-dashboard-stat"><dt>累计更新</dt><dd>1 次</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>1</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>4</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>0</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>5</dd></div>
   </dl>
-  <p class="dpr-home-dashboard-body">最近更新：2026-10-21 22:33:14 UTC<br>状态：成功</p>
+  <p class="dpr-home-dashboard-body">最近更新：2026-10-22 22:10:58 UTC<br>状态：成功</p>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-brief-card">
   <div class="dpr-home-dashboard-header">
@@ -69,7 +69,9 @@
     <strong class="dpr-home-dashboard-count">AI</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<p>今日共处理5篇文献（精读1篇、速读4篇），重点锁定基于表格-图像数据的痴呆检测多模态融合研究。最值得看的是HypTI（9.0/10）用双曲几何感知融合表格与影像特征，以及阿尔茨海默与帕金森跨病种影像标志物学习（7.0/10）这一方向。普通读者可先读HypTI了解多模态痴呆筛查思路，再关注跨病种标志物研究能否走向临床早筛。</p>
+<p>今日完成 5 篇速读、0 篇精读，重点集中在脑部 MRI 的生成与表征建模。</p>
+<p>最值得看的是两篇 7.0 分工作：GliomaINK 用肿瘤与解剖条件化的流匹配做 3D MRI 序列合成，Brain2Vec 则给出结构脑 MRI 的自监督 3D 基础模型。</p>
+<p>普通读者可先读这两篇的摘要与图示，理解“合成数据补序列”和“自监督预训练”两条路线，再决定是否深入 ChronoSheaf 的时空滤波方法。</p>
   </div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-deep-card">
@@ -78,12 +80,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">精读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">1 篇</strong>
+    <strong class="dpr-home-dashboard-count">0 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="HypTI: Hyperbolic Geometry-Aware Multimodal Feature Fusion Framework for Dementia Detection Based on Tabular-Image Data">HypTI: Hyperbolic Geometry-Aware Multimodal Feature Fusion Framework for Dementia Detection Based on Tabular-Image Data</span></li></ul>
+<p class="dpr-home-dashboard-empty">今日暂无推荐。</p>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">hginff <strong>1</strong></span></div>
+
 </section>
 <section class="dpr-home-dashboard-card dpr-home-skim-card">
   <div class="dpr-home-dashboard-header">
@@ -91,12 +93,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">速读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">4 篇</strong>
+    <strong class="dpr-home-dashboard-count">5 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Cross-disorder Learning of Imaging-derived Joint Mophometric Markers in Alzheimer&#x27;s and Parkinson&#x27;s Diseases">Cross-disorder Learning of Imaging-derived Joint Mophometric Markers in Alzheimer&#x27;s and Parkinson&#x27;s Diseases</span></li><li><span class="dpr-home-dashboard-paper-title" title="A Mathematical Framework for EEG Functional Connectivity: Taxonomy, Measure Relationships, Identifiability, and Analytical Bounds">A Mathematical Framework for EEG Functional Connectivity: Taxonomy, Measure Relationships, Identifiability, and Analytical Bounds</span></li><li><span class="dpr-home-dashboard-paper-title" title="Multimodal-Conditioned Latent Diffusion Models for Spatiotemporal Brain MRI Forecasting">Multimodal-Conditioned Latent Diffusion Models for Spatiotemporal Brain MRI Forecasting</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="GliomaINK: A Tumor and Anatomy Conditioned Flow Matching Framework for 3D MRI Sequence Synthesis in Glioma Patients">GliomaINK: A Tumor and Anatomy Conditioned Flow Matching Framework for 3D MRI Sequence Synthesis in Glioma Patients</span></li><li><span class="dpr-home-dashboard-paper-title" title="Brain2Vec: A Self-Supervised 3D Foundation Model for Structural Brain MRI">Brain2Vec: A Self-Supervised 3D Foundation Model for Structural Brain MRI</span></li><li><span class="dpr-home-dashboard-paper-title" title="ChronoSheaf: Joint Spatio-Temporal Spectral Filtering on Cellular Sheaves">ChronoSheaf: Joint Spatio-Temporal Spectral Filtering on Cellular Sheaves</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">fbn <strong>4</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">fbn <strong>5</strong></span></div>
 </section>
 </div>
 

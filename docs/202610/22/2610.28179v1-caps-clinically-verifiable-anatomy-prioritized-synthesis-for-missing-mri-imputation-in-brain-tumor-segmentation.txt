@@ -1,0 +1,507 @@
+Title: CAPS: Clinically-Verifiable Anatomy-Prioritized Synthesis for Missing MRI Imputation in Brain Tumor Segmentation
+
+URL Source: https://arxiv.org/pdf/2610.28179v1
+
+Published Time: Wed, 21 Oct 2026 01:26:32 GMT
+
+Number of Pages: 20
+
+Markdown Content:
+# CAPS: Clinically-Verifiable Anatomy-Prioritized Synthesis for Missing MRI Imputation in Brain Tumor Segmentation 
+
+Cecilia Diana-Albelda a,†,∗, Arthur Longuefosse b,†, Mario Rubén Paz Campos c, Álvaro García-Martín a, Jesus Bescos a      
+
+> †Equal contribution. ∗Corresponding author: cecilia.diana.albelda@gmail.com
+> aUniversidad Autónoma de Madrid, Department of Electronic Technology and Communications, Madrid, Spain
+> bRIKEN Center for Integrative Medical Sciences, Medical Data Deep Learning Team, Tokyo, Japan
+> cHospital Universitario La Princesa, Diagnostic Radiology Department, Madrid, Spain
+
+Abstract 
+
+Multi-parametric MRI is the gold standard for neuro-oncology, yet acquiring complete 4-modality protocols may be unfeasible in real-world clinical practice. When handling missing modalities, existing automated systems force a critical compromise: robust segmenters operate as uninterpretable "black boxes" that bypass image generation, while standard synthesis models often produce blurry reconstructions lacking diagnostic reliability. To address this issue, we propose CAPS, a Clinically-Verifiable Anatomy-Prioritized Synthesis framework that reconciles computational precision with clinical transparency. Our multi-modal generative architecture is driven by a hybrid objective function (L1 + LAFP + LDualDice ) that explicitly enforces the preservation of deep anatomical features and strict topological boundaries, rather than relying solely on pixel-wise optimization. Evaluated comprehensively on the BraTS Adult Glioma dataset, the framework achieves superior synthesis fidelity across intensity-based metrics, and demonstrates robust downstream segmentation performance (82 .38% mean Dice), successfully restoring verifiable visual context. Furthermore, the framework exhibits exceptional zero-shot cross-domain generalization, maintaining high structural fidelity across completely unseen Meningioma, Pediatric, and Sub-Saharan African cohorts without domain-specific adaptation. Finally, a blinded radiological assessment confirms that our anatomy-aware approach significantly en-hances both perceived image quality and clinical utility, providing clinicians with the reliable visual evidence required to trust downstream automated workflows. 
+
+Keywords: Image Synthesis, Missing Modalities, MRI, Brain Tumors, Generalization 
+
+1. Introduction 
+
+Gliomas are among the most prevalent primary Cen-tral Nervous System (CNS) tumors Weller et al. (2015), with high-grade gliomas being particularly aggressive due to their highly infiltrative growth and low sur-vival rates Guo et al. (2023). The gold standard for the diagnosis, treatment planning, and post-operative monitoring of these tumors is multi-parametric Mag-netic Resonance Imaging (mp-MRI). A standard neuro-oncological protocol typically comprises four scan modalities: Native T1-weighted (T1n), Post-contrast T1-weighted (T1c), T2-weighted (T2w), and T2 Fluid-Attenuated Inversion Recovery (T2f) Diana-Albelda et al. (2025a). Each modality provides unique and complementary tissue contrasts that are critical for ac-curate tumor characterization. For instance, the ac-tive, proliferating tumor core and neoangiogenesis are primarily visible in the gadolinium-enhanced T1c se-quence, while the surrounding peritumoral edema and non-enhancing infiltrative regions are best delineated using T2f. However, acquiring the complete 4-modality protocol in real-world clinical settings is sometimes un-feasible, as scans may be incomplete due to time con-straints, patient motion artifacts, financial limitations, or contraindications to gadolinium-based contrast agents Li et al. (2024). The absence of even a single modality introduces a twofold clinical and algorithmic challenge. Clinically, it deprives neuroradiologists of vital anatom-arXiv:2610.28179v1 [eess.IV] 20 Oct 2026 ical information, potentially leading to suboptimal sur-gical planning and, ultimately, negatively impacting pa-tient survival and recurrence rates. Algorithmically, state-of-the-art automated segmentation systems, which are increasingly integrated to assist clinical workflows, are typically designed to process the full set of four in-put channels, thereby experiencing severe performance degradation or failure when a modality is missing or zero-padded Sharma and Hamarneh (2019). To mitigate this problem, two main strategies have emerged in the literature. The first one focuses on de-signing robust segmentation frameworks that can pre-dict tumor boundaries despite incomplete inputs Zhang et al. (2022); Pipoli et al. (2025). While these systems achieve remarkable accuracy, they present a significant challenge in clinical practice: they output a tumor mask without restoring the missing anatomical image, leav-ing the clinician without the visual evidence needed to corroborate the automated delineation. The second strategy relies on image synthesis to impute the miss-ing modality Diana-Albelda et al. (2025b). However, traditional synthesis methods primarily optimize stan-dard pixel-wise reconstruction losses, such as L1, which frequently results in blurry outputs that miss important structural details Longuefosse et al. (2025), thereby re-stricting their practical utility for the clinicians. Addressing these limitations, we propose CAPS, a novel Clinically-Verifiable Anatomy-Prioritized Syn-thesis framework that bridges the gap between computa-tional robustness and clinical reliability. Instead of opti-mizing solely for pixel-level similarity, our approach ex-plicitly maximizes the preservation of anatomical struc-tures and tumor topology. By restoring the missing modality with high structural fidelity, our method pro-vides the clinician with the necessary visual data to plan surgeries and verify AI-generated segmentations, while simultaneously supporting robust downstream au-tomated segmentation, as illustrated in Figure 1. The main contributions of this paper are summarized as follows: 
+
+• Empirical Analysis of the Accuracy-Interpretability Trade-o ff . We compare robust segmentation frameworks against synthesis-based pipelines and conclude that, while robust seg-menters may achieve marginally higher numerical accuracy on missing modalities, high-fidelity image synthesis is an indispensable step to provide the visual context that neuroradiologists require for diagnostic verification. 
+
+• Anatomy-Prioritized Synthesis. Unlike tradi-tional approaches that rely solely on pixel-wise T1n  T2f T2w  
+
+> Synthetic T1c ( ෠𝑌 )
+
+Segmenter  S
+
+> nnU-Net ResEnc M
+> 50% Synthetic Samples
+
+Generator  G       
+
+> 3D nnResU-Net
+> Anatomical-Aware Loss
+> Missing T1c ( 𝑌 )
+> Concatenation
+> Blinded
+> Radiological Validation
+> WT
+> TC
+> ENH
+> Available Modalities ( 𝒳 )
+> Predicted Mask ( መ𝑍)
+> Figure 1: Overview of CAPS. Given three available MRI modalities (X: T1n, T2w, T2f), the generator Gsynthesizes the missing sequence ( ˆ Y, T1c in this example). The synthesized volume is then concate-nated with the available modalities and fed into the clinical segmenter
+> S, which produces the predicted tumor mask ( ˆ Z) for the three nested BraTS regions (WT, TC, ENH). Moreover, the synthesized volume is provided to a radiologist for blinded clinical validation, ensuring that the framework delivers both automated segmentation and verifiable visual context.
+
+optimization, we design a generative architecture driven by a hybrid loss function ( L1 + LAFP +
+
+LDualDice ) that explicitly enforces the preservation of fine anatomical structures, tumor boundaries, and overall integrity. Building upon the AFP loss originally proposed for MR-to-CT translation Longuefosse et al. (2025), we adapt it to the multi-modal MRI synthesis setting and complement it with a Dual Dice loss that jointly penalizes region-level and boundary-level deviations. Central to our design is a frozen, modality-specialized segmenta-tion network that serves a dual supervisory role: as a multi-scale anatomical feature extractor and as a topological boundary enforcer, directly coupling the generative objective with downstream diagnos-tic consistency. 
+
+• Blinded Radiological Evaluation. Moving be-yond standard pixel-level metrics (e.g., PSNR, NMSE) that may not fully reflect clinical utility, 2we incorporate a blinded clinical validation. We conclude that our CAPS approach yields synthetic images with improved diagnostic quality and struc-tural reliability compared to the standard synthesis baseline. To facilitate reproducibility and encour-age clinical validation in future synthesis research, we publicly release the evaluation tool used for this assessment. 
+
+• Cross-Domain Generalization. We successfully evaluate the synthesis capability of our method on completely unseen Meningioma, Pediatric Glioma, and Sub-Saharan Glioma datasets, e ff ectively over-coming the domain shift without requiring any domain-specific adaptation. 
+
+2. Related Work 
+
+Handling missing mp-MRI modalities in neuro-oncology generally falls into two distinct paradigms: ro-bust segmentation architectures that adapt to incomplete inputs Zhang et al. (2024), and medical image synthesis models that generate the absent data Dar et al. (2019). 
+
+2.1. Robust Segmentation with Missing Modalities 
+
+Recent literature has extensively explored adaptive segmentation networks designed to be resilient against incomplete input configurations. Several studies have focused on learning modality-agnostic networks and shared latent representations that remain stable even when specific sequences are omitted Dorent et al. (2019). For instance, early foundational approaches like HeMIS Havaei et al. (2016) achieved this by comput-ing statistical moments across available feature maps. This concept has evolved into sophisticated feature-level fusion strategies employing attention mechanisms, transformer-based architectures like mmFormer Zhang et al. (2022), and state-space models such as IM-Fuse Pipoli et al. (2025). Additionally, knowledge distillation techniques have been widely proposed to transfer struc-tural information from a full-modality “teacher” net-work to a missing-modality “student” network Hu et al. (2020). Despite achieving remarkably high computational ac-curacy, typically evaluated through standard metrics like the Dice Similarity Coe ffi cient (DSC) and Haus-dor ff Distance (HD95), these robust segmenters face a critical usability limitation. Because they do not gener-ate the missing scan and directly predict tissue bound-aries, they fail to provide the structural reference that radiologists rely on. This lack of diagnostic trans-parency hinders the adoption of pure segmentation ap-proaches in clinical workflows where visual verification is mandatory. 
+
+2.2. Medical Image Synthesis 
+
+A parallel line of research focuses on cross-modality medical image synthesis to impute the missing se-quences. Early generative methods heavily relied on Generative Adversarial Networks (GANs) Goodfellow et al. (2014); Tavse et al. (2022); Al Khalil et al. (2024), such as Pix2Pix Isola et al. (2017) and CycleGAN Zhu et al. (2017), which primarily performed one-to-one image translations. More recently, the field has ad-vanced towards highly adaptable architectures capable of handling multi-modal inputs, shifting from basic 1-to-1 mappings to complex many-to-one synthesis mod-els Meng et al. (2024). This evolution is highlighted by advanced Di ff usion Models Kebaili et al. (2025b) like AMM-Di ff Kebaili et al. (2025a), which adaptively pro-cess variable sets of inputs, and State Space Models like I2I-Mamba Atli et al. (2024), which capture long-range contextual features across multi-contrast MRI. However, a fundamental limitation persists: most of these models are trained using generic pixel intensity-based objectives like L1 or Mean Squared Error Nie et al. (2018). Because these losses penalize errors on a purely pixel basis, they lack structural awareness and tend to over-smooth the generated images, washing out critical high-frequency details such as intricate tumor borders Isola et al. (2017). Furthermore, their perfor-mance is often solely measured via Image Quality Met-rics (e.g., PSNR, SSIM), leaving their actual utility for downstream automated clinical tasks unverified. 
+
+2.3. Structural Constraints and Joint Architectures 
+
+To mitigate the smoothing e ff ects of intensity-based losses, recent studies have introduced structural con-straints and joint synthesis-segmentation frameworks. For example, methods like EaGAN Yu et al. (2019) explicitly integrate edge-aware perceptual constraints to preserve high-frequency structures. Similarly, 3D Wavelet Di ff usion Models (WDM) Ferreira et al. (2024) strive to maintain spatial resolution while generating missing modalities. Moreover, unified frameworks have been proposed to jointly optimize synthesis and seg-mentation, acknowledging that image generation must ultimately be useful for tumor delineation Dorent et al. (2025). However, while feature-based objectives like perceptual loss e ff ectively balance pixel accuracy and realism in natural scenes, they often lack the anatomical 3rigor required for 3D medical volumes, where structural integrity must be prioritized over stylistic consistency Longuefosse et al. (2025). Despite these significant advances, existing joint frameworks often struggle to preserve fine tissue inter-faces when critical modalities are missing. Our work addresses this exact issue. By integrating a targeted Anatomical Feature-Prioritized (AFP) loss and a Dual Dice loss into a multi-modal 3-to-1 generative architec-ture, our framework successfully reconciles algorithmic precision with clinical interpretability. This approach successfully delivers highly verifiable restorations for radiologists while maintaining competitive performance in subsequent segmentation tasks. 
+
+3. Method 
+
+This section details the proposed Clinically-Verifiable Anatomy-Prioritized Synthesis framework (CAPS), designed to impute missing MRI modalities while preserving high-fidelity structural details. First, the mathematical problem formulation and the overall two-stage pipeline are established. Subsequently, the network architecture and the hybrid objective function are introduced. Finally, the specific implementation and training configurations required to ensure ro-bust convergence and downstream clinical utility are outlined. 
+
+3.1. Problem Formulation and Pipeline 
+
+The core objective of our framework is to synthesize a missing MRI scan from a subset of available comple-mentary modalities, ensuring that the generated image retains both structural fidelity and diagnostic utility. Let M = {T 1n, T 1c, T 2w, T 2 f } denote the complete set of four standard neuro-oncological MRI scan modal-ities acquired for a given patient. In real-world clin-ical scenarios, it is common for a specific modality to be missing, corrupted, or otherwise unavailable Li et al. (2024). We denote the target missing modality as t ∈ M and its corresponding ground-truth 3D vol-ume as Y, and formalize the problem as a multi-modal synthesis task (specifically, a 3-to-1 mapping). The set of available input modalities is therefore defined as 
+
+X = M \ { t}. Our goal is to train a generative map-ping function G, parametrized by weights θ, that takes the available modalities X as a multi-channel input and synthesizes a high-fidelity target estimation of the miss-ing sequence, denoted as ˆ Y:ˆY = Gθ(X), (1) where the synthesized volume ˆ Y is explicitly optimized to approximate the underlying anatomical information on Y.To achieve this, we propose a Clinically-Verifiable Anatomy-Prioritized Synthesis framework (CAPS) de-signed to operate in two interconnected phases (see Fig-ure 1): 1. Image Synthesis Phase: The core generative net-work takes the available 3D volumes X and syn-thesizes ˆ Y according to Figure 2 scheme. Unlike traditional synthesis pipelines that optimize purely for intensity matching, our generator G is driven by a hybrid objective function. This function in-tegrates a pre-trained feature extractor to explic-itly align the latent anatomical representations of ˆ Y
+
+with those of Y through S aux , ensuring the preser-vation of intricate tumor morphologies. 2. Downstream Segmentation Phase: To validate the clinical utility of the synthesized modality, ˆ Y is subsequently combined with the available modal-ities X to assemble the full imputed protocol, de-fined as Msynth = X∪{ ˆY}. This complete set is then fed into an independent segmentation network S to predict the final tumor boundaries. This two-stage pipeline guarantees that the synthesis process is not evaluated in isolation, but rather through its ability to provide actionable and interpretable visual data that supports robust downstream clinical tasks. It is important to note that, since each MRI sequence encodes fundamentally di ff erent tissue contrasts, both the generator G and the auxiliary extractor S aux are in-dependently trained for each specific missing modality scenario t ∈ M, yielding four specialized pairs ( Gt,
+
+S aux ,t). In contrast, the final clinical segmenter S is trained as a single unified model capable of processing any imputed 4-modality protocol, regardless of which sequence was synthesized. This design ensures that each synthesis pathway is maximally specialized for its target modality, while the downstream segmenter re-mains a general-purpose clinical tool. 
+
+3.2. CAPS Overview 
+
+The proposed method is organized into three distinct components designed to prioritize anatomical fidelity: a generative trainable network G, an auxiliary feature extractor Saux , and a final clinical segmenter S . This tripartite design ensures that the synthesis process is guided by deep anatomical priors while remaining ro-bust for downstream diagnostic tasks. 4T2f    
+
+> Input Modalities ( 𝒳 )
+> T1n
+> T2f
+> T2w
+> T1c Synthetic ( ෠𝑌 )
+> T1c Real ( Y)
+> Trainable Generator Pretrained Segmenter
+> (𝑆𝑎𝑢𝑥)
+> Generator loss: 𝐿1 + 𝐿AFP + 𝐿DualDice
+> Pixel-level
+> 𝐿1 𝑙𝑜𝑠𝑠
+> Feature-level
+> 𝐴𝐹𝑃 𝑙𝑜𝑠𝑠
+> Mask-level
+> 𝐷𝑢𝑎𝑙 𝐷𝑖𝑐𝑒 𝑙𝑜𝑠𝑠
+> Path A Path B
+> (𝐺
+
+)             
+
+> Missing Modality
+> Downsampling Upsampling
+> (…) (…)
+> (…) (…)
+> GT Mask ( Z)
+> Predicted Mask ( መ𝑍 aux )Figure 2: Overview of the Synthesis Framework. A trainable generator Gsynthesizes the missing modality ( ˆ Y, T1c in this example) from the available ones ( X: T1n, T2w, T2f) through a hybrid objective function. First, a pixel-level L1loss enforces global intensity consistency between the synthesized volume ˆ Yand the real one Y. Then, both are processed by a frozen pre-trained auxiliary segmenter ( Saux ), which acts as an expert feature extractor to compute the Anatomical Feature-Prioritized ( LAFP ) loss across multi-scale latent representations. Finally, the predicted mask ( ˆ Zaux ) and the real one ( Z) are used to calculate the topological Dual Dice loss, thereby ensuring the preservation of both deep structural invariants and precise tumor boundaries.
+
+3.2.1. Generator (G) 
+
+The generator consists of a 3D Residual U-Net (nnResU-Net) Isensee et al. (2024) architecture config-ured with six encoding and decoding stages. By incorporating residual connections within each convolutional block, the network facilitates an e ffi cient gradient flow that prevents the vanishing gradient prob-lem typical of deep 3D models Isensee et al. (2021), thereby accelerating convergence and enhancing the sta-bility of the generative process. The encoder is designed to process a multi-channel stacked input X, composed of the three available MRI modalities, while the decoder is responsible for synthesizing the single-channel vol-ume ˆ Y corresponding to the missing sequence. To pre-vent the emergence of chequerboard artifacts, the de-coder utilizes a trilinear interpolation strategy followed by standard convolutions Longuefosse et al. (2026), en-suring smooth spatial transitions in the reconstructed anatomy. 
+
+3.2.2. Auxiliary Feature Extractor ( Saux )
+
+To drive the anatomy-prioritized optimization, we utilize an auxiliary network, Saux , which acts as a frozen expert during the training of G. This network is pre-trained using only one single real modality as input to ensure that its latent embeddings are highly spe-cialized in the specific anatomical features of each se-quence. During the generative phase, Saux remains strictly frozen and serves as a multi-scale feature extrac-tor. Specifically, to compute the Anatomical Feature-Prioritized ( LAFP ) loss Longuefosse et al. (2025), fea-ture maps are extracted from every level of both the en-coder and the decoder, forcing the generator to preserve structural invariants across multiple levels of abstrac-tion. Furthermore, this network provides the topologi-cal guidance required for the LDualDice loss, aligning the synthesized lesion area with the expected clinical mor-phology. Architecturally, Saux shares the same nnU-Net Res-Enc M configuration and training objective as the final clinical segmenter S , with the critical distinction that its input layer is configured to accept a single modality channel rather than the full four-channel protocol. 
+
+3.2.3. Final Clinical Segmenter (S ) 
+
+The final component of our framework is the clin-ical segmenter S , which utilizes the nnU-Net ResEnc M architecture Isensee et al. (2024) to achieve an op-timal balance between segmentation performance and computational e ffi ciency. This network is optimized us-ing the standard nnU-Net objective function, combining Dice loss and Cross-Entropy loss in equal proportion. Unlike the auxiliary extractor, this network is trained to process the full complement of four input modali-ties. To enhance its resilience to synthetic imputation, 
+
+S is trained under a specialized augmentation scheme 5where there is a 50% probability that any given modal-ity is replaced by its synthetic counterpart generated by 
+
+G. During the inference phase, this network acts as the definitive evaluator, processing the imputed 4-modality protocol to produce the final tumor masks. This config-uration ensures that the segmenter is not only capable of interpreting synthetic data but also of integrating it seamlessly with real modalities to maintain high diag-nostic accuracy. 
+
+3.3. Loss Formulation 
+
+The total objective function used to optimize the gen-erator G is formulated as a weighted sum of three dis-tinct components: 1) a global intensity loss ( L1); 2) an anatomical feature-level loss ( LAFP ); and 3) a topologi-cal segmentation loss ( LDualDice ). 
+
+LT otal = L1 + LAFP + LDualDice , (2) 
+
+3.3.1. Voxel-Level Reconstruction Loss ( L1)
+
+To ensure global intensity consistency and minimize the fundamental voxel-wise error between the synthe-sized modality ˆ Y and the ground truth one Y, we em-ploy the standard L1 distance. Unlike Mean Squared Error ( L2), the L1 norm is less prone to excessive blur-ring, making it a suitable baseline for contrast restora-tion Isola et al. (2017). It is computed as: 
+
+L1 = 1
+
+V
+
+> V
+
+X
+
+> v=1
+
+ˆYv − Yv , (3) where V is the total number of voxels in the 3D vol-ume, and ˆ Yv and Yv represent the intensity values of the 
+
+v-th voxel in the predicted and target sequences, respec-tively. 
+
+3.3.2. Anatomical Feature-Prioritized Loss ( LAFP )
+
+While L1 ensures global contrast, it lacks the spa-tial context required to preserve high-frequency struc-tures. To explicitly promote the preservation of fine anatomical details, we employ the Anatomical Feature-Prioritized (AFP) loss, originally proposed for cross-modality translation in Longuefosse et al. (2025) and here adapted to the multi-modal MRI synthesis setting. Instead of computing di ff erences purely in the image space, LAFP calculates the L1 distance in a highly spe-cialized latent space. By leveraging the pre-trained and frozen segmenta-tion network Saux as a feature extractor, we map both ˆ Y
+
+and Y into their respective deep embeddings. The loss is defined as: 
+
+LAFP = 1
+
+N
+
+> N
+
+X
+
+> l=1
+
+ϕl( ˆ Y) − ϕl(Y) 1 , (4) where N denotes the total number of extracted layers from Saux , and ϕl(·) represents the intermediate feature activation maps obtained at the l-th layer. 
+
+3.3.3. Dual Dice Loss ( LDualDice )
+
+To enforce strict anatomical alignment specifically at the tumor regions, we propose a Dual Dice loss that evaluates both full-region overlap and boundary preci-sion. Since G outputs continuous intensity images, we map these volumes into a topological space by passing them through the frozen auxiliary segmentation network Saux .Let ˆ Zaux = Saux ( ˆ Y) represent the tumor mask predicted from the synthesized image, the loss is then computed directly against the manual clinical ground truth mask, denoted as Z. This formulation forces the generator to synthesize textures and intensities that are interpreted by the segmentation model in the same manner as the true anatomical pathology, thereby maximizing down-stream diagnostic consistency. To capture fine-grained morphological details, we de-fine the boundary contours ∂ ˆZaux and ∂Z through a dif-ferentiable morphological gradient ∆k. For any binary mask B, the boundary is extracted as ∂B = ∆ k(B) =
+
+δk(B) − ϵk(B), where δk and ϵk denote dilation and ero-sion operators with default kernel size k = 3, imple-mented via 3D max-pooling. The proposed topological penalty is then formulated as: 
+
+LDualDice = 1 − 2| ˆZaux ∩ Z|| ˆZaux | + |Z|
+
+!
+
++ 1 − 2|∂ ˆZaux ∩ ∂Z||∂ ˆZaux | + |∂Z|
+
+!
+
+,
+
+(5) where the first term ensures global topological agree-ment of the lesion, and the second term heavily pe-nalizes morphological deviations strictly at the borders. This dual formulation prevents the generated tumor from artificially expanding or shrinking relative to the actual anatomy. 
+
+3.4. Implementation and Training Details 
+
+CAPS is implemented in PyTorch and integrated into the adapted nnU-Netv2 architecture Isensee et al. (2021); Longuefosse et al. (2024). 6Preprocessing and Data Augmentation. All MRI vol-umes were independently normalized using standard Z-score normalization (zero mean, unit variance) per modality. During training, we employed a robust on-line data augmentation pipeline to prevent overfitting, which included spatial transformations (random rota-tions and scaling) and intensity transformations (Gaus-sian noise, Gaussian blur, brightness /contrast adjust-ments, and gamma correction) Isensee et al. (2021). No-tably, spatial mirroring (flips) was explicitly disabled to preserve the inherent left-right anatomical asymmetries of the brain. 
+
+Training Configuration. The generative model was trained using 3D patches of size 96 × 160 × 160 voxels and a batch size of 2. The network parameters were op-timized using Stochastic Gradient Descent (SGD) with Nesterov momentum Shi (2024) (0 .99) and weight de-cay (3 × 10 −5). The initial learning rate was set to 10 −2
+
+and progressively decayed according to a polynomial schedule function over the training process. To ensure training stability, especially given the multi-objective nature of our hybrid loss function, we applied gradient clipping. The model was trained for 1000 epochs, with each epoch consisting of 250 itera-tions. All models were trained on a single NVIDIA A40 GPU (48 GB VRAM). 
+
+Inference Phase. During the evaluation phase, the in-ference was performed using a sliding-window ap-proach with a 50% patch overlap Isensee et al. (2021). To reconstruct the final synthetic modality ˆ Y, we em-ploy a mean aggregation strategy across overlapping patches. 
+
+4. Experimental Setup 
+
+This section outlines the experimental configuration utilized to validate CAPS. Initially, the selected neuro-oncological datasets and their respective data partition-ing strategies are detailed for both the primary evalua-tion and the cross-domain inference. Finally, the quan-titative evaluation metrics employed to assess both im-age reconstruction quality and downstream segmenta-tion accuracy are defined. 
+
+4.1. Datasets and Data Partitioning 
+
+To comprehensively train and evaluate our proposal, we utilized the globally recognized Brain Tumor Seg-mentation (BraTS) datasets Menze et al. (2014). All multi-parametric MRI sequences (T1n, T1c, T2w, and T2f) across these datasets share a standardized prepro-cessing pipeline: they are co-registered to the same anatomical template, skull-stripped, and resampled to an isotropic resolution of 1 × 1 × 1 mm. 
+
+Primary Training and Evaluation (Adult Glioma). The core development of our method was conducted using the BraTS 2023 Adult Glioma datasetBaid et al. (2021) (conceptually identical to the BraTS 2021 and 2022 co-horts), whose o ffi cial training set comprises 1251 pa-tient cases. We performed an 80% − 20% split on this subset: the 80% partition was exclusively used to train the generative synthesis network G, while the remaining 20% was strictly reserved for training both the auxiliary feature extractor S aux and the final clinical segmenter S ,ensuring complete data separation from the generator. In order to ensure a completely unbiased evaluation, all our quantitative results, ablation studies, and State-of-the-Art comparisons were extracted directly from the offi cial, unseen BraTS Adult Glioma Validation set, which comprises unseen 219 patient cases. To guar-antee absolute fairness and reproducibility, the down-stream segmentation metrics on this validation set were computed and retrieved through the o ffi cial Synapse au-tomated evaluation platform. 
+
+Cross-Domain Generalization Datasets. To evaluate the zero-shot robustness of our framework under sig-nificant domain shifts, we conducted additional infer-ence on three distinct, unseen neuro-oncological cohorts from the BraTS challenge: 
+
+• BraTS Meningioma LaBella et al. (2023): 1000 cases featuring structurally distinct, typically be-nign extra-axial tumors. 
+
+• BraTS Pediatric Glioma Kazerooni et al. (2024): 99 cases, presenting unique developmental brain anatomies and di ff ering tumor morphologies. 
+
+• BraTS Sub-Saharan Africa (SSA) Glioma Ade-wole et al. (2023): 60 cases acquired from di-verse, low-resource clinical settings, introducing significant variations in scanner hardware and im-age quality. 
+
+4.2. Evaluation Metrics Image Synthesis Metrics. To assess the quality of the imputed MRI modalities, we utilized three standard Im-age Quality Metrics (IQM): Normalized Mean Squared Error (NMSE), Peak Signal-to-Noise Ratio (PSNR), and Structural Similarity Index Measure (SSIM). 7Given the arbitrary and highly variable intensity ranges inherent to MRI sequences, computing these metrics directly on raw voxel values can yield incon-sistent results. Therefore, prior to evaluation, both the predicted volume ˆ Y and the target volume Y were ro-bustly normalized to a standard [0 , 1] range using the 1st and 99th percentiles of the target volume intensity distribution Isensee et al. (2021). This step e ff ectively clips hyper-intense artifacts and establishes a reliable dynamic range. Using the normalized volumes, the met-rics are computed as follows: 
+
+N MS E (Y, ˆY) = ∥Y − ˆY∥22
+
+∥Y∥22
+
+(6) 
+
+PS NR (Y, ˆY) = 10 · log 10 
+
+ MAX 2
+
+> Y
+
+MS E (Y, ˆY)
+
+ (7) 
+
+S S IM (Y, ˆY) = (2 μY μ ˆY + c1)(2 σY ˆY + c2)(μ2 
+
+> Y
+
++ μ2ˆY + c1)( σ2 
+
+> Y
+
++ σ2ˆY + c2) (8) where ∥ · ∥ 22 denotes the squared L2 norm, MAX Y = 1is the maximum possible pixel value after normaliza-tion, μ and σ denote the mean and standard deviation of the images, and c1, c2 are standard stabilization con-stants. NMSE provides a robust measure of absolute intensity deviation, PSNR evaluates the global recon-struction quality relative to the peak signal, and SSIM assesses perceived textural and structural realism. 
+
+Segmentation Metrics. To validate the clinical inter-pretability and functional utility of the synthesized im-ages, we evaluated the performance of the segmentation networks using two complementary metrics. First, spa-tial overlap is measured by the standard Dice Similarity Coe ffi cient (DSC): 
+
+DS C ( ˆ Z, Z) = 2| ˆZ ∩ Z|| ˆZ| + |Z| (9) where ˆ Z and Z represent the predicted and ground truth multi-class tumor masks, respectively. Second, to rigorously assess boundary precision, we employed the 95th percentile Hausdor ff Distance (HD95). Unlike the maximum Hausdor ff Distance, which is highly sensitive to single-voxel outliers Taha and Hanbury (2015), HD95 measures the spatial dis-tance between the boundaries of the predicted mask (∂ ˆZ) and those of the true mask ( ∂Z), disregarding the worst 5% of matching errors: 
+
+HD 95( ∂ ˆZ, ∂ Z) = max d95 (∂ ˆZ, ∂ Z), d95 (∂Z, ∂ ˆZ) (10) where d95 (A, B) represents the 95th percentile of the minimum Euclidean distances from all points in contour 
+
+A to contour B.
+
+5. Results 
+
+Evaluation of the proposed framework encompasses a rigorous analysis of both synthesis fidelity and clini-cal utility. Initial experiments establish the performance degradation caused by missing modalities, providing a baseline for the subsequent ablation studies on archi-tecture and loss formulation. Additionally, the results include a comprehensive comparison with state-of-the-art models, alongside a zero-shot generalization analy-sis and a blinded radiological validation to confirm the diagnostic reliability of the synthesized modality. 
+
+5.1. Impact of Missing Modalities 
+
+Before evaluating the results of CAPS, it is crucial to quantify the clinical and computational impact that the absence of MRI modalities has on automated segmenta-tion systems, detailed in Table 1. The reference model, trained and evaluated on the full protocol of four real modalities, establishes the up-per performance bound with a mean Dice coe ffi cient of 86 .65% and a Hausdor ff distance (HD95) of 12 .07mm. On the other hand, the zero-imputation strategy reveals critical network dependencies on specific sequences, identifying the absence of the T1c sequence as the most critical scenario, where the Dice coe ffi cient for the en-hancing tumor (ENH) drastically collapses to 14 .02%. Similarly, the missing T2f case disproportionately af-fects the whole tumor (WT), with its Dice score drop-ping to 47 .66% due to the loss of contrast in the peritu-moral edema regions. Although robust approaches, such as modality dropout training, partially mitigate these declines, these systems operate under a “black-box” paradigm that de-livers an isolated segmentation mask without restoring the underlying anatomical volume. This lack of vi-sual evidence prevents neuroradiologists from corrob-orating the AI-generated segmentation, thus justifying the pressing need for our synthesis framework, which is aimed at preserving structural fidelity alongside diag-nostic interpretability. 
+
+5.2. Ablation Study: Architecture and Loss 
+
+To empirically justify the design choices of our syn-thesis and segmentation framework, we conducted a comprehensive ablation study where all configurations were evaluated under the missing T1c scenario, as it rep-resents the most critical challenge from an anatomical perspective, according to Table 1. The architectural and loss decisions derived from this scenario were subse-quently applied identically to the remaining three miss-ing modality cases, with final results reported across all scenarios in Table 5. 8Architectural Optimization of G. As detailed in Ta-ble 2, we established a baseline using the standard nnU-Net architecture, which yielded a mean Dice coe ffi -cient of 70 .86% and a HD95 of 22 .55 mm. The inte-gration of 3D residual blocks (nnResU-Net) facilitated a more robust training optimization, raising the Dice score to 71 .99%. This performance gain is character-istic of residual architectures, which help mitigate gra-dient degradation in deep 3D networks while preserving high-frequency spatial features. Finally, replacing stan-dard transposed convolutions with a trilinear interpola-tion decoder e ff ectively mitigated spatial chequerboard artifacts, stabilizing synthesis quality and achieving an optimal NMSE, PSNR and mean dice. 
+
+Hybrid Loss Formulation through S aux . The quantita-tive results presented in Table 3 and the visual com-parisons in Figure 3 underscore the critical importance of our hybrid loss formulation. As observed in Ta-ble 3, optimization relying exclusively on the voxel-level absolute error ( L1) yields the poorest segmenta-tion performance, which suggests that purely intensity-based metrics do not prioritize the preservation of essen-tial anatomical structures, treating all voxels with equal weight regardless of their diagnostic relevance. The introduction of Dice-based components into the objective function leads to a measurable improvement in the mean Dice score of the synthesized images. How-ever, the most robust validation results are achieved only when combining all three terms: L1, the Anatom-ical Feature-Prioritized loss ( LAFP ), and the LDualDice ,which ensures a synergy between global intensity con-sistency, deep latent feature alignment, and topological boundary integrity. Qualitatively, Figure 3 demonstrates that L1-driven reconstructions su ff er from significant blurring, partic-ularly at the tumor margins. While intermediate solu-tions, such as L1 + AFP , succeed in producing well-defined boundaries that closely resemble the ground            
+
+> Table 1: Quantitative Comparison of Baseline Strategies for Missing Modalities. Segmentation performance (Dice and HD95) evaluated across di ff erent missing MRI scenarios. The Reference model establishes the upper performance bound, having been trained and evaluated on the complete 4-modality protocol. For the missing scenarios, both Zero Imputation and Synthesis Baseline evaluate this exact same reference model by replacing the absent modality with zeros or a standard L1-synthesized volume, respectively. In contrast, Trained with Dropout evaluates an independent baseline model specifically trained with modality dropout augmentation to handle incomplete inputs. The best performing baseline strategy for each specific missing scenario is highlighted in bold.
+
+Dice ( ↑) HD95 ( ↓)Strategy ENH TC WT Mean ENH TC WT Mean 
+
+Reference (All Real) 81.47 86.27 92.22 86.65 21.56 9.67 4.98 12.07 
+
+Missing T1n 
+
+Zero Imputation 79.60 83.55 91.59 84.91 22.37 12.84 5.71 13.64 
+
+Trained with Dropout 79.04 86.77 92.40 86.07 30.42 8.31 4.46 14.40 Synthesis Baseline 79.89 84.97 90.87 85.24 24.48 12.60 8.06 15.05 
+
+Missing T1c 
+
+Zero Imputation 14.02 43.09 89.46 48.86 70.49 31.66 6.61 36.25 Trained with Dropout 58.81 77.38 91.95 76.05 35.59 12.56 4.60 17.58 
+
+Synthesis Baseline 52.27 70.27 90.03 70.86 41.44 18.83 7.37 22.55 
+
+Missing T2w 
+
+Zero Imputation 77.26 79.81 80.45 79.17 27.77 18.26 16.34 20.29 Trained with Dropout 79.89 87.07 92.26 86.41 28.46 6.43 4.56 13.15 
+
+Synthesis Baseline 78.64 84.93 90.68 84.75 32.56 15.33 14.29 20.73 
+
+Missing T2f 
+
+Zero Imputation 52.48 58.60 47.66 52.91 55.99 44.27 45.31 48.52 Trained with Dropout 79.42 86.47 89.91 85.27 28.58 8.08 5.76 14.14 
+
+Synthesis Baseline 75.13 83.28 89.09 82.50 36.44 13.68 8.61 19.58 
+
+Average (1 MRI missing) 
+
+Zero Imputation 55.84 66.26 69.03 63.71 44.16 26.76 18.49 29.80 Trained with Dropout 74.29 84.42 91.63 83.45 30.76 8.85 4.85 14.82 
+
+Synthesis Baseline 71.48 80.86 90.17 80.84 33.73 15.11 9.58 19.48 9Table 2: Generator Architecture ( G) Ablation Study. Quantitative performance comparison of di ff erent generative network architectures for the synthesis task in the missing T1c scenario. The study evaluates the impact of progressively upgrading the baseline nnU-Net by integrating 3D residual blocks (nnResU-Net) and replacing standard transposed convolutions with a trilinear interpolation decoder. Performance is assessed using both downstream clinical segmentation metrics (Dice and HD95) and standard Image Quality Metrics, IQM (NMSE and PSNR). The best results among the evaluated generative architectures are highlighted in bold. 
+
+Dice ( ↑) HD95 ( ↓) IQM Network ENH TC WT Mean ENH TC WT Mean NMSE ( ↓) PSNR ( ↑)
+
+Reference (All Real) 81.47 86.27 92.22 86.65 21.56 9.67 4.98 12.07 - -nnU-net 52.27 70.27 90.03 70.86 41.44 18.83 7.37 22.55 0.0261 27.60 nnResU-net 54.47 71.50 90.01 71.99 38.44 19.22 7.47 21.71 0.0256 27.72 nnResUnet + trilinear decoder 54.54 71.46 90.26 72.09 41.13 17.42 7.47 22.01 0.0241 28.05 
+
+truth, our proposed total loss configuration ( L1 +LAFP +
+
+LDualDice ) consistently provides the superior balance. Specifically for T1c sequences, where the identification of active tumor zones and neoangiogenesis is clinically vital, our framework successfully preserves these intri-cate anatomical details while simultaneously generating sharp, non-blurry volumes that mirror the target distri-bution. 
+
+Segmentation Strategy on S . Having optimized the im-age generator G, we evaluated the most e ff ective strat-egy for integrating these synthetic volumes into the seg-mentation network S . We compared training under varying missing modality ratios (25%, 50%, 75%) us-ing Random Dropout, where the T1c modality is zero-padded with the given probability, against a generative augmentation approach, where the missing T1c is re-placed by our model’s synthetic imputation. All config-urations were ultimately evaluated in the scenario where the 3 real MRI modalities are available and the T1c modality must be synthesized. The underlying hypothesis of the Random Dropout strategy is that, by forcing the network to encounter zero-padded T1c channels during training, it will de-velop fewer dependencies on this specific modality, the-oretically improving robustness when it is missing at in-ference. However, our results demonstrate that this ap-proach is suboptimal, likely due to the inherent domain shift between the training conditions (zero-padded in-puts) and the testing conditions (synthesized inputs). Instead, we observed that explicitly feeding the segmentation network with synthetically imputed vol-umes during training consistently yields superior per-formance. Specifically, training the segmenter from scratch with a 50% probability of replacing the real T1c with its synthetic counterpart during training provided the best overall results, particularly in improving the mean Dice coe ffi cient (75.80%). 
+
+Overall Performance Across All Modalities. Having es-tablished the optimal generator architecture G, hybrid loss formulation through S aux , and downstream seg-mentation strategy on S for the missing T1c scenario, we extended the evaluation of our final framework to all                
+
+> Table 3: Objective Loss Function Ablation Study. Quantitative evaluation of di ff erent loss configurations for the optimized generative network G
+> (nnResU-Net with trilinear decoder) in the missing T1c scenario. The baseline pixel-wise L1loss is progressively augmented with the Anatomical Feature-Prioritized ( LAFP ) loss and topological Dice constraints (Dice 1targeting global region overlap, and Dice 2focusing on boundary precision). The proposed hybrid objective ( L1+LAFP +Dice 1,2), obtained with the combined use of Generator Gand pretrained segmenter Saux , achieves the best overall downstream segmentation performance, obtaining the highest mean Dice score and lowest mean HD95.
+
+Dice ( ↑) HD95 ( ↓) IQM Loss ENH TC WT Mean ENH TC WT Mean NMSE ( ↓) PSNR ( ↑)
+
+Reference (All Real) 81.47 86.27 92.22 86.65 21.56 9.67 4.98 12.07 - -L1 54.54 71.46 90.26 72.09 41.13 17.42 7.47 22.01 0.0241 28.05 
+
+L1 + Dice 1 54.83 73.70 90.97 73.17 39.74 15.32 7.01 20.69 0.0286 26.95 L1 + Dice 2 54.93 76.99 91.17 74.36 38.21 13.07 5.94 19.07 0.0290 26.88 L1 + AFP 55.33 73.46 91.46 74.42 37.59 14.53 6.26 19.46 0.0240 27.83 L1 + AFP + Dice 1 56.10 75.41 90.09 73.87 38.56 15.66 7.47 20.56 0.0245 27.63 L1 + AFP + Dice 2 54.80 76.21 90.50 73.84 45.14 12.17 6.64 21.32 0.0254 27.49 L1 + AFP + Dice 1,2 57.19 76.18 90.10 74.49 37.22 12.45 7.08 18.92 0.0259 27.32 10 00013-000               
+
+> T1c Real Lesion Area L1 L1 + AFP L1 + Dice 1L1 + Dice 2
+> Proposed Loss (L1 + AFP + Dice 1, 2 )
+> 00535-001 01728-000 01767-000 Figure 3: Visual Comparison of Loss Configurations. Generated T1c sequences under varying loss configurations for the missing T1c scenario. The purely pixel-wise L1optimization produces over-smoothed lesions lacking structural definition. While intermediate configurations ( L1+LAFP
+> and variations with partial Dice constraints) yield incremental improvements in boundary demarcation, the proposed hybrid loss ( L1+LAFP +
+> LDualDice ) achieves the optimal qualitative balance. It successfully recovers both the sharp anatomical margins and the critical intra-tumoral heterogeneity and the regions of neoangiogenesis, closely mirroring the real T1c target.
+
+other missing modality cases, presented in Table 5. The results confirm that the benefits of our methodol-ogy are not isolated to T1c, but generalize exceptionally well to any missing sequence. For instance, in the miss-ing T1n and T2w scenarios, the framework achieves mean Dice scores of 85 .90% and 85 .12%, respectively, alongside high PSNR values (28 .99 and 26 .18). Even in the missing T2f scenario, which heavily impacts edema delineation, the model successfully restores the peritumoral contrast, yielding a mean Dice of 82 .69%. Overall, our unified framework achieves a highly robust global average Dice of 82 .38% and an HD95 of 15 .96 mm across all missing modality scenarios, solidifying its reliability as a comprehensive imputation tool for in-complete clinical protocols. 
+
+5.3. Comparison with State-of-the-Art 
+
+To comprehensively validate our Synthesis Frame-work, we compared its performance against recent State-of-the-Art approaches in both image reconstruc-tion quality and downstream segmentation utility. 
+
+Image Reconstruction Performance. Table 6 presents a quantitative comparison of synthesis quality. A persis-tent challenge in this domain is the lack of standard-ized evaluation protocols on the BraTS dataset; existing literature diverges significantly in terms of target miss-ing modalities, data partitioning (e.g., using the o ffi cial validation set versus reserving an internal 20% held-out split from the training data), and input availability (1-to-1 vs. 3-to-1 synthesis) Li et al. (2024). Furthermore, the limited availability of public source code for several baselines precludes perfectly matched retraining. To en-sure the most rigorous and fair evaluation possible under these constraints, we carefully aligned our testing with the specific conditions reported by each baseline. In the o ffi cial validation split, our volumetric ap-proach significantly outperforms existing 1-to-1 meth-ods (e.g., Pix2Pix Isola et al. (2017), CycleGAN Zhu et al. (2017), EaGAN Yu et al. (2019), ALDM Kim and Park (2024)), achieving an SSIM of 93 .97%. While this performance gap naturally underscores the substan-tial advantage of utilizing the full multi-modal context (3-to-1 mapping) inherently supported by our architec-11 Table 4: Segmenter ( S ) Training Strategy Ablation. Quantitative evaluation of di ff erent training paradigms for the final clinical segmenter under the missing T1c scenario. Using the optimized generator configuration, we explore the impact of varying the probability ratio (25%, 50%, and 75%) of encountering a missing modality during training. The standard Random Dropout (zero-padding) baseline is compared against our proposed synthetic data augmentation, evaluated both by training the segmenter from scratch and by fine-tuning (FT) a pre-trained model. The results demonstrate that training the segmenter from scratch with a 50% probability of synthetic imputation achieves the optimal balance, yielding the highest mean Dice score and validating the utility of generative augmentation for downstream robustness. 
+
+Dice ( ↑) HD95 ( ↓)Training Strategy ENH TC WT Mean ENH TC WT Mean 
+
+Reference (All Real) 81.47 86.27 92.22 86.65 21.56 9.67 4.98 12.07 
+
+25% Missing Modality Ratio 
+
+Random Dropout 57.39 77.10 90.89 75.13 40.19 13.47 6.24 19.97 Synthetic (from scratch) 56.98 77.55 92.05 75.53 35.98 10.85 4.44 17.09 
+
+Synthetic (FT) 56.76 76.40 90.13 74.43 37.56 14.89 11.44 21.30 
+
+50% Missing Modality Ratio 
+
+Random Dropout 56.73 76.86 90.93 74.84 38.69 13.58 7.52 19.93 Synthetic (from scratch) 57.95 77.59 91.86 75.80 36.10 10.90 4.63 17.21 Synthetic (FT) 55.10 75.96 90.33 73.80 39.88 15.88 8.70 21.49 
+
+75% Missing Modality Ratio 
+
+Random Dropout 57.67 77.18 90.36 75.07 38.81 14.92 11.68 21.80 Synthetic (from scratch) 58.25 76.88 90.98 75.37 37.09 12.18 5.48 18.25 Synthetic (FT) 55.59 75.90 90.39 73.96 40.47 14.43 7.67 20.86        
+
+> Table 5: Overall Performance Across All Missing Modalities. Evaluation of the fully optimized CAPS for every single missing MRI scenario (T1n, T1c, T2w, and T2f). The table reports both clinical segmentation accuracy (Dice and HD95) and Image Quality Metrics, IQM (NMSE and PSNR). Utilizing the optimal generative architecture G, hybrid loss formulation through the use of Saux , and synthetic data augmentation strategy on Sestablished in the previous ablation studies, the framework demonstrates robust imputation fidelity across all sequences, achieving a global average Dice score of 82 .38%.
+
+Dice ( ↑) HD95 ( ↓) IQM ENH TC WT Mean ENH TC WT Mean NMSE ( ↓) PSNR ( ↑)Missing T1n 80.58 85.87 91.24 85.90 22.56 11.07 6.02 13.22 0.0160 28.99 Missing T1c 57.95 77.59 91.86 75.80 36.10 10.90 4.63 17.21 0.0259 27.32 Missing T2w 79.22 85.46 90.69 85.12 22.99 11.59 10.91 15.16 0.0530 26.18 Missing T2f 73.58 83.93 90.57 82.69 36.93 10.09 7.68 18.23 0.0453 25.34 
+
+Average 72.83 83.21 91.09 82.38 29.65 10.91 7.31 15.96 0.0351 26.96 
+
+ture, it also highlights the capacity of our model to ef-fectively integrate complementary information for high-fidelity imputation. To further evaluate our architec-tural robustness and isolate the e ff ect of input config-uration, we compared our method against recent 3-to-1 models, such as AMM-Di ff Kebaili et al. (2025a), under their reported evaluation protocol (a 20% held-out split). Evaluated on this corresponding fraction of unseen data, our method maintains a highly compet-itive SSIM of 93 .88%. Even though di ff usion-based models like AMM-Di ff Kebaili et al. (2025a) achieve a marginally higher PSNR, our approach excels in SSIM, demonstrating remarkable structural consistency. 
+
+Downstream Segmentation Performance. Beyond pure synthesis quality, the ultimate goal of our framework is to provide data that is functionally useful for clini-cal workflows. Table 7 details the segmentation accu-racy of our synthesis-based pipeline against two distinct paradigms: robust segmentation frameworks and other synthesis-based approaches. As expected, pure robust segmentation architectures (such as mmFormer Zhang et al. (2022) and IM-Fuse Pipoli et al. (2025)) establish the upper numerical bounds, achieving mean Dice scores of 86 .93% and 87 .34%, respectively. Because these models bypass the complex task of image generation and directly optimize boundary predictions from incomplete data, their purely 12 Table 6: State-of-the-Art Comparison of Image Reconstruction Quality. Quantitative synthesis evaluation against existing baselines using standard Image Quality Metrics (IQM), reported as the mean across all evaluated missing modality scenarios within each group. To ensure a fair comparison, methods are grouped according to their specific evaluated missing scenarios and reported data partitions (O ffi cial Validation set vs. a 20% held-out split). The results demonstrate that CAPS, our proposed 3-to-1 framework, substantially outperforms traditional 1-to-1 methods and achieves highly competitive structural fidelity (highest SSIM) compared to recent multi-modal di ff usion approaches. 
+
+IQM Synthesis Type Method Eval. Split NMSE ↓ PSNR ↑ SSIM % ↑ 1-to-1 3-to-1 
+
+Evaluated Scenarios: Missing T2w, T2f 
+
+Pix2Pix Isola et al. (2017) Offi cial Val. 0.105 24.89 87.05 ×
+
+CycleGAN Zhu et al. (2017) Offi cial Val. 0.145 23.62 82.85 ×
+
+EaGAN Yu et al. (2019) Offi cial Val. 0.103 24.73 86.65 ×
+
+ALDM Kim and Park (2024) Offi cial Val. 0.089 25.45 88.55 ×
+
+CAPS Offi cial Val. 0.049 25.76 93.97 ×
+
+Evaluated on All Missing Modality Scenarios (T1n, T1c, T2w, T2f) 
+
+Pix2Pix Isola et al. (2017) 20% Held-out Split 29.70 75.83 ×
+
+AMM-Di ff Kebaili et al. (2025a) 20% Held-out Split 31.80 93.50 ×
+
+CAPS 20% Held-out Split 0.036 27.12 93.88 ×
+
+computational metrics are higher. However, as previ-ously discussed, this comes at the severe cost of clin-ical interpretability, outputting isolated masks without the underlying anatomical context. Evaluating our framework within the interpretable synthesis-based paradigm presents additional chal-lenges, as the majority of existing literature focuses exclusively on reconstruction metrics and does not re-port downstream segmentation performance. When compared to the available synthesis-based joint mod-els that do provide these metrics, such as the recent work by Ferreira et al. Ferreira et al. (2024), our ap-proach demonstrates a substantial improvement, raising the mean Dice score from 74 .67% to 82 .38%. Notably, while pure segmentation frameworks achieve approximately a 5% higher mean Dice score, they operate as “black boxes”, forcing clinicians to blindly trust the automated boundaries without the un-derlying visual context Zhu et al. (2026). CAPS delib-erately trades this purely computational advantage for a critical gain in clinical interpretability. By explic-itly enforcing structural and topological consistency via our hybrid loss, we deliver highly verifiable anatomical restorations alongside robust tumor delineations. This approach ensures that neuroradiologists have the neces-sary visual evidence to validate the predictions of our method. 
+
+5.4. Cross-Domain Generalization 
+
+A critical limitation of many medical deep learning frameworks is their susceptibility to domain shift. Mod-els trained on a specific cohort often experience se-vere performance degradation when exposed to Out-of-
+
+Table 7: State-of-the-Art Comparison of Segmentation. Evaluation of tumor segmentation accuracy (Dice scores), reported as the average across all four missing modality scenarios (T1n, T1c, T2w, and T2f). Methods are categorized into pure robust segmentation models and in-terpretable 3-to-1 synthesis-based pipelines. Our framework outper-forms existing synthesis-based approaches and remains competitive with leading purely computational segmenters.                                     
+
+> Method ENH ↑TC ↑WT ↑Mean ↑
+> Robust Segmentation:
+> Random Dropout 74.29 84.42 91.63 83.45 U-HVED Dorent et al. (2019) 70.88 80.75 88.63 80.08 mmFormer Zhang et al. (2022) 80.23 88.38 92.20 86.93 Sfusion Liu et al. (2023) 77.95 86.60 91.05 85.20 IM-Fuse Pipoli et al. (2025) 80.73 88.95 92.35 87.34
+> Synthesis-based:
+> Ferreira et al. (2024) 68.00 73.00 83.00 74.67 CAPS 72.83 83.21 91.09 82.38
+
+Distribution (OoD) data Diana-Albelda et al. (2026). To validate the robustness of our framework, we evaluated its zero-shot inference capabilities on three completely unseen datasets from the BraTS challenge: Meningioma LaBella et al. (2023), Pediatric Glioma Kazerooni et al. (2024), and Sub-Saharan African Glioma Adewole et al. (2023). Each of these datasets introduces unique morpholog-ical and technical challenges. Meningiomas are tumors that typically tend to compress rather than infiltrate sur-rounding brain tissue, presenting a fundamentally dif-ferent topology than adult gliomas Fathi and Roelcke (2013). Pediatric Gliomas involve developing brains with distinct myelination patterns and tumor presenta-tions Du ff au (2022). Finally, the Sub-Saharan African Glioma cohort introduces significant technical variabil-13 Table 8: Zero-Shot Cross-Domain Generalization. Quantitative synthesis evaluation (NMSE and PSNR) on three completely unseen external datasets: Meningioma, Pediatric Glioma, and Sub-Saharan African Glioma. CAPS maintains consistently high image quality across all missing modality scenarios. This demonstrates robust out-of-the-box generalization to morphological and technical domain shifts, entirely without the need for domain-specific adaptation. 
+
+Meningioma Pediatric Glioma Sub-Saharan Glioma Missing Modality NMSE ( ↓) PSNR ( ↑) NMSE ( ↓) PSNR ( ↑) NMSE ( ↓) PSNR ( ↑)4MRI Real 0.0 ∞ 0.0 ∞ 0.0 ∞
+
+Missing T1n 0.0248 27.72 0.0216 28.05 0.0215 27.56 Missing T1c 0.0505 25.41 0.0330 25.93 0.0272 25.91 Missing T2w 0.0534 26.21 0.0648 25.20 0.0507 25.67 Missing T2f 0.0360 25.63 0.0266 26.46 0.0279 26.55 
+
+Average 0.0412 26.24 0.0365 26.41 0.0318 26.42 
+
+ity, featuring scans acquired from diverse hardware and protocols typical of low-resource clinical settings Boon-zaier et al. (2025). As reported in Table 8, the framework demonstrates robust generalization despite these substantial domain shifts. Notably, the average synthesis quality on the three unseen cohorts (PSNR ranging from 26.24 to 26.42; NMSE from 0.0318 to 0.0412) remains closely aligned with the in-distribution Adult Glioma perfor-mance reported in Table 5 (PSNR = 26.96; NMSE =
+
+0.0351). Furthermore, the narrow spread across the three external datasets indicates that the fidelity of our method is not contingent on a specific tumor morphol-ogy or acquisition protocol. Downstream segmentation metrics are intentionally omitted for these cross-domain cohorts for two reasons. First, the BraTS Meningioma dataset employs a fundamentally di ff erent tumor an-notation protocol, rendering segmentation predictions from our Adult Glioma-trained segmenter S inapplica-ble. Second, for the Pediatric and Sub-Saharan cohorts, Adult Glioma Meningioma Pediatric Glioma              
+
+> Sub-Saharan Glioma
+> ID: 00027-000
+> T1n
+> Real Synthetic
+> ID: 00001-001
+> T1c
+> Real Synthetic
+> ID: 00015-001
+> T2w
+> Real Synthetic
+> ID: 00145-000
+> T2f
+> Real Synthetic
+> ID: 00008-000 ID: 00010-000 ID: 00016-000 ID: 00040-000 ID: 00020-000 ID: 00023-000 ID: 00009-000 ID: 00003-000 ID: 00002-000 ID: 00044-000 ID: 00015-000 ID: 00007-000
+
+Figure 4: Zero-Shot Cross-Domain Generalization. Qualitative comparison of real and synthesized MRI modalities (T1n, T1c, T2w, T2f) across the in-distribution training cohort (Adult Glioma) and three completely unseen Out-of-Distribution datasets: Meningioma, Pediatric Glioma, and Sub-Saharan African Glioma. CAPS consistently reconstructs the missing sequences with high structural fidelity across all scenarios, thereby reproducing domain-specific morphological variations and demonstrating robust generalization capabilities without requiring any domain-specific adaptation. 
+
+14 reporting segmentation accuracy would conflate two in-dependent sources of performance variation: synthesis fidelity and segmenter generalization, thereby prevent-ing a clean assessment of the generator’s cross-domain robustness, which is the specific focus of this evaluation. Qualitatively, Figure 4 corroborates these numerical findings by presenting visual comparisons of real and synthesized volumes across all four modality scenar-ios (T1n, T1c, T2w, and T2f). The inference is shown for both the in-distribution Adult Glioma cohort and the three unseen OoD domains. As observed, the generated images closely mirror the real anatomical targets. De-spite the unique anatomical and technical presentations of each dataset, the framework successfully preserves the overall brain structures and intricate tumor topolo-gies without noticeable degradation. 
+
+5.5. Clinical Validation 
+
+While Image Quality Metrics (IQMs) are standard benchmarks in the synthesis literature, they do not in-herently guarantee that a generated image is diagnos-tically useful or structurally trustworthy for clinicians. To assess the practical clinical value of the synthesized images, we conducted a blinded radiological evaluation. A senior radiology resident evaluated the generated T1c volumes for the complete Adult Glioma valida-tion set (219 patients). The evaluator was presented with volumes synthesized using both the baseline pixel-wise objective ( L1) and our proposed hybrid objective (L1 + LAFP + LDualDice ). The assessment was conducted in a blinded manner, without revealing which model generated which image, using the evaluation tool illus-trated in Figure 5. For each patient, the assignment of synthesis methods to Model A and Model B was ran-domly shu ffl ed to prevent positional bias. The radi-ologist scored each volume on a 1-5 scale across two distinct axes: Image Quality (encompassing contrast, noise, and the presence of artifacts) and Clinical Util-ity .As illustrated in Figure 6, the L1 baseline Image Quality scores were concentrated between 3 and 4 ( μ =
+
+3.64 ± 0.90), while the proposed hybrid loss shifted Patient List                                    
+
+> Patient 1 Patient 2 Patient 3 ...Patient N
+> 1
+> ◀Patient 1 ▶Slice 70 Real Synth – 80% + ✓Auto-Next
+> 2T1n T2w T2f (FLAIR)
+> Acquired input modalities
+> 3T1c real T1c Synthetic
+> Model A
+> T1c Synthetic
+> Model B Real reference vs. synthesized T1c from each model
+> 4Rate each synthesis Model A
+> Image quality 12345Clinical value 12345
+> Model B
+> Image quality 12345Clinical value 12345Scale: 1 = poor . . . 5 = excellent
+> Image quality and clinical value scored independently for each model.
+> 5Session data
+> Load CSV Export CSV Resume a partial session or export all ratings for analysis.
+> 6
+
+Figure 5: Blinded Radiological Evaluation Interface. Web-based tool for clinical validation of synthesized T1c volumes, organized into six panels: (1) patient list for case navigation; (2) slice selector with Real /Synth overlay toggle and windowing controls; (3) available input modalities (T1n, T2w, T2f); (4) side-by-side comparison of the real T1c against two anonymized synthetic volumes (Model A and Model B), whose assignment is randomly shu ffl ed per patient to prevent positional bias; (5) independent scoring of Image Quality and Clinical Value on a 1–5 scale for each model; and (6) session management for exporting and resuming evaluations. Tool available at https://github.com/Phyrise/NIfTI-to-HTML-Evaluator .
+
+15 1 2 3 4 5          
+
+> Image Quality
+> 020 40 60 80 100 120
+> Number of Patients
+> L1 Loss (3.64 ± 0.90) Proposed Loss (4.40 ± 0.68)
+> 12345
+> Clinical Utility
+> 020 40 60 80 100 120
+> Number of Patients
+> L1 Loss (3.12 ± 1.16) Proposed Loss (3.51 ± 1.07) Figure 6: Radiologist Evaluation Scores. Distribution of blinded radiologist scores comparing the standard L1baseline (blue) against our proposed synthesis generation (green). To facilitate a direct visual comparison, the data is presented as follows: the upper half displays the score distribution for Image Quality , while the lower half displays the scores for Clinical Utility . As observed, the proposed hybrid loss decisively shifts the distribution towards the maximum scores (4-5) in both evaluation dimensions, demonstrating its superior visual fidelity and diagnostic reliability.
+
+the distribution significantly toward scores of 4 and 5 (μ = 4.40 ± 0.68). A consistent trend was observed for 
+
+Clinical Utility , where the proposed method achieved a score of 3 .51 ± 1.07, outperforming the baseline’s 3.12 ± 1.16. To rigorously quantify the significance of these im-provements, we conducted paired Wilcoxon signed-rank tests across all 219 evaluated patients. The pro-posed hybrid loss yielded a statistically significant im-provement over the L1 baseline in both evaluation axes: Image Quality ( W = 1080, p = 6.50 × 10 −24 , r = 0.68) and Clinical Utility ( W = 1837, p = 7.93 × 10 −10 ,
+
+r = 0.42), with significance maintained after Bonfer-roni correction for multiple comparisons ( αadj = 0.025). The e ff ect sizes indicate a large improvement in per-ceived image quality and a medium improvement in clinical utility. Beyond the higher mean scores, the proposed loss also exhibits a lower standard deviation across both axes, reflecting enhanced robustness across diverse clinical presentations. These results confirm that our anatomy-aware synthesis provides reliable visual evidence to strengthen clinical confidence and support surgical planning. 
+
+Limitations & Future Work. Despite these promising results, the current method presents certain limitations, particularly its decoupled two-stage structure and its re-liance on a specific pre-trained segmentation network. To address these constraints, future research could focus on the development of a unified, end-to-end architecture that leverages anatomy-prioritized constraints within a single joint framework, potentially further closing the accuracy-interpretability gap. Additionally, other promising avenues for investigation include adapting the framework to accommodate dynamic input config-urations (e.g., 1-to-1 or 2-to-1 synthesis) and extend-ing this anatomy-prioritized paradigm to other complex oncological domains, such as multi-parametric prostate Armato III et al. (2018) or liver MRI. Finally, although the clinical validation confirms the diagnostic utility of the synthesized volumes, the assessment was performed by a single radiologist, so future studies may incorpo-rate multiple experts to robustly assess inter-rater relia-bility. 
+
+6. Conclusion 
+
+In this work, we presented a Clinically-Verifiable Anatomy-Prioritized Synthesis framework (CAPS) to address the critical challenge of missing MRI modal-ities in neuro-oncological imaging Chrysochoou et al. (2026). Traditional approaches to this problem typi-cally force a compromise between computational ac-curacy and diagnostic transparency: robust segmenters predict tumor boundaries while leaving clinicians blind to the underlying anatomy Zhang et al. (2022); Pipoli et al. (2025), whereas standard synthesis models recon-struct images that lack the structural fidelity required for clinical trust Longuefosse et al. (2025). By driving our 3D generative architecture with a hybrid objective func-tion ( L1 + LAFP + LDualDice ), we successfully bridged this gap, enforcing the preservation of deep anatomical features and strict topological boundaries. Our comprehensive evaluation on the BraTS Adult Glioma dataset Baid et al. (2021) demonstrated that our framework significantly outperforms existing State-of-the-Art synthesis methods with a highly compet-itive downstream segmentation mean Dice score of 16 82 .38%. Beyond standard computational metrics, our approach exhibited exceptional zero-shot generalization capabilities across completely unseen and morphologi-cally distinct domains, including Meningioma LaBella et al. (2023), Pediatric Kazerooni et al. (2024), and Sub-Saharan African Adewole et al. (2023) cohorts. Most importantly, a blinded radiological evaluation con-firmed that our anatomy-aware synthesis substantially improves both perceived image quality and clinical util-ity, providing human experts with the verifiable visual context needed to trust downstream automated segmen-tation. 
+
+Funding Statements. This work has been partially supported by the Agencia Estatal de Investigación of Spain under Grant PID2025-171806OB-I00 and by the Regional Government of Madrid of Spain under Grant TEC-2024 /COM-322, and by the FPI-UAM grant. 
+
+Data Availability The BraTS 2023 Adult Glioma, Meningioma, Pediatric Glioma, and Sub-Saharan African Glioma datasets used in this study are pub-licly available through the Synapse platform ( https: //www.synapse.org/Synapse:syn51156910 ). 
+
+Code Availability The generative framework was developed by adapting the publicly available nnU-Net translation codebase (https://github.com/ Phyrise/nnUNet_translation ), which provides the modified nnU-Net architecture for MR-to-CT synthe-sis including the AFP loss implementation. The final clinical segmenter S was built upon the of-ficial nnU-Net repository (https://github.com/ MIC-DKFZ/nnUNet ). The blinded radiological evalu-ation tool is publicly available at https://github. com/Phyrise/NIfTI-to-HTML-Evaluator 
+
+CRediT Authorship Contribution Statement Ce-cilia Diana-Albelda: Conceptualization, Methodology, Software, Validation, Formal Analysis, Investigation, Writing - Original Draft, Writing - Review & Editing, Visualization. Arthur Longuefosse: Conceptualization, Methodology, Software, Validation, Investigation, Writ-ing - Review & Editing, Visualization. Mario Rubén Paz Campos: Investigation, Validation (clinical radio-logical evaluation). Álvaro García-Martín: Conceptual-ization, Supervision, Writing - Review & Editing, Fund-ing Acquisition. Jesus Bescos: Conceptualization, Su-pervision, Writing - Review & Editing, Funding Acqui-sition. 
+
+Declaration of Competing Interests The authors de-clare that they have no known competing financial inter-ests or personal relationships that could have appeared to influence the work reported in this paper. 
+
+References 
+
+Adewole, M., Rudie, J.D., Gbdamosi, A., Toyobo, O., Raymond, C., Zhang, D., Omidiji, O., Akinola, R., Suwaid, M.A., Emegoakor, A., et al., 2023. The brain tumor segmentation (brats) challenge 2023: Glioma segmentation in sub-saharan africa patient population (brats-africa). ArXiv , arXiv–2305. Al Khalil, Y., Ayaz, A., Lorenz, C., Weese, J., Pluim, J., Breeuwer, M., 2024. Multi-modal brain tumor seg-mentation via conditional synthesis with fourier do-main adaptation. Computerized Medical Imaging and Graphics 112, 102332. Armato III, S.G., Huisman, H., Drukker, K., Hadji-iski, L., Kirby, J.S., Petrick, N., Redmond, G., Giger, M.L., Cha, K., Mamonov, A., et al., 2018. Prostatex challenges for computerized classification of prostate lesions from multiparametric magnetic resonance im-ages. Journal of Medical Imaging 5, 044501–044501. Atli, O.F., Kabas, B., Arslan, F., Demirtas, A.C., Yurt, M., Dalmaz, O., Cukur, T., 2024. I2i-mamba: Multi-modal medical image synthesis via selective state space modeling. arXiv preprint arXiv:2405.14022 . Baid, U., Ghodasara, S., Mohan, S., Bilello, M., Cal-abrese, E., Colak, E., Farahani, K., Kalpathy-Cramer, J., Kitamura, F.C., Pati, S., et al., 2021. The rsna-asnr-miccai brats 2021 benchmark on brain tumor segmentation and radiogenomic classification. arXiv preprint arXiv:2107.02314 . Boonzaier, W.P., Moosa, F., Lebang, K., Jabaar, H., Io-rumbur, A., Zhang, D., Raymond, C., 2025. Do-main adaptation for adult glioma segmentation in sub-saharan africa: An ensemble of nnu-net v2 and mednext, in: International Conference on Medical Image Computing and Computer-Assisted Interven-tion, Springer. pp. 248–261. Chrysochoou, D., Gandhi, D.B., Adib, S., Famil-iar, A.M., Vunnava, B., Varshochi, S., Khalili, N., Khalili, N., Ware, J.B., Tu, W., et al., 2026. Ai-powered segmentation and prognosis with missing mri in pediatric brain tumors. npj Precision Oncol-ogy . 17 Dar, S.U., Yurt, M., Karacan, L., Erdem, A., Erdem, E., Cukur, T., 2019. Image synthesis in multi-contrast mri with conditional generative adversarial networks. IEEE transactions on medical imaging 38, 2375– 2388. Diana-Albelda, C., Alcover-Couso, R., García-Martín, Á., Bescos, J., Escudero-Viñolo, M., 2026. Gbt-sam: A parameter-e ffi cient depth-aware model for gener-alizable brain tumor segmentation on mp-mri. Inter-national Journal of Imaging Systems and Technology 36, e70389. Diana-Albelda, C., García-Martín, Á., Bescos, J., 2025a. A review on deep learning methods for glioma segmentation, limitations, and future perspectives. Journal of Imaging 11, 269. Diana-Albelda, C., Longuefosse, A., García-Martín, Á., Bescos, J., 2025b. Multi-modal brain mri synthesis with nnu-net: Exploring segmentation performance and cross-modality relationships, in: International Workshop on Simulation and Synthesis in Medical Imaging, Springer. pp. 52–62. Dorent, R., Haouchine, N., Golby, A., Frisken, S., Ka-pur, T., Wells, W., 2025. Unified cross-modal medical image synthesis with hierarchical mixture of product-of-experts. IEEE Transactions on Pattern Analysis and Machine Intelligence . Dorent, R., Joutard, S., Modat, M., Ourselin, S., Vercauteren, T., 2019. Hetero-modal variational encoder-decoder for joint modality completion and segmentation, in: International Conference on Med-ical Image Computing and Computer-Assisted Inter-vention, Springer. pp. 74–82. Du ff au, H., 2022. White matter tracts and di ff use lower-grade gliomas: the pivotal role of myelin plasticity in the tumor pathogenesis, infiltration patterns, func-tional consequences and therapeutic management. Frontiers in Oncology 12, 855587. Fathi, A.R., Roelcke, U., 2013. Meningioma. Current neurology and neuroscience reports 13, 337. Ferreira, A., Luijten, G., Puladi, B., Kleesiek, J., Alves, V., Egger, J., 2024. Brain tumour removing and missing modality generation using 3d wdm. arXiv preprint arXiv:2411.04630 . Goodfellow, I.J., Pouget-Abadie, J., Mirza, M., Xu, B., Warde-Farley, D., Ozair, S., Courville, A., Bengio, Y., 2014. Generative adversarial nets. Advances in neural information processing systems 27. Guo, X., Shi, Y., Liu, D., Li, Y., Chen, W., Wang, Y., Wang, Y., Xing, H., Xia, Y., Li, J., et al., 2023. Clin-ical updates on gliomas and implications of the 5th edition of the who classification of central nervous system tumors. Frontiers in Oncology 13, 1131642. Havaei, M., Guizard, N., Chapados, N., Bengio, Y., 2016. Hemis: Hetero-modal image segmentation, in: International conference on medical image comput-ing and computer-assisted intervention, Springer. pp. 469–477. Hu, M., Maillard, M., Zhang, Y., Ciceri, T., La Barbera, G., Bloch, I., Gori, P., 2020. Knowledge distillation from multi-modal to mono-modal segmentation net-works, in: International Conference on Medical Im-age Computing and Computer-Assisted Intervention, Springer. pp. 772–781. Isensee, F., Jaeger, P.F., Kohl, S.A., Petersen, J., Maier-Hein, K.H., 2021. nnu-net: a self-configuring method for deep learning-based biomedical image segmenta-tion. Nature methods 18, 203–211. Isensee, F., Wald, T., Ulrich, C., Baumgartner, M., Roy, S., Maier-Hein, K., Jaeger, P.F., 2024. nnu-net re-visited: A call for rigorous validation in 3d medical image segmentation, in: International Conference on Medical Image Computing and Computer-Assisted Intervention, Springer. pp. 488–498. Isola, P., Zhu, J.Y., Zhou, T., Efros, A.A., 2017. Image-to-image translation with conditional adversarial net-works, in: Proceedings of the IEEE conference on computer vision and pattern recognition, pp. 1125– 1134. Kazerooni, A.F., Khalili, N., Liu, X., Haldar, D., Jiang, Z., Anwar, S.M., Albrecht, J., Adewole, M., Ana-zodo, U., Anderson, H., et al., 2024. The brain tumor segmentation (brats) challenge 2023: focus on pe-diatrics (cbtn-connect-dipgr-asnr-miccai brats-peds). ArXiv , arXiv–2305. Kebaili, A., Lapuyade-Lahorgue, J., Vera, P., Ruan, S., 2025a. Amm-di ff : Adaptive multi-modality di ff usion network for missing modality imputation, in: 2025 IEEE 22nd International Symposium on Biomedical Imaging (ISBI), IEEE. pp. 1–4. Kebaili, A., Lapuyade-Lahorgue, J., Vera, P., Ruan, S., 2025b. Multi-modal mri synthesis with conditional latent di ff usion models for data augmentation in tu-mor segmentation. Computerized Medical Imaging and Graphics 123, 102532. 18 Kim, J., Park, H., 2024. Adaptive latent di ff usion model for 3d medical image to image translation: Multi-modal magnetic resonance imaging study, in: Pro-ceedings of the IEEE /CVF Winter conference on ap-plications of computer Vision, pp. 7604–7613. LaBella, D., Adewole, M., Alonso-Basanta, M., Altes, T., Anwar, S.M., Baid, U., Bergquist, T., Bhalerao, R., Chen, S., Chung, V., et al., 2023. The asnr-miccai brain tumor segmentation (brats) challenge 2023: Intracranial meningioma. arXiv preprint arXiv:2305.07642 . Li, H.B., Conte, G.M., Hu, Q., Anwar, S.M., Kofler, F., Ezhov, I., van Leemput, K., Piraud, M., Diaz, M., Cole, B., et al., 2024. The brain tumor segmentation (brats) challenge 2023: Brain mr image synthesis for tumor segmentation (brasyn). ArXiv , arXiv–2305. Liu, Z., Wei, J., Li, R., Zhou, J., 2023. Sfusion: Self-attention based n-to-one multimodal fusion block, in: International conference on medical image comput-ing and computer-assisted intervention, Springer. pp. 159–169. Longuefosse, A., Gonzalez, J.S., Baldacci, F., Seita, J., 2026. From intensity to anatomy: Optimizing nnu-net for mr-to-ct translation on synthrad2025, in: 2026 IEEE 23rd International Symposium on Biomedical Imaging (ISBI), IEEE. pp. 1–4. Longuefosse, A., Denis de Senneville, B., Dournes, G., Benlala, I., Baldacci, F., Desbarats, P., 2025. Anatomical feature-prioritized loss for enhanced mr to ct translation. Physics in Medicine & Biology 70, 145012. Longuefosse, A., et al., 2024. Adapted nnu-net: A ro-bust baseline for cross-modality synthesis and med-ical image inpainting, in: Simulation and Synthe-sis in Medical Imaging: 8th International Workshop, SASHIMI 2023, Held in Conjunction with MICCAI 2023, Vancouver, BC, Canada, October 8, 2023, Pro-ceedings, Springer. pp. 24–33. Meng, X., Sun, K., Xu, J., He, X., Shen, D., 2024. Multi-modal modality-masked di ff usion network for brain mri synthesis with random modality missing. IEEE Transactions on Medical Imaging 43, 2587– 2598. Menze, B.H., Jakab, A., Bauer, S., Kalpathy-Cramer, J., Farahani, K., Kirby, J., Burren, Y., Porz, N., Slot-boom, J., Wiest, R., et al., 2014. The multimodal brain tumor image segmentation benchmark (brats). IEEE transactions on medical imaging 34, 1993– 2024. Nie, D., Trullo, R., Lian, J., Wang, L., Petitjean, C., Ruan, S., Wang, Q., Shen, D., 2018. Medical image synthesis with deep convolutional adversarial net-works. IEEE Transactions on Biomedical Engineer-ing 65, 2720–2730. Pipoli, V., Saporita, A., Marchesini, K., Grana, C., Fi-carra, E., Bolelli, F., 2025. Im-fuse: A mamba-based fusion block for brain tumor segmentation with in-complete modalities, in: International Conference on Medical Image Computing and Computer-Assisted Intervention, Springer. pp. 225–235. Sharma, A., Hamarneh, G., 2019. Missing mri pulse sequence synthesis using multi-modal generative ad-versarial network. IEEE transactions on medical imaging 39, 1170–1183. Shi, B., 2024. On the hyperparameters in stochastic gra-dient descent with momentum. Journal of Machine Learning Research 25, 1–40. Taha, A.A., Hanbury, A., 2015. Metrics for evaluating 3d medical image segmentation: analysis, selection, and tool. BMC medical imaging 15, 29. Tavse, S., Varadarajan, V., Bachute, M., Gite, S., Kotecha, K., 2022. A systematic literature review on applications of gan-synthesized images for brain mri. Future Internet 14, 351. Weller, M., Wick, W., Aldape, K., Brada, M., Berger, M., Pfister, S.M., Nishikawa, R., Rosenthal, M., Wen, P.Y., Stupp, R., et al., 2015. Glioma. Nature reviews Disease primers 1, 1–18. Yu, B., Zhou, L., Wang, L., Shi, Y., Fripp, J., Bourgeat, P., 2019. Ea-gans: edge-aware generative adver-sarial networks for cross-modality mr image synthe-sis. IEEE transactions on medical imaging 38, 1750– 1762. Zhang, Y., He, N., Yang, J., Li, Y., Wei, D., Huang, Y., Zhang, Y., He, Z., Zheng, Y., 2022. mmformer: Multimodal medical transformer for incomplete mul-timodal learning of brain tumor segmentation, in: International conference on medical image comput-ing and computer-assisted intervention, Springer. pp. 107–117. Zhang, Y., Peng, C., Wang, Q., Song, D., Li, K., Zhou, S.K., 2024. Unified multi-modal image synthesis for 19 missing modality imputation. IEEE Transactions on Medical Imaging 44, 4–18. Zhu, J.Y., Park, T., Isola, P., Efros, A.A., 2017. Unpaired image-to-image translation using cycle-consistent adversarial networks, in: Proceedings of the IEEE international conference on computer vi-sion, pp. 2223–2232. Zhu, S., Chen, Y., Chen, W., Jiang, S., Zhou, G., Wang, Y., Qin, F., Wang, C., Tian, Q., 2026. No modal-ity left behind: Adapting to missing modalities via knowledge distillation for brain tumor segmentation. Medical Image Analysis , 104108. 20
