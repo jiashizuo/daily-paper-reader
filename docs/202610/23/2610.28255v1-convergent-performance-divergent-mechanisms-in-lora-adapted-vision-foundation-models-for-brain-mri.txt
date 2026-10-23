@@ -1,0 +1,586 @@
+Title: Convergent Performance, Divergent Mechanisms in LoRA-Adapted Vision Foundation Models for Brain MRI
+
+URL Source: https://arxiv.org/pdf/2610.28255v1
+
+Published Time: Wed, 21 Oct 2026 01:31:28 GMT
+
+Number of Pages: 14
+
+Markdown Content:
+# Convergent Performance, Divergent Mechanisms in LoRA-Adapted Vision Foundation Models for Brain MRI 
+
+## Cecilia Diana-Albelda a,∗,1 , Fiona Kekwick b,∗,1 , Raghav Mehta b, Aleksandra Kulbaka b, Paul M. Matthews c,d,e , Jesus Bescos a, Álvaro García-Martín a, Wenjia Bai b,c and Bernhard Kainz b,f 
+
+> a
+
+Department of Electronic Technology and Communications, Universidad Autónoma de Madrid, Madrid, Spain 
+
+> b
+
+Department of Computing, Imperial College London, London, United Kingdom 
+
+> c
+
+Department of Brain Sciences, Imperial College London, London, United Kingdom 
+
+> d
+
+UK Dementia Research Institute Centre, Imperial College London, London, United Kingdom 
+
+> e
+
+Rosalind Franklin Institute, Didcot, United Kingdom 
+
+> f
+
+Department of Artificial Intelligence in Biomedical Engineering, Friedrich-Alexander Universität Erlangen-Nürnberg, Erlangen, Germany 
+
+A R T I C L E I N F O 
+
+Keywords :Vision Foundation Models LoRA Brain Tumour Segmentation Mechanistic Interpretability Activation Patching Layer-Selective Adaptation 
+
+A B S T R A C T 
+
+Adapting Vision Foundation Models (VFMs) to medical imaging via LoRA has become standard practice, yet model selection is guided almost entirely by downstream task metrics, treating backbones with similar performance as interchangeable. We investigate whether equal performance implies equal internal representational shift. We analyse four ViT-B/16 backbones, DINOv3, SigLIP2, MerMED-FM, and BiomedCLIP, pre-trained with different objectives (self-distillation vs. contrastive vision-language) and on different data domains (natural vs. medical images). We adapt each to brain tumour segmentation and evaluate on six datasets covering both segmentation and Alzheimer’s disease classification. Using attention divergence, weight-change analysis, and activation patching, we find that the four models converge to similar segmentation performance (mean Dice 78–81%) through markedly different internal dynamics, yet diverge in cross-task transfer: segmentation adaptation improves Alzheimer’s disease classification for DINOv3 but degrades it for the other three backbones. We reveal a dissociation between modification magnitude and causal importance: the most heavily modified layers are not the causally relevant ones, with early-to-mid layers identified as sufficient for segmentation recovery. Restricting LoRA to these layers matches or approaches full-layer seg-mentation while reducing classification degradation in the three affected backbones, providing a mechanistically grounded strategy that is more parameter-efficient and more robust than standard full-layer adaptation. Our code is publicly available at https://github.com/fkekwick/Brain_Lora .
+
+## 1. Introduction 
+
+Vision Foundation Models (VFMs), which are pre-trained on large-scale image datasets, provide powerful visual feature encoders applicable to diverse downstream computer vision tasks [1]. Adapting them via Parameter-Efficient Fine-Tuning (PEFT) has become standard practice, with methods like LoRA [2] achieving competitive results across diverse data domains [3–9] at a fraction of full fine-tuning costs. In medical imaging tasks, such as brain tu-mour segmentation, LoRA-adapted foundation models now rival fully supervised baselines [10, 11]. Given the numer-ous publicly available VFMs backbones [12–15], choosing which backbone best serves the downstream task becomes a key design decision. Currently, model selection is guided almost entirely by downstream task metrics [16]; i.e., two backbones that reach the same segmentation Dice score are treated as interchangeable. In this paper, we investigate an intriguing mechanistic question: whether equal performance implies equal internal representation shift, as differences in how models reshape their representations may expose 
+
+> ∗
+
+Corresponding author  
+
+> cecilia.diana.albelda@gmail.com
+
+(C. Diana-Albelda);  
+
+> f.kekwick23@imperial.ac.uk
+
+(F. Kekwick) 
+
+> ORCID
+
+(s): 0009-0009-9210-0853 (C. Diana-Albelda);  
+
+> 0009-0001-2391-7378
+
+(F. Kekwick) 
+
+> 1
+
+These authors contributed equally to this work. 
+
+hidden generalisability risks and point to different backbone-selection or fine-tuning strategies. In model deployment, a single backbone often serves multiple downstream tasks. A model whose representations degrade on one task while improving on another poses a deployment risk that task-specific evaluation cannot detect. Understanding how models adapt, not only how well they perform, is therefore necessary for informed backbone selec-tion. Mechanistic interpretability tools developed for natural language and vision models [17] offer a principled way to characterise this representational shift and to identify which layers drive task performance. We study four ViT-B/16 backbones, comparing both pre-training objective (self-distillation vs. contrastive vision-language) and source domain (natural vs. medical im-ages): DINOv3 [12], SigLIP2 [13], MerMED-FM [14], and BiomedCLIP [15]. All four models are adapted via LoRA to brain tumour segmentation on multi-parametric MRI and evaluated across six datasets spanning three seg-mentation tasks (BraTS-GLI [18–20], BraTS-Africa [21], BraTS-PED [22]) and three classification tasks (OASIS-1 [23], ADNI binary, ADNI multi-class [24]). We analyse the adaptation process through the lens of four comple-mentary mechanistic tools: attention Jensen-Shannon (JS) divergence [25], LoRA weight-change ratios [2], off-brain attention fraction, and layer-wise activation patching [26]. 
+
+Diana-Albelda, Kekwick et al.: Preprint submitted to Elsevier Page 1 of 14 arXiv:2610.28255v1 [cs.CV] 20 Oct 2026 Convergent Performance, Divergent Mechanisms 
+
+Guided by the mechanistic diagnosis, we further propose and validate an early-layer LoRA strategy that restricts adaptation to the layers identified as causally important. Our main findings are as follows. (i) Although the four backbones converge to similar segmentation performance after LoRA adaptation, they diverge substantially in cross-task classification transfer. Mechanistic analysis reveals that segmentation convergence masks fundamentally dif-ferent representational shift profiles, and medical-domain pre-training confers no consistent segmentation advantage. 
+
+(ii) The most heavily modified layers are not the causally important ones: activation patching consistently identifies early-to-mid layers as sufficient to recover full segmenta-tion performance from a frozen encoder, while late-layer adaptation can damage cross-task transfer, as shown by the degraded linear probing classification performance. (iii) Re-stricting LoRA to early layers matches or approaches full-layer segmentation while improving classification perfor-mance relative to all-layer adaptation in the three backbones whose cross-task transfer degrades, providing a mechanisti-cally grounded strategy that is both more parameter-efficient and more robust than adapting all layers. Together, these findings suggest that integrating layer-wise interpretability tools with multi-task downstream as-sessment reveals adaptation risks invisible to standard met-rics and motivates practical strategies that would not emerge from task-specific evaluation alone. While our study focuses on brain MRI, the analytical framework can be applied to any attention-based encoder and data domain. 
+
+## 2. Related Work 
+
+Adapting Vision Foundation Models to medical imaging via PEFT has grown rapidly in recent years. LoRA [2] and its variants have been applied to diverse segmentation tasks [3, 4], including brain tumours [8, 10]. A common approach in the literature is adapting a single foundation model per study and evaluating it on diverse datasets within one single downstream task, treating the backbone as a fixed design choice justified by its performance metric. Comparative analyses across backbones remain limited to performance tables without examining how different pre-training paradigms shape the internal adaptation [5, 6, 27]. Beyond downstream metrics, mechanistic interpretabil-ity offers tools to examine how models internally reorganise during adaptation, including attention analysis, probing, and causal interventions such as activation patching [17, 26]. Recent work has begun applying these tools to LoRA-tuned models [28], using mechanistic analysis to guide adapter placement [29,30], to decode attention head behaviour under distribution shift [31], and to disentangle clinical from class-agnostic features during few-shot adaptation [32]. These studies provide valuable insight into individual models but, by analysing a single backbone in isolation, cannot reveal whether the same adaptation procedure produces different internal dynamics across architectures. Furthermore, the connection between mechanistic diagnosis and a concrete change in adaptation strategy remains largely unexplored in the vision domain: a recent exception in NLP uses causal and geometric analysis to guide LoRA placement across layers [33], but interpretability findings in medical imaging are still reported descriptively rather than validated through intervention. Our work addresses both gaps by comparing mechanistic profiles across four backbones and by using the diagnostic findings to motivate and test a layer-selective LoRA strategy. The question of which layers to adapt has also received attention. Some studies dynamically allocate rank budgets across layers [34] based on gradient-derived importance scores [35–37], while domain-specific heuristics select lay-ers using task performance proxies [5] or Fisher informa-tion [38]. These approaches tend to favour later layers, consistent with the intuition that deeper representations are more task-specific [39, 40]. Our results show that activation patching identifies early-to-mid layers as causally sufficient for segmentation, and that restricting adaptation to these lay-ers preserves cross-task transferability that full-layer adapta-tion can compromise. This finding motivates layer selection based on causal importance and multi-task evaluation rather than gradient magnitude. 
+
+## 3. Method 
+
+3.1. Adaptation Pipeline 
+
+As illustrated in Figure 1, we adapt four ViT-B/16 back-bones [41] to brain image segmentation task. Four brain MRI modalities (T1n, T1c, T2w, T2f) are fused via a trainable 
+
+1×1 convolution that maps these four input channels to three, matching the RGB input expected by all encoders. All four modalities carry complementary clinical information [42], so we retain all of them and let the learned convolution deter-mine the optimal combination. This fusion layer is initialised with uniform weights of 1∕4 with no bias term, equivalent to average pooling, and trained end-to-end independently for each backbone to learn modality-specific contributions. The ViT-B/16 encoder is kept frozen; adaptation is achieved through LoRA modules injected into each of the 12 transformer blocks. From the adapted encoder, we extract multi-scale representations by tapping four uniformly spaced blocks {3 , 6, 9, 12} (1-indexed), each taken after the encoder’s final layer normalisation and reshaped from the token sequence into a 14 × 14 spatial feature map with 768 channels. The four maps are concatenated channel-wise into a 3072 -channel representation, which a lightweight segmentation head (two 1 × 1 convolutions separated by ReLU, 3072 → 256 → 𝐶 classes) converts into a dense prediction, upsampled to the ground-truth resolution of 
+
+240×240 pixels. The LoRA modules and segmentation head are jointly trained with an equal-weight combination of Dice and cross-entropy loss. We evaluate each backbone in two configurations: frozen ,where no LoRA modules are applied, the four MRI modal-ities are mapped to three channels via average pooling, and only the segmentation head is trained; and adapted ,  
+
+> Diana-Albelda, Kekwick et al.: Preprint submitted to Elsevier Page 2 of 14
+
+Convergent Performance, Divergent Mechanisms Panel A: Multi-Modal Adaptation  Panel B: Mechanistic Analysis               
+
+> T1n
+> T1c
+> T2f
+> T2w
+> Fusion Conv. ͓ϙҌϙ͒
+> Frozen Backbone (ViT-B/16)
+> Transformer īĺèħϙϼлϽ
+> MLP
+> Self-Attention
+> QVKْْ
+> LoRA Module
+> AB
+> rג{4, 8, 12, 16}
+> Foundation Models:
+> Self-Distillation: DINOv3, MerMED-FM
+> Contrastive: SigLIP2, BiomedCLIP
+> Evaluation Tasks
+> Interpretability ĺĺīŜϙϼŕôŘϙлϽ
+> JS divergence Weight-change
+> Off-brain attention Activation patching
+> frozen adapted
+> performance recovery
+> Segmentation Head
+> лϙ ג{3, 6, 9, 12}
+> лଵଶ
+> Segmentation:
+> BraTS-GLI
+> BraTS-Africa
+> BraTS-PED
+> Classification:
+> OASIS-1
+> ADNI (binary)
+> ADNI (multiclass)
+> лଵ െлଵଶ
+> Linear Probe
+> (T1n only, no
+> Fusion Conv.)
+
+Figure 1: Overview of the adaptation and analysis pipeline. (Panel A) Four brain MRI modalities (T1n, T1c, T2f, T2w) are fused via a trainable 1 × 1 convolution into a 3-channel input, processed by a frozen ViT-B/16 encoder with trainable LoRA modules applied to the query (Q) and value (V) projections of every transformer block in the default all-layer configuration. Components marked with \ (fusion convolution, LoRA modules, and segmentation head) are jointly trained on BraTS-GLI. (Panel B) Segmentation is evaluated on three BraTS datasets. For classification, the full encoder (including LoRA weights) remains frozen and only a logistic regression classifier ( \) is fitted on each classification dataset using mean-pooled features from 
+
+𝓁 12 ; the fusion convolution is bypassed (T1n input only). Four mechanistic interpretability tools are applied per layer to analyse the adaptation process: JS divergence, weight-change ratio, off-brain attention fraction, and activation patching. 
+
+which includes the trainable fusion convolution and LoRA modules described above. The trainable fusion convolution may contribute to absolute performance differences between configurations; however, all four backbones share the same architecture, so mechanistic comparisons across backbones remain controlled. We adapt the frozen ViT encoder using LoRA [2] within each transformer self-attention block. For each transformer block 𝓁 , low-rank updates are applied to the query and value projections of the fused 𝑄𝐾𝑉 linear layer, while the key projection remains unchanged, following the standard LoRA configuration proposed by [2]. For a feature map 𝑥 , the adapted query 𝑄 ′ and value projections 𝑉 ′ are given by: 
+
+𝑄 ′ = (𝑊 (𝓁 ) 
+
+> 𝑄
+
++𝐵 (𝓁 ) 
+
+> 𝑄
+
+𝐴 (𝓁 )
+
+> 𝑄
+
+)𝑥, 𝑉 ′ = (𝑊 (𝓁 ) 
+
+> 𝑉
+
++𝐵 (𝓁 ) 
+
+> 𝑉
+
+𝐴 (𝓁 )
+
+> 𝑉
+
+)𝑥, 
+
+(1) where 𝑊 (𝓁 ) 
+
+> 𝑄
+
+, 𝑊 (𝓁 ) 
+
+> 𝑉
+
+are the frozen pretrained weights and 
+
+𝐴 (𝓁 ) 
+
+> 𝑄
+
+, 𝐴 (𝓁 ) 
+
+> 𝑉
+
+, 𝐵 (𝓁 ) 
+
+> 𝑄
+
+, 𝐵 (𝓁 ) 
+
+> 𝑉
+
+are the trainable low-rank projection matrices, with no dropout. We omit the 𝛼 ∕𝑟 scaling factor, so the low-rank update 𝐵𝐴 is applied at full magnitude; since rank sensitivity proved negligible (Section 5.1, Table 1), this choice does not affect our conclusions. 
+
+3.2. Mechanistic Analysis 
+
+We analyse the adaptation process [43] through four complementary tools: (1) attention Jensen-Shannon (JS) di-vergence [25], (2) LoRA weight-change ratio [2], (3) off-brain attention fraction, and (4) layer-wise activation patch-ing [26]. JS divergence and weight-change ratio quantify the magnitude of adaptation in output space and parameter space, respectively. As the LoRA update Δ𝑊 𝑄 = 𝐵 𝑄 𝐴 𝑄 
+
+modifies the query projection, it directly alters the attention logits 𝑄 ⋅ 𝐾 ⊤, changing the resulting attention distribution. The weight-change ratio measures this modification in pa-rameter space, while JS divergence measures its downstream effect on the attention pattern; together, they capture the same adaptation from complementary viewpoints. Off-brain attention fraction examines the adaptation cost by measuring how much frozen attention must be redirected toward task-relevant regions. Finally, activation patching isolates which layer adaptations causally drive task performance. 
+
+3.2.1. Attention JS Divergence 
+
+To quantify how LoRA changes each layer’s attention pattern, we measure the JS divergence [25] in units of bits (log base 2) between the frozen ( 𝑃 𝑓 ) and adapted ( 𝑃 𝑎 ) atten-tion distributions. For each transformer block 𝓁 , we extract the 𝑁 × 𝑁 patch-to-patch attention sub-matrix, excluding any special tokens such as the CLS token or DINOv3’s register tokens, renormalise each query row to form a valid 
+
+Diana-Albelda, Kekwick et al.: Preprint submitted to Elsevier Page 3 of 14 Convergent Performance, Divergent Mechanisms 
+
+distribution, and compute 
+
+JS (𝓁 ) = 12 𝐷 KL (𝑃 𝑓 ‖𝑀 )+ 12 𝐷 KL (𝑃 𝑎 ‖𝑀 ), 𝑀 = 12 (𝑃 𝑓 +𝑃 𝑎 ),
+
+(2) with 𝐷 KL being Kullback-Leibler divergence [44]. The re-sult is averaged over query patches and attention heads via arithmetic mean. JS divergence is symmetric and bounded in 
+
+[0 , 1] , enabling stable comparison across layers and models without scale normalisation. 
+
+3.2.2. LoRA Weight Change 
+
+We calculate the adaptation magnitude directly in param-eter space. For each transformer block 𝓁 , the effective LoRA update [2] to a projection matrix is Δ𝑊 (𝓁 ) = 𝐵 (𝓁 )𝐴 (𝓁 ),where 𝐴 and 𝐵 are the learned low-rank matrices. We materialise the full product 𝐵 (𝓁 )𝐴 (𝓁 ) and report the relative Frobenius norm ‖Δ𝑊 (𝓁 )‖𝐹 ∕‖𝑊 (𝓁 )‖𝐹 separately for the query and value projections, where 𝑊 (𝓁 ) is the correspond-ing pretrained weight. A high ratio indicates that LoRA substantially changes that layer relative to its original weight parameters. 
+
+3.2.3. Off-Brain Attention Fraction 
+
+To understand why the four encoders differ in adaptation cost, we measure how much frozen attention is directed away from anatomically relevant regions. We obtain a binary brain mask from the input slice resized to 224 × 224 and assign each ViT patch token to  (brain) or its complement ̄  (off-brain) according to whether more than 5% of its 16 × 16 
+
+pixels are foreground. For each block 𝓁 and attention head ℎ,let 𝐴 (𝓁 ,ℎ ) 
+
+> 𝑞,𝑘
+
+be the attention weight from query patch 𝑞 to key patch 𝑘 . We compute the off-brain attention fraction 
+
+𝑠 𝓁 = 1
+
+𝐻 ||
+
+> 𝐻
+
+∑
+
+> ℎ=1
+
+∑
+
+> 𝑞 ∈
+
+∑
+
+> 𝑘 ∈̄
+
+𝐴 (𝓁 ,ℎ ) 
+
+> 𝑞,𝑘
+
+, (3) where 𝐻 is the number of attention heads and  the set of query patches. A high off-brain fraction indicates that the frozen encoder largely ignores the anatomy, implying that LoRA must redirect substantial attention mass before task-relevant features can be encoded. 
+
+3.2.4. Activation Patching 
+
+Activation patching isolates which layer adaptations causally drive task performance [26]. Let 𝑀 𝐹 and 𝑀 𝐴 
+
+denote the task metric obtained with the fully frozen and fully adapted encoder, respectively. For each block 𝓁 , we capture the output of the adapted encoder at that depth and inject it into the frozen forward pass at the same depth, replacing only that block’s output. The resulting metric 𝑀 (𝓁 )
+
+> 𝑃
+
+yields a normalised recovery score: 
+
+𝑅 (𝓁 ) = 𝑀 (𝓁 ) 
+
+> 𝑃
+
+− 𝑀 𝐹 
+
+𝑀 𝐴 − 𝑀 𝐹 
+
+, (4) measuring the fraction of the LoRA-driven gain recovered by providing the adapted representation at depth 𝓁 . Note that 
+
+𝑅 (𝓁 ) does not measure the contribution of block 𝓁 alone, as the captured activation already incorporates LoRA from all preceding blocks, and all subsequent ones process it with frozen weights. An important interaction arises from the multi-scale fea-ture extraction described in Section 3.1. The segmentation head receives features from blocks {3 , 6, 9, 12} directly, so features tapped before the patching point reach the head as frozen representations, while those tapped after it reflect the propagated adapted activation. 𝑅 (𝓁 ) is therefore cumu-lative, quantifying how much of the total improvement is recoverable when the adapted representation is available from depth 𝓁 onward. A high 𝑅 (𝓁 ) despite a small weight-change ratio indicates a block whose modest modification is disproportionately important for performance. 
+
+3.3. Layer-Selective LoRA 
+
+To check whether the causal importance patterns identi-fied by activation patching translate into a practical adapta-tion strategy, we split the 12 transformer blocks at the mid-point, applying LoRA to blocks 1–6 ( early ) or 7–12 ( late ), alongside the default all (1–12). The same cut-off is used across all four backbones to test whether a single, model-agnostic configuration is viable rather than optimising the split point per backbone. In each configuration, LoRA mod-ules are injected only into the selected blocks, with non-selected ones retaining their original frozen weights. The segmentation head and fusion convolution are trained from scratch for each configuration to ensure a fair comparison, so performance differences reflect the effect of the LoRA module placement. 
+
+3.4. Linear Probing Classification 
+
+To further assess whether representations learned dur-ing segmentation transfer to an unrelated task, we evaluate each backbone on Alzheimer’s disease classification via linear probing [45]. Features are extracted from the final transformer block with layer normalisation applied, and the patch token sequence is mean-pooled into a single 768-dimensional vector per slice. The 2𝐷 representations of all slices belonging to the same subject are then mean-pooled into a single subject-level representation. A logistic regression classifier is fitted on the training set and evaluated on the test set. During feature extraction, the LoRA-adapted segmentation encoder is used as a fixed feature extractor: the adapted weights (including LoRA modules) are loaded but not updated, so the features reflect the post-segmentation-adaptation representations without any further training. 
+
+## 4. Experimental Setup 
+
+4.1. Backbone Selection 
+
+We select four backbones analysing the self-supervised objective (self-distillation vs. contrastive vision-language) and the training data domain (natural vs. medical images). The self-distillation models are DINOv3 [12], trained on 
+
+∼1.7 billion natural images, and MerMED-FM [14], trained on ∼3.3 million medical images, spanning diverse clinical   
+
+> Diana-Albelda, Kekwick et al.: Preprint submitted to Elsevier Page 4 of 14
+
+Convergent Performance, Divergent Mechanisms 
+
+Table 1 In-distribution segmentation performance on BraTS-GLI test set. Four ViT-B/16 backbones are evaluated in two configurations: 
+
+Frozen (encoder fully frozen, only the segmentation head is trained) and LoRA (encoder adapted via LoRA at ranks 𝑟 ∈{4 , 8, 12 , 16} , trained jointly with the segmentation head). Dice coefficient (%) and Hausdorff distance at the 95th percentile (HD95, mm) are reported for three tumour sub-regions: whole tumour (WT = enhancing + necrotic + edema), tumour core (TC = enhancing + necrotic), and enhancing tumour (ENH). All values are mean ± std across 3 random seeds. Best result per model/metric combination is shown in bold .
+
+Dice (%) ↑ HD95 (mm) ↓
+
+Backbone Adaptor WT TC ENH Mean WT TC ENH 
+
+Self-distillation Learning 
+
+DINOv3 [12] Frozen 80.23 ±0.02 75.60 ±0.04 57.30 ±0.33 71.04 ±0.11 11.10 ±0.73 6.72 ±0.44 5.45 ±0.16 
+
+LoRA ( 𝑟 = 4 ) 86.91 ±0.04 84.20 ±0.11 70.51 ±0.37 80.54 ±0.13 6.02 ±0.33 4.74 ±0.42 4.28 ±0.10 
+
+LoRA ( 𝑟 = 8 ) 87.10 ±0.06 84.16 ±0.06 71.01 ±0.43 80.76 ±0.15 5.67 ±0.10 4.53 ±0.09 4.19 ±0.16 
+
+LoRA ( 𝑟 = 12 ) 87.29 ±0.04 84.16 ±0.10 71.20 ±0.71 80.88 ±0.24 5.81 ±0.04 5.04 ±0.27 4.21 ±0.09 
+
+LoRA ( 𝑟 = 16 ) 87.31 ±0.06 84.43 ±0.15 71.87 ±0.07 81.20 ±0.06 5.75 ±0.24 4.62 ±0.25 4.15 ±0.20 
+
+MerMED-FM [14] Frozen 80.18 ±0.13 74.73 ±0.23 57.16 ±0.31 70.69 ±0.14 11.11 ±0.13 7.81 ±0.84 6.40 ±0.49 
+
+LoRA ( 𝑟 = 4 ) 86.12 ±0.18 82.90 ±0.21 69.02 ±0.18 79.35 ±0.18 6.46 ±0.17 4.89 ±0.34 4.54 ±0.20 
+
+LoRA ( 𝑟 = 8 ) 86.19 ±0.06 82.93 ±0.18 69.20 ±0.78 79.44 ±0.19 6.68 ±0.25 4.97 ±0.30 4.36 ±0.10 
+
+LoRA ( 𝑟 = 12 ) 86.30 ±0.10 82.96 ±0.13 69.00 ±0.73 79.42 ±0.18 6.37 ±0.18 5.11 ±0.64 4.46 ±0.15 
+
+LoRA ( 𝑟 = 16 ) 86.12 ±0.09 82.41 ±0.23 69.39 ±0.36 79.31 ±0.20 6.89 ±0.37 5.34 ±0.37 4.31 ±0.12 
+
+Contrastive Learning 
+
+SigLIP2 [13] Frozen 77.81 ±0.33 73.53 ±0.15 55.13 ±0.90 68.82 ±0.32 16.62 ±1.79 7.57 ±0.54 6.10 ±0.14 
+
+LoRA ( 𝑟 = 4 ) 86.26 ±0.04 82.74 ±0.31 69.59 ±0.54 79.53 ±0.21 6.32 ±0.44 4.89 ±0.13 4.39 ±0.14 
+
+LoRA ( 𝑟 = 8 ) 86.54 ±0.03 83.22 ±0.12 69.83 ±0.51 79.86 ±0.17 6.20 ±0.35 4.93 ±0.21 4.16 ±0.11 
+
+LoRA ( 𝑟 = 12 ) 86.59 ±0.11 82.85 ±0.08 70.78 ±0.45 80.07 ±0.16 6.48 ±0.36 4.93 ±0.30 4.11 ±0.16 
+
+LoRA ( 𝑟 = 16 ) 86.49 ±0.05 82.81 ±0.10 70.04 ±0.42 79.78 ±0.14 6.42 ±0.73 5.19 ±0.28 4.35 ±0.14 
+
+BiomedCLIP [15] Frozen 76.69 ±0.29 70.26 ±0.22 52.88 ±0.13 66.61 ±0.13 14.19 ±1.16 9.89 ±0.78 8.61 ±0.74 
+
+LoRA ( 𝑟 = 4 ) 84.92 ±0.13 80.82 ±0.13 67.28 ±0.59 77.67 ±0.22 7.52 ±0.56 5.71 ±0.71 4.91 ±0.20 
+
+LoRA ( 𝑟 = 8 ) 85.15 ±0.07 81.37 ±0.34 67.37 ±0.80 77.96 ±0.39 7.38 ±0.30 5.45 ±0.40 4.81 ±0.36 
+
+LoRA ( 𝑟 = 12 ) 85.39 ±0.04 81.36 ±0.18 67.75 ±0.60 78.16 ±0.23 7.19 ±0.46 5.90 ±0.37 4.86 ±0.01 
+
+LoRA ( 𝑟 = 16 ) 85.35 ±0.11 81.47 ±0.34 68.01 ±0.51 78.28 ±0.27 7.63 ±0.46 6.90 ±0.55 4.62 ±0.35 
+
+modalities but excluding MRI. The contrastive models are SigLIP2 [13], trained on ∼10 billion natural image-text pairs, and BiomedCLIP [15], trained on ∼15 million image-text pairs from the biomedical literature. All four share the ViT-B/16 architecture (with 12 layers), isolating the effect of pre-training configuration from architectural differences. We note that pre-training dataset scale differs by three orders of magnitude between natural-domain and medical-domain models; this confound is inherent to the available foundation models and should be considered when interpreting domain-related comparisons. 
+
+4.2. Datasets 
+
+For glioma tumour segmentation, models are adapted on the BraTS-GLI [18–20] adult glioma dataset using all four MRI modalities (T1n, T1c, T2w, T2f) as input. Seg-mentation is evaluated at the 2D slice level on three nested tumour sub-regions: whole tumour (WT), tumour core (TC, combining enhancing and necrotic cells), and enhancing tumour (ENH, active infiltrating cells). The dataset com-prises 153 ,105 2 D slices from 1,251 patients, with a patient-stratified 70/15/15 train/validation/test split. Out-of-distribution segmentation generalisation is evalu-ated on BraTS-Africa [21] ( 7,462 slices from 60 patients from Sub-Saharan African populations with glioma) and BraTS-PED [22] ( 11 ,923 slices from 99 pediatric patients with glioma), without any retraining. For the classification tasks, we use the Open Access Series of Imaging Studies (OASIS-1) [23] ( 39 ,438 2 D slices from 416 subjects) and the Alzheimer’s Disease Neuroimaging Initiative (ADNI) datasets [24] ( 174 ,458 slices from 1,494 subjects), taking the first T1n scan per subject in case of a longitudinal study. We use the default L2 regularisation strength ( 𝐶 = 1)without tuning, so no validation set is used; each cross-validation fold uses a subject-level 70/30 train/test split (Section 4.5). On OASIS-1, we perform binary Alzheimer’s disease classification, and on ADNI both binary (CN vs. AD) and 3-class (CN vs. MCI vs. AD) classification, where CN is the label for a scan from a Cognitively Normal study participant, MCI denotes Mild Cognitive Impairment, and AD represents the presence of Alzheimer’s Disease. 
+
+4.3. Preprocessing 
+
+We applied volume-wise z-score normalisation, fol-lowed by 2𝐷 slicing. For all datasets, the selected 2𝐷 slices were obtained by discarding slices with less than 5% non-zero pixels from the original 3𝐷 volumes. We clipped each slice to [−3 , 3] , rescaled to [0 , 1] , and resized to 224 × 224 .The slices were normalised following each backbone’s orig-inal pre-training protocol (ImageNet statistics for DINOv3 
+
+Diana-Albelda, Kekwick et al.: Preprint submitted to Elsevier Page 5 of 14 Convergent Performance, Divergent Mechanisms                                                                        
+
+> Table 2 Out-of-distribution segmentation performance (Dice %). All models are trained on BraTS-GLI and evaluated on BraTS-Africa (Sub-Saharan African adult glioma) and BraTS-PED (pediatric glioma) without retraining. Dice coefficient (%) is reported for three tumour sub-regions: whole tumour (WT = enhancing + necrotic + edema), tumour core (TC = enhancing + necrotic), and enhancing tumour (ENH). Only 𝑟 = 8 is reported. All values are mean ±std across 3 random seeds. Best result per column in bold .
+> BraTS-Africa BraTS-PED Backbone Adaptor WT TC ENH WT TC ENH
+> Self-distillation Learning
+> DINOv3 [12] Frozen 69.70 ±2.21 58.50 ±0.07 41.55 ±0.79 55.44 ±0.42 35.23 ±1.43 29.49 ±1.36
+> LoRA ( 𝑟 = 8 )85.55 ±0.30 73.72 ±0.33 66.94 ±0.54 79.81 ±0.79 47.33 ±1.88 41.88 ±0.63
+> MerMED-FM [14] Frozen 76.19 ±0.48 56.39 ±0.20 41.85 ±0.79 57.13 ±1.44 33.70 ±0.90 28.15 ±0.38
+> LoRA ( 𝑟 = 8 )83.73 ±0.29 72.85 ±0.30 64.77 ±0.08 77.88 ±0.69 45.72 ±0.46 40.36 ±1.41
+> Contrastive Learning
+> SigLIP2 [13] Frozen 69.49 ±0.54 56.67 ±0.55 41.58 ±0.94 53.13 ±0.85 35.27 ±1.33 27.16 ±1.94
+> LoRA ( 𝑟 = 8 )84.10 ±0.55 72.51 ±0.58 65.29 ±0.64 79.24 ±0.33 46.67 ±0.85 41.95 ±2.26
+> BiomedCLIP [15] Frozen 68.19 ±2.25 51.75 ±0.50 38.10 ±0.58 46.77 ±0.93 29.17 ±0.95 24.66 ±0.94
+> LoRA ( 𝑟 = 8 )82.34 ±0.16 69.92 ±0.33 62.05 ±0.48 75.56 ±0.19 42.91 ±0.25 37.97 ±0.17
+
+and MerMED-FM, backbone-specific statistics for SigLIP2, and OpenAI CLIP statistics for BiomedCLIP). 
+
+4.4. LoRA Adaptation Implementation Details 
+
+All trainable components (LoRA modules, fusion con-volution, and segmentation head) are jointly trained for 50 epochs using the AdamW optimiser [46] with a batch size of 32 and weight decay of 0.05 . We use a learning rate of 10 −4 
+
+for the LoRA modules and 10 −3 for the fusion convolution and segmentation head. Each experiment is run on a single NVIDIA A100 GPU and repeated with 3 random seeds; seg-mentation results report mean ± standard deviation across seeds, while classification results are additionally averaged across cross-validation folds. 
+
+4.5. Linear Probing Classification Implementation 
+
+In this task, only a logistic regression classifier is trained on the features extracted from each backbone, using L2-regularised logistic regression ( 𝐶 = 1 ) with class-balanced weights and the L-BFGS solver [47], with a maximum of 2,000 iterations. Since OASIS-1 and ADNI provide only single-modality T1 scans, the fusion convolution is not used during feature extraction; instead, the input channel is repli-cated to three channels and normalised with each backbone’s specific preprocessing. The logistic regression classifier uses a 3-fold Monte Carlo cross-validation evaluation. The results are averaged across folds and across encoder training seeds for the LoRA adaptations. The L-BFGS solver is determin-istic, so no seeds were varied for the probe. 
+
+## 5. Results 
+
+5.1. Segmentation Performance 
+
+Table 1 reports in-distribution segmentation on BraTS-GLI. Across all four backbones, LoRA adaptation yields substantial improvements over the frozen baseline, raising mean Dice by ∼8–11% points regardless of the backbone. After adaptation, the four models converge to a narrow per-formance range (mean Dice ∼78–81% at 𝑟 = 8 ), despite their different pre-training configurations. DINOv3 achieves the highest and BiomedCLIP the lowest mean Dice in both the frozen and adapted settings, while SigLIP2 and MerMED-FM lie in between: frozen MerMED-FM outperforms frozen SigLIP2, and after adaptation the two differ by less than 0.5 points. Pre-training domain alone therefore does not determine the ranking. The rank ablation reveals negligible sensitivity: for each backbone, the difference between the best and worst rank is below ∼1% in mean Dice, and the differences between ranks fall within the standard deviation across seeds, confirming that rank tuning is unnecessary for this task. We therefore fix 𝑟 = 8 for all subsequent experiments, following the default configuration in [2]. Table 2 extends the evaluation to out-of-distribution settings. LoRA adaptation improves mean Dice by 15-19% on both BraTS-Africa and BraTS-PED across all four backbones, suggesting that adaptation captures domain-general brain MRI representations rather than overfitting to in-distribution features. The relative ordering of backbones is preserved, with DINOv3 achieving the highest Dice and BiomedCLIP the lowest. Figure 2 provides qualitative examples across the three segmentation datasets, illustrating how LoRA sharpens region boundaries for all four encoders. 
+
+5.2. Classification Cross-task Transfer 
+
+Table 3 evaluates whether representations learned dur-ing segmentation adaptation transfer to Alzheimer’s disease classification on OASIS-1 and ADNI. The four backbones exhibit divergent behaviours. DINOv3 is the only model for which LoRA adaptation benefits classification: AUC improves consistently across all three settings. For the re-maining three backbones, adaptation harms classification to varying degrees [48]: MerMED-FM shows the largest drops (e.g. 0.878 to 0.830 AUC on OASIS-1), SigLIP2 degrades consistently across all settings, and BiomedCLIP   
+
+> Diana-Albelda, Kekwick et al.: Preprint submitted to Elsevier Page 6 of 14
+
+Convergent Performance, Divergent Mechanisms BraTS-GLI Input (T2f) Ground Truth DINOv3 F DINOv3 A SigLIP2 F SigLIP2 A MerMED-FM F MerMED-FM A BiomedCLIP F BiomedCLIP A    
+
+> BraTS-Africa BraTS-PED
+> Enhancing/ENH Necrotic Edema Tumour Core (TC) Whole Tumour (WT)
+
+Figure 2: Qualitative segmentation results for a representative axial slice from each dataset. Tumour sub-regions (enhancing, necrotic core, peritumoural edema) are overlaid on the T2f input. Each row corresponds to one dataset (BraTS-GLI, BraTS-Africa, BraTS-PED). For each backbone, the frozen ( 𝐹 ) and LoRA-adapted ( 𝐴 ) predictions are shown side by side. LoRA adaptation visibly refines region boundaries across all four backbones. 
+
+Table 3 Alzheimer’s disease classification via linear probing. Each backbone is evaluated in two configurations: Frozen (original pre-trained encoder) and LoRA (𝑟 = 8 , adapted for segmentation on BraTS-GLI). Features are mean-pooled from the final transformer block and aggregated per subject; a logistic regression classifier is fitted on the training set. AUC and balanced accuracy (BAcc) are reported on OASIS-1 (binary AD classification) and ADNI (binary and 3-class). All values are mean ± std across 3 folds for the frozen models, and 3 folds and 3 seeds for the LoRA trained models. Best result per column in bold .
+
+Backbone Adaptor OASIS-1 (binary) ADNI (binary) ADNI (3-class) 
+
+AUC BAcc (%) AUC BAcc (%) AUC BAcc (%) 
+
+Self-distillation Learning 
+
+DINOv3 [12] Frozen 0.839 ±0.026 71.40 ±2.43 0.747 ±0.026 69.03 ±1.18 0.606 ±0.023 43.47 ±2.93 
+
+LoRA ( 𝑟 = 8 ) 0.868 ±0.029 75.44 ±3.13 0.799 ±0.017 72.40 ±1.03 0.637 ±0.012 45.94 ±0.98 
+
+MerMED-FM [14] Frozen 0.878 ±0.020 78.68 ±1.22 0.835 ±0.038 74.02 ±4.10 0.654 ±0.008 47.88 ±2.71 
+
+LoRA ( 𝑟 = 8 ) 0.830 ±0.019 72.77 ±1.12 0.772 ±0.027 71.17 ±1.43 0.603 ±0.013 42.79 ±2.55 
+
+Contrastive Learning 
+
+SigLIP2 [13] Frozen 0.850 ±0.025 74.30 ±3.48 0.811 ±0.018 73.52 ±1.86 0.617 ±0.003 41.61 ±0.35 
+
+LoRA ( 𝑟 = 8 ) 0.816 ±0.022 72.02 ±1.80 0.746 ±0.009 68.21 ±0.80 0.597 ±0.007 42.36 ±0.85 
+
+BiomedCLIP [15] Frozen 0.858 ±0.019 75.58 ±2.97 0.772 ±0.027 70.03 ±4.20 0.633 ±0.018 46.29 ±1.26 
+
+LoRA ( 𝑟 = 8 ) 0.855 ±0.021 74.79 ±4.85 0.752 ±0.013 68.46 ±1.18 0.607 ±0.014 42.85 ±1.63 
+
+remains approximately neutral on OASIS-1 but drops on ADNI. Notably, frozen MerMED-FM achieves the highest classification performance across all three settings, yet loses this advantage entirely after adaptation. This divergence in classification performance is not predicted by the segmen-tation metrics, where all four models perform similarly, carrying direct implications for multi-task deployment. 
+
+5.3. Per-Layer Mechanistic Analysis 
+
+Figure 3 reveals that the convergent segmentation perfor-mance reported above conceals markedly different internal adaptation dynamics across the four backbones. Figure 3 (a) shows that all four models exhibit increasing attention JS divergence toward later layers, but with different magnitudes: DINOv3 remains the most stable (below 0.3 throughout), while SigLIP2 escalates steeply to ∼0 .75 at layer 12. MerMED-FM and BiomedCLIP fall between these extremes. This suggests that DINOv3 requires the least representational reorganisation to solve the segmentation task, consistent with its superior in-distribution and out-of-distribution performance (Tables 1 and 2). Conversely, models that undergo larger attention shifts risk overwriting representations useful for other tasks, which aligns with the classification degradation observed in Section 5.2. Figure 3 (b) shows a different grouping in parameter space: the two medical-domain models (MerMED-FM, BiomedCLIP) exhibit the highest weight-change ratios in later layers, while DINOv3 maintains the most uniform and lowest ratios across all layers. Notably, the grouping here follows pre-training domain rather than objective: both 
+
+Diana-Albelda, Kekwick et al.: Preprint submitted to Elsevier Page 7 of 14 Convergent Performance, Divergent Mechanisms 1 4 8 12       
+
+> Transformer Layer
+> 0.00 0.25 0.50 0.75 1.00
+> JS Divergence
+> (a) Attention JS Divergence
+> 14812
+> Transformer Layer
+> 10 0
+> 10 1
+> ‖Δ W‖F / ‖W‖F
+> (b) LoRA Weight Change
+> Q projection V projection 14812
+> Transformer Layer
+> 0.00 0.25 0.50 0.75 1.00
+> Off -Brain Fraction
+> (c) O ff -Brain Attention Fraction
+> DINOv3 SigLIP2 MerMED-FM BiomedCLIP
+
+Figure 3: Per-layer mechanistic analysis of LoRA adaptation. (a) Attention Jensen-Shannon divergence between frozen and adapted attention distributions. (b) LoRA weight-change ratio ( ‖Δ𝑊 ‖𝐹 ∕‖𝑊 ‖𝐹 ), shown separately for query (Q, solid) and value (V, dashed) projections on a log scale. (c) Frozen off-brain attention fraction, measuring the fraction of attention mass directed to off-brain patches before adaptation. All metrics are computed on the BraTS-GLI test set and averaged across patients and MRI slices. Shaded bands show ±1 standard deviation across 3 seeds (absent in (c), which uses only pre-trained weights). Real T2f DINOv3 F DINOv3 A MerMED-FM F MerMED-FM A SigLIP2 F SigLIP2 A BiomedCLIP F BiomedCLIP A
+
+Figure 4: Last-layer attention maps for a BraTS-GLI patient. Each column shows one backbone in its frozen ( 𝐹 ) and LoRA-adapted ( 𝐴 ) configuration. Maps show block-12 attention from the CLS token to the patch tokens, averaged over heads; since SigLIP2 has no CLS token, its map shows the attention each patch receives, averaged over all patch queries. Each panel uses its own colour scale, so only spatial patterns are comparable. The frozen medical-domain models (MerMED-FM, BiomedCLIP) attend to anatomical structures, whereas the frozen natural-domain models (DINOv3, SigLIP2) distribute attention more diffusely. After adaptation, all four models redirect attention toward the tumour. 
+
+medical-domain models require disproportionately large late-layer updates despite their prior exposure to clinical images, suggesting that domain-relevant pre-training does not reduce the magnitude of adaptation needed for a specific downstream task. Figure 3 (c) provides context for the adaptation cost of each backbone. In the frozen encoders, the two medical-domain models (MerMED-FM, BiomedCLIP) allocate a lower fraction of their attention to off-brain patches than the natural-domain models (DINOv3, SigLIP2), particu-larly in middle-to-late layers, consistent with prior exposure to medical images during pre-training. Figure 4 illustrates this qualitatively: the frozen medical-domain models at-tend to anatomical structures, whereas the frozen natural-domain models distribute attention more diffusely across background regions. After LoRA, all four models redirect attention toward the tumour, but the amount of redistribution required varies across backbones. Taken together, panels (b) and (c) present an apparent paradox: the medical-domain models already attend to anatomically relevant regions yet require the largest parameter updates. This suggests that attending to the right regions is not sufficient [49], as the quality of the underlying representations, rather than atten-tion alignment alone, determines how efficiently a backbone can be adapted. 
+
+5.4. Activation Patching Recovery Analysis 
+
+Figure 5 presents activation patching results across all six evaluation datasets. For each layer 𝓁 , the adapted encoder’s output at that depth is injected into an otherwise frozen forward pass; the resulting task metric indicates how much of the full adaptation benefit is recovered when adapted representations are available from depth 𝓁 onward. In segmentation (panels a-c), a consistent pattern emerges: across all four backbones and three datasets, performance re-covery is concentrated in the first half of the encoder (layers 1–6), with recovery declining in later layers. This stands in contrast with the mechanistic profiles in Figure 3, where the largest JS divergence and weight-change ratios concentrate in layers 8–12, revealing a dissociation between modifica-tion magnitude and causal importance. A notable case is MerMED-FM, which exhibits negative recovery specifically at layer 7 across all three segmentation datasets and all seeds (9/9 conditions), meaning that injecting the adapted representation at this depth produces worse performance than the fully frozen encoder. This layer coincides with a 
+
+×4 jump in the value-projection weight change ( ‖Δ𝑊 𝑉 ‖)relative to the adjacent layer. This suggests that the large value-projection rewrite produces activations incompatible with the subsequent frozen blocks. 
+
+Diana-Albelda, Kekwick et al.: Preprint submitted to Elsevier Page 8 of 14 Convergent Performance, Divergent Mechanisms 1 4 8 12                
+
+> Transformer Layer
+> 0.00 0.25 0.50 0.75 1.00
+> Segmentation Recovery
+> −1.3
+> (a) BraTS-GLI
+> 14812
+> Transformer Layer
+> 0.00 0.25 0.50 0.75 1.00
+> −1.3
+> (b) BraTS-Africa
+> 14812
+> Transformer Layer
+> 0.00 0.25 0.50 0.75 1.00
+> −1.1
+> (c) BraTS-PED
+> DINOv3 SigLIP2 MerMED-FM BiomedCLIP 14812
+> Transformer Layer
+> 0.80 0.82 0.84 0.86 0.88 0.90
+> AUC
+> (d) OASIS-1
+> 14812
+> Transformer Layer
+> 0.68 0.70 0.72 0.74 0.76 0.78 0.80
+> (e) ADNI (binary)
+> 14812
+> Transformer Layer
+> 0.56 0.58 0.60 0.62 0.64
+> (f) ADNI (multiclass)
+> DINOv3 SigLIP2 MerMED-FM BiomedCLIP
+
+Figure 5: Activation patching results across segmentation and classification datasets. For each block 𝓁 , the adapted activation is injected into an otherwise frozen forward pass and the resulting task metric is recorded. Note that 𝑅 (𝓁 ) is cumulative: the patched activation at block 𝓁 already incorporates LoRA from all preceding blocks. Top row (a–c): normalised segmentation recovery 𝑅 (𝓁 ) on three BraTS datasets; values above zero indicate improvement over the frozen baseline, and values below zero indicate degradation. Bottom row (d–f): absolute classification AUC on three Alzheimer’s disease benchmarks (not normalised, since the frozen-to-adapted gap varies in sign across backbones); the logistic regression probe is refit on the patched features for each block. All metrics are averaged across patients and MRI slices. Shaded bands show ±1 standard deviation across 3 seeds. 
+
+Classification (panels d-f) shows more heterogeneous patterns across backbones, but the overall trend is consistent: later layers tend to reduce rather than improve AUC for all four models. Taken together, the segmentation and classi-fication patching results consistently point to the first half of the encoder as the causally important region, suggesting that restricting adaptation to early layers could preserve segmentation performance while mitigating classification degradation. 
+
+5.5. Layer-Selective LoRA 
+
+Figure 6 summarises performance across the three LoRA configurations ( early , all , late ) on all six datasets, with the frozen baseline marked as a black star where it falls within the plotted range. These experiments serve as a validation of the activation patching findings: if the early-layer recovery observed in Figure 5 merely reflected signal accumulation rather than genuine causal sufficiency, restricting LoRA to early layers would substantially degrade performance. In segmentation (upper row), early-layer LoRA matches or approaches all-layer performance for all four backbones across the three datasets, while late-layer LoRA consistently underperforms both. This validates the activation patching finding that early-to-mid layers are causally sufficient for segmentation. DINOv3 exhibits the smallest variation across configurations, consistent with its more uniform mechanistic profile (Figure 3, panels a and b). In classification (bottom row), the effect of layer selec-tion is more pronounced. All-layer LoRA degrades classi-fication relative to the frozen baseline for 3/4 backbones by up to ∼6% AUC (Table 3); early-layer LoRA reduces this gap to ∼3% or eliminates it entirely, and in some cases recovers or exceeds frozen performance. Late-layer LoRA, while occasionally outperforming all-layer adaptation, in the majority of the cases remains below early-layer performance and exhibits greater instability across datasets. This general pattern could suggest that the late-layer representational shift identified by activation patching may be responsible for the cross-task damage observed in Section 5.2: by not adapting those layers, early-layer LoRA preserves the representations that classification relies on. DINOv3, however, is a clear outlier in the classification results, in five out of the six tasks, the all layer LoRA adaptation gives the best results. This is consistent with the classification results in Table 3, where DINOv3 was the only backbone to show improved classification performance after LoRA adaptation. 
+
+Diana-Albelda, Kekwick et al.: Preprint submitted to Elsevier Page 9 of 14 Convergent Performance, Divergent Mechanisms 73 76 79 82 
+
+> Mean Dice (%)
+> BraTS-GLI
+> 69 72 75 78
+> BraTS-Africa
+> 48 51 54 57
+> BraTS-PED
+> 62 65 68 71
+> Segmentation Mean
+> 0.81 0.84 0.87 0.90
+> AUC
+> OASIS-1
+> 0.72 0.76 0.80 0.84
+> ADNI (binary)
+> 0.58 0.61 0.63 0.66
+> ADNI (3-class)
+> 0.72 0.74 0.77 0.79
+> Classi fi cation Mean
+> DINOv3 Early (1-6) SigLIP2 All (1-12) MerMED-FM Late (7-12) BiomedCLIP Frozen
+
+Figure 6: Layer-selective LoRA performance across segmentation and classification datasets. Each backbone is evaluated with three LoRA configurations: early (blocks 1–6, diagonal hatching), all (blocks 1–12, solid fill), and late (blocks 7–12, dotted hatching). Black stars indicate frozen baseline performance; when absent, it falls below the plotted range. Upper row: mean Dice (%) on three segmentation datasets. Bottom row: AUC on three Alzheimer’s disease classification benchmarks. The rightmost column shows each model’s average across the three datasets in each task category. 
+
+## 6. Discussion 
+
+Our results show that four backbones with comparable segmentation performance diverge substantially in cross-task classification transfer. Mechanistic analysis traces this divergence to different representational shift profiles and reveals a dissociation between modification magnitude and causal importance: the largest attention divergence and weight changes concentrate in later layers (Figure 3), yet activation patching identifies early-to-mid layers as causally sufficient for segmentation across all four backbones (Fig-ure 5). The layer-selective LoRA experiments support this finding: restricting adaptation to early layers matches or approaches all-layer segmentation while mitigating the clas-sification degradation that all-layer adaptation causes (Fig-ure 6). DINOv3 is the exception to this pattern. Although its later layers are also less causally important than its early ones, all-layer adaptation yields classification results similar to or better than early-layer adaptation, and DINOv3 is the only backbone whose classification performance improves after segmentation adaptation. Among the adapted models, it also shows the lowest JS divergence and weight-change ra-tios, the smallest variation across LoRA configurations, the highest mean Dice on all three segmentation datasets, and the best classification performance. This is compatible with the view that a smaller representational shift better preserves the representations that other tasks rely on. The relationship, however, is not deterministic: BiomedCLIP undergoes a substantial attention shift yet remains approximately neutral in classification on OASIS-1. The mechanistic tools are therefore best understood as diagnostics that reveal how a model adapts, rather than as direct predictors of downstream task performance. In our experiments, medical-domain pre-training confers no consistent advantage for segmentation adaptation: after LoRA, DINOv3 achieves the highest and BiomedCLIP the lowest mean Dice on all three segmentation datasets, while MerMED-FM performs on par with SigLIP2. This is con-sistent with the hypothesis that representation quality scales with pre-training data diversity [50], though dataset scale and pre-training objective vary simultaneously, preventing causal attribution to any single factor. Notably, the frozen medical-domain models already attend to anatomically rel-evant regions more than their natural-domain counterparts (Figures 3c and 4), yet this initial advantage does not trans-late into superior adaptation performance, suggesting that where a model attends matters less than the quality of the representations it computes. In classification, the picture dif-fers: frozen MerMED-FM achieves the highest AUC across all three settings, yet this advantage is entirely lost after segmentation adaptation, showing the largest classification drops among the four models. 
+
+Practical guidelines. While our study is limited to four backbones and one imaging domain, the results suggest some considerations for selecting and adapting VFMs for medical imaging. First, backbone selection should not rely on segmentation metrics alone: evaluating on at least one additional task can reveal cross-task degradation invisible to Dice scores. Second, per-layer mechanistic profiles, par-ticularly JS divergence and weight-change ratios, can serve as low-cost diagnostics before out-of-distribution data is available: in our experiments, the backbone with the most 
+
+Diana-Albelda, Kekwick et al.: Preprint submitted to Elsevier Page 10 of 14 Convergent Performance, Divergent Mechanisms 
+
+uniform and lowest divergence profile (DINOv3) consis-tently exhibited the best generalisation. Third, restricting LoRA to early-to-mid layers might be a conservative de-fault when cross-task robustness matters, as it matched or approached full-layer segmentation for all four backbones while reducing classification degradation in 3/4 of them. Finally, we found no evidence that medical-domain pre-training provides an advantage over natural-domain pre-training for segmentation adaptation, though this compari-son is confounded by dataset scale and should not be taken as a general conclusion. 
+
+Limitations & Future Work. Our study is restricted to the brain MRI domain, to evaluating only four backbone models, to LoRA as the sole PEFT method, and to the ViT-B/16 architecture. In addition, whether the observed patterns generalise to other imaging modalities, adaptation strategies (e.g. adapters, prompt tuning), and larger model sizes (e.g. ViT-L, ViT-H) remains an open question. Segmentation ex-periments use three random seeds and classification probes use three cross-validation folds, which suffices to establish the reported trends but limits the precision of variance esti-mates. Future work would involve extending this framework to additional architectures, scales, imaging domains, and PEFT methods. 
+
+## 7. Conclusion 
+
+We have presented a mechanistic evaluation of four LoRA-adapted vision encoders for brain MRI, combining layer-wise interpretability tools with multi-task downstream assessment across six datasets. Our analysis reveals three key findings: (1) segmentation convergence masks substantial divergence in classification transfer, with medical-domain pre-training conferring no consistent segmentation advan-tage in our setting; (2) the most heavily modified layers are not the causally important ones, with early-to-mid layers consistently identified as sufficient for segmentation recov-ery; and (3) restricting LoRA to these early layers matches or approaches full-layer segmentation while improving clas-sification performance relative to all-layer adaptation in the three backbones whose cross-task performance degrades after adaptation. Together, these findings support a practical protocol for adapting vision encoders in clinical settings: evaluate on multiple tasks to detect cross-task degradation invisible to segmentation metrics, use activation patching to identify causally relevant layers, and adapt preferentially those layers to balance task performance with representational robust-ness. While our study focuses on brain MRI and LoRA, the analytical framework is applicable to any attention-based encoder and PEFT method. 
+
+Funding Statements. C.D. is supported by Becas San-tander Investigación Predoctoral and FPI-UAM grant. F.K. is supported by the UKRI Centre for Doctoral Training in AI for Healthcare (EP/S023283/1). A.K. is supported by a UKRI DTP award. A.G. and J.B. are supported by the Agencia Estatal de Investigación of Spain under Grant PID2025-171806OB-I00 and by the Regional Government of Madrid of Spain under Grant TEC-2024/COM-322. P.M.M. acknowledges generous personal support from the Edmond J. Safra Foundation and Lily Safra, an NIHR Senior Investigator Award, Rosalind Franklin Institute, and the UK Dementia Research Institute. W.B. acknowledges the sup-port of EPSRC CVD-Net Programme Grant (EP/Z531297/1) and BHF New Horizons Grant (NH/F/23/70013). The au-thors gratefully acknowledge the HPC resources provided by NHR@FAU under the NHR projects b143dc and b180dc. NHR funding is provided by federal and Bavarian state au-thorities (HTA). NHR@FAU hardware is partially funded by the German Research Foundation (DFG 440719683). This work also received support from the ERC through project MIA-NORMAL (101083647). We further acknowledge the Isambard-AI AIRR, operated by the University of Bristol and funded by DSIT via UKRI and STFC [ST/AIRR/I-A-I/1023] [51]. 
+
+Dataset Acknowledgements. Data collection and shar-ing for the ADNI dataset used in this project were funded by the Alzheimer’s Disease Neuroimaging Initiative (ADNI; NIH Grant U19AG024904). ADNI is funded by the National Institute on Aging and has previously received funding from the National Institute of Biomedical Imaging and Bioengi-neering, the Canadian Institutes of Health Research, and private sector contributions facilitated by the Foundation for the National Institutes of Health. The grantee organisation is the Northern California Institute for Research and Educa-tion. Data were provided in part by the Open Access Series of Imaging Studies (OASIS-1), led by principal investiga-tors D. Marcus, R. Buckner, J. Csernansky, and J. Morris, and supported by grants P50 AG05681, P01 AG03991, P01 AG026276, R01 AG021910, P20 MH071616, and U24 RR021382. 
+
+Data Availability The BraTS 2023 Adult Glioma, Sub-Saharan African Glioma, and Pediatric Glioma datasets used in this study are publicly available through the Synapse plat-form ( https://www.synapse.org/Synapse:syn51156910 ). Simi-larly, OASIS-1 and ADNI are publicly available at https: //sites.wustl.edu/oasisbrains/home/oasis-1/ and https:// adni.loni.usc.edu/data-samples/adni-data/ , respectively. 
+
+Code Availability Our code is publicly available at 
+
+> https://github.com/fkekwick/Brain_Lora
+
+.
+
+CRediT Authorship Contribution Statement Cecilia Diana-Albelda: Conceptualization, Formal analysis, Inves-tigation, Methodology, Validation, Visualization, Writing – original draft, Writing – review and editing. Fiona Kekwick: Conceptualization, Formal analysis, Investigation, Method-ology, Validation, Visualization, Writing – original draft,   
+
+> Diana-Albelda, Kekwick et al.: Preprint submitted to Elsevier Page 11 of 14 Convergent Performance, Divergent Mechanisms
+
+Writing – review and editing. Raghav Mehta: Conceptual-ization, Methodology, Writing – review and editing. Alek-sandra Kulbaka: Writing – review and editing. Paul M. Matthews: Funding acquisition, Supervision. Jesus Bescos: Funding acquisition, Supervision, Writing – review and editing. Álvaro García-Martín: Funding acquisition, Super-vision, Writing – review and editing. Wenjia Bai: Fund-ing acquisition, Supervision, Writing – review and editing. Bernhard Kainz: Conceptualization, Funding acquisition, Supervision, Writing – review and editing. 
+
+Declaration of Competing Interests The authors de-clare that they have no known competing financial interests or personal relationships that could have appeared to influ-ence the work reported in this paper. 
+
+## References 
+
+[1] Sidharth S Menon, Trishit Mondal, Shuvayan Brah-machary, Aniruddha Panda, Subodh M Joshi, Kaushic Kalyanaraman, and Ameya D Jagtap. On scientific foundation models: Rigorous definitions, key applica-tions, and a comprehensive survey. Neural Networks ,page 108567, 2026. [2] Edward J Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, et al. LoRA: Low-rank adap-tation of large language models. In International Conference on Learning Representations , 2022. [3] Benjamin P Veasey and Amir A Amini. Parameter-efficient fine-tuning of DINOv2 vision transformers for lung nodule classification. In IEEE International Symposium on Biomedical Imaging (ISBI) , pages 1–5. IEEE, 2024. [4] Mothilal Asokan, Joseph Geo Benjamin, Moham-mad Yaqub, and Karthik Nandakumar. A feder-ated learning-friendly approach for parameter-efficient fine-tuning of SAM in 3D segmentation. In Inter-national Conference on Medical Image Computing and Computer-Assisted Intervention , pages 226–235. Springer, 2024. [5] Suhyun Ahn, Donggyu Lee, and Jinah Park. Adapt-ability of vision foundation models for 3D medical image segmentation. IEEE Open Journal of Signal Processing , 2026. [6] M Bolhassani, B Veasey, E Daugherty, S Keltner, N Kumar, N Dunlap, and A Amini. LoRA-fine-tuned large vision models for automated assessment of post-SBRT lung injury. In International Conference of the IEEE Engineering in Medicine and Biology Society (EMBC) . IEEE, 2025. [7] Yiheng Zhong, Zihong Luo, Chengzhi Liu, Feilong Tang, Yingzhen Hu, Zelin Peng, Ming Hu, Jionglong Su, Zongyuan Ge, and Imran Razzak. PG-SAM: A fine-grained prior-guided SAM framework for prompt-free medical image segmentation. In IEEE Interna-tional Conference on Bioinformatics and Biomedicine (BIBM) , pages 3369–3376. IEEE, 2025. [8] Jiamin Hu, Xuwei Xu, and Zhenmin Zou. LoRA-MedSAM: Efficient medical image segmentation. In 
+
+International Conference on Medical Imaging and Computer-Aided Diagnosis , pages 154–164. Springer, 2024. [9] Haonan He, Jingqi Ye, Minglei Li, Zhengbo Wang, Tao Chen, Lei Bai, and Peng Ye. A unified study of lora variants: Taxonomy, review, codebase, and empirical evaluation. arXiv preprint arXiv:2601.22708 , 2026. [10] Cecilia Diana-Albelda, Roberto Alcover-Couso, Álvaro García-Martín, Jesus Bescos, and Marcos Escudero-Viñolo. GBT-SAM: A parameter-efficient depth-aware model for generalizable brain tumor segmentation on mp-MRI. International Journal of Imaging Systems and Technology , 36(4):e70389, 2026. [11] Raman Dutt, Linus Ericsson, Pedro Sanchez, Sotirios A Tsaftaris, and Timothy Hospedales. Parameter-efficient fine-tuning for medical image analysis: The missed opportunity. arXiv preprint arXiv:2305.08252 , 2023. [12] Oriane Siméoni, Huy V Vo, Maximilian Seitzer, Fed-erico Baldassarre, Maxime Oquab, et al. DINOv3. 
+
+arXiv preprint arXiv:2508.10104 , 2025. [13] Michael Tschannen, Alexey Gritsenko, Xiao Wang, Muhammad Ferjad Naeem, Ibrahim Alabdulmohsin, et al. SigLIP 2: Multilingual vision-language encoders with improved semantic understanding, localization, and dense features. arXiv preprint arXiv:2502.14786 ,2025. [14] Yang Zhou, Chrystie Wan Ning Quek, Jun Zhou, Yan Wang, Yang Bai, Laura Gutierrez, Yuhe Ke, Jie Yao, Zhen Ling Teo, Darren Shu Jeng Ting, et al. Mermed-fm: Multimodal, multi-disease medical imaging foun-dation model. The Lancet Digital Health , 2026. [15] Sheng Zhang, Yanbo Xu, Naoto Usuyama, Hanwen Xu, Jaspreet Bagga, Robert Tinn, Sam Preston, Rajesh Rao, Mu Wei, Naveen Valluri, et al. Biomedclip: a multimodal biomedical foundation model pretrained from fifteen million scientific image-text pairs. arXiv preprint arXiv:2303.00915 , 2023. [16] Jay Zoellin, Colin Merk, and Bence György. Bench-marking vision encoders for image classification in ophthalmology. Computational and Structural Biotechnology Journal , 36(2):0178, 2026.   
+
+> Diana-Albelda, Kekwick et al.: Preprint submitted to Elsevier Page 12 of 14 Convergent Performance, Divergent Mechanisms
+
+[17] Lee Sharkey, Bilal Chughtai, Joshua Batson, Jack Lindsey, Jeff Wu, et al. Open problems in mechanis-tic interpretability. arXiv preprint arXiv:2501.16496 ,2025. [18] Ujjwal Baid, Satyam Ghodasara, Suyash Mohan, Michel Bilello, Evan Calabrese, et al. The RSNA-ASNR-MICCAI BraTS 2021 Benchmark on brain tumor segmentation and radiogenomic classification. 
+
+arXiv preprint arXiv:2107.02314 , 2021. [19] Bjoern H Menze, Andras Jakab, Stefan Bauer, Jayashree Kalpathy-Cramer, Keyvan Farahani, et al. The multimodal brain tumor image segmentation benchmark (BRATS). IEEE Transactions on Medical Imaging , 34(10):1993–2024, 2015. [20] Spyridon Bakas, Hamed Akbari, Aristeidis Sotiras, Michel Bilello, Martin Rozycki, Justin S Kirby, John B Freymann, Keyvan Farahani, and Christos Davatzikos. Advancing the cancer genome atlas glioma mri col-lections with expert segmentation labels and radiomic features. Scientific data , 4(1):170117, 2017. [21] Maruf Adewole, Jeffrey D Rudie, Anu Gbdamosi, Oluyemisi Toyobo, Confidence Raymond, et al. The Brain Tumor Segmentation (BraTS) Challenge 2023: Glioma segmentation in sub-Saharan Africa pa-tient population (BraTS-Africa). arXiv preprint arXiv:2305.19369 , 2023. [22] Anahita Fathi Kazerooni, Nastaran Khalili, Xinyang Liu, Debanjan Haldar, Zhifan Jiang, et al. The brain tumor segmentation in pediatrics (BraTS-PEDs) challenge: focus on pediatrics (CBTN-CONNECT-DIPGR-ASNR-MICCAI BraTS-PEDs). arXiv preprint arXiv:2404.15009 , 2024. [23] Daniel S Marcus, Tracy H Wang, Jamie Parker, John G Csernansky, John C Morris, and Randy L Buckner. Open Access Series of Imaging Studies (OASIS): cross-sectional MRI data in young, middle aged, non-demented, and demented older adults. Journal of Cognitive Neuroscience , 19(9):1498–1507, 2007. [24] Ronald Carl Petersen, Paul S Aisen, Laurel A Beckett, Michael C Donohue, Anthony Collins Gamst, et al. Alzheimer’s disease Neuroimaging Initiative (ADNI) clinical characterization. Neurology , 74(3):201–209, 2010. [25] Jianhua Lin. Divergence measures based on the shannon entropy. IEEE Transactions on Information Theory , 37(1):145–151, 1991. [26] Fred Zhang and Neel Nanda. Towards best practices of activation patching in language models: Metrics and methods. In International Conference on Learning Representations , 2024. [27] Filippo Ruffini, Elena Mulero Ayllon, Linlin Shen, Paolo Soda, and Valerio Guarrasi. Benchmarking foundation models and parameter-efficient fine-tuning for prognosis prediction in medical imaging. Computer Methods and Programs in Biomedicine , page 109196, 2025. [28] Yujian Ma, Xikun Lu, Jinqiu Sang, Xianquan Jiang, and Ruizhe Li. Behind the scenes: Mechanistic inter-pretability of lora-adapted whisper for speech emotion recognition. In ICASSP 2026-2026 IEEE International Conference on Acoustics, Speech and Signal Process-ing (ICASSP) , pages 5286–5290. IEEE, 2026. [29] Binesh Sadanandan and Vahid Behzadan. Mechanis-tically guided LoRA improves paraphrase consistency in medical vision-language models. arXiv preprint arXiv:2603.00148 , 2026. [30] Soufiane Hayou, Nikhil Ghosh, and Bin Yu. Plop: Precise lora placement for efficient finetuning of large models. In International Conference on Learning Representations , volume 2026, pages 65166–65191, 2026. [31] Nooshin Bahador. Mechanistic interpretability of fine-tuned vision transformers on distorted images: Decod-ing attention head behavior for transparent and trust-worthy AI. arXiv preprint arXiv:2503.18762 , 2025. [32] Umaima Rahman, Raza Imam, Mohammad Yaqub, and Dwarikanath Mahapatra. Decoupling clinical and class-agnostic features for reliable few-shot adaptation under shift. In International Workshop on Uncertainty for Safe Utilization of Machine Learning in Medical Imaging , pages 123–133. Springer, 2025. [33] Yizhe Wang, Liu He, and Zhenhua Ling. From behav-ior to geometry: A causal and geometric analysis of lora-based domain adaptation. In Proceedings of the Fifteenth Language Resources and Evaluation Con-ference (LREC 2026) , volume 11, pages 2178–2189, 2026. [34] Jiancheng Gu, Jiabin Yuan, Jiyuan Cai, Xianfa Zhou, and Lili Fan. La-lora: Parameter-efficient fine-tuning with layer-wise adaptive low-rank adaptation. Neural Networks , page 108095, 2025. [35] Qingru Zhang, Minshuo Chen, Alexander Bukharin, Nikos Karampatziakis, Pengcheng He, Yu Cheng, Weizhu Chen, and Tuo Zhao. Adalora: Adaptive budget allocation for parameter-efficient fine-tuning. 
+
+arXiv preprint arXiv:2303.10512 , 2023. [36] Abdulmalek Saket. Aletheia: Gradient-guided layer selection for efficient lora fine-tuning across architec-tures. arXiv preprint arXiv:2604.15351 , 2026. [37] Yunsong Deng, Guoxu Zhou, and Qibin Zhao. Ralo: Rank-aware low-rank adaptation for pre-trained foun-dation models. Neural Networks , page 108423, 2025.   
+
+> Diana-Albelda, Kekwick et al.: Preprint submitted to Elsevier Page 13 of 14 Convergent Performance, Divergent Mechanisms
+
+[38] Juneyoung Park, Seongbae Lee, Han-Sang Lee, Kyuho Lee, Minjae Kim, Seungheon Hyeon, Kiduk Kwon, Seongwan Kim, and Jaeho Lee. Fora: Fisher-orthogonal rank adaptation for parameter-efficient fine-tuning. arXiv preprint arXiv:2605.29317 , 2026. [39] Hui Wan and Libin Lan. Tap-slf: Parameter-efficient adaptation of vision foundation models for multi-task ultrasound image analysis. arXiv preprint arXiv:2603.00433 , 2026. [40] Christos Matsoukas, Johan Fredin Haslum, Moein Sorkhei, Magnus Söderberg, and Kevin Smith. What makes transfer learning work for medical images: Fea-ture reuse & other factors. In 2022 IEEE/CVF Con-ference on Computer Vision and Pattern Recognition (CVPR) , pages 9215–9224, 2022. [41] Alexey Dosovitskiy, Lucas Beyer, Alexander Kolesnikov, Dirk Weissenborn, Xiaohua Zhai, Thomas Unterthiner, Mostafa Dehghani, Matthias Minderer, Georg Heigold, Sylvain Gelly, Jakob Uszkoreit, and Neil Houlsby. An Image Is Worth 16x16 Words: Transformers for Image Recognition at Scale. In International Conference on Learning Representations , 2021. [42] Cecilia Diana-Albelda, Arthur Longuefosse, Álvaro García-Martín, and Jesus Bescos. Multi-modal brain mri synthesis with nnu-net: Exploring segmentation performance and cross-modality relationships. In In-ternational Workshop on Simulation and Synthesis in Medical Imaging , pages 52–62. Springer, 2025. [43] Jinyeong Kim, Junhyeok Kim, Yumin Shim, Joohyeok Kim, Sunyoung Jung, and Seong Jae Hwang. Inter-preting vision transformers via residual replacement model. Advances in Neural Information Processing Systems , 38:55760–55820, 2025. [44] Solomon Kullback and Richard A Leibler. On infor-mation and sufficiency. The annals of mathematical statistics , 22(1):79–86, 1951. [45] Laure Ciernik, Marco Morik, Lukas Thede, Luca Eyring, Shinichi Nakajima, Zeynep Akata, and Lukas Muttenthaler. Attentive multilayer fusion for vision transformers. arXiv preprint arXiv:2601.09322 , 2026. [46] Ilya Loshchilov and Frank Hutter. Decoupled weight decay regularization. arXiv preprint arXiv:1711.05101 , 2017. [47] Fabian Pedregosa, Gaël Varoquaux, Alexandre Gram-fort, Vincent Michel, Bertrand Thirion, Olivier Grisel, Mathieu Blondel, Peter Prettenhofer, Ron Weiss, Vin-cent Dubourg, et al. Scikit-learn: Machine learning in python. the Journal of machine Learning research ,12:2825–2830, 2011. [48] Muhammad Ahmad, Jingjing Zheng, and Yankai Cao. On catastrophic forgetting in low-rank decomposition-based parameter-efficient fine-tuning. arXiv preprint arXiv:2603.09684 , 2026. [49] Maithra Raghu, Thomas Unterthiner, Simon Korn-blith, Chiyuan Zhang, and Alexey Dosovitskiy. Do vision transformers see like convolutional neural net-works? Advances in neural information processing systems , 34:12116–12128, 2021. [50] Jiarun Liu, Hong-Yu Zhou, Weijian Huang, Hao Yang, Dongning Song, Tao Tan, Yong Liang, and Shanshan Wang. Biovfm-21m: Benchmarking and scaling self-supervised vision foundation models for biomedical image analysis. In International Workshop on Foun-dation Models for General Medical AI , pages 23–33. Springer, 2025. [51] Simon McIntosh-Smith, Sadaf R. Alam, and Christo-pher Woods. Isambard-AI: a leadership class super-computer optimised specifically for artificial intelli-gence. arXiv:2410.11199 , 2024.
