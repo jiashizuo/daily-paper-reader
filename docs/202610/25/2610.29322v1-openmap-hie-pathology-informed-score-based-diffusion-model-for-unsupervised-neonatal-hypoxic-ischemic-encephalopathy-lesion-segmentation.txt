@@ -1,0 +1,950 @@
+Title: OpenMAP-HIE: Pathology Informed Score-based Diffusion Model for Unsupervised Neonatal Hypoxic-Ischemic Encephalopathy Lesion Segmentation
+
+URL Source: https://arxiv.org/pdf/2610.29322v1
+
+Published Time: Thu, 22 Oct 2026 00:49:09 GMT
+
+Number of Pages: 22
+
+Markdown Content:
+# OpenMAP-HIE: Pathology Informed Score-based Diffusion Model for Unsupervised Neonatal Hypoxic-Ischemic Encephalopathy Lesion Segmentation 
+
+## Pengyu Kan a, Craig Jones a,b and Kenichi Oishi c,d ,∗
+
+> a
+
+Department of Computer Science, Johns Hopkins University, Baltimore , MD, United States 
+
+> b
+
+Department of Biomedical Engineering, University of Alberta, Edmonton , AB, Canada 
+
+> c
+
+Department of Radiology, Johns Hopkins University School of Medicine, Baltimore , MD, United States 
+
+> d
+
+Department of Neurology, Johns Hopkins University School of Medicine, Baltimore , MD, United States 
+
+A R T I C L E I N F O 
+
+Keywords :Hypoxic–ischemic encephalopathy Neonatal brain MRI Unsupervised anomaly detection Diffusion models Pathology informed modeling Score-based modeling 
+
+A B S T R A C T 
+
+Accurate localization of neonatal hypoxic–ischemic encephalopathy (HIE) lesions on apparent diffu-sion coefficient (ADC) images is clinically important but is limited by scarce expert annotations and substantial variation in lesion appearance. We propose OpenMAP-HIE, a pathology-informed score-based diffusion model for unsupervised HIE lesion localization without voxel-wise lesion supervision. A denoising diffusion model learns the healthy neonatal ADC distribution, while a ControlNet-based conditional branch preserves patient-specific anatomy. At inference, anomaly evidence is derived directly from differences between conditional and unconditioned noise predictions at independently evaluated diffusion noise levels, avoiding dependence on a final pseudo-healthy reconstruction or sequential reverse-diffusion chain. Based on the characteristic ADC reduction associated with acute HIE, only discrepancies consistent with the expected pathological direction are retained and aggregated across noise levels using a geometric mean. Spatial mean filtering further suppresses isolated responses. The framework was evaluated on the BONBID-HIE dataset. The ADC-only method achieved a Dice score of 0.283 ± 0 .244 , average precision of 0.505 , Hausdorff distance of 
+
+25 .45 ± 15 .63 mm, mean average surface distance of 9.40 ± 8 .49 mm, and normalized surface distance of 0.355 ± 0 .236 , providing the best overlap and surface-distance performance among the evaluated unsupervised methods and Dice performance comparable to supervised ADC-only models. Optional population-derived ADC 𝑍 -map refinement further increased Dice to 0.602 ± 0 .269 . These findings support pathology-informed score discrepancies as a useful signal for neonatal HIE lesion localization, while highlighting remaining challenges in detecting small and low-contrast lesions. 
+
+## 1. Introduction 
+
+Hypoxic ischemic encephalopathy (HIE) is a clinical syndrome of neurological disorder caused by impaired cerebral oxygen delivery and blood flow around the time of birth. It affects approximately 1–5 per 1,000 term-born neonates (Long and Brandon, 2007). Therapeutic hypother-mia reduces the risk of death and disability in infants with moderate-to-severe HIE (Silveira and Procianoy, 2015). However, mortality and adverse long-term outcomes, in-cluding neurodevelopmental delay and cognitive or motor impairment, still affect approximately 30% –50% of affected infants (Bao et al., 2025). Accurate identification and local-ization of HIE-related brain injury are therefore important for quantitatively characterizing lesion severity and for understanding disease progression (Vermeulen et al., 2008; Martinez-Biarge et al., 2011; Chang et al., 2020; Bobba et al., 2023). Diffusion-weighted imaging (DWI) has been applied for detecting acute HIE-related injury, because abnormalities may appear earlier and more observable than signal changes on conventional T1- or T2-weighted MRI (Triulzi et al., 
+
+> ∗
+
+Corresponding author  
+
+> koishi2@jhmi.edu
+
+(K. Oishi) 
+
+> ORCID
+
+(s): 0009-0009-0774-2588 (P. Kan); 0000-0002-0629-3006 (C. Jones); 0000-0002-1200-8611 (K. Oishi) 
+
+2006; Bano et al., 2017). Cytotoxic edema restricts water diffusion, typically producing increased signal intensity on DWI and decreased apparent diffusion coefficient (ADC) values (Onda et al., 2024). ADC maps thus provide quan-titative information for identifying HIE-related injury and assessing its severity and prognosis (Bobba et al., 2023; Bao et al., 2025). Automated localization remains challenging because HIE lesions are often small, multifocal, diffuse, and hetero-geneous in appearance. In the BONBID-HIE cohort, more than half of affected neonates had lesions occupying less than 1% of the brain volume (Bao et al., 2025), resulting in severe foreground–background imbalance and poorly de-fined lesion boundaries. Scanner field strength, acquisition protocol, developmental anatomy, and postnatal imaging time further complicate the distinction between pathol-ogy and normal neonatal variability. These characteristics also make manual delineation difficult. Quantitative lesion analysis typically requires experienced pediatric neurora-diologists, often using multi-reader consensus (Bao et al., 2025), but lesion boundaries may remain ambiguous and dependent on reader judgment. Consequently, expert voxel-level annotation is labor intensive and difficult to scale. Supervised deep-learning approaches have achieved en-couraging performance for neonatal HIE lesion segmenta-tion (Bao et al., 2025; Rao et al., 2025; Almansour et al., Page 1 of 22 arXiv:2610.29322v1 [cs.CV] 21 Oct 2026 Figure 1: Architecture of the anatomy-conditioned diffusion model. The healthy-prior U-Net is pretrained in stage 1 and frozen during stage 2. A trainable ControlNet encoder, initialized from the U-Net encoder, incorporates the spatial condition 𝐜 alongside the noisy input 𝐱 𝑡 and timestep 𝑡 . Multi-scale ControlNet features are passed through zero-initialized 1 × 1 convolutions and added to the U-Net skip features, enabling subject-specific conditioning of the noise prediction. Dashed gray lines denote U-Net skip connections, and orange arrows indicate ControlNet residual connections. 
+
+2025). However, the scarcity of publicly available neonatal HIE data (Bao et al., 2025), along with the substantial expertise and effort required for annotation, restricts the scalability and external generalizability of these methods. Unsupervised anomaly detection provides an alternative by learning a normative representation from healthy images and identifying deviations in a potentially pathological subject without directly optimizing on lesion labels (Schlegl et al., 2019; Fernando et al., 2021). A common strategy is to reconstruct a pseudo-healthy counterpart of the observed image and interpret the reconstruction residual as abnormal-ity (Schlegl et al., 2019; Wolleb et al., 2022; Wyatt et al., 2022). However, reconstruction-based anomaly detection must balance pathology removal against preservation of healthy subject-specific anatomy. Excessive corruption or insuffi-cient conditioning may alter normal structures and generate false-positive residuals, whereas strong subject condition-ing may reproduce pathological signals and reduce lesion contrast. This trade-off is particularly problematic for HIE because diffusion abnormalities may be subtle, spatially dif-fuse, and poorly separated from normal neonatal variability (Forbes et al., 2000). Diffusion models have recently emerged as expressive generative priors for unsupervised medical anomaly detec-tion (Wolleb et al., 2022; Wyatt et al., 2022; Frotscher et al., 2026). Their multi noise level denoising process provides an opportunity to identify deviations from learned normal anatomy other than the residual of a single final reconstruc-tion. However, reliably distinguishing subtle pathological signals from subject-specific anatomy, acquisition-related variability, and stochastic denoising errors remains challeng-ing. In this work, we propose OpenMAP-HIE, an anatomy-conditioned, pathology-informed score-based diffusion frame-work for unsupervised neonatal HIE lesion localization (Fig. 1). A diffusion model learns a healthy neonatal ADC prior, and a ControlNet branch incorporates the observed image as a spatial condition to capture patient-specific anatomy. We derive anomaly evidence from discrepancies between the healthy-prior and subject-conditioned score estimates, implemented through their noise-prediction dif-ferences (Fig. 2). These discrepancies characterize how subject-specific conditioning modifies the local denoising response of the learned healthy prior. Both branches eval-uate the same noisy input at each noise level, with inputs generated directly from the observed image rather than propagated through a sequential reverse-diffusion chain. This formulation avoids dependence on a final pseudo-healthy reconstruction and the propagation of errors between reverse-diffusion steps. To improve pathological specificity, we incorporate a directional prior based on the characteristic ADC reduction associated with acute HIE (Forbes et al., 2000; Bobba et al., 2023; Bao et al., 2025). Specifically, we retain discrepancies whose corresponding denoising estimates indicate a higher     
+
+> Page 2 of 22 (a)
+> (b)
+> Figure 2: Illustration of inference using pathology-informed noise-prediction discrepancy aggregation for (a) a normal slice and (b) a slice containing HIE lesions. The observed ADC image 𝐱 0is independently perturbed at multiple noise levels. At each level, the patient-conditioned (green dashed line) and healthy-prior (red dashed line) branches evaluate the same noisy input, and their predicted noise difference is retained only in the direction consistent with the reduced-ADC prior. Normal tissue is expected to exhibit relatively small discrepancies, whereas lesion regions may produce larger, directionally con-sistent responses across noise levels. The resulting discrepancy maps are aggregated using the geometric mean, 𝐴 GM , to obtain the anomaly map. Blue points denote noisy inputs, green and orange markers denote patient-conditioned and healthy-prior predictions, respectively, and red brackets indicate direc-tional discrepancies. The curves provide a sequential forward-diffusion trajectory. The lesion ground truth annotation in (b) is shown for reference only.
+
+ADC under the healthy prior than under subject condition-ing, and suppress discrepancies in the opposite direction. The retained responses are aggregated across independently evaluated noise levels using a geometric mean to emphasize directionally consistent evidence. Population-derived ADC 
+
+𝑍 -maps (Bao et al., 2025; Rao et al., 2025) are additionally investigated as an optional refinement, while the core frame-work requires only the subject’s ADC image at inference. The principal contributions of this work are: • We introduce an anatomy-conditioned diffusion frame-work that contrasts healthy-prior and subject-conditioned responses without using lesion masks as optimization targets. • We formulate anomaly evidence through conditional– unconditional score discrepancies, implemented as noise-prediction differences and aggregated across in-dependently evaluated noise levels, without requiring a sequential reverse-diffusion chain or a final pseudo-healthy reconstruction. • We incorporate an HIE-specific directional prior that retains score discrepancies consistent with the ex-pected ADC reduction of acute injury, adding pathol-ogy informed directionality to the score-based anomaly representation. • We evaluate the framework on the public BONBID-HIE benchmark using voxel-ranking, lesion-overlap, and surface-distance metrics, and further assess population-derived ADC 𝑍 -map refinement as an optional exten-sion. The proposed ADC-only method achieved improved le-sion overlap and surface localization relative to the evalu-ated unsupervised baselines, while the pathology-informed directional constraint provided substantial gains in lesion localization. Population-derived 𝑍 -map refinement further improved overlap and boundary accuracy when population-level normative information was available. The code of this work is available at github.com/OishiLab/OpenMAP-HIE. 
+
+## 2. Related Works 
+
+2.1. Supervised Anomaly Detection 
+
+Supervised medical image segmentation has advanced through encoder–decoder architectures such as U-Net (Ron-neberger et al., 2015) and UNet++ (Zhou et al., 2019; Rao et al., 2025). Recent HIE segmentation systems have extended to three-dimensional U-Net variants, SegResNet, Swin-UNETR (Hatamizadeh et al., 2021; Almansour et al., 2025), ensembles, and loss functions designed for highly imbalanced lesions (Bao et al., 2025). These approaches learn lesion appearance directly from voxel-wise annota-tions. In contrast, our framework learns a healthy-image prior and derives lesion evidence without using lesion masks as optimization targets. 
+
+2.2. Unsupervised Anomaly Detection 
+
+Reconstruction-based anomaly detection learns normal image appearance and identifies abnormalities through dis-crepancies between an input and its reconstructed coun-terpart. Autoencoders and variational autoencoders learn constrained representations of healthy images (Baur et al., 2021), while f-AnoGAN combines a GAN-based normal-image model with an encoder for efficient latent inference (Schlegl et al., 2019). Denoising autoencoders instead learn 
+
+> Page 3 of 22
+
+to recover healthy images from artificially corrupted in-puts, where appropriately designed coarse noise can improve anomaly detection while preserving normal anatomical de-tail (Kascenas et al., 2022). IterMask 2 combines iterative spatial mask refinement with high-frequency image informa-tion to improve reconstruction of normal tissue and reduce false-positive responses (Liang et al., 2024). These methods depend on reconstruction errors being larger in pathological regions than in healthy regions. How-ever, normal anatomy may be reconstructed imperfectly, while sufficiently expressive models may partially repro-duce pathological structures. Consequently, reconstruction fidelity alone does not guarantee pathological specificity. 
+
+2.3. Diffusion Model and Score Method 
+
+Denoising diffusion probabilistic models (DDPMs) learn a data distribution by progressively perturbing images with noise and training a neural network to predict the noise of removal for the reverse process (Ho et al., 2020). Under the standard Gaussian perturbation formulation, noise predic-tion provides a parameterization of the score, the gradient of the perturbed data log density with respect to the noisy input (Song et al., 2021). This connection enables anomaly assessment through both reconstructed images and noise-level dependent noise predictions. Further, compared with GANs, diffusion models generally offer stable training and high-fidelity outputs (Dhariwal and Nichol, 2021), making them suitable for learning healthy anatomical priors. Early diffusion-based methods primarily used pseudo-healthy reconstruction. AnoDDPM uses structured Simplex noise to obscure abnormalities at lower diffusion noise levels while retaining more image context (Wyatt et al., 2022). Wolleb et al. (2022) combined deterministic Denoising Dif-fusion Implicit Model (DDIM) inversion (Song et al., 2020) with classifier guidance (Dhariwal and Nichol, 2021) to generate counterfactual healthy images. Patched diffusion models restrict corruption to local image regions and use surrounding anatomy as contextual information for denois-ing process, with pseudo-healthy reconstruction based on ensembles of predictions through sliding-window procedure (Behrendt et al., 2024). Subsequent methods have attempted to restrict restora-tion to suspected pathological regions to avoid unnecessary modification of healthy anatomy. AutoDDPM first gener-ates an anomaly-likelihood map and then uses masking, stitching, and joint-noise resampling to inpaint candidate abnormalities while harmonizing the reconstructed content with the original image (Bercea et al., 2023). Temporal Harmonization for Optimal Restoration (THOR) instead constructs intermediate anomaly maps during reverse dif-fusion and uses them as implicit guidance to repeatedly restore presumed healthy regions from the original input (Bercea et al., 2024). These methods are conceptually related to diffusion-based inpainting approaches such as RePaint (Lugmayr et al., 2022), in which known image regions are repeatedly reintroduced during sampling to constrain the generated result. Masking and local restoration have also been explored in latent diffusion frameworks, with introducing localized latent-space corruptions during training as proxies for anoma-lous regions. MAD-AD applies forward diffusion only to randomly selected patches of healthy latent representations during training and jointly learns to reconstruct the clean latent representation and predict the region of corruption. At inference, its mask-prediction head identifies candidate anomalous patches, which are exclusively corrected during reverse diffusion while the remaining regions are preserved (Beizaee et al., 2025a). DeCo-Diff reformulates latent dif-fusion to learn a direction of deviation from normality. It progressively corrects anomalous latent patches while leav-ing normal patches unchanged and combines reconstruction discrepancies measured in the latent and image spaces to produce the final anomaly map (Beizaee et al., 2025b). Rather than producing a final pseudo-healthy recon-struction or iteratively refining a candidate inpainting mask, Aggregated Normative Diffusion (ANDi) derives anomaly evidence directly from deviations within the diffusion pro-cess (Frotscher et al., 2026). At each noise level, ANDi compares the analytical reverse-posterior mean conditioned on the observed image with the reverse mean predicted by the diffusion model, both evaluated at the same noisy input. The resulting voxel-wise squared differences are aggregated across noise levels using a geometric mean. The voxel-wise squared deviations are aggregated across multiple sampled noise levels using a geometric mean. Consequently, ANDi does not require an additional inpainting stage or calculate its anomaly map only from a final reconstruction residual. Extending this reconstruction-free direction, InvAD instead uses DDIM inversion (Song et al., 2020) to map image rep-resentations toward the noise prior and evaluates deviations through Gaussian likelihood scoring in the resulting final latent space (Sakai et al., 2026). Our approach is most closely related to ANDi in its aggregation of discrepancies across noise levels. The key distinction is the comparison itself: we contrast subject-conditioned and learned healthy-prior score estimates, im-plemented through their noise-prediction differences, rather than comparing a model prediction with an analytical poste-rior target. We further filter the discrepancy signals using directional information from an HIE-specific pathological prior. 
+
+2.4. HIE Pathology Directional Prior 
+
+Most reconstruction-based medical anomaly detection methods define abnormity from the difference between an observed image and a pseudo-healthy reconstruction, com-monly using absolute or squared intensity residuals (Schlegl et al., 2019; Wolleb et al., 2022; Wyatt et al., 2022). More recent diffusion-based approaches characterize abnormality through deviations from learned normal denoising dynam-ics (Bercea et al., 2024; Frotscher et al., 2026; Beizaee et al., 2025a) or gaussian prior likelihood (Sakai et al., 2026). These disease-agnostic formulations are applicable to diverse anomaly types, but generally treat positive and 
+
+> Page 4 of 22
+
+negative intensity deviations symmetrically. Consequently, a large anomaly score does not have strong pathological interpretability and cannot properly distinguish the target pathology from the anatomical variance and imaging noise. This limitation is particularly relevant to neonatal HIE. During the acute diffusion-restriction phase, cytotoxic edema typically produces lower ADC values in injured tissue than in healthy tissue (Forbes et al., 2000; Bobba et al., 2023; Onda et al., 2024; Bao et al., 2025). ADC thresh-olds and population-derived statistical maps have there-fore been investigated for identifying and quantifying HIE-related injury (Bao et al., 2025). However, the diffusion-based anomaly detection methods considered above do not explicitly incorporate the expected direction of the ADC abnormality into their multi noise-level discrepancy estima-tion. Our method incorporates this pathological information by retaining only positive differences between subject-conditioned and healthy-prior unconditional noise predic-tions, corresponding to higher healthy-reference posterior than subject-conditioned reverse-mean estimates. Unlike a conventional unsigned reconstruction residual, this formu-lation suppresses denoising discrepancies that are large in magnitude but inconsistent with the characteristic ADC reduction of acute HIE. 
+
+## 3. Methods 
+
+3.1. Diffusion Model 
+
+Let 𝐱 0 ∼ 𝑞 h(𝐱 ) denote a healthy neonatal ADC slice sampled from the healthy distribution. A denoising diffusion probabilistic model (DDPM) (Ho et al., 2020) progressively perturbs 𝐱 0 through the forward Markov process: 
+
+𝑞 (𝐱 𝑡 |𝐱 𝑡 −1 ) = 
+
+(
+
+𝐱 𝑡 ; √1 − 𝛽 𝑡 𝐱 𝑡 −1 , 𝛽 𝑡 𝐈 
+
+)
+
+, (1) where 𝑡 = 1 , … , 𝑇 and 𝛽 𝑡 ∈ (0 , 1) specifies the variance schedule and 𝛼 𝑡 = 1− 𝛽 𝑡 . Defining ̄𝛼 𝑡 = ∏𝑡 𝑠 =1 𝛼 𝑠 , a perturbed image at an arbitrary noise level 𝑡 can be sampled directly as 
+
+𝑥 𝑡 = √̄𝛼 𝑡 𝐱 0 + √1 − ̄𝛼 𝑡 𝝐 , 𝝐 ∼  (𝟎 , 𝐈 ). (2) The reverse transition is parameterized as 
+
+𝑝 𝜃 (𝑥 𝑡 −1 |𝑥 𝑡 ) =  (𝐱 𝑡 −1 ; 𝝁 𝜃 (𝐱 𝑡 , 𝑡 ), 𝜎 2 
+
+> 𝑡
+
+𝐈 ) , (3) where 𝜃 denotes the parameters of the healthy-prior denoiser and 𝜎 2 
+
+> 𝑡
+
+is determined by the adopted variance schedule. Un-der the noise-prediction parameterization, the reverse mean is 
+
+𝝁 𝜃 (𝐱 𝑡 , 𝑡 ) = 1
+
+√𝛼 𝑡 
+
+(
+
+𝐱 𝑡 − 𝛽 𝑡 
+
+√1 − ̄𝛼 𝑡 
+
+𝝐 𝜃 (𝐱 𝑡 , 𝑡 )
+
+)
+
+, (4) Following DDPM (Ho et al., 2020) and using the Evi-dence Lower Bound (ELBO) loss, we train with minimizing the noise prediction loss: 
+
+(𝜖 𝜃 ) ∶= 𝔼 𝑥 0∼𝑞 (𝑥 0),𝜖 ∼ (0 ,𝐈 )[‖𝜖 𝜃 (𝑥 𝑡 , 𝑡 ) − 𝜖 ‖2] (5) , where 𝑥 𝑡 can be expressed with 𝑥 0 based on Eq. (2). Based on the Stochastic Differential Equation (SDE) formulation for the diffusion process (Song et al., 2021), the noise prediction model 𝜖 𝜃 is equivalent to the score function: 
+
+𝜖 𝜃 (𝑥 𝑡 , 𝑡 ) ∝ −∇ 𝑥 𝑡 log 𝑞 (𝑥 𝑡 |𝑡 ) (6) , which points toward the higher density for the observed noised sample 𝑥 𝑡 at time 𝑡 .
+
+3.2. Spatial Conditioning through ControlNet 
+
+To preserve the subject level anatomical features and reduce hallucination from the reverse process, we learn the conditional diffusion process with 𝜖 𝜃,𝜙 (𝑥 𝑡 , 𝑡 |𝑐 = 𝑥 0) using ControlNet (Zhang et al., 2023). For training, we learn with: 
+
+(𝜖 𝜃,𝜙 ) ∶= 𝔼 𝑥 0∼𝑞 (𝑥 0),𝜖 ∼ (0 ,𝐈 )[‖𝜖 𝜃,𝜙 (𝑥 𝑡 , 𝑡 |𝑐 ) − 𝜖 ‖2] (7) To prevent the model from ignoring its pre-trained gen-erative priors, having the injected ControlNet signals to completely dominate the core diffusion branch and learn-ing the shortcut of directly using condition 𝑐 = 𝑥 0 to explicitly calculate 𝜖 𝑡 , we adopt the conditioning dropout strategy outlined in Ho and Salimans (2021) and Zhang et al. (2023). Specifically, during training, we randomly replace the conditioning inputs with a null condition ∅ into the model using a dropout probability of 𝑝 drop = 0 .1. Thus, we have an alternative condition pipeline during training: 
+
+𝑐 =̃𝑐 =
+
+{
+
+∅ , with probability 𝑝 drop 
+
+𝑥 0 , otherwise (8) The base U-Net is pretrained on healthy images and remains frozen during ControlNet training, providing a fixed healthy-prior backbone. We use the null-conditioned prediction as the unconditional reference response: 
+
+𝜖 𝜃,𝜙 (𝑥 𝑡 , 𝑡 ∣ 𝑐 = ∅) ≃ 𝜖 𝜃 (𝑥 𝑡 , 𝑡 ). (9) , which retains the pretrained healthy-prior backbone. 
+
+3.3. Classifier-Free Guidance and Interpretation of the Conditional–Unconditional Discrepancy 
+
+At inference, classifier-free guidance (CFG) (Ho and Salimans, 2021) provides a convenient formulation for com-bining the healthy-prior reference and subject-conditioned denoising responses. The guided noise prediction is defined as 
+
+𝝐 CFG (𝐱 𝑡 , 𝑡 ∣ 𝐜 ) = 𝝐 uncond (𝐱 𝑡 , 𝑡 )+ 𝑤 [𝝐 cond (𝐱 𝑡 , 𝑡 ∣ 𝐜 ) − 𝝐 uncond (𝐱 𝑡 , 𝑡 )] ,
+
+(10) where 𝑤 ≥ 0 denotes the guidance scale, controlling the contribution of the subject-specific condition. 
+
+> Page 5 of 22
+
+The unconditional prediction is obtained from the ControlNet-augmented model using a null condition, 
+
+𝝐 uncond (𝐱 𝑡 , 𝑡 ) = 𝝐 𝜃,𝜙 (𝐱 𝑡 , 𝑡 ∣ 𝐜 = ∅) . (11) The conditional prediction is obtained by providing the observed ADC image as the spatial condition, 
+
+𝝐 cond (𝐱 𝑡 , 𝑡 ∣ 𝐜 ) = 𝝐 𝜃,𝜙 (𝐱 𝑡 , 𝑡 ∣ 𝐜 = 𝐱 0). (12) We therefore use 𝝐 uncond as the healthy-reference response, whereas 𝝐 cond represents the denoising response after in-corporating subject-specific information from the observed image. The effect of the CFG scale can be understood directly from Eq. (10): • When 𝑤 = 0 , the guided prediction reduces to the null-conditioned healthy-reference response. • For 0 < 𝑤 < 1,
+
+𝝐 CFG = (1 − 𝑤 )𝝐 uncond + 𝑤 𝝐 cond , (13) which interpolates between the healthy-reference and subject-conditioned responses. Smaller values of 𝑤 
+
+reduce the influence of the observed subject and therefore allow stronger restoration toward the learned healthy distribution. However, this process may also reduce subject-specific anatomical fidelity and intro-duce reconstruction changes unrelated to pathology. • When 𝑤 = 1 , the guided prediction becomes the stan-dard conditional prediction. Importantly, the healthy prior is still retained through the frozen pretrained U-Net, while the ControlNet branch contributes its learned subject-specific residual. • For 𝑤 > 1, CFG extrapolates beyond the null-conditioned healthy-reference response, along the conditional–unconditional direction. This formulation highlights the conditional–unconditional discrepancy 
+
+𝜹 𝑡 = 𝝐 cond (𝐱 𝑡 , 𝑡 ∣ 𝐜 = 𝐱 0) − 𝝐 uncond (𝐱 𝑡 , 𝑡 ), (14) which quantifies how the predicted denoising re-sponse changes when the observed subject image is introduced as spatial conditioning. Since the noise prediction is proportional to the negative score of the perturbed image distribution, as described in Eq. (6), 
+
+𝜹 𝑡 can equivalently be interpreted as a local differ-ence between the subject-conditioned and healthy-reference denoising fields. In image regions whose appearance is compatible with the learned healthy distribution, the subject condition is expected to require only a limited modification of the healthy-reference denoising response, resulting in a relatively small discrepancy. In contrast, image char-acteristics that are poorly represented by the healthy prior may induce a larger conditional correction. Such deviations may arise from pathology, but may also reflect normal anatomical variation, registration differences, acquisition-related intensity variation, or imaging artifacts. The conditional–unconditional dis-crepancy therefore characterizes deviation from the learned healthy denoising behavior, as illustrated in Fig. 2. Repeated extrapolation with 𝑤 > 1 progressively bias the reconstruction toward features supported by the subject-specific condition. In a pathological input, this may result in stronger preservation or emphasis of lesion-associated appearance in the final recon-struction, which motivates the “lesion-emphasizing” CFG setting and conversely “healthy-restoration” for 
+
+𝑤 < 1 evaluated in the reconstruction-based ablation in Sec. 4.4. However, at a fixed noisy input 𝐱 𝑡 , CFG does not intro-duce additional discriminative information into this discrep-ancy, since 
+
+𝝐 CFG − 𝝐 uncond = 𝑤 𝜹 𝑡 . (15) Thus, changing 𝑤 only scales the conditional–unconditional direction at a given noise level. Although the guidance scale can substantially alter a complete reverse-diffusion trajectory and therefore affect reconstruction-based anomaly maps, the underlying discrepancy 𝜹 𝑡 itself is independent of the selected CFG scale. In the following section, we therefore use the conditional–unconditional discrepancy di-rectly and introduce HIE pathology informed directional information to determine which components of the deviation are biologically consistent with acute diffusion restriction. 
+
+3.4. Pathology-Informed Directional Discrepancy and Multi Noise-Level Accumulation 
+
+Acute HIE injury is typically associated with restricted water diffusion and reduced ADC values relative to healthy brain tissue (Onda et al., 2024). We incorporate this charac-teristic as a directional pathological prior when comparing the subject-conditioned denoising response with the healthy-reference response. For a given noisy input 𝐱 𝑡 , we consider two reverse-diffusion responses: a healthy-prior branch and a subject-conditioned branch. The healthy-prior branch corresponds to the null-conditioned prediction, 
+
+𝝐 prior (𝐱 𝑡 , 𝑡 ) ≡ 𝝐 uncond (𝐱 𝑡 , 𝑡 ), (16) as defined in Eq. (11), whereas the subject-conditioned branch uses 𝝐 cond (𝐱 𝑡 , 𝑡 ∣ 𝐜 = 𝐱 0) from Eq. (12). For each branch 𝑏 ∈ {prior , cond} , the corresponding reverse transition can be written as ̂
+
+𝐱 𝑏 𝑡 −1 = 𝝁 𝑏 𝑡 + 𝜎 𝑡 𝐳 𝑏 𝑡 , 𝐳 𝑏 𝑡 ∼  (𝟎 , 𝐈 ), (17) where 
+
+𝝁 𝑏 𝑡 = 1
+
+√𝛼 𝑡 
+
+(
+
+𝐱 𝑡 − 𝛽 𝑡 
+
+√1 − ̄𝛼 𝑡 
+
+𝝐 𝑏 (𝐱 𝑡 , 𝑡 )
+
+)
+
+. (18) 
+
+> Page 6 of 22
+
+To isolate the effect of subject-specific conditioning, the two branches are evaluated from the same noisy input 𝐱 𝑡 
+
+using the same stochastic realization 𝐳 𝑡 .The stochastic terms therefore cancel when the two reverse estimates are compared: ̂
+
+𝐱 prior  
+
+> 𝑡 −1
+
+−̂ 𝐱 cond  
+
+> 𝑡 −1
+
+= 𝝁 prior  
+
+> 𝑡
+
+− 𝝁 cond  
+
+> 𝑡
+
+. (19) Substituting Eq. (18), the reverse-mean difference can be expressed directly in terms of the corresponding noise predictions: 
+
+𝝁 prior  
+
+> 𝑡
+
+− 𝝁 cond  
+
+> 𝑡
+
+= 𝛽 𝑡 
+
+√𝛼 𝑡 (1 − ̄𝛼 𝑡 )
+
+(
+
+𝝐 cond  
+
+> 𝑡
+
+− 𝝐 prior 
+
+> 𝑡
+
+)
+
+. (20) Since 𝝐 prior ≡ 𝝐 uncond , this can equivalently be written as 
+
+𝝁 prior  
+
+> 𝑡
+
+− 𝝁 cond  
+
+> 𝑡
+
+= 𝜅 𝑡 
+
+(𝝐 cond  
+
+> 𝑡
+
+− 𝝐 uncond 
+
+> 𝑡
+
+) ,
+
+where 𝜅 𝑡 = 𝛽 𝑡 
+
+√𝛼 𝑡 (1 − ̄𝛼 𝑡 ) . (21) For all valid diffusion timesteps, 𝜅 𝑡 > 0.In a healthy region, both branches are expected to gener-ate similar reverse estimates because the observed appear-ance is compatible with the learned healthy distribution. In an HIE lesion, however, the subject-conditioned branch is expected to preserve more of the abnormally low ADC signal present in the observed image, while the uncondi-tional branch favors restoration toward a healthy-compatible appearance with a relatively higher ADC value. Therefore, for a voxel 𝑖 within a low-ADC lesion, we expect 
+
+𝜇 prior  
+
+> 𝑡,𝑖
+
+− 𝜇 cond  
+
+> 𝑡,𝑖
+
+> 0. (22) Accordingly, we define the directional discrepancy score at reverse step 𝑡 as 
+
+𝑑 𝑡,𝑖 =
+
+[
+
+𝜇 prior  
+
+> 𝑡,𝑖
+
+− 𝜇 cond 
+
+> 𝑡,𝑖
+
+] 
+
+> +
+
+, [𝑢 ]+ = max( 𝑢, 0) , (23) where the positive-part operator retains only discrepancies consistent with restoration from a lower subject-conditioned ADC value toward a higher healthy-prior ADC value. Using Eq. (21), this discrepancy can be further expressed in terms of the predicted noise: 
+
+𝑑 𝑡,𝑖 =
+
+[
+
+𝜅 𝑡 
+
+(
+
+𝜖 cond  
+
+> 𝑡,𝑖
+
+− 𝜖 uncond 
+
+> 𝑡,𝑖
+
+)] 
+
+> +
+
+∝
+
+[
+
+𝜖 cond  
+
+> 𝑡,𝑖
+
+− 𝜖 uncond 
+
+> 𝑡,𝑖
+
+]
+
+> +
+
+(24) , since 𝜅 𝑡 > 0.This formulation is directly related to the CFG represen-tation introduced in Sec. 3.3. From Eq. (10), for 𝑤 > 0, CFG therefore preserves the sign of the underlying conditional– unconditional discrepancy while scaling its magnitude. Be-cause our anomaly score is defined directly from 𝝐 cond −
+
+𝝐 uncond , it does not require selecting a CFG scale. Similarly, although the reverse-mean discrepancy in Eq. (21) contains the timestep-dependent coefficient 𝜅 𝑡 , this coefficient does not alter the sign used by the pathological directional con-straint. We therefore use the noise-prediction discrepancy itself as the operational anomaly representation rather than explicitly weighting it by 𝜅 𝑡 .A subtle lesion may produce only a weak discrepancy at any individual noise level. We therefore aggregate the di-rectional evidence across a selected subset of independently evaluated noise levels  ⊆ {1 , … , 𝑇 }. For each 𝑡 ∈  , a noisy input is constructed directly from the same observed image 𝐱 0 according to Eq. (2), with no state propagated from one evaluated noise level to another. The accumulated anomaly score at voxel 𝑖 is defined using the geometric mean (Frotscher et al., 2026): 
+
+𝐴 𝑖 = exp 
+
+(
+
+1
+
+| |∑
+
+> 𝑡 ∈
+
+log (𝑑 𝑡,𝑖 + 𝜁 stab 
+
+))
+
+, (25) where 𝜁 stab > 0 is a small numerical stability constant introduced to avoid taking the logarithm of zero. The positive-part operation is applied before accumu-lation so that discrepancies opposite to the expected low-ADC lesion direction do not cancel directionally consis-tent responses. Compared with an arithmetic mean, geo-metric aggregation reduces the influence of isolated large discrepancies and favors voxels that exhibit consistently ele-vated directional responses across multiple corruption levels (Frotscher et al., 2026). Because each noise level is evaluated independently from the original subject image, the accu-mulated score reflects persistent disagreement between the subject-conditioned and healthy-reference denoising fields without requiring a sequential reverse-diffusion trajectory or a final pseudo-healthy reconstruction. The directional constraint improves pathological rele-vance but does not by itself establish lesion specificity. Nor-mal anatomical variation, partial-volume effects, registra-tion differences, acquisition-related intensity variation, and imaging artifacts may also produce positive discrepancies. The resulting score is therefore interpreted as evidence of a persistent deviation from the learned healthy denoising behavior that is directionally consistent with acute HIE-related ADC reduction, rather than as a calibrated lesion probability. 
+
+3.5. Spatial Smoothing of the Anomaly Map 
+
+Although accumulation across multiple noise levels en-hances persistent conditional–unconditional discrepancies, the resulting anomaly map may contain spatially isolated high-frequency responses. As following Frotscher et al. (2026), we apply a mean filtering to improve the local spatial coherence of the accumulated score. Let 𝐴 𝑖 denote the accumulated directional discrepancy at voxel 𝑖 . The spatially regularized anomaly score is defined as ̃𝐴 𝑖 = 1
+
+|𝑘 (𝑖 )|∑
+
+> 𝑗 ∈𝑘 (𝑖 )
+
+𝐴 𝑗 , (26) where 𝑘 (𝑖 ) denotes the local 𝑘 × 𝑘 neighborhood centered at voxel 𝑖 , and 𝑘 is the mean-filter kernel size. The same filter 
+
+> Page 7 of 22
+
+is applied to all subjects before thresholding the continuous anomaly map. Mean filtering reduces isolated high-valued responses by averaging them with low-valued neighboring voxels, whereas spatially coherent regions remain relatively ele-vated because their neighboring voxels exhibit consistently high discrepancy scores. However, an excessively large ker-nel may dilute focal lesion responses and spread elevated anomaly scores into adjacent healthy tissue, with increasing false positive detections. We use 𝑘 = 5 in the final frame-work, as selected using the validation set. The sensitivity of the method to the kernel size is evaluated in Table 5. 
+
+3.6. Population Z-Map Guided Post-processing Lesion Refinement 
+
+The diffusion-derived anomaly map characterizes subject-specific disagreement between the conditional and uncon-ditional noise predictions. Although this discrepancy pro-vides complementary evidence of abnormal tissue, it may also respond to normal anatomical variation, tissue bound-aries, registration errors, and acquisition-related artifacts. We therefore combine the diffusion anomaly score with a population-normalized ADC 𝑍 -map (Bao et al., 2025), which provides an independent spatial measure of deviation from the healthy reference population. Because acute HIE lesions are generally associated with restricted diffusion and reduced ADC values (Onda et al., 2024), strongly negative 
+
+𝑍 -scores provide biologically consistent evidence for lesion localization (Bao et al., 2025; Rao et al., 2025). Let 𝐴 𝑖 denote the accumulated directional noise-prediction discrepancy at voxel 𝑖 , as defined in Eq. (25), and let 𝑍 𝑖 
+
+denote the corresponding population ADC 𝑍 -score. All operations are performed independently for each subject: 
+
+Ω = {𝑖 ∶ 𝐴 𝑖 and 𝑍 𝑖 are finite } . (27) 
+
+High-confidence low-ADC core. A high-confidence le-sion core is first identified solely from the population 𝑍 -map: 
+
+𝐶 raw = {𝑖 ∈ Ω ∶ 𝑍 𝑖 ≤ −2 .0} , (28) as following Rao et al. (2025) where −2 .0 is an consistent threshold for lesion on 𝑍 -map. Three-dimensional connected-component analysis was performed over the entire volume binary mask. Voxels shar-ing a face, edge, or corner were considered connected (26-connectivity), and connected regions containing fewer than 150 voxels were removed: 
+
+𝐶 = ⋃
+
+> 𝑘 ∶|𝐶 𝑘 |≥150
+
+𝐶 𝑘 , 𝐶 𝑘 = CC 26 (𝐶 raw ), (29) where CC 26 (⋅) denotes 26-connected component decompo-sition. The size constraint of each lesion component sup-presses isolated negative 𝑍 -score responses that are unlikely to represent spatially coherent HIE lesions. 
+
+Diffusion-supported component recovery. The diffu-sion anomaly map is subsequently used to recover com-plementary lesion components that may not be included in the high-confidence 𝑍 -map core. A subject-specific high-anomaly threshold is defined as 𝜏 𝐴 = 𝑄 99 (𝐴 ; Ω) , corre-sponding to the 99th percentile of the normalized anomaly scores. Candidate voxels must simultaneously exhibit a high diffusion anomaly score and a negative population deviation: 
+
+𝑅 = {𝑖 ∈ Ω ∶ 𝐴 𝑖 ≥ 𝜏 𝐴 ∧ 𝑍 𝑖 ≤ −1 .95 } . (30) Thus, the diffusion score alone cannot introduce a candidate voxel without supporting evidence of reduced ADC relative to the healthy population. The candidate mask 𝑅 is decomposed into 26-connected components, 
+
+{𝑅 𝑗 }𝐽 𝑗 =1 = CC 26 (𝑅 ). (31) A candidate component 𝑅 𝑗 is retained only if its size is larger than 10 voxels, i.e. 10 ≤ |𝑅 𝑗 | and it is spatially adjacent to the cleaned 𝑍 -map core: 
+
+𝑅 𝑗 ∩ Dilate 26 (𝐶, 1) ≠ ∅, (32) where Dilate 26 (𝐶, 1) denotes a one-voxel three-dimensional dilation of 𝐶 using 26-connectivity. When a candidate com-ponent satisfies both constraints, the entire connected com-ponent is included in the prediction. This component-level operation allows the method to recover spatially coherent lesion extensions while preventing distant high-anomaly re-gions from being detected independently. The set of accepted components is therefore 
+
+acc = {𝑗 ∶ 10 ≤ |𝑅 𝑗 | ∧ 𝑅 𝑗 ∩ Dilate 26 (𝐶, 1) ≠ ∅} . (33) The final binary lesion map for this current subject is defined as 
+
+𝑀 = 𝐶 ∪ ⋃
+
+> 𝑗 ∈acc
+
+𝑅 𝑗 . (34) This conservative fusion combines two complementary representations of abnormality. The population 𝑍 -map pro-vides the primary localization of spatially coherent low-ADC tissue, whereas the diffusion discrepancy supplies subject-specific evidence for recovering nearby lesion com-ponents. No manual lesion annotation is required to generate the final prediction at inference. 
+
+3.7. Dataset and Preprocessing 
+
+We used the BONBID-HIE dataset (Bao et al., 2025) for model development and evaluation. The dataset was divided into 85 training subjects, 4 validation subjects, and 44 test subjects, as following its predefined partitions, without per-forming an additional subject-level split and with no subject overlap among the three partitions. All 133 subjects in the selected release were included, with no subject-level ex-clusions. Each subject included an three-dimensional ADC 
+
+> Page 8 of 22
+
+map and its corresponding population-normalized 𝑍 -map. To account for variations in voxel spacing and spatial mis-alignment across scans, all volumes were affine registered to the JHU-neonate-SS atlas template (Oishi et al., 2011) using ANTsPy (Tustison et al., 2021). At the end, all scans were resampled to a common matrix size 256 × 256 × 128 and voxel size 0.58 × 0 .58 × 0 .74 𝑚𝑚 3, with nearest neighbor interpolation, as following Rao et al. (2025). The intensity of each volume went through its independent 99th percentile normalization. The diffusion model was trained using two-dimensional axial ADC slices. To construct a training set representing non-lesion brain tissue, we examined the corresponding lesion mask for each slice from the training subjects and retained only slices containing no annotated lesion voxels. The lesion masks were used exclusively for training-slice selection and were not provided to the model as inputs or optimization targets. The 𝑍 -maps were not used to train the diffusion model and were introduced only during the post-processing stage described in Section 3.6. We have 6042 slices of non-lesion axial brain slices for training and 4838 slices of lesion axial brain slices from the training subjects for the hyperparameter selection for the post-processing stage. The predefined validation partition was used to monitor loss and model performance during training to reduce over-fitting and to select the mean-filter kernel size. Evaluation was performed over complete 3D volumes from the 44 test subjects. 
+
+3.8. Network Architecture and Implementation Details 
+
+The two-stage training procedure is summarized in Al-gorithm 1, and the discrepancy-based inference procedure is described in Algorithm 2. The diffusion denoiser was implemented using a U-Net architecture (Ronneberger et al., 2015). The ControlNet conditioning branch was constructed using the encoder portion of the U-Net architecture, allowing the observed subject image to be encoded at multiple spatial resolutions (Zhang et al., 2023) (Fig. 1). As following Zhang et al. (2023), at each resolution level, the features produced by the ControlNet encoder were projected through a zero-initialized convolution and injected into the corresponding feature stream of the primary U-Net through a residual connection. Specifically, the fused feature representation at resolution level 𝓁 was defined as ̃
+
+𝐡 𝓁 = 𝐡 UNet  
+
+> 𝓁
+
++ 𝓁 
+
+(𝐡 Control 
+
+> 𝓁
+
+) , (35) where 𝐡 UNet  
+
+> 𝓁
+
+and 𝐡 Control  
+
+> 𝓁
+
+denote the primary U-Net and ControlNet feature maps, respectively, and 𝓁 denotes the zero-initialized convolutional projection. Both the weights and biases of 𝓁 were initialized to zero. Consequently, the ControlNet residual was initially zero and the pretrained U-Net was frozen throughout the second stage of training, allowing the pretrained U-Net to preserve its learned healthy denoising behavior at the beginning of the second train-ing stage. As training progressed, the residual projections learned to introduce subject-specific spatial information and to adjust the pre-learned healthy prior. Both training stages were optimized using AdamW (Loshchilov and Hutter, 2017) with a batch size of 8. We employed a warm-up cosine-decay learning-rate schedule. During the first 5% of the total optimization steps, the learn-ing rate was increased from 2 × 10 −5 to the target learning rate of 1 × 10 −4 . It was subsequently decayed according to a cosine schedule over the remaining optimization steps. An exponential moving average of the model parameters was maintained with a decay rate of 0.995 .In the first stage, the U-Net diffusion model was trained for 𝐾 1 = 300 epochs to learn the healthy neonatal image distribution. In the second stage, the pretrained U-Net served as the healthy generative prior, and the ControlNet branch was trained for an additional 𝐾 2 = 200 epochs to incorporate subject-specific spatial conditioning. To enable both null-conditioned and subject-conditioned noise predictions, the conditioning image was randomly dropped with probability 
+
+𝑝 drop = 0 .1 during ControlNet training. The diffusion process used 𝑇 = 1000 noise steps with a linear variance schedule, in which 𝛽 𝑡 increased from 𝛽 1 =1×10 −4 to 𝛽 𝑇 = 0 .02 . During training, the input images were normalized, and random horizontal flipping was applied with a probability of 0.5.During inference, following the intermediate-noise strat-egy described in (Frotscher et al., 2026), we accumulated the conditional-unconditional discrepancy over diffusion timesteps  = {75 , 76 , … , 200} . This interval was se-lected to balance corruption of the pathological signal with preservation of subject-specific anatomy. At very low noise levels, the lesion appearance remains largely preserved in 
+
+𝐱 𝑡 , providing insufficient perturbation for the healthy prior to reveal a clear discrepancy. Conversely, at substantially higher noise levels, excessive corruption removes subject-specific anatomical information and may introduce recon-struction differences unrelated to pathology. The selected intermediate timesteps weaken the lesion-related signal while retaining sufficient anatomical information for spa-tially meaningful comparison between the conditional and unconditional noise predictions. 
+
+3.9. Evaluation Metrics 
+
+We evaluated the predicted anomaly maps using com-plementary voxel-ranking, volumetric-overlap, and surface-distance metrics. Let 𝐴 𝑠,𝑖 denote the continuous anomaly score at voxel 𝑖 of subject 𝑠 , and let 𝐺 𝑠 denote the corre-sponding ground truth lesion mask. Given a threshold 𝜆 , the binary prediction is 𝑃 𝑠 (𝜆 ) = { 𝑖 ∶ 𝐴 𝑠,𝑖 > 𝜆 }. Each metric was first computed over the complete 3D volume of each subject, rather than independently on individual 2D slices, and was reported as the mean ± standard deviation across the test subjects. 
+
+Dice similarity coefficient and threshold selection. The Dice similarity coefficient measures volumetric overlap be-tween the predicted mask 𝑃 and the ground truth mask 𝐺 :
+
+> Page 9 of 22
+
+Dice( 𝑃 , 𝐺 ) = 2|𝑃 ∩ 𝐺 ||𝑃 | + |𝐺 | , (36) where | ⋅ | denotes the number of foreground voxels. Dice ranges from 0 to 1, with higher values indicating greater overlap. For each evaluated method, we determined the ceiling Dice by selecting a single threshold 𝜆 ∗ that maximized the mean subject-wise Dice score on the test set: 
+
+𝜆 ∗ = arg max 
+
+> 𝜆 ∈Λ
+
+1
+
+𝑁 test 
+
+> 𝑁 test
+
+∑
+
+> 𝑠 =1
+
+Dice (𝑃 𝑠 (𝜆 ), 𝐺 𝑠 
+
+), (37) where Λ denotes the candidate threshold set and 𝑁 test is the number of test subjects. We reported the resulting ceiling Dice as the Dice score throughout the manuscript. The same threshold 𝜆 ∗ was then applied to all test subjects to com-pute the following described surface-distance metrics with-out further optimization. These binary-segmentation metrics therefore describe performance at a Dice-optimal threshold selected using the test-set annotations. 
+
+Average precision. Average precision (AP) evaluates voxel-level ranking by summarizing the precision–recall curve obtained from the continuous anomaly scores: 
+
+AP = ∑
+
+> 𝑘
+
+(Rec 𝑘 − Rec 𝑘 −1 
+
+) Prec 𝑘 , (38) where Prec 𝑘 and Rec 𝑘 denote precision and recall at the 
+
+𝑘 -th sorted threshold. AP does not depend on the selected threshold 𝜆 ∗ and is particularly informative because lesion voxels constitute a small proportion of the evaluated brain volume. Higher AP indicates better ranking of lesion voxels above non-lesion voxels. 
+
+Surface-distance metrics. For clarity, we omit the subject index below and write 𝑃 = 𝑃 𝑠 (𝜆 ∗) and 𝐺 = 𝐺 𝑠 . Let 
+
+𝑆 𝑃 = 𝜕𝑃 and 𝑆 𝐺 = 𝜕𝐺 denote the predicted and ground truth lesion surfaces. The distance from a surface voxel 𝑥 to a surface 𝑆 is 
+
+𝑑 (𝑥, 𝑆 ) = min  
+
+> 𝑦 ∈𝑆
+
+‖𝑥 − 𝑦 ‖2, (39) where coordinates are expressed in physical space, account-ing for voxel spacing. All distances are reported in millime-ters. The symmetric Hausdorff distance (HD) measures the maximum surface disagreement: 
+
+HD( 𝑃 , 𝐺 ) = max 
+
+{
+
+max 
+
+> 𝑥 ∈𝑆 𝑃
+
+𝑑 (𝑥, 𝑆 𝐺 ), max 
+
+> 𝑦 ∈𝑆 𝐺
+
+𝑑 (𝑦, 𝑆 𝑃 )
+
+}
+
+. (40) Lower HD indicates a smaller maximum boundary error. The mean average surface distance (MASD) measures the mean bidirectional distance between the two lesion sur-faces: 
+
+MASD( 𝑃 , 𝐺 ) = 12
+
+[̄ 𝑑 (𝑆 𝑃 , 𝑆 𝐺 ) + ̄ 𝑑 (𝑆 𝐺 , 𝑆 𝑃 )] ,̄ 𝑑 (𝑆 1, 𝑆 2) = 1
+
+|𝑆 1|∑
+
+> 𝑥 ∈𝑆 1
+
+𝑑 (𝑥, 𝑆 2). (41) 
+
+Algorithm 1 Two-stage training of the healthy-prior DDPM and ControlNet                                                                                                                        
+
+> Input: Healthy ADC dataset h; diffusion schedule {𝛽 𝑡 }𝑇 𝑡 =1 ; training iter-ations 𝐾 1and 𝐾 2; condition-dropout probability 𝑝 drop
+> Output: Healthy-prior parameters 𝜃 and ControlNet parameters 𝜙
+> 1: Define 𝛼 𝑡 = 1 − 𝛽 𝑡 and ̄𝛼 𝑡 =∏𝑡 𝑠 =1 𝛼 𝑠
+> Stage 1: Healthy-prior DDPM
+> 2: Initialize the unconditional denoiser 𝝐 𝜃
+> 3: for 𝑘 = 1 ,…, 𝐾 1do
+> 4: Sample 𝐱 0∼h,𝑡 ∼{1 ,…, 𝑇 }, and 𝝐 ∼(𝟎 ,𝐈 )
+> 5: Construct 𝐱 𝑡 =√̄𝛼 𝑡 𝐱 0+√1 − ̄𝛼 𝑡 𝝐
+> 6: Compute prior =‖𝝐 −𝝐 𝜃 (𝐱 𝑡 , 𝑡 )‖22
+> 7: Update 𝜃 using ∇𝜃 prior
+> 8: end for Stage 2: ControlNet
+> 9: Freeze 𝜃 and initialize the ControlNet parameters 𝜙
+> 10: for 𝑘 = 1 ,…, 𝐾 2do
+> 11: Sample 𝐱 0∼h,𝑡 ∼{1 ,…, 𝑇 }, and 𝝐 ∼(𝟎 ,𝐈 )
+> 12: Construct 𝐱 𝑡 =√̄𝛼 𝑡 𝐱 0+√1 − ̄𝛼 𝑡 𝝐
+> 13: Set ̃𝐜 = ∅ with probability 𝑝 drop ; otherwise set ̃𝐜 =𝐱 0
+> 14: Compute cond =‖𝝐 −𝝐 𝜃,𝜙 (𝐱 𝑡 , 𝑡 ∣̃𝐜 )‖22
+> 15: Update only 𝜙 using ∇𝜙 cond
+> 16: end for
+> 17: return 𝜃, 𝜙
+
+Algorithm 2 Multi noise-level conditional-unconditional score discrepancy inference                                                                      
+
+> Input: Patient ADC slice 𝐱 0; selected noise levels ; trained parameters
+> 𝜃, 𝜙 ; small numerical stability constant 𝜁 stab ; brain mask 𝐁
+> Output: Diffusion-derived anomaly map 𝐀 dif f
+> 1: Set patient condition 𝐜 ←𝐱 0
+> 2: Initialize 𝐀 ←𝟎
+> 3: for all 𝑡 ∈do
+> 4: Sample 𝝐 𝑡 ∼(𝟎 ,𝐈 )
+> 5: 𝐱 𝑡 ←√̄𝛼 𝑡 𝐱 0+√1 − ̄𝛼 𝑡 𝝐 𝑡 ⊳Direct perturbation 6: ̂𝝐 prior
+> 𝑡 ←𝝐 𝜃,𝜙 (𝐱 𝑡 , 𝑡 |∅)
+> 7: ̂𝝐 cond
+> 𝑡 ←𝝐 𝜃,𝜙 (𝐱 𝑡 , 𝑡 ∣𝐜 )
+> 8: 𝐝 𝑡 ←̂𝝐 cond
+> 𝑡 −̂𝝐 prior
+> 𝑡
+> 9: 𝐀 ←𝐀 + log ([𝐝 𝑡 ]++𝜁 stab
+> )⊳Pathological directional prior 10: end for
+> 11: 𝐀 dif f ←exp (𝐀 ∕||)⊙𝐁 ⊳Geometric mean 12: return 𝐀 dif f ⊳No sequential reverse chain
+
+Lower MASD indicates closer average agreement between the predicted and reference boundaries. 
+
+Normalized surface distance (NSD) measures the pro-portion of surface voxels within a predefined dilated toler-ance 𝜏 of the corresponding surface: 
+
+NSD 𝜏 (𝑃 , 𝐺 ) = 
+
+∑
+
+> 𝑥 ∈𝑆 𝑃
+
+𝟏 [𝑑 (𝑥, 𝑆 𝐺 ) ≤ 𝜏 ] + ∑
+
+> 𝑦 ∈𝑆 𝐺
+
+𝟏 [𝑑 (𝑦, 𝑆 𝑃 ) ≤ 𝜏 ]|𝑆 𝑃 | + |𝑆 𝐺 | ,
+
+(42) where 𝟏 [⋅] is the indicator function. We used a tolerance of 
+
+𝜏 = 2 .0 mm in the resampled image space, following Rao et al. (2025). NSD ranges from 0 to 1, with higher values indicating better surface agreement within the specified tol-erance. 
+
+Page 10 of 22 3.10. Statistical Analysis 
+
+Statistical comparisons were performed using two-sided paired Wilcoxon signed-rank tests, with each test subject serving as the paired unit. Dice was the primary outcome for comparisons between the proposed method and competing baselines, as well as for selected ablation analyses. Statistical significance was assessed at 𝛼 = 0 .05 . Mean paired Dice differences were reported alongside 𝑝 -values to describe the magnitude of the observed effects. For methods evaluated using ceiling Dice, subject-level scores were computed at the same method-specific threshold selected to maximize mean test-set Dice. These statistical comparisons therefore characterize performance under the oracle threshold evaluation protocol rather than at indepen-dently selected operating thresholds. 
+
+3.11. Alternative Discrepancy Formulations for Ablation 
+
+To assess the design choices underlying the proposed discrepancy score, we consider two alternative formulations. These formulations are evaluated only as ablation variants and are not used in the final framework. The evaluation of the ablation variants is in Table 6. 
+
+Reverse-chain accumulation. Our final method evaluates each selected noise level independently by directly sampling 
+
+𝑥 𝑡 using Eq. (2). As an alternative, we construct a dependent reverse trajectory in which each state is generated from the preceding reverse step: 
+
+𝐱 chain  
+
+> 𝑡 −1
+
+= 𝝁 𝜃 (𝐱 chain  
+
+> 𝑡
+
+, 𝑡 ) + 𝜎 𝑡 𝐳 𝑡 , 𝐳 𝑡 ∼  (𝟎 , 𝐈 ). (43) The discrepancy at each timestep is then evaluated on 𝐱 chain  
+
+> 𝑡
+
+.This variant process tests whether preserving a continuous reverse trajectory is preferable to independently examining matched corruption levels of the observed image. 
+
+Forward-noise reference. We additionally replace the unconditional model prediction with the Gaussian noise used in the forward process: ̃𝑑 𝑡 = 𝝐 cond (𝐱 𝑡 , 𝑡 ∣ 𝑐 = 𝐱 0) − 𝝐 𝑡 ,
+
+where 𝑥 𝑡 = √̄𝛼 𝑡 𝑥 0 + √1 − ̄𝛼 𝑡 𝜖 𝑡 
+
+(44) This variant formulation tests whether anomaly evidence can be obtained from conditional noise prediction error alone, without using the learned unconditional response as a healthy reference. 
+
+## 4. Results 
+
+4.1. Unsupervised Benchmark Results 
+
+Table 1 compares the proposed method with exist-ing state-of-the-arts unsupervised anomaly detection ap-proaches. The compared approaches were trained over the same training subjects and used their original proposed post-processing smooth methods. Among the evaluated baselines, f-AnoGAN (Schlegl et al., 2019) failed to converge reliably and AnoDDPM (Wyatt et al., 2022) remained unstable when trained with Simplex noise. Therefore, quantitative results are not reported for these two methods. Without spatial filtering, our method achieved a Dice score of 0.232 , significantly exceeding the best-performing converged baselines, MAD-AD (Beizaee et al., 2025a) with Dice 0.166 (two-sided paired Wilcoxon signed-rank test 𝑝 < 
+
+0.001 , 𝑛 = 44 ). It also obtained an NSD of 0.284 , compared with the best baseline MAD-AD’s NSD of 0.213 . The cor-responding HD and MASD were 29 .29 mm and 12 .62 mm, respectively, representing the second-best performance for both distance-based metrics after MAD-AD. The unfiltered anomaly map achieved an AP of 0.374, which was lower than those of DAE (0.665) and MAD-AD (0.492), but higher than the remaining diffusion-based and feature-based baselines. Applying mean filtering with a kernel size of 𝑘 = 5 con-sistently improved the proposed method across all reported metrics. Dice significantly increased from 0.232 to 0.283 
+
+(two-sided paired Wilcoxon signed-rank test 𝑝 = 0.001 ,
+
+𝑛 = 44 ). AP increased from 0.374 to 0.505, while HD decreased from 29 .29 to 25 .45 mm, and MASD decreased from 12 .62 to 9.40 mm. NSD also increased from 0.284 to 
+
+0.355 . The mean-filtered model therefore achieved the best Dice, HD, MASD, and NSD among all successfully trained methods. Relative to MAD-AD, the strongest competing baseline for spatial localization, the mean-filtered model significantly improved Dice by 0.117 (two-sided paired Wilcoxon signed-rank test 𝑝 < 0.001 , 𝑛 = 44 ), reduced HD by 1.99 mm, reduced MASD by 1.93 mm, and increased NSD by 0.142. Although DAE (Kascenas et al., 2022) achieved the highest AP of 0.665, its Dice 0.159 and NSD 0.176 were substantially lower than those of our proposed mean-filtered method. Overall, these findings indicate that the proposed approach provides more accurate lesion overlap and bound-ary localization, while DAE retains an advantage in global voxel-ranking performance. To assess the effect of lesion burden on detection per-formance, we further stratified the test subjects according to their ground-truth lesion percentage into small ( < 1% ), medium ( 1% –5% ), and large ( ≥ 5% ) lesion-burden groups, as following Rao et al. (2025) in Table 2. Before mean filtering, performance improved consistently with increasing lesion burden: Dice increased from 0.080 for the small-lesion group to 0.287 and 0.603 for the medium- and large-lesion groups, respectively. Correspondingly, HD decreased from 40 .27 mm to 26 .39 mm and 10 .23 mm, while NSD increased from 0.155 to 0.388 and 0.640 .Mean filtering provided the greatest benefit for subjects with small and medium lesion burdens (Table 2, gray-shaded rows). For the small-lesion group, mean filtering with kernel size of 5 (MF5) increased Dice from 0.080 to 0.141 , AP from 0.030 to 0.135 , and NSD from 0.155 to 0.262 . For the medium-lesion group, Dice increased from 0.287 to 0.377 ,AP from 0.186 to 0.356 , and NSD from 0.388 to 0.487 . In contrast, performance for the large-lesion group was already comparatively high before filtering, and MF5 produced only 
+
+> Page 11 of 22
+
+Figure 3: Qualitative comparison of unsupervised anomaly detection methods in subjects with (a) small ( < 1% ), (b) medium (1% − 5% ), and (c) large ( ≥ 5% ) lesion burdens, defined by the subject-level lesion percentage. Columns show the input ADC image, expert lesion annotation, and anomaly maps from selected top-performing baselines, including DAE (Kascenas et al., 2022), ANDi (Frotscher et al., 2026), MAD-AD (Beizaee et al., 2025a), where the originally proposed smoothing methods from each paper have been applied. Our proposed method before and after mean filtering (MF; 𝑘 = 5 ) is highlighted in green box. Red overlays in the ground truth (GT) column indicate annotated lesions, and cyan contours delineate their boundaries on the anomaly maps. Brighter colors indicate higher anomaly scores. 
+
+Table 1 
+
+Quantitative comparison of unsupervised anomaly detection methods for neonatal HIE lesion localization. Values are reported as mean ± standard deviation where available. The best and second-best results are shown in bold and underlined, respectively. For each model’s result, the originally proposed smoothing methods have been applied. For Dice, † and ‡ indicate significantly lower scores than Ours and Ours with mean filtering ( 𝑘 = 5 ), respectively (under two-sided paired Wilcoxon signed-rank tests, all 
+
+𝑝 < 0.001 , 𝑛 = 44 ). 
+
+Method Dice ↑ AP ↑ HD ↓ (mm) MASD ↓ (mm) NSD ↑
+
+f-AnoGAN (Schlegl et al., 2019) Unstable training and unable to achieve convergence. DAE (Kascenas et al., 2022) 0.159 ± 0 .268 †‡ 𝟎 .𝟔𝟔𝟓 30 .38 ± 15 .41 13 .65 ± 9 .87 0.176 ± 0 .210 
+
+AnoDDPM (Wyatt et al., 2022) Unstable training with simplex noise. AutoDDPM (Bercea et al., 2023) 0.085 ± 0 .126 †‡ 0.083 31 .96 ± 15 .59 14 .53 ± 9 .73 0.169 ± 0 .194 
+
+pDDPM (Behrendt et al., 2024) 0.121 ± 0 .235 †‡ 0.084 39 .08 ± 15 .05 21 .16 ± 11 .08 0.050 ± 0 .111 
+
+THOR (Bercea et al., 2024) 0.162 ± 0 .231 †‡ 0.281 31 .89 ± 15 .56 14 .35 ± 9 .68 0.196 ± 0 .218 
+
+IterMask 2
+
+(Liang et al., 2024) 0.121 ± 0 .235 †‡ 0.050 38 .87 ± 15 .33 21 .09 ± 11 .11 0.050 ± 0 .111 
+
+MAD-AD (Beizaee et al., 2025a) 0.166 ± 0 .205 †‡ 0.492 27 .44 ± 13 .25 11 .33 ± 7 .84 0.213 ± 0 .187 
+
+DeCo-Diff (Beizaee et al., 2025b) 0.131 ± 0 .214 †‡ 0.261 30 .79 ± 14 .84 14 .86 ± 9 .51 0.154 ± 0 .189 
+
+ANDi (Frotscher et al., 2026) 0.108 ± 0 .199 †‡ 0.267 33 .09 ± 14 .79 12 .85 ± 8 .37 0.139 ± 0 .179 
+
+InvAD + U-Net (Sakai et al., 2026) 0.131 ± 0 .235 †‡ 0.174 32 .47 ± 15 .95 16 .26 ± 10 .02 0.136 ± 0 .203 
+
+InvAD + original setup (Sakai et al., 2026) 0.121 ± 0 .235 †‡ 0.107 39 .09 ± 15 .05 21 .17 ± 11 .08 0.050 ± 0 .1112 
+
+Ours 0.232 ± 0 .239 0.374 29 .29 ± 16 .43 12 .62 ± 10 .11 0.284 ± 0 .256 
+
+Ours + mean filtering ( 𝑘 = 5 ) 𝟎 .𝟐𝟖𝟑 ± 𝟎 .𝟐𝟒𝟒 0.505 𝟐𝟓 .𝟒𝟓 ± 𝟏𝟓 .𝟔𝟑 𝟗 .𝟒𝟎 ± 𝟖 .𝟒𝟗 𝟎 .𝟑𝟓𝟓 ± 𝟎 .𝟐𝟑𝟔 
+
+Page 12 of 22 Table 2                                                                                     
+
+> Performance of our proposed model stratified by subject-level lesion burden. Subjects were divided into small ( <1% ), medium (1% –5% ), and large ( ≥5% ) lesion-burden groups according to the percentage of voxels labeled as lesions in each subject. MF5 denotes mean filtering with a kernel size of 5(rows shaded in gray). Results are reported as mean ±standard deviation where available, and the best result within each lesion-burden group is highlighted in bold.
+> Lesion burden Post-processing Dice ↑AP ↑HD ↓(mm) MASD ↓(mm) NSD ↑
+> Small ( <1% ), 𝑛 = 22 −− 0.080 ± 0 .086 0.030 40 .27 ± 13 .90 17 .25 ± 9 .58 0.155 ± 0 .111
+> MF5 𝟎 .𝟏𝟒𝟏 ±𝟎 .𝟏𝟓𝟒 𝟎 .𝟏𝟑𝟓 𝟑𝟑 .𝟔𝟎 ±𝟏𝟓 .𝟏𝟗 𝟏𝟎 .𝟒𝟗 ±𝟓 .𝟔𝟒 𝟎 .𝟐𝟔𝟐 ±𝟎 .𝟐𝟎𝟖
+> Medium ( 1% –5% ), 𝑛 = 12 −− 0.287 ± 0 .148 0.186 26 .39 ± 8 .77 7.80 ± 3 .53 0.388 ± 0 .150
+> MF5 𝟎 .𝟑𝟕𝟕 ±𝟎 .𝟐𝟎𝟖 𝟎 .𝟑𝟓𝟔 𝟏𝟖 .𝟒𝟑 ±𝟔 .𝟗𝟐 𝟓 .𝟒𝟕 ±𝟑 .𝟓𝟒 𝟎 .𝟒𝟖𝟕 ±𝟎 .𝟐𝟑𝟐
+> Large ( ≥5% ), 𝑛 = 10 −− 𝟎 .𝟔𝟎𝟑 ±𝟎 .𝟏𝟒𝟕 0.541 10 .23 ± 5 .03 𝟐 .𝟔𝟖 ±𝟏 .𝟓𝟗 𝟎 .𝟔𝟒𝟎 ±𝟎 .𝟏𝟔𝟎
+> MF5 0.600 ± 0 .167 𝟎 .𝟓𝟔𝟐 𝟏𝟎 .𝟏𝟑 ±𝟒 .𝟕𝟓 2.76 ± 0 .93 0.582 ± 0 .137
+
+a small increase in AP ( 0.541 to 0.562 ) and HD improvement (10 .23 to 10 .13 mm), while Dice remained nearly unchanged (0.603 versus 0.600 ). Fig. 3 compares anomaly maps from selected top-performing baselines with those produced by our method in subjects with different lesion burdens. In the illustrated cases, DAE (Kascenas et al., 2022) produces spatially extensive re-sponses beyond the annotated lesions, whereas ANDi (Frotscher et al., 2026) exhibits scattered responses with limited sep-aration between lesion and non-lesion tissue. MAD-AD (Beizaee et al., 2025a) produces more localized responses but also highlights regions outside the lesion annotations, particularly in the small-lesion example. Our method shows closer spatial correspondence with the annotated lesions in the medium- and large-burden examples, although scattered responses remain outside the lesion boundaries. Mean fil-tering reduces isolated responses and produces smoother anomaly maps while preserving the lesion associated re-sponses. The small-lesion example remains challenging, where the lesion is detected but is less noticeable with surrounding false positive responses. Some apparent false positive responses occur in regions with relatively low ADC values or interhemispheric asymmetry in ADC intensity, indicating that the directional constraint does not fully suppress responses outside the annotated lesions. 
+
+4.2. Comparison with Supervised ADC-Only Models 
+
+Table 3 compares the proposed unsupervised anomaly detection method with supervised Swin-UNETR (Alman-sour et al., 2025) and UNet++ (Rao et al., 2025) segmen-tation models under matched ADC-only and population 𝑍 -map enhanced settings, which are the top performed models from the BONBID-HIE challenge (Bao et al., 2025). In the ADC-only setting (the gray-shaded rows in Table 3), our method achieved a Dice score of 0.232 , which was comparable to the supervised UNet++ model of 0.237 , and an NSD of 0.284 , approaching the UNet++ NSD of 0.298 .Swin-UNETR achieved highest ADC-only Dice and NSD values of 0.311 and 0.406 , respectively. Despite the comparable overlap with UNet++, the ADC-only anomaly detection model remained less competitive in voxel-ranking and boundary-distance performance. It achieved an AP of 0.374, compared with 0.645 for Swin-UNETR and 0.803 for UNet++. Similarly, its HD of 29 .29 
+
+mm and MASD of 12 .62 mm were higher than those of both supervised models. These findings show that the proposed method can approach a supervised segmentation network in terms of lesion overlap and tolerance-based surface agreement without being optimized using a voxel-wise segmentation loss, although a gap remains in anomaly score ranking and precise boundary localization. 
+
+4.3. Effect of Combining Population-Derived ADC 
+
+𝑍 -Map Information 
+
+We additionally evaluated an optional post-processing procedure incorporating a population-derived ADC 𝑍 -map (Table 3). For the supervised models, the continuous 𝑍 -map and, a thresholded 𝑍 ≤ −2 .0 mask (Rao et al., 2025) were supplied as additional input channels during training and inference. In contrast, our diffusion model remained ADC-only, and the 𝑍 -map was used exclusively during post-processing to identify a high-confidence low-ADC core and to retain nearby diffusion-supported components. We also evaluated a 𝑍 -map-only baseline using 𝑍 ≤ −2 .0 for binary segmentation. The 𝑍 -map-only baseline achieved a Dice score of 
+
+0.583 , indicating that population-derived ADC informa-tion alone provides strong lesion localization performance. Incorporating our diffusion-derived anomaly information increased Dice to 0.602 and NSD from 0.641 to 0.667 ,corresponding to absolute gains of 0.019 and 0.026 , re-spectively. HD decreased slightly from 19 .40 to 19 .11 mm, whereas MASD remained essentially unchanged ( 4.72 ver-sus 4.73 mm). These results demonstrate a modest but statistically significant improvement in Dice (two-sided paired Wilcoxon signed-rank test 𝑝 = 0.0020 , 𝑛 = 44 ), accompanied by a numerical increase in surface agreement over the 𝑍 -map-only baseline. Relative to the ADC-only diffusion prediction, post-processing increased Dice from 0.232 to 0.602 and NSD from 0.284 to 0.667 . The post-processing’s Dice exceeded those of Swin-UNETR and UNet++ using ADC and the 
+
+> Page 13 of 22
+
+Table 3 
+
+Effect of incorporating population-derived ADC 𝑍 -map information. ADC-only models serve as the reference configurations (rows shaded in gray). For the supervised models, the 𝑍 -map and a thresholded binary 𝑍 -mask ( 𝑍 ≤ −2 .0) are provided as additional input channels (Bao et al., 2025; Rao et al., 2025; Almansour et al., 2025). For the population-derived statistical baseline, −𝑍 is used as the continuous anomaly score for AP, whereas 𝑍 ≤ −2 .0 is used to obtain the binary mask for Dice and surface-distance metrics. Our unsupervised method uses the 𝑍 -map only during post processing. AP is not reported for this post-processing result because it directly produces a binary lesion mask. The best result within each model is shown in bold .                                                                                                 
+
+> Model Input or refinement Dice ↑AP ↑HD ↓(mm) MASD ↓(mm) NSD ↑
+> Supervised segmentation methods
+> Swin-UNETR (Almansour et al., 2025) ADC only 0.311 ± 0 .251 0.645 22 .56 ± 13 .39 8.31 ± 8 .38 0.406 ± 0 .247
+> ADC + 𝑍 -map 0.553 ± 0 .260 0.918 𝟏𝟔 .𝟎𝟕 ±𝟏𝟐 .𝟎𝟎 4.10 ± 6 .31 0.674 ± 0 .256
+> ADC + 𝑍 -map + 𝑍 ≤−2 .0𝟎 .𝟔𝟓𝟕 ±𝟎 .𝟐𝟓𝟖 𝟎 .𝟗𝟐𝟕 18 .32 ± 15 .57 𝟑 .𝟖𝟗 ±𝟓 .𝟒𝟔 𝟎 .𝟕𝟐𝟒 ±𝟎 .𝟐𝟒𝟐
+> UNet++ (Rao et al., 2025) ADC only 0.237 ± 0 .260 0.803 23 .58 ± 12 .80 9.68 ± 8 .37 0.298 ± 0 .235
+> ADC + 𝑍 -map 0.578 ± 0 .246 𝟎 .𝟗𝟏𝟓 𝟏𝟓 .𝟖𝟖 ±𝟏𝟐 .𝟕𝟕 3.84 ± 5 .55 0.694 ± 0 .249
+> ADC + 𝑍 -map + 𝑍 ≤−2 .0𝟎 .𝟔𝟎𝟗 ±𝟎 .𝟐𝟓𝟎 0.913 17 .51 ± 14 .47 𝟑 .𝟕𝟏 ±𝟒 .𝟕𝟏 𝟎 .𝟕𝟎𝟎 ±𝟎 .𝟐𝟒𝟏
+> Population-derived statistical reference
+> Population ADC
+> 𝑍 -map
+> 𝑍 -map only (𝑍 ≤−2 .0for segmentation) 0.583 ± 0 .268 0.922 19 .40 ± 13 .45 4.72 ± 6 .17 0.641 ± 0 .256
+> Unsupervised anomaly detection method
+> Ours ADC only 0.232 ± 0 .239 0.374 29 .29 ± 16 .43 12 .62 ± 10 .11 0.284 ± 0 .256
+> ADC + 𝑍 -map post-processing 𝟎 .𝟔𝟎𝟐 ±𝟎 .𝟐𝟔𝟗 −− 𝟏𝟗 .𝟏𝟏 ±𝟏𝟗 .𝟎𝟎 𝟒 .𝟕𝟑 ±𝟔 .𝟒𝟎 𝟎 .𝟔𝟔𝟕 ±𝟎 .𝟐𝟔𝟐
+
+Table 4 
+
+Ablation study of the proposed framework. All compared models applied the HIE pathology informed directional information. Results are reported as mean ± standard deviation where applicable. The best and second-best results are shown in bold and underlined, respectively.                                                   
+
+> Configuration Dice ↑AP ↑HD ↓(mm) MASD ↓(mm) NSD ↑
+> DDPM 0.167 ± 0 .236 0.235 32 .03 ± 16 .62 14 .58 ± 10 .03 0.212 ± 0 .242 +ControlNet (healthy-restoration, CFG=0.8) 0.121 ± 0 .190 0.414 39 .44 ± 16 .03 17 .47 ± 10 .19 0.169 ± 0 .193 +ControlNet (lesion-emphasizing, CFG=7.5) 0.138 ± 0 .242 0.332 31 .30 ± 16 .29 15 .31 ± 10 .37 0.160 ± 0 .222 +Multi noise-level discrepancy accumulation 0.232 ± 0 .239 0.374 29 .29 ± 16 .43 12 .62 ± 10 .11 0.284 ± 0 .256 +Mean filtering ( 𝑘 = 5 )𝟎 .𝟐𝟖𝟑 ±𝟎 .𝟐𝟒𝟒 𝟎 .𝟓𝟎𝟓 𝟐𝟓 .𝟒𝟓 ±𝟏𝟓 .𝟔𝟑 𝟗 .𝟒𝟎 ±𝟖 .𝟒𝟗 𝟎 .𝟑𝟓𝟓 ±𝟎 .𝟐𝟑𝟔
+
+continuous 𝑍 -map ( 0.553 and 0.578 , respectively), but re-mained below their configurations additionally incorporat-ing the thresholded binary 𝑍 -mask ( 0.657 and 0.609 ). Its NSD of 0.667 was slightly below the range achieved by the 
+
+𝑍 -map assisted supervised models ( 0.674 –0.724 ). AP was not reported for our post-processing procedure because it directly produces a binary lesion mask. Fig. 4 illustrates the effect of post-processing on the ADC-only diffusion prediction in a representative case. Many spatially isolated responses are removed, while the main lesion-associated regions are retained. The resulting segmentation broadly follows regions with low ADC 𝑍 -values and overlaps with the expert annotations outlined in cyan. 
+
+4.4. Ablation Analysis of Framework Components 
+
+Table 4 evaluates the contributions of the principal components of the proposed framework. The conventional DDPM baseline achieved a Dice score of 0.167 , an AP of 
+
+0.235 , and an NSD of 0.212 , with an HD of 32 .03 mm and an MASD of 14 .58 mm. Introducing subject-specific conditioning through Con-trolNet and deriving the anomaly map from a single CFG-based reconstruction (described in Sec. 3.3) did not result in consistent improvements across the evaluation metrics. With a lesion-recovery setting 𝑤 = 0 .8, AP increased from 0.235 
+
+to 0.414 . However, Dice, HD, MASD, and NSD deterio-rated. This result indicates that reducing the contribution of the subject condition can increase voxel-wise sensitivity to abnormal regions, while simultaneously introducing recon-struction differences that are spatially inconsistent with the lesion boundaries. Increasing the guidance scale to 𝑤 = 7 .5,
+
+Page 14 of 22 Figure 4: Qualitative comparison of reconstruction-based anomaly detection and the proposed discrepancy-based ap-proach. (a) Input ADC image and expert lesion annotation. (b–d) Reconstructed images and corresponding anomaly maps obtained using DDPM and DDPM with ControlNet at CFG scales of 0.8 and 7.5. (e) Anomaly maps produced by the proposed method before and after mean filtering (MF, 𝑘 = 5 ). (f) The corresponding population-derived Z-map for the input and the Z-map guided post-processing lesion refinement. Cyan contours delineate the expert-annotated lesion boundaries. All methods’ results have been applied with HIE pathological informed sign direction. 
+
+corresponding to the lesion-strengthening setting, partially improved Dice and the surface-distance metrics relative to 
+
+𝑤 = 0 .8, but reduced AP to 0.332 and did not provide a con-sistent advantage over the DDPM baseline. These findings demonstrate the limited and inconsistent lesion sensitivity of anomaly maps derived from a single reconstructed image. The proposed multi noise-level discrepancy accumula-tion directly compares the conditional and unconditional noise predictions and aggregates their directionally consis-tent differences across the selected reverse diffusion steps. This component significantly improved Dice from 0.167 
+
+to 0.232 (two-sided paired Wilcoxon signed-rank test 𝑝 < 
+
+0.001 , 𝑛 = 44 ), reduced HD from 32 .03 to 29 .29 mm, and reduced MASD from 14 .58 to 12 .62 mm. NSD also increased from 0.212 to 0.284 . Although its AP of 0.374 
+
+was lower than that obtained with the 𝑤 = 0 .8 reconstruc-tion, the consistently improved overlap and surface-distance metrics indicate more accurate spatial localization of the de-tected abnormalities. Importantly, because the discrepancy is computed directly from 𝝐 cond − 𝝐 uncond , its magnitude is independent of the CFG scale 𝑤 .Finally, applying mean filtering with a kernel size of 
+
+𝑘 = 5 produced the best performance across all metrics. This improvement suggests that spatial smoothing suppresses isolated high-frequency responses while preserving spatially coherent lesion evidence. Fig. 4 illustrates the differences between reconstruction-based anomaly maps and our discrepancy-based approach in a representative case. DDPM alone produces substan-tial anatomical deviations from the input image, whereas ControlNet conditioning better preserves subject-specific anatomy. However, both DDPM and ControlNet-guided re-construction with CFG = 0 .8 produce weak anomaly re-sponses within the annotated lesion region. Increasing the guidance scale to CFG = 7.5 produces higher anomaly scores overall, making the lesion region more noticeable. However, elevated scores also occur in surrounding non-lesion tissue, limiting spatial specificity. In contrast, our method produces more spatially confined responses that fol-low the annotated lesion distribution, although some lesion regions remain weakly highlighted and scattered responses persist outside the annotation. Mean filtering reduces iso-lated responses and produces a smoother map while retain-ing the main lesion-associated pattern. These observations complement the quantitative ablation results and illustrate the benefit of aggregating conditional–unconditional dis-crepancies across noise levels rather than relying on a final reconstruction residual. 
+
+4.5. Ablation Analysis of Mean Filtering Kernel Size 
+
+Table 5 evaluates the effect of the mean filtering kernel size on the direction-aware anomaly map. Here, 𝑘 = 0
+
+denotes the unfiltered anomaly map. Applying a moderate degree of spatial smoothing consistently improved perfor-mance over the unfiltered result. Increasing the kernel size from 𝑘 = 0 to 𝑘 = 3 improved Dice from 0.232 to 0.262 ,AP from 0.374 to 0.481 and NSD from 0.284 to 0.324 ,while reducing HD from 29 .29 to 27 .24 mm and MASD from 12 .62 to 11 .01 mm. Further increasing the kernel size to 𝑘 = 5 yielded the highest AP ( 0.505 ), the lowest HD (25 .45 mm), the lowest MASD ( 9.40 mm), and the highest 
+
+> Page 15 of 22
+
+Table 5 
+
+Ablation study of the mean-filter kernel size applied to the direction-aware anomaly map. Kernel size 𝑘 = 0 indicates that no mean filtering was applied. The gray row denotes the kernel size used in the main experiments. Results are reported as mean ±
+
+standard deviation where applicable, and the best value for each metric is highlighted in bold .                                                                                         
+
+> Kernel size 𝑘 Dice ↑AP ↑HD ↓(mm) MASD ↓(mm) NSD ↑
+> 00.232 ±0.239 0.374 29.29 ±16.43 12.62 ±10.11 0.284 ±0.256 30.262 ±0.245 0.481 27.24 ±16.37 11.01 ±9.74 0.324 ±0.250 50.283 ±0.244 𝟎 .𝟓𝟎𝟓 𝟐𝟓 .𝟒𝟓 ±𝟏𝟓 .𝟔𝟑 𝟗 .𝟒𝟎 ±𝟖 .𝟒𝟗 𝟎 .𝟑𝟓𝟓 ±𝟎 .𝟐𝟑𝟔
+> 7𝟎 .𝟐𝟖𝟕 ±𝟎 .𝟐𝟓𝟐 0.503 26.20 ±15.47 9.58 ±8.43 0.348 ±0.229 80.282 ±0.255 0.497 26.51 ±15.14 9.74 ±8.38 0.331 ±0.224 10 0.270 ±0.259 0.485 28.16 ±16.76 10.97 ±9.52 0.304 ±0.222
+
+Table 6 
+
+Ablation of the anomaly-score representation compared with sequential reverse propagation and discrepancy to forward process noise. “Independent” indicates that each noise level was sampled directly from the original patient ADC image without propagating a reverse-diffusion chain, and “Reverse chain” evaluates successive states along a sequential reverse-diffusion trajectory (Eq. (43) ). The final row replaces the learned unconditional noise prediction with the Gaussian noise 𝜖 𝑡 sampled during forward corruption (Eq. (44) ). The biological directional constraint was enabled for all configurations. Rows shaded in gray use a mean filtering with kernel size of 5 (MF5). Values are reported as mean ± standard deviation where available, and the best result for each metric is highlighted in bold .                                                                 
+
+> Score representation Evaluation Dice ↑AP ↑HD ↓(mm) MASD ↓(mm) NSD ↑
+> 𝜖 cond
+> 𝑡 −𝜖 uncond
+> 𝑡 Independent 0.232 ± 0 .239 0.374 29 .29 ± 16 .43 12 .62 ± 10 .11 0.284 ± 0 .256
+> 𝜖 cond
+> 𝑡 −𝜖 uncond
+> 𝑡 +MF5 Independent 𝟎 .𝟐𝟖𝟑 ±𝟎 .𝟐𝟒𝟒 𝟎 .𝟓𝟎𝟓 𝟐𝟓 .𝟒𝟓 ±𝟏𝟓 .𝟔𝟑 𝟗 .𝟒𝟎 ±𝟖 .𝟒𝟗 𝟎 .𝟑𝟓𝟓 ±𝟎 .𝟐𝟑𝟔
+> 𝜖 cond
+> 𝑡 −𝜖 uncond
+> 𝑡 Reverse chain 0.070 ± 0 .119 0.031 32 .05 ± 16 .01 15 .85 ± 10 .36 0.170 ± 0 .238
+> 𝜖 cond
+> 𝑡 −𝜖 uncond
+> 𝑡 +MF5 Reverse chain 0.070 ± 0 .108 0.036 49 .59 ± 25 .26 23 .36 ± 15 .44 0.114 ± 0 .154
+> 𝜖 cond
+> 𝑡 −𝜖 𝑡
+> using forward noise Independent 0.045 ± 0 .211 0.017 75 .30 ± 9 .29 52 .69 ± 7 .76 0.000 ± 0 .000
+
+NSD ( 0.355 ). These improvements indicate that mean filter-ing effectively suppresses spatially isolated responses while preserving coherent lesion evidence. A kernel size of 𝑘 = 7 produced the numerically highest Dice score of 0.287 , compared with 0.283 for 𝑘 = 5 , but resulted in slightly inferior AP and surface-distance based metrics. Performance subsequently declined with larger ker-nels. At 𝑘 = 10 , Dice decreased to 0.270 , HD increased to 28 .16 mm, MASD increased to 10 .97 mm and NSD decreased to 0.304 . This degradation suggests that excessive smoothing increasingly mixes lesion and healthy-tissue re-sponses, reducing boundary accuracy and the localization of smaller lesions. Thus, the validation-selected kernel size of 
+
+𝑘 = 5 also provided a favorable balance of overlap, ranking, and surface agreement on the test set. 
+
+4.6. Ablation Analysis of Discrepancy Formulations 
+
+Table 6 compares independent noise-level evaluation with reverse-chain accumulation and a formulation that replaces the unconditional prediction with the sampled forward noise, as described in Sec. 3.11. The pathology-informed directional constraint was applied to all configu-rations. Without mean filtering, independent evaluation outper-formed reverse-chain accumulation (Eq. (43)) in Dice ( 0.232 
+
+versus 0.070 ), AP ( 0.374 versus 0.031 ), and all surface met-rics. This advantage persisted after mean filtering: reverse-chain formulation’s Dice remained at 0.070 and AP in-creased only to 0.036 , while HD and MASD worsened to 
+
+49 .59 and 23 .36 mm, respectively, and NSD decreased to 
+
+0.114 . The reduced performance of chain-dependent accu-mulation suggests that maintaining a continuous reverse tra-jectory is not advantageous for discrepancy-based anomaly localization. Because each state is generated from the pre-ceding reverse estimate, stochastic perturbations and recon-struction errors introduced at earlier steps propagate through the remainder of the trajectory. Moreover, as the reverse pro-cess progressively modifies the image, subtle pathological information present in the original subject image may be attenuated, causing later discrepancy estimates to become less directly associated with the observed abnormality. In contrast, independently constructing the input at each noise level connects every comparison to the same observed image and prevents errors at one timestep from affecting discrep-ancy measurements at subsequent timesteps. Replacing the unconditional prediction with the sampled forward noise (Eq. (44)) produced the lowest performance across all metrics, with a Dice score of 0.045 , AP of 0.017 ,HD of 75 .30 mm, MASD of 52 .69 mm, and NSD of 0.000 .The sampled forward noise is independent of the subject 
+
+Page 16 of 22 Table 7 
+
+Directional characteristics of the discrepancy across the selected noise levels. The discrepancy is defined as 𝑑 𝑡 (𝐯 ) = 𝜖 cond  
+
+> 𝑡
+
+(𝐯 ) − 
+
+𝜖 uncond  
+
+> 𝑡
+
+(𝐯 ). A positive value indicates that the healthy-prior response predicts a higher ADC value than the patient-conditioned response, consistent with the expected direction of reduced ADC in acute HIE injury. Values are reported as the timestep-wise mean and 95% confidence interval across the selected noise levels ( 𝑛 = 125 ).                            
+
+> Statistic Lesion Mean (95% CI) Background Mean (95% CI)
+> Positive discrepancy probability, Pr( 𝑑 𝑡 >0) 0.886 (0 .884 ,0.888) 0.530 (0 .526 ,0.533)
+> Mean positive discrepancy, 𝔼 [𝑑 𝑡 ∣𝑑 𝑡 >0] 0.266 (0 .260 ,0.272) 0.155 (0 .151 ,0.159)
+> Mean negative discrepancy, 𝔼 [𝑑 𝑡 ∣𝑑 𝑡 <0] −0 .107 (−0 .110 ,−0 .104) −0 .176 (−0 .178 ,−0 .174)
+> Mean discrepancy magnitude, 𝔼 [|𝑑 𝑡 |]0.248 (0 .242 ,0.254) 0.165 (0 .162 ,0.168)
+
+Table 8 
+
+Ablation of the pathology-informed directional sign constraint and mean-filter post-processing. MF5 denotes mean filtering with a kernel size of 5. Rows using MF5 are shaded, and the best result for each metric is shown in bold .                                              
+
+> HIE Pathology prior directional sign ±Post-processing Dice ↑AP ↑HD ↓(mm) MASD ↓(mm) NSD ↑
+> No −− 0.115 ± 0 .148 0.222 33 .99 ± 16 .24 15 .18 ± 10 .04 0.189 ± 0 .184
+> No MF5 0.209 ± 0 .221 0.490 30 .16 ± 14 .83 11 .48 ± 8 .82 0.266 ± 0 .207
+> Yes −− 0.232 ± 0 .239 0.374 29 .29 ± 16 .43 12 .62 ± 10 .11 0.284 ± 0 .256
+> Yes MF5 𝟎 .𝟐𝟖𝟑 ±𝟎 .𝟐𝟒𝟒 𝟎 .𝟓𝟎𝟓 𝟐𝟓 .𝟒𝟓 ±𝟏𝟓 .𝟔𝟑 𝟗 .𝟒𝟎 ±𝟖 .𝟒𝟗 𝟎 .𝟑𝟓𝟓 ±𝟎 .𝟐𝟑𝟔
+
+anatomy and does not encode the learned healthy-data dis-tribution. Consequently, its difference from the conditional prediction primarily reflects noise-prediction error rather than deviation from a healthy reference. By comparison, the unconditional branch provides the denoising response favored by the learned healthy prior for the same noisy input. The results therefore support both central components of the proposed formulation: independent evaluation across noise levels prevents trajectory-dependent error propagation, while the learned unconditional prediction provides a mean-ingful healthy prior reference for detecting subject-specific pathological deviations. 
+
+4.7. Verification of the HIE Pathology Directional Prior 
+
+We first examined whether the direction of the conditional– unconditional discrepancy was consistent with the expected reduction in ADC associated with acute HIE lesions. Table 7 summarizes the discrepancy 𝑑 𝑡 (𝑖 ) = 𝜖 cond  
+
+> 𝑡,𝑖
+
+− 𝜖 uncond  
+
+> 𝑡,𝑖
+
+within lesion and background voxels across the selected noise levels. Through the positive scaling relationship established in the Methods Sec. 3.4, positive value is equivalent to the healthy-prior response predicting a higher ADC value than the subject-conditioned response. Lesion voxels exhibited a positive discrepancy at 88 .6% of the evaluated voxel– timestep pairs, compared with 53 .0% in the background. The mean positive discrepancy was 0.266 in lesion versus 0.155 in background and the mean negative discrepancy was -0.107 and −0 .176 respectively. These observations indi-cate that lesion voxels exhibit not only larger conditional– unconditional differences but also a systematic shift in the di-rection expected for reduced ADC. In contrast, background discrepancies nearly symmetrically occur in both directions. Table 8 further evaluates whether incorporating this di-rectional prior improves anomaly localization with and with-out mean filtering. Without mean filtering, the directional constraint significantly increased Dice from 0.115 to 0.232 
+
+(absolute gain of 0.117 ; two-sided paired Wilcoxon signed-rank test 𝑝 < 0.001 , 𝑛 = 44 ). AP increased from 0.222 to 
+
+0.374 , while HD decreased from 33 .99 to 29 .29 mm, MASD decreased from 15 .18 to 12 .62 mm, and NSD increased from 0.189 to 0.284 . The improvement persisted when both formulations used mean filtering with a kernel size of 5.Adding the directional constraint increased Dice from 0.209 
+
+to 0.283 (absolute gain of 0.074 ; two-sided paired Wilcoxon signed-rank test 𝑝 < 0.001 , 𝑛 = 44 ). HD decreased from 30 .16 to 25 .45 mm, MASD decreased from 11 .48 to 
+
+9.40 mm, and NSD increased from 0.266 to 0.355 , alongside a smaller increase in AP from 0.490 to 0.505 . Thus, the directional constraint improved all evaluated metrics both with and without mean filtering. To evaluate whether the low-ADC directional prior also benefits existing methods, we applied it to the final recon-struction residuals of representative unsupervised baselines, retaining only deviations consistent with lower ADC in the observed image than in the reconstruction. This output-level modification left the original models and reconstruc-tion procedures unchanged (Table 9). Compared with their 
+
+Page 17 of 22 Table 9                                                    
+
+> Quantitative comparison of unsupervised anomaly-detection baselines with introducing HIE pathology directional prior information at final reconstruction. Values are reported as mean ±standard deviation where available. The best result for each metric is highlighted in bold . For each model’s result, the originally proposed smoothing methods have been applied. For Dice, †and ‡
+> indicate significantly lower scores than Ours and Ours with mean filtering ( 𝑘 = 5 ), respectively (under two-sided paired Wilcoxon signed-rank tests, all 𝑝 < 0.001 ,𝑛 = 44 ).
+> Model Dice ↑AP ↑HD ↓(mm) MASD ↓(mm) NSD ↑
+> DAE (Kascenas et al., 2022) 0.172 ± 0 .272 †‡ 𝟎 .𝟔𝟖𝟎 𝟐𝟓 .𝟏𝟑 ±𝟏𝟑 .𝟏𝟏 13 .47 ± 9 .56 0.188 ± 0 .219
+> AutoDDPM (Bercea et al., 2023) 0.104 ± 0 .135 †‡ 0.119 30 .78 ± 15 .99 13 .12 ± 9 .59 0.209 ± 0 .206
+> pDDPM (Behrendt et al., 2024) 0.121 ± 0 .235 †‡ 0.084 39 .07 ± 15 .07 21 .17 ± 11 .08 0.050 ± 0 .111
+> MAD-AD (Beizaee et al., 2025a) 𝟎 .𝟏𝟕𝟑 ±𝟎 .𝟏𝟗𝟖 †‡ 0.491 27 .44 ± 13 .67 𝟏𝟏 .𝟏𝟔 ±𝟕 .𝟗𝟗 𝟎 .𝟐𝟐𝟔 ±𝟎 .𝟏𝟗𝟐
+
+original results in Table 1, directional filtering increased Dice from 0.159 to 0.172 for DAE, from 0.085 to 0.104 
+
+for AutoDDPM, and from 0.166 to 0.173 for MAD-AD, while pDDPM remained unchanged at the reported preci-sion ( 0.121 ). Among these modified baselines, MAD-AD achieved the highest Dice ( 0.173 ) and NSD ( 0.226 ) and the lowest MASD ( 11 .16 mm), whereas DAE achieved the highest AP ( 0.680 ) and the lowest HD ( 25 .13 mm). Our method with mean filtering achieved a Dice score of 0.283 , significantly exceeding each low-ADC direction filtered baseline (two-sided paired Wilcoxon signed-rank tests, all 𝑝 < 0.001 , 𝑛 = 44 ). It also achieved a lower MASD ( 9.40 mm) and higher NSD ( 0.355 ) than all modified baselines. Its HD ( 25 .45 mm) was slightly higher than that of DAE, while its AP ( 0.505 ) exceeded those of AutoD-DPM, pDDPM, and MAD-AD but remained below DAE. Thus, our model performance advantage persisted when the same pathological direction was incorporated into baseline outputs. 
+
+## 5. Discussion 
+
+5.1. Overall Detection Performance 
+
+The proposed ADC-only framework demonstrated strong overall performance for unsupervised HIE lesion localiza-tion. However, the improvement was not uniform across all evaluation criteria and this behavior reflects the different properties measured by these metrics. AP evaluates the ranking of continuous anomaly scores across lesion and background voxels without selecting a single operating threshold, whereas Dice and the surface metrics evaluate the geometry of the resulting binary segmentation. The compar-atively strong Dice and surface performance of our method therefore suggests improved spatial localization, while its lower AP indicates that the continuous anomaly scores remain imperfectly calibrated and that some background voxels still receive scores overlapping those of lesion voxels. Improving cross-subject score calibration and suppressing non-pathological background responses remain important directions for further investigation. The comparison with supervised ADC-only models also demonstrates the potential of learning from healthy-image structure rather than directly optimizing voxel-wise lesion-mask prediction. Competitive performance in selected spa-tial metrics suggests that a learned healthy prior, combined with subject conditioning and pathological directionality, can provide informative localization cues without voxel-wise lesion supervision in the training objective. This is particularly relevant when available annotations do not ad-equately represent the diversity of lesion appearances. The findings support healthy-prior modeling as a complementary route to quantitative HIE lesion assessment. The lesion-burden analysis indicates that the primary limitation of the proposed method is the detection of subjects with small lesion burdens. Larger HIE abnormalities affect more voxels and are more likely to produce spatially coher-ent, persistent discrepancies across multiple diffusion noise levels. In contrast, small or low-contrast lesions generate weaker and more localized responses that can be difficult to distinguish from normal anatomical variability, registra-tion differences, and acquisition noise. Mean filtering par-tially mitigated this limitation by suppressing isolated high-response voxels and reinforcing discrepancies supported by neighboring voxels, resulting in the largest improvements for the small- and medium- burden groups. For subjects with large lesions, however, the anomaly signal was already spatially coherent, leaving less noise for the filter to remove. Additional smoothing could also blur lesion boundaries or extend responses into adjacent healthy tissue, explaining the minimal Dice improvement and the reduction in NSD observed in this group. The relatively large inter-subject standard deviations fur-ther indicate heterogeneous performance across the test co-hort. Such variability may reflect differences in lesion bur-den, anatomical distribution, scan timing, and acquisition characteristics. Future studies should therefore evaluate per-formance after stratification by lesion burden, injury pattern, scanner field strength, and postnatal age at MRI, in addi-tion to validating the method in independent multi-center cohorts. 
+
+5.2. Intermediate Denoising Discrepancy versus Reconstruction Difference 
+
+Most diffusion-based anomaly-detection methods iden-tify abnormalities by comparing an observed image with 
+
+> Page 18 of 22
+
+its final pseudo-healthy reconstruction. Although intuitive, this formulation compresses the entire reverse diffusion tra-jectory into a single terminal image. Subtle pathological information expressed during intermediate denoising steps may therefore be attenuated or lost before the final recon-struction is obtained. Moreover, the reconstruction differ-ence reflects not only lesion restoration but also stochastic sampling variation, incomplete lesion removal, and unin-tended modification of subject-specific healthy anatomy. The latter can generate false-positive responses even when the reconstructed image appears globally plausible. Our CFG reconstruction experiments illustrate these limitations. Reducing the guidance scale to 𝑤 = 0 .8 en-couraged stronger restoration toward the learned healthy dis-tribution and increased AP relative to the DDPM baseline, but substantially degraded Dice and the surface-distance metrics. This suggests that weaker subject conditioning increased sensitivity to image differences while also intro-ducing spatial changes unrelated to the true lesion. Con-versely, increasing the guidance scale to 𝑤 = 7 .5 preserved and strengthened subject-specific information but did not produce consistently accurate anomaly localization. Our proposed method instead measures the conditional– unconditional difference directly in the intermediate noise-prediction space. Since both predictions are evaluated from the same noisy image 𝐱 𝑡 , the comparison controls for the common forward corruption and isolates the change in the denoising response induced by the subject-specific con-dition. The unconditional branch represents the response favored by the learned healthy prior, and the conditional branch retains information from the observed subject. There-fore, their difference provides a more direct measure of how the observed anatomy modifies the healthy denoising field than a comparison between two final reconstructed images. The substantially higher Dice obtained using multi noise-level discrepancy accumulation than using either CFG-based reconstruction supports the utility of extracting anomaly ev-idence before it is compressed into the final reconstruction. Evaluating each noise level independently provides an additional advantage over following a single reverse chain. In the chain-dependent formulation, each state inherits stochastic variation and reconstruction error from all pre-ceding transitions, and progressive restoration may attenuate subtle pathological signals before they contribute to later discrepancy estimates. In contrast, independently sampling 
+
+𝐱 𝑡 from the observed image connects every comparison to the same subject and prevents errors at one noise level from propagating to another. Accumulation across the se-lected intermediate noise levels emphasizes discrepancies that persist under different corruption strengths rather than relying on a single potentially unstable observation. Inter-mediate noise levels are particularly useful because they par-tially suppress the observed lesion while retaining sufficient subject-specific anatomical information. At substantially higher noise levels, the anatomical condition may become weak, whereas near-clean inputs may provide insufficient separation between the two branch responses. 
+
+5.3. Pathology-Informed Directionality and Interpretability 
+
+A central feature of the proposed framework is that it does not treat all conditional–unconditional discrepancies as equally suggestive of pathology. Acute HIE is commonly associated with cytotoxic edema, restricted diffusion, and reduced ADC values (Forbes et al., 2000; Bobba et al., 2023; Onda et al., 2024). We therefore retain discrepancy components for which the healthy-prior response predicts a higher ADC value than the patient-conditioned response. This constraint provides a clinically motivated direction to the anomaly score and suppresses deviations that are inconsistent with the expected low-ADC appearance of acute HIE. In contrast to an unsigned reconstruction residual, the resulting score can consequently be interpreted as evidence that the observed tissue deviates from the learned healthy distribution in a direction consistent with water diffusion restriction. The quantitative analysis on the distribution of discrep-ancy supports this assumption. At the selected noise levels, the expected positive discrepancy occurred more frequently in annotated lesion voxels than in background voxels. Lesion voxels also exhibited a substantially larger positive discrep-ancy. Consistent with these observations, incorporating the pathology-informed sign constraint improved lesion local-ization relative to the corresponding unsigned formulation. These findings demonstrate that the selected direction is sta-tistically associated with annotated HIE abnormalities and is more specific than using unsigned discrepancy magnitude alone. An additional advantage of the proposed formulation is that the pathological prior is incorporated directly into the intermediate diffusion discrepancy, rather than being applied only to a completed reconstruction-derived anomaly map. Most conventional reconstruction-based methods de-fine direction-agnostic anomaly evidence using an absolute or squared residual between the observed image and its pseudo-healthy reconstruction. Although a low-ADC direc-tional constraint can be applied to the signed reconstruction residual, such output-level filtering is performed only after the reconstruction process has mixed pathological deviations with reconstruction blur, anatomical mismatch, and stochas-tic generation errors. It can remove some directionally in-consistent responses, but it cannot recover pathological ev-idence that was attenuated during reconstruction or deter-mine whether the final residual was supported consistently across the diffusion trajectory. The comparative experiments support this distinction. Applying the same low-ADC directional rule as post-processing to conventional anomaly-detection outputs improved their localization performance, indicating that the pathological prior is useful even at the output level. However, these gains were smaller than those obtained when the directional constraint was integrated into the multi noise-level discrep-ancy formulation. This difference suggests that biological knowledge is more effective when intermediate denoising 
+
+> Page 19 of 22
+
+responses contribute to the anomaly score, rather than being used only to reject candidates after reconstruction. False-positive responses in regions with low ADC or in-terhemispheric intensity asymmetry are consistent with the intended behavior of the directional constraint, but also high-light its limited pathological specificity. The constraint se-lects voxels with deviations in the expected direction of ADC reduction, but directional agreement alone is insufficient to attribute these deviations to HIE-related injury. Incor-porating regional anatomical context and spatially adaptive filtering may help distinguish lesion-associated responses from non-pathological variability. 
+
+5.4. Utility and Limitations of Population 𝑍 -Score Refinement 
+
+The population 𝑍 -map analysis demonstrates that voxel-wise normative information can substantially improve lesion localization when an appropriate reference population and accurate spatial correspondence are available. However, this improvement introduces requirements that may limit gener-alizability in routine clinical settings. Constructing a mean-ingful ADC 𝑍 -map requires spatially resolved estimates of the healthy population mean and standard deviation. These reference statistics may vary with postmenstrual age, scanner vendor, magnetic field strength, diffusion acquisi-tion protocol, reconstruction procedure, and preprocessing pipeline. This issue is particularly relevant in neonatal imag-ing because brain structure and diffusion properties change rapidly during early development. Voxel-wise 𝑍 -maps also depend on accurate alignment between the observed scan and the normative template. Errors in nonlinear registration may generate artificial devia-tions near tissue boundaries, ventricles, and rapidly develop-ing anatomical structures. Consequently, a 𝑍 -map derived from one cohort may not transfer reliably to a population with different demographics, acquisition characteristics, or spatial normalization quality. Site-specific recalibration or construction of a new normative reference may therefore be required before deployment. For these reasons, we consider the 𝑍 -map refinement an optional population-reference assisted extension rather than the principal contribution of the proposed framework. The primary ADC-only model does not require population-level voxel-wise means and standard deviations or the precise nonlinear normalization required to construct a normative 
+
+𝑍 -map. Although its localization performance is lower than that of the 𝑍 -map assisted configuration, it reduces depen-dence on cohort-specific reference data and may therefore offer greater portability across clinical populations and ac-quisition settings. Future work should evaluate whether nor-mative harmonization, age-conditioned reference models, or registration-robust population representations can retain the localization benefit of 𝑍 -scores while improving cross-cohort generalizability. 
+
+5.5. Limitations and Future Work 
+
+Several limitations should be considered when interpret-ing the present findings. First, although lesion annotations were not used as voxel-wise training targets, they were used to exclude lesion-containing slices when constructing the healthy training subset. The proposed training procedure is therefore annotation-free at the voxel-wise training stage but is not entirely independent of annotations. Moreover, unan-notated slices from an HIE-affected subject may still contain subtle or diffuse abnormalities that were not included in the reference mask, potentially contaminating the learned healthy distribution. Future studies should train the frame-work using an independently acquired cohort of clinically healthy neonates with ADC imaging. This would eliminate the need for lesion mask-based slice selection and permit a more direct evaluation of fully annotation-independent training. Second, the present evaluation was conducted using a single cohort and a fixed pre-processing and registration pipeline. Differences in scanner manufacturer, field strength, acquisition protocol, reconstruction method, patient age, and clinical population may alter both the ADC distribution and the model response. The population-derived 𝑍 -map is par-ticularly sensitive to the population, scanning protocols and the accuracy of nonlinear registration. Multicenter external validation is therefore required to determine whether the learned healthy prior and operating threshold transfer across institutions. The current implementation is based on independently processed 2D axial slices. Although this design reduces computational requirements and increases the number of available training samples, it does not explicitly model through-plane anatomical continuity. This limitation may particularly affect small lesions, lesions with weak contrast in an individual slice, and abnormalities extending obliquely or across multiple axial levels. The slice-wise predictions are subsequently assembled into a 3D volume, but this does not recover contextual information that was unavailable to the model during inference. Extending the framework to 2.5D or fully 3D diffusion architectures may improve spatial consistency and the detection of small or fragmented lesions, although these approaches will require substantially greater memory and training data. The pathology-informed directional prior also assumes that acute HIE injury is associated with reduced ADC rel-ative to healthy tissue. This assumption is clinically moti-vated but is not universally valid across all imaging times and injury patterns. ADC values evolve after the hypoxic– ischemic event and may pseudo-normalize during the sub-acute (Vermeulen et al., 2008). Some injured regions may therefore exhibit weak, absent, or temporally altered ADC reduction despite clinically meaningful tissue damage. Such lesions may not produce a consistently positive conditional– unconditional discrepancy and could be suppressed by the proposed one-sided scoring rule. Future work could incorpo-rate time from injury, gestational age, and treatment timing into the model. The hard positive-part operation constitutes another lim-itation. Setting all opposite-direction discrepancies to zero provides a direct implementation of the reduced ADC prior, 
+
+> Page 20 of 22
+
+but it imposes an abrupt boundary at zero. Some lesion voxels may exhibit weakly negative discrepancies or fluc-tuate around zero across the selected noise levels because of subtle lesion contrast, model uncertainty, or temporal variation in ADC abnormalities. Hard clipping completely removes these responses, potentially reducing sensitivity to small or low-contrast lesions. A future extension could replace hard clipping with a soft directional gate, controlled by a parameter 𝜂 , that assigns reduced rather than zero weight to near-zero or slightly opposite-direction responses. This would preserve the pref-erence for the expected HIE direction while accounting for uncertainty in the estimated discrepancy. Population-derived ADC 𝑍 -maps could also be introduced as a continuous spatial weight at this stage, allowing strongly negative 𝑍 -scores to provide supporting evidence for weak diffusion discrepancies. Finally, the continuous anomaly score is not a calibrated lesion probability. Its magnitude may vary with the sampled noise realization, the selected noise levels, the number of ac-cumulated responses, and the diffusion model’s uncertainty. Although geometric aggregation reduces the influence of isolated large responses, it does not eliminate stochastic variability or guarantee a common score scale across sub-jects and cohorts. Future work should quantify repeatability across random seeds and noise realizations, investigate en-sembling or deterministic sampling, and estimate voxel-wise uncertainty. 
+
+## 6. Conclusion 
+
+We proposed OpenMAP-HIE, a pathology-informed score-based diffusion model for unsupervised localization of neonatal HIE abnormalities on ADC images without using lesion annotations as voxel-wise training targets. Rather than relying on a final pseudo-healthy reconstruction, the framework compares and aggregates patient-conditioned and healthy-prior noise predictions across independently evaluated multi noise levels, retaining discrepancies con-sistent with the expected ADC reduction in acute HIE. The proposed ADC-only method improved lesion over-lap and surface-distance performance over the evaluated unsupervised baselines and achieved Dice performance comparable to supervised ADC-only segmentation models, while population-derived ADC 𝑍 -map refinement provided further improvements. 
+
+## CRediT authorship contribution statement 
+
+Pengyu Kan: Conceptualization, Formal analysis, In-vestigation, Methodology, Software, Visualization, Writing - Original Draft, Writing – review and editing. Craig Jones: 
+
+Conceptualization, Formal analysis, Methodology, Writing – review and editing. Kenichi Oishi: Conceptualization, Formal analysis, Methodology, Funding acquisition, Project administration, Supervision, Writing – review and editing. 
+
+## Acknowledgements 
+
+This publication was made possible by grants from the National Institutes of Health R01NS126549. The contents of this paper are solely the responsibility of the authors and do not necessarily represent the official view of NIH. 
+
+## Declaration of competing interest 
+
+Kenichi Oishi is a consultant for Corporate-M and AnatomyWorks. These arrangements are being managed by Johns Hopkins University in accordance with its conflict-of-interest policies. 
+
+## Declaration of generative AI and AI-assisted technologies in the manuscript preparation process 
+
+During the preparation of this work, the authors used ChatGPT (OpenAI) to improve the language and readability of the manuscript. After using this tool, the authors reviewed and edited the content as needed and take full responsibility for the content of the published article. 
+
+## Data availability 
+
+The BONBID-HIE dataset used in this study is pub-licly available through the BONBID-HIE challenge website (https://bonbid-hie2023.grand-challenge.org/ ), subject to the dataset’s access conditions and terms of use. 
+
+## References     
+
+> Almansour, M., Ho, M.L., Palaniappan, K., 2025. Enhancing lesion segmentation in the bonbid-hie challenge: An ensemble strategy. AI for Brain Lesion Detection and Trauma Video Action Recognition: First BONBID-HIE Lesion Segmentation Challenge and First Trauma Thompson Challenge, Held in Conjunction with MICCAI 2023, Van-couver, BC, Canada, October 16 and 12, 2023, Proceedings 14567, 14. Bano, S., Chaudhary, V., Garga, U.C., 2017. Neonatal hypoxic-ischemic en-cephalopathy: a radiological review. Journal of pediatric neurosciences 12, 1. Bao, R., Foster, A.N., Song, Y., Vyas, R., Kesri, A., Toubal, I.E., Kazemi, E.S., Rahmon, G., Kucukpinar, T., Almansour, M., et al., 2025. Bonbid-hie 2023: lesion segmentation challenge in boston neonatal brain injury data for hypoxic ischemic encephalopathy. IEEE transactions on medical imaging . Baur, C., Denner, S., Wiestler, B., Navab, N., Albarqouni, S., 2021. Au-toencoders for unsupervised anomaly segmentation in brain mr images: a comparative study. Medical image analysis 69, 101952. Behrendt, F., Bhattacharya, D., Krüger, J., Opfer, R., Schlaefer, A., 2024. Patched diffusion models for unsupervised anomaly detection in brain mri, in: Medical imaging with deep learning, PMLR. pp. 1019–1032. Beizaee, F., Lodygensky, G., Desrosiers, C., Dolz, J., 2025a. Mad-ad: Masked diffusion for unsupervised brain anomaly detection, in: Inter-national Conference on Information Processing in Medical Imaging, Springer. pp. 139–153. Beizaee, F., Lodygensky, G.A., Desrosiers, C., Dolz, J., 2025b. Correcting deviations from normality: A reformulated diffusion model for multi-class unsupervised anomaly detection, in: 2025 IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR), IEEE. pp. 19088– 19097.
+
+Page 21 of 22 Bercea, C.I., Neumayr, M., Rueckert, D., Schnabel, J.A., 2023. Mask, stitch, and re-sample: Enhancing robustness and generalizability in anomaly detection through automatic diffusion models, in: ICML 3rd Workshop on Interpretable Machine Learning in Healthcare (IMLH). URL: https: //openreview.net/forum?id=kTpafpXrqa .Bercea, C.I., Wiestler, B., Rueckert, D., Schnabel, J.A., 2024. Diffusion models with implicit guidance for medical anomaly detection, in: In-ternational Conference on Medical Image Computing and Computer-Assisted Intervention, Springer. pp. 211–220. Bobba, P.S., Malhotra, A., Sheth, K.N., Taylor, S.N., Ment, L.R., Payab-vash, S., 2023. Brain injury patterns in hypoxic ischemic encephalopathy of term neonates. Journal of Neuroimaging 33, 79–84. Chang, P.D., Chow, D.S., Alber, A., Lin, Y.K., Youn, Y.A., 2020. Predictive values of location and volumetric mri injury patterns for neurodevelop-mental outcomes in hypoxic-ischemic encephalopathy neonates. Brain sciences 10, 991. Dhariwal, P., Nichol, A., 2021. Diffusion models beat gans on image synthesis. Advances in neural information processing systems 34, 8780– 8794. Fernando, T., Gammulle, H., Denman, S., Sridharan, S., Fookes, C., 2021. Deep learning for medical anomaly detection–a survey. ACM computing surveys (CSUR) 54, 1–37. Forbes, K.P., Pipe, J.G., Bird, R., 2000. Neonatal hypoxic-ischemic en-cephalopathy: detection with diffusion-weighted mr imaging. American journal of neuroradiology 21, 1490–1496. Frotscher, A., Kapoor, J., Wolfers, T., Baumgartner, C.F., 2026. Unsupervised anomaly detection in medical imaging using aggregated normative diffusion. Medical Image Analysis 109, 103895. URL: https: //www.sciencedirect.com/science/article/pii/S1361841525004414 ,doi: https://doi.org/10.1016/j.media.2025.103895 .Hatamizadeh, A., Nath, V., Tang, Y., Yang, D., Roth, H.R., Xu, D., 2021. Swin unetr: Swin transformers for semantic segmentation of brain tu-mors in mri images, in: International MICCAI brainlesion workshop, Springer. pp. 272–284. Ho, J., Jain, A., Abbeel, P., 2020. Denoising diffusion probabilistic models. Advances in neural information processing systems 33, 6840–6851. Ho, J., Salimans, T., 2021. Classifier-free diffusion guidance, in: NeurIPS 2021 Workshop on Deep Generative Models and Downstream Applica-tions. URL: https://openreview.net/forum?id=qw8AKxfYbI .Kascenas, A., Pugeault, N., O’Neil, A.Q., 2022. Denoising autoencoders for unsupervised anomaly detection in brain mri, in: International Con-ference on Medical Imaging with Deep Learning, PMLR. pp. 653–664. Liang, Z., Guo, X., Noble, J.A., Kamnitsas, K., 2024. Itermask 2: Iterative unsupervised anomaly segmentation via spatial and frequency masking for brain lesions in mri, in: International Conference on Medical Image Computing and Computer-Assisted Intervention, Springer. pp. 339–348. Long, M., Brandon, D.H., 2007. Induced hypothermia for neonates with hypoxic-ischemic encephalopathy. Journal of Obstetric, Gynecologic, & Neonatal Nursing 36, 293–298. Loshchilov, I., Hutter, F., 2017. Decoupled weight decay regularization. arXiv preprint arXiv:1711.05101 . Lugmayr, A., Danelljan, M., Romero, A., Yu, F., Timofte, R., Van Gool, L., 2022. Repaint: Inpainting using denoising diffusion probabilistic models, in: 2022 IEEE/CVF conference on computer vision and pattern recognition (CVPR), IEEE. pp. 11451–11461. Martinez-Biarge, M., Diez-Sebastian, J., Kapellou, O., Gindner, D., Allsop, J., Rutherford, M., Cowan, F., 2011. Predicting motor outcome and death in term hypoxic-ischemic encephalopathy. Neurology 76, 2055–2061. Oishi, K., Mori, S., Donohue, P.K., Ernst, T., Anderson, L., Buchthal, S., Faria, A., Jiang, H., Li, X., Miller, M.I., et al., 2011. Multi-contrast human neonatal brain atlas: application to normal neonate development analysis. Neuroimage 56, 8–20. Onda, K., Chavez-Valdez, R., Graham, E.M., Everett, A.D., Northington, F.J., Oishi, K., 2024. Quantification of diffusion magnetic resonance imaging for prognostic prediction of neonatal hypoxic-ischemic en-cephalopathy. Developmental neuroscience 46, 55–68. Rao, A., Shukla, A., Bhargava, J., Ou, Y., Bao, R., 2025. Spatial prior-guided boundary and region-aware 2d lesion segmentation in neonatal hypoxic ischemic encephalopathy, in: International Conference on Med-ical Image Computing and Computer-Assisted Intervention, Springer. pp. 520–530. Ronneberger, O., Fischer, P., Brox, T., 2015. U-net: Convolutional networks for biomedical image segmentation, in: International Conference on Medical image computing and computer-assisted intervention, Springer. pp. 234–241. Sakai, S., He, X., Gu, C., Sigal, L., Hasegawa, T., 2026. Invad: Inversion-based reconstruction-free anomaly detection with diffusion models, in: Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition, pp. 21389–21398. Schlegl, T., Seeböck, P., Waldstein, S.M., Langs, G., Schmidt-Erfurth, U., 2019. f-anogan: Fast unsupervised anomaly detection with generative adversarial networks. Medical image analysis 54, 30–44. Silveira, R.C., Procianoy, R.S., 2015. Hypothermia therapy for newborns with hypoxic ischemic encephalopathy. Jornal de pediatria 91, S78–S83. Song, J., Meng, C., Ermon, S., 2020. Denoising diffusion implicit models. arXiv preprint arXiv:2010.02502 . Song, Y., Sohl-Dickstein, J., Kingma, D.P., Kumar, A., Ermon, S., Poole, B., 2021. Score-based generative modeling through stochastic differential equations, in: International Conference on Learning Representations. URL: https://openreview.net/forum?id=PxTIG12RRHS .Triulzi, F., Parazzini, C., Righini, A., 2006. Patterns of damage in the mature neonatal brain. Pediatric radiology 36, 608–620. Tustison, N.J., Cook, P.A., Holbrook, A.J., Johnson, H.J., Muschelli, J., Devenyi, G.A., Duda, J.T., Das, S.R., Cullen, N.C., Gillen, D.L., Yassa, M.A., Stone, J.R., Avants, B.B., 2021. The antsx ecosystem for quan-titative biological and medical imaging. Scientific Reports 11, 1–10. doi: 10.1038/s41598-021-87564-6 .Vermeulen, R.J., van Schie, P.E., Hendrikx, L., Barkhof, F., van Weis-senbruch, M., Knol, D.L., Pouwels, P.J., 2008. Diffusion-weighted and conventional mr imaging in neonatal hypoxic ischemia: two-year follow-up study. Radiology 249, 631–639. Wolleb, J., Bieder, F., Sandkühler, R., Cattin, P.C., 2022. Diffusion models for medical anomaly detection, in: International Conference on Medical image computing and computer-assisted intervention, Springer. pp. 35– 45. Wyatt, J., Leach, A., Schmon, S.M., Willcocks, C.G., 2022. Anoddpm: Anomaly detection with denoising diffusion probabilistic models using simplex noise, in: 2022 IEEE/CVF Conference on Computer Vision and Pattern Recognition Workshops (CVPRW), IEEE. pp. 649–655. Zhang, L., Rao, A., Agrawala, M., 2023. Adding conditional control to text-to-image diffusion models, in: 2023 IEEE/CVF International Conference on Computer Vision (ICCV), IEEE. pp. 3813–3824. Zhou, Z., Siddiquee, M.M.R., Tajbakhsh, N., Liang, J., 2019. Unet++: Redesigning skip connections to exploit multiscale features in image segmentation. IEEE transactions on medical imaging 39, 1856–1867. 
+
+Page 22 of 22
