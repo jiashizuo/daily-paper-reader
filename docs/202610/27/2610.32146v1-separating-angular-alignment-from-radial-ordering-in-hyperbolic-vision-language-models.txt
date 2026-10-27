@@ -1,0 +1,2926 @@
+Preprint
+SEPARATING ANGULAR ALIGNMENT FROM
+RADIAL ORDERING IN HYPERBOLIC
+VISION–LANGUAGE MODELS
+Mingyang Gao1
+Yuwei Wu1
+Shiyu Luo1
+Wei Wu1
+Xiaomeng Fan1
+Qihao Lv1
+Haoyu Zhang1
+Rui Gao1
+Bingzhen Liu1
+Zhi Gao1,∗
+Che Sun2
+1Beijing Institute of Technology
+2Shenzhen MSU-BIT University
+gaomingyang@bit.edu.cn
+∗Corresponding author: gaozhibit@bit.edu.cn
+https://github.com/Gmy-bit/AURORA
+ABSTRACT
+Hyperbolic vision–language models are well suited to modeling the hierarchi-
+cal structure of multimodal data, because hyperbolic volume grows exponentially
+with radius, enabling low-distortion representations of tree-like taxonomies from
+general to specific concepts. However, existing pretraining objectives for hyper-
+bolic vision–language models entangle semantic alignment with entailment mod-
+eling, forcing radial coordinates to simultaneously encode semantic matching and
+hierarchical structure, leading to conflicting geometric constraints. In this pa-
+per, we introduce AURORA, a hyperbolic vision–language framework that decou-
+ples the objectives through angular alignment and a novel Radial–Angular Order
+Cone (RAOC) for entailment modeling. Angular alignment captures semantic
+similarity while preserving the radial structure for representing hierarchies. Un-
+like conventional entailment cones, RAOC determines angular allowance from
+relative parent–child radial gaps. It is incorporated into hierarchical entailment
+contrastive training to capture partial-order relations. We further introduce a norm
+regularization term that prevents undesirable radial degeneration for stable train-
+ing. We train models on millions of image–text pairs and evaluate them across
+zero-shot classification, image–text retrieval, hierarchical reasoning, and compo-
+sitional understanding. Our model consistently outperforms strong Euclidean and
+hyperbolic vision–language baselines, demonstrating the effectiveness of decou-
+pling semantic alignment from hierarchical entailment modeling.
+1
+INTRODUCTION
+Hyperbolic vision–language models, such as MERU (Desai et al., 2023) and HyCoCLIP (Pal et al.,
+2025), embed images and text in hyperbolic spaces (negatively curved Riemannian manifolds) (Rat-
+cliffe, 1994) to represent hierarchical relations among visual and linguistic concepts. In the Lorentz
+model (Cannon et al., 1997), a model of hyperbolic space, distance from the origin serves as a
+proxy for semantic specificity, with more general concepts represented at smaller radii (Nickel &
+Kiela, 2017). Under the hyperbolic entailment convention, parent–child relations form a partial
+order (Vendrov et al., 2016): abstract parents entail more specific children, whose embeddings lie
+within their parents’ entailment cones (Ganea et al., 2018). For example, the text “a dog” entails
+the more specific description “a dog running on grass”, and an image depicting “a dog running on
+grass” is compatible with both descriptions. Modeling this partial order allows matching visual and
+textual concepts to occupy different levels of the hierarchy, reflecting their differences in specificity.
+Hyperbolic volume grows exponentially with radius (Krioukov et al., 2010), accommodating the
+increasing number of child nodes with depth. Hyperbolic space also enables low-distortion tree em-
+beddings (Sarkar, 2012; Sala et al., 2018), making it naturally suitable for representing hierarchies.
+Learning the hierarchical structures of data requires compatible objectives for semantic alignment
+and hierarchical entailment. However, existing hyperbolic pretraining objectives impose conflicting
+constraints on radial information: semantic alignment favors similar radii for matched represen-
+tations, while hierarchical entailment uses radial separation to distinguish parents from children.
+1
+arXiv:2610.32146v1  [cs.CV]  23 Oct 2026
+
+
+Preprint
+Prior Hyperbolic VLMs
+Paired data
+Distance alignment
+Positive-only entailment
+Learned hierarchy
+dog
+apple
+car
++
+=
+O
+dog
+dog
+apple
+car
+Angles and radii change
+apple
+rocket
+Spurious entailment unpenalized
+Hierarchy distorted
+Ours: AURORA
+Paired data
+Root-angle alignment
+Contrastive entailment
+Learned hierarchy
+dog
+apple
+car
++
+=
+O
+dog
+dog
+apple
+car
+Angle shrinks, radial gap remains
+apple
+rocket
+Spurious entailment suppressed
+Hierarchy preserved
+Figure 1: Motivation. Top: Prior hyperbolic VLMs pull paired embeddings together, disrupting
+radial ordering and entailment. The apple image can even lie closer to the Lorentz origin than
+“apple”. Bottom: AURORA preserves radial separation and cleaner entailment: the rocket returns
+to its own cone, incorrect relations are reduced, and a coherent hierarchy emerges.
+Moreover, entailment supervision based on positive pairs encourages specified parent–child rela-
+tions while leaving unpaired relations unpenalized. As a result, semantically unrelated representa-
+tions may still form spurious hierarchical relations. For example, in Figure 1, the text “apple” could
+incorrectly entail an image depicting “a rocket successfully lifting off”.
+We analyze the geometric compatibility of Lorentz-distance alignment and conventional entailment
+cones to clarify the optimization conflict, identifying two limitations. Firstly, minimizing Lorentz
+distance between a matched parent–child pair favors reducing the radial gap that models their dif-
+ference in specificity. Conversely, an unmatched child can remain inside a spurious parent’s cone
+even when moved arbitrarily far outward along its radial direction. These cases reveal a mismatch
+between semantic discrimination and hierarchical entailment. Secondly, conventional cone aper-
+tures (Le et al., 2019) are inversely coupled to the norm of the parent representation. As this norm
+approaches the admissible lower limit, the cone becomes less restrictive for partial-order relations.
+In this paper, we propose AURORA, a pretraining framework that separates AngUlar alignment from
+Radial Ordering in hypeRbolic vision–lAnguage models. AURORA learns semantic alignment and
+hierarchical entailment through distinct, complementary objectives. For semantic matching, we
+perform angular alignment using cosine similarity between the spatial directions of Lorentz embed-
+dings, allowing their radial positions to model specificity. For hierarchical entailment, we introduce
+the Radial–Angular Order Cone, which controls angular allowance through the parent–child radial
+gap, replacing the dependence on the parent’s norm in conventional cones. We prove that the result-
+ing geometric entailment relation defines a partial order with nested descendant regions, ensuring
+that a child’s descendants are also descendants of its parent. We further introduce hierarchical en-
+tailment contrastive training, using negative pairs to suppress spurious entailment between unpaired
+examples. Finally, we present a norm regularization term that prevents undesirable radial degenera-
+tion, stabilizing the radial scale during training. Our contributions are summarized as follows:
+• We introduce AURORA, a hyperbolic vision–language pretraining framework that decouples an-
+gular semantic alignment from radial modeling of hierarchical entailment.
+• We define the Radial–Angular Order Cone (RAOC), prove that its geometric entailment relation
+defines a partial order, and develop hierarchical entailment contrastive (HEC) training on RAOC
+to better reinforce hierarchical relations.
+• We train hyperbolic vision–language models with AURORA and demonstrate consistent improve-
+ments in zero-shot classification, retrieval, hierarchical reasoning, and compositional understand-
+ing over competitive Euclidean and hyperbolic baselines.
+2
+PRELIMINARIES
+Hyperbolic space is a Riemannian manifold with constant negative curvature. We adopt the d-
+dimensional Lorentz model with curvature −c, where c > 0 denotes the curvature magnitude (Nickel
+2
+
+
+Preprint
+& Kiela, 2018). The Lorentz model represents hyperbolic space as the upper sheet of a two-sheeted
+hyperboloid in (d + 1)-dimensional Minkowski space.
+For vectors x = [x0; ˜x] and y = [y0; ˜y] in Rd+1, x0, y0 ∈R are the time components and ˜x, ˜y ∈Rd
+are the spatial components. Their Lorentz inner product is
+⟨x, y⟩L = −x0y0 + ˜x⊤˜y.
+(1)
+The Lorentz model is defined as
+Hd
+c =
+
+x ∈Rd+1 : ⟨x, x⟩L = −1
+c , x0 > 0
+
+,
+(2)
+where x0 > 0 selects the upper sheet. Its origin is O = [1/√c; 0d], and the Lorentz distance
+between two points x, y ∈Hd
+c is
+dc(x, y) = 1
+√c arcosh(−c⟨x, y⟩L) .
+(3)
+Following prior hyperbolic vision–language models (Desai et al., 2023; Pal et al., 2025), we treat the
+projected encoder features z ∈Rd as tangent vectors [0; z] ∈TOHd
+c at the origin. The exponential
+map converts these tangent vectors into hyperbolic embeddings:
+x = expc
+O([0; z]) = 1
+√c
+
+cosh(√c∥z∥); sinh(√c∥z∥) z
+∥z∥
+
+,
+(4)
+with the zero vector mapped to the origin, expc
+O(0d+1) = O.
+For a non-origin embedding x, we use the radial coordinate ρx = √c dc(O, x) and the unit spatial
+direction ux = ˜x/∥˜x∥. At fixed curvature, larger ρx corresponds to greater distance from O. Their
+connection to the Lorentz coordinates is provided in Appendix A.1.
+3
+COMPATIBILITY OF ALIGNMENT AND ENTAILMENT
+Distance alignment couples direction and radius. For non-origin embeddings p, q ∈Hd
+c, let ρx =
+√c dc(O, x) denote radial depth and θpq = ∠pOq their angular separation at the origin. Writing
+δpq = √c dc(p, q), the hyperbolic law of cosines gives
+cosh δpq = cosh ρp cosh ρq −sinh ρp sinh ρq cos θpq
+= cosh(ρq −ρp)
+|
+{z
+}
+radial-gap contribution
++ sinh ρp sinh ρq(1 −cos θpq)
+|
+{z
+}
+radius-weighted angular contribution
+.
+(5)
+The first term depends only on the radial gap, and the second depends on angular separation and
+is weighted by both radii. Distance alignment therefore acts on radial depth as well as semantic
+direction. For a parent–child pair with ρq > ρp, holding the parent and both directions fixed,
+decreasing the child’s radius toward the parent’s decreases their distance. Even when θpq = 0,
+the distance remains (ρq −ρp)/√c. Thus, distance minimization continues to penalize the radial
+separation that encodes different hierarchical levels. The derivation is given in Appendix B.1.
+Conventional cones depend on more than pairwise distance. Conventional hyperbolic entailment
+cones admit descendants within an angular region extending outward from the parent (Ganea et al.,
+2018; Desai et al., 2023). Their membership is not determined by distance: two distinct embeddings
+at the same radial depth can be arbitrarily close yet remain outside each other’s cones, whereas a
+child on the parent’s outward radial ray remains inside its cone at arbitrarily large distances. Con-
+sequently, bringing a matched pair closer does not ensure entailment, and pushing an unrelated pair
+farther apart does not ensure its exclusion from the descendant region. With positive-only entail-
+ment supervision, such erroneous relations receive no direct entailment penalty. Cone selectivity
+also depends on the parent’s absolute depth: for a fixed cone-width setting, the half-aperture satis-
+fies sin ω(p) ∝1/ sinh ρp. As the parent moves inward toward its admissible lower radius, ω(p)
+approaches π/2, admitting the entire outward hemisphere of geodesic directions at the boundary.
+Parent contraction can therefore weaken angular discrimination. The distance counterexamples and
+aperture analysis are provided in Appendix B.1.
+3
+
+
+Preprint
+Text 
+encoder
+Projection
+expOc
+Image 
+encoder
+Projection
+expOc
+Phrase embedding Tb
+Caption embedding T
+Crop embedding Ib
+Image embedding I
+top-down view
+of hyperboloid
+1 Caption 1
+A puppy with a blue collar
+rests on a stone path.
+Phrase
+blue collar
+2 Caption 2
+A white sports car
+travels across a bridge.
+Phrase
+white sports car
+1 Image 1
+Crop 1
+2 Image 2
+Crop 2
+Radial ordering
+Root-angle alignment
+Norm regularization
+Figure 2: Overview of AURORA. Root-angle alignment brings related visual and textual semantics
+together, while HEC training via RAOC organizes concepts radially from general to specific.
+Together, these observations motivate semantic alignment based on direction alone, an entailment
+relation defined through parent–child radial gaps and angular differences, and direct entailment su-
+pervision for both positive and negative pairs.
+4
+AURORA
+4.1
+FORMULATION
+Following the training setup of HyCoCLIP (Pal et al., 2025), we use image–caption pairs (I, T) with
+object-level annotations. A bounding box in I specifies an object crop Ib, and the corresponding
+phrase T b describes its content. Depicted in Figure 2, AURORA uses a visual encoder fv and a
+text encoder ft, followed by projections Pv and Pt, respectively. Images and crops share the visual
+branch, while captions and phrases share the text branch. For an input X ∈{I, T, Ib, T b}, let f and
+P denote the corresponding encoder and projector. We obtain the projected feature zX = P(f(X))
+and its hyperbolic representation xX = expc
+O(0, zX).
+Hierarchy supervision uses the relations types R = {T →I, T b →Ib, Ib →I, T b →T}, with
+arrows pointing from general to specific. Text is treated as more general than its visual counterpart,
+which contains additional instance details. Likewise, crops and phrases are treated as more general
+than full images and captions, which add scene context. We align matching visual and textual
+representations through root-angle alignment (Sec. 4.2) and learn the hierarchical relations in R
+through RAOC and HEC training (Secs. 4.3–4.4). Norm regularization controls their radial scale.
+4.2
+ROOT-ANGLE ALIGNMENT
+For two non-origin hyperbolic representations x, y ∈Hd
+c \ {O} from either modality, let θxy =
+∠xOy be their root angle. Write zx and zy for the projected features that generate x and y through
+the origin exponential map. This map preserves their directions, giving ux = zx/∥zx∥and uy =
+zy/∥zy∥. We measure semantic similarity by s∠(x, y) = cos θxy = u⊤
+x uy. This score depends only
+on direction, leaving radial differences available for hierarchical ordering.
+We optimize s∠with a pairwise sigmoid loss. For embedding batches A = {ai}N
+i=1 and B =
+{bj}N
+j=1, set yij = +1 for matching pairs (i = j) and yij = −1 otherwise. With σ(t) = (1+e−t)−1,
+Lσ(A, B) = −1
+N
+N
+X
+i=1
+N
+X
+j=1
+log σ(yij [ams∠(ai, bj) + bm]) ,
+(6)
+where am > 0 and bm are a learned scale and bias. The complete alignment objective is
+Lalign = 1
+4
+
+Lσ(I, T) + Lσ(Ib, T b) + Lσ(Ib, T) + Lσ(T b, I)
+
+.
+(7)
+4
+
+
+Preprint
+The first two terms align corresponding visual and textual content, while crop–caption and phrase–
+image matching connect object-level semantics to the full scene. All similarity-based downstream
+evaluations use s∠.
+4.3
+RADIAL–ANGULAR ORDER CONE
+Root-angle alignment measures semantic agreement, while hierarchical entailment additionally re-
+quires an order from general to specific. For a candidate parent p and descendant q in Hd
+c \ {O}, let
+ρx = √c dc(O, x) denote scaled radial depth. We define the signed radial gap g(p, q) = ρq −ρp
+and root angle θpq = ∠pOq. The Radial–Angular Order Cone (RAOC) defines the admissible
+descendants of p:
+Cβ(p) =
+
+q ∈Hd
+c \ {O} : g(p, q) ≥θpq
+β
+
+,
+β > 0.
+(8)
+entailment
+O
+p
+q+
+q−
+θpq
+Cβ(p)
+ρp
+ρq
+Figure 3: RAOC. Greater angu-
+lar separation requires a larger
+radial gap.
+The required radial gap grows with angular separation: a larger
+directional difference requires the child to lie farther outward
+from its parent (Figure 3). The fixed hyperparameter β controls
+the angular allowance at each gap, with larger values giving a
+looser constraint. RAOC therefore ties angular selectivity to the
+relative parent–child radial gap rather than the absolute parent ra-
+dius. It defines a partial order with nested descendant regions,
+so a child’s descendants are also descendants of its parent. The
+formal statement and proof are given in Appendix C.
+For optimization, we formulate the RAOC constraint in terms of
+two bounded margins. The radial margin measures radial prece-
+dence, while the angular margin measures the admissible angular
+allowance minus the observed angle. We define
+mr(p, q) = clip
+g(p, q)
+σr
+, −1, 1
+
+,
+ma(p, q) = clip(βg(p, q), 0, π) −θpq
+π
+.
+(9)
+Here σr > 0 sets the radial margin scale, and clip(t, a, b) = min{b, max{a, t}}. Both margins lie
+in [−1, 1]. For negative gaps, the angular allowance is clipped to zero, while mr < 0 identifies the
+incorrect radial order even when θpq = 0.
+The entailment score is the smaller of the two margins:
+DRAOC(p, q) = min{mr(p, q), ma(p, q)}.
+(10)
+Thus, DRAOC(p, q) ≥0 requires both radial precedence and angular compatibility and is equivalent
+to q ∈Cβ(p). Further details are provided in Appendix D.2.
+4.4
+HIERARCHY LEARNING VIA CONTRASTIVE ENTAILMENT
+Hierarchical Entailment Contrastive (HEC) training reinforces annotated parent–child relations and
+suppresses spurious relations between nonmatching examples. For each relation type U →V ∈R,
+xUi and xVi form a positive pair, while xUi and xVj with i̸ = j form a negative pair. Using the
+labels yij defined in Sec. 4.2, we optimize
+LHEC = −
+1
+|R|N
+X
+U→V ∈R
+N
+X
+i,j=1
+log σ
+ yij
+
+aeDRAOC(xUi, xVj) + be
+
+,
+(11)
+where ae > 0 and be are a learned scale and bias. This objective increases entailment compatibility
+for matching parent–descendant pairs and decreases it for nonmatching pairs.
+Angular alignment leaves radial position unconstrained, while RAOC organizes representations
+through relative radial gaps. We stabilize their radial scale with the norm penalty ℓnorm(x) =
+er 2
+x −log erx, where erx = max{∥xs∥, ϵ} and ϵ > 0 keeps the logarithm finite. The quadratic and
+negative logarithmic terms penalize large and small spatial norms, respectively. We define Lnorm as
+the average of this penalty over all image, caption, crop, and phrase embeddings in the minibatch.
+The complete objective is
+L = Lalign + λeLHEC + λnLnorm,
+(12)
+5
+
+
+Preprint
+where λe and λn weight entailment learning and norm regularization. Implementation details are
+provided in Appendix F. Further details on hyperparameter selection and sensitivity analysis are
+provided in Appendix J.
+5
+EXPERIMENTS
+5.1
+TRAINING DETAILS
+We pretrain AURORA on GRIT (Peng et al., 2024), comprising 10.3M valid image–caption pairs
+and 17.8M grounded box–phrase annotations. We mainly report results using ViT-S/16, with com-
+plete comparisons for both ViT-S/16 and ViT-B/16 provided in Appendix G. Training schedules,
+hyperparameters, and implementation details are given in Appendix F. We compare AURORA with
+CLIP (Radford et al., 2021), SigLIP (Zhai et al., 2023), MERU (Desai et al., 2023), ATMG (Ra-
+masinghe et al., 2024), HyCoCLIP (Pal et al., 2025), PHyCLIP (Yoshikawa & Matsubara, 2026),
+and ARGENT (Huynh et al., 2026). For CLIP, SigLIP, and MERU, we include variants pretrained
+with and without box–phrase pairs to assess the contribution of additional grounded supervision.
+All comparisons are conducted under the same task-specific evaluation protocols. AURORA uses
+root-angle similarity s∠for all similarity-based evaluations.
+5.2
+EXPERIMENTAL RESULTS
+Zero-shot image classification. We evaluate zero-shot transfer on 16 datasets covering general,
+fine-grained, and specialized recognition tasks. As shown in Table 1, AURORA achieves the highest
+accuracy on 13 datasets. Its advantage extends to comparisons with box-supervised CLIP, SigLIP,
+and MERU, suggesting that the improvement cannot be attributed solely to the inclusion of addi-
+tional grounded training pairs.
+Table 1: Zero-shot image classification on ViT-S/16. Results are reported as top-1 accuracy (%).
+Bold indicates the best results. Underlining denotes the second best.
+ViT-S/16
+General datasets
+Fine-grained datasets
+Specialized datasets
+Model
+w/ boxes
+ImageNet
+CIFAR-10
+CIFAR-100
+SUN397
+Caltech-101
+STL-10
+Food-101
+CUB
+Cars
+Aircraft
+Pets
+Flowers
+DTD
+EuroSAT
+RESISC45
+Country211
+CLIP
+✗
+32.66 74.19 42.22 42.91 69.80 90.09 42.72 12.55 3.93 2.06 43.22 18.03 17.57 25.47 33.64 3.88
+CLIP
+✓32.49 73.69 42.15 42.66 70.07 89.83 42.50 12.48 4.01 2.10 43.28 17.79 17.61 26.04 33.37 3.84
+SigLIP
+✗
+34.30 66.57 38.38 44.73 71.42 91.75 38.98 13.33 4.89 2.13 46.65 23.17 18.40 32.63 35.42 4.15
+SigLIP
+✓34.34 67.07 38.50 44.82 71.55 91.82 39.27 13.33 4.92 2.24 46.56 23.03 18.36 31.42 35.37 4.23
+MERU
+✗
+31.74 76.08 41.24 41.28 67.76 87.24 41.09 11.97 3.80 2.88 42.53 16.75 17.46 27.75 33.88 3.82
+MERU
+✓32.01 76.55 41.35 41.21 67.64 87.30 41.24 12.08 3.78 2.95 42.54 16.57 17.52 27.53 33.82 3.83
+ATMG
+✗
+33.74 77.21 43.28 43.15 68.08 90.84 44.01 13.27 4.38 1.75 42.53 15.70 17.89 28.69 35.75 4.21
+HyCoCLIP ✓36.38 83.28 47.91 47.88 71.53 93.16 46.73 15.33 5.98 2.45 45.59 20.89 19.47 26.00 38.73 4.09
+PHyCLIP
+✓37.06 83.44 48.41 48.88 71.82 93.06 47.26 16.29 6.58 2.57 46.44 21.46 19.13 25.81 39.79 3.95
+ARGENT
+✓37.55 83.55 48.62 49.29 72.15 94.01 47.70 16.90 6.81 2.48 47.10 21.65 19.67 26.32 40.46 4.19
+AURORA
+✓41.54 84.25 51.20 50.27 75.81 93.19 50.13 17.71 8.91 1.80 51.41 28.99 22.87 30.18 41.09 4.70
+Image–text retrieval and hierarchical classification. We evaluate bidirectional image–text re-
+trieval on COCO (Lin et al., 2014) and Flickr30K (Young et al., 2014), together with hierarchical
+classification on ImageNet (Deng et al., 2009). The latter uses the WordNet taxonomy to assess how
+closely predictions agree with ground-truth labels in the hierarchy. Table 2 shows that AURORA
+achieves the best results in both retrieval directions and across all reported hierarchical metrics.
+Thus, improved cross-modal matching is accompanied by stronger agreement with the label hier-
+archy. We follow the evaluation protocols of HyCoCLIP and PHyCLIP, with metric definitions
+detailed in Appendix H.
+Compositional understanding. We evaluate compositional understanding on VL-CheckList-
+Object (Zhao et al., 2022) and SugarCrepe (Hsieh et al., 2023), where models must distinguish a
+correct caption from a hard negative containing altered semantic content. VL-CheckList-Object
+tests sensitivity to object replacement across different object locations and sizes. SugarCrepe ex-
+tends the evaluation to seven types of perturbations involving objects, attributes, and relations.
+6
+
+
+Preprint
+As shown in Table 3, AURORA leads on nine of the fourteen reported measures, including the
+overall SugarCrepe score. The most pronounced gains occur on VL-CheckList-Object, suggesting
+more reliable identification of objects across variations in location and scale. The best overall per-
+formance on SugarCrepe further indicates improved discrimination of compositional mismatches
+beyond object replacement.
+Table 2: Zero-shot retrieval and hierarchical classification on ViT-S/16. Retrieval performance is
+reported as Recall@5/10 (%). Hierarchical metrics are shown to two decimal places, with rankings
+determined before rounding. Bold indicates the best results. Underlining denotes the second best.
+ViT-S/16
+Text →Image
+Image →Text
+Hierarchical Classification
+Model
+COCO
+Flickr
+COCO
+Flickr
+WordNet
+w/
+boxes
+R@5
+R@10
+R@5
+R@10
+R@5
+R@10
+R@5
+R@10 TIE↓LCA↓J ↑PH ↑RH ↑
+CLIP
+✗
+50.31
+61.52
+76.98
+84.48
+65.75
+76.15
+87.10
+93.00
+4.43
+2.51
+0.72
+0.79
+0.80
+CLIP
+✓
+50.27
+61.47
+76.75
+84.42
+65.49
+76.08
+87.20
+93.17
+4.42
+2.50
+0.72
+0.78
+0.80
+SigLIP
+✗
+52.32
+63.90
+77.54
+85.24
+65.98
+76.78
+88.60
+93.23
+4.22
+2.47
+0.75
+0.83
+0.82
+SigLIP
+✓
+52.27
+63.81
+77.21
+84.09
+66.03
+76.84
+88.60
+93.40
+4.23
+2.47
+0.74
+0.83
+0.83
+MERU
+✗
+49.79
+61.14
+76.03
+84.34
+65.01
+75.67
+86.80
+92.77
+4.44
+2.52
+0.71
+0.78
+0.79
+MERU
+✓
+49.63
+61.08
+76.13
+84.21
+65.16
+75.74
+86.93
+92.77
+4.44
+2.51
+0.71
+0.78
+0.78
+ATMG
+✗
+50.95
+62.36
+77.21
+84.74
+64.96
+75.81
+87.10
+93.17
+4.37
+2.48
+0.73
+0.82
+0.81
+HyCoCLIP
+✓
+51.35
+63.13
+77.92
+85.52
+64.84
+75.78
+87.30
+93.23
+3.97
+2.33
+0.76
+0.84
+0.84
+PHyCLIP
+✓
+52.24
+64.08
+78.26
+85.84
+65.65
+76.21
+87.20
+93.17
+3.92
+2.31
+0.76
+0.84
+0.84
+ARGENT
+✓
+52.68
+64.46
+78.59
+86.18
+65.75
+76.46
+87.50
+93.23
+3.91
+2.30
+0.77
+0.84
+0.84
+AURORA
+✓
+55.77
+66.81
+81.02
+88.18
+69.42
+79.18
+89.90
+95.13
+3.62
+2.25
+0.78
+0.85
+0.85
+Table 3: Hard-negative compositional classification on ViT-S/16. Models are evaluated on VL-
+CheckList-Object and SugarCrepe. Bold indicates the best results. Underlining denotes the second
+best.
+ViT-S/16
+VL-CheckList-Object
+SugarCrepe
+Model
+Location
+Size
+Replace
+Swap
+Add
+w/
+boxes Center
+Mid
+Margin Large Medium Small
+Obj
+Att
+Rel
+Obj
+Att
+Obj
+Att
+Overall
+CLIP
+✗
+85.10
+79.35
+71.22
+84.48
+74.61
+65.72
+86.74 78.00 69.04 59.49 65.27 77.53 70.76
+75.71
+CLIP
+✓
+85.24
+78.41
+70.55
+85.32
+75.02
+64.67
+85.94 77.45 69.94 59.89 64.41 77.90 70.76
+75.69
+SigLIP
+✗
+89.33
+83.04
+74.91
+88.30
+78.50
+68.82 87.35 78.55 69.49 60.82 65.77 78.08 71.10
+76.26
+SigLIP
+✓
+89.83
+83.03
+74.50
+88.13
+78.13
+69.47 87.01 78.43 69.18 61.38 66.67 78.03 70.28
+76.12
+MERU
+✗
+82.07
+76.10
+67.93
+81.47
+71.50
+62.40
+86.40 77.58 68.73 58.94 64.96 77.17 70.33
+75.35
+MERU
+✓
+82.90
+75.40
+68.40
+81.33
+71.73
+62.40
+87.09 77.03 69.11 58.81 65.17 77.19 70.47
+75.55
+ATMG
+✗
+84.07
+78.40
+69.83
+83.53
+73.60
+64.53
+87.11 78.34 69.35 60.16 65.62 77.98 71.15
+76.10
+HyCoCLIP
+✓
+90.80
+86.75
+79.95
+90.52
+82.73
+74.23 87.23 78.81 66.64 60.41 64.86 79.44 69.08
+75.82
+PHyCLIP
+✓
+91.40
+87.14
+80.42
+90.97
+83.06
+74.79 88.40 80.25 67.33 59.76 65.22 79.89 71.48
+76.71
+ARGENT
+✓
+91.87
+87.73
+81.10
+91.33
+84.07
+75.60 88.92 80.88 67.71 59.89 65.32 80.00 72.59
+77.11
+AURORA
+✓
+91.93
+87.80
+80.77
+91.30
+84.69
+76.53 89.77 81.85 68.42 60.00 65.47 80.16 74.27
+77.75
+5.3
+GEOMETRIC VISUALIZATIONS
+We inspect AURORA’s learned geometry from two complementary perspectives: spatial-norm dis-
+tributions reveal radial allocation across four representation types, while HoroPCA (Chami et al.,
+2021) provides a low-dimensional view of their organization. Figure 4 compares AURORA ViT-S
+with its w/o cone variant. Without RAOC, full inputs and their corresponding boxes have largely
+overlapping norm distributions within each modality. RAOC produces more distinct distributions,
+particularly for texts and text boxes, indicating stronger radial differentiation. In the HoroPCA pro-
+jections, the w/o cone variant exhibits a narrow text configuration and a compact visual cluster. With
+RAOC, both modalities occupy broader, more structured regions, with text and image boxes tending
+to lie closer to the projected origin than their full-input counterparts. This projected arrangement is
+consistent with the intended ordering from general concepts to contextualized instances.
+We further examine local hierarchical organization through radial gaps and root angles. Figure 5
+compares AURORA ViT-S with and without RAOC for the text query “bag.” With RAOC, the
+image-region tree forms distinct branches: root angles decrease along the path from the full image
+through “mat bag” to “bag,” while the umbrella–chair branch remains less aligned with the query.
+7
+
+
+Preprint
+(a)
+(b)
+(c)
+Figure 4: Representation geometry with and without RAOC. (a) Spatial-norm distributions and
+HoroPCA projections (b) without and (c) with RAOC for AURORA ViT-S. RAOC yields more
+distinct norm distributions and broader projected organization, with boxes tending to lie nearer the
+projected origin than full inputs.
+(a)
+(b)
+Figure 5: Local hierarchical organization with and without RAOC. AURORA ViT-S (a) w/o
+cone and (b) w/ cone for the text query “bag.” Scatter plots show radial gaps and root angles for vi-
+sual regions, semantic siblings, and unrelated controls; the corresponding visual hierarchy is shown
+on the right. RAOC produces clearer query-relative organization along the relevant hierarchy branch.
+Without RAOC, the branches are less clearly distinguished. These observations suggest that RAOC
+helps capture local tree-like semantic structure.
+5.4
+ABLATION STUDY
+Table 4 isolates the main components of AURORA. Replacing RAOC with conventional Entailment
+Cone (EC) compares alternative order regions; removing the norm regularizer tests radial-scale con-
+trol; removing RAOC isolates the effect of directed hierarchy supervision; and removing both RAOC
+and norm regularization leaves the root-angle alignment alone. Replacing the pairwise sigmoid loss
+with InfoNCE further examines the contrastive loss term under different alignment scores. With
+8
+
+
+Preprint
+Table 4: Ablation study of AURORA-ViT-S/16 pre-trained on grounded GRIT, evaluated on
+image classification, COCO retrieval, and hierarchical classification. Controlled variants isolate the
+contribution of individual training components and loss terms.
+AURORA-ViT-S/16
+Classification
+COCO R@5
+Hierarchy
+ID
+Alignment score
+Order objective
+Norm
+Loss
+ImageNet
+Food-101
+T→I
+I→T
+TIE↓
+J ↑
+(a)
+root angle
+EC
+✓
+Sigmoid
+38.12
+45.92
+53.48
+66.72
+3.79
+0.76
+(b)
+root angle
+RAOC
+✗
+Sigmoid
+40.21
+48.57
+54.98
+68.41
+3.70
+0.77
+(c)
+root angle
+RAOC
+✓
+InfoNCE
+39.42
+47.71
+54.43
+67.93
+3.76
+0.76
+(d)
+root angle
+none
+✓
+Sigmoid
+40.27
+47.06
+55.29
+68.92
+3.74
+0.77
+(e)
+root angle
+none
+✗
+Sigmoid
+38.91
+45.38
+54.56
+67.88
+3.85
+0.76
+(f)
+−dH
+EC
+✓
+Sigmoid
+37.32
+44.63
+52.66
+65.84
+3.85
+0.75
+(g)
+−dH
+EC
+✓
+InfoNCE
+36.05
+43.24
+51.79
+64.87
+3.94
+0.74
+Full
+root angle
+RAOC
+✓
+Sigmoid
+41.54
+50.13
+55.77
+69.42
+3.62
+0.78
+−dH, positive pairs are still encouraged toward smaller absolute distance, retaining the radial pres-
+sure discussed in Sec. 3. Appendix D.1 provides the corresponding gradient analysis.
+6
+RELATED WORK
+Vision and language representation learning. CLIP (Radford et al., 2021) and ALIGN (Jia et al.,
+2021) learn transferable visual and textual representations through contrastive learning on image
+and text pairs. SigLIP (Zhai et al., 2023) replaces softmax normalization with independent sigmoid
+losses over pairs. RegionCLIP (Zhong et al., 2022) extends alignment to image regions and textual
+concepts. AURORA retains separate image and text encoders and examines how semantic alignment
+interacts with hierarchical supervision.
+Hyperbolic vision and language representations. Hyperbolic embeddings capture hierarchical
+structure in language and vision (Nickel & Kiela, 2017; Khrulkov et al., 2020). MERU combines
+Lorentz representations with entailment constraints (Desai et al., 2023). HyCoCLIP incorporates
+object regions and grounded phrases through compositional contrastive and entailment learning (Pal
+et al., 2025). PHyCLIP uses an ℓ1 product of hyperbolic factors to model hierarchy and compo-
+sition (Yoshikawa & Matsubara, 2026). Wu et al. (Wu et al., 2026) align visual and textual trees
+across hyperbolic manifolds with different curvatures. ATMG addresses the tension between dis-
+tance alignment and entailment through an exterior angle contrastive objective (Ramasinghe et al.,
+2024). AURORA separates root angle alignment from radial ordering to preserve differences in
+specificity.
+Hierarchical representations and entailment regions. Hierarchical embeddings encode asymmet-
+ric relations through coordinatewise partial orders (Vendrov et al., 2016). Hyperbolic entailment
+cones define nested descendant regions (Ganea et al., 2018) and support concept hierarchy induction
+from text (Le et al., 2019). Shadow Cones (Yu et al., 2024) generalizes entailment regions through
+umbral and penumbral constructions based on geometric occlusion. ARGENT (Huynh et al., 2026)
+combines adaptive entailment supervision with norm regularization to stabilize hierarchical repre-
+sentations. AURORA defines descendant membership through relative radial separation and root
+angle difference, with contrastive supervision over matched and unmatched pairs.
+7
+CONCLUSION
+We introduced AURORA, a hyperbolic vision–language pretraining framework that separates an-
+gular semantic alignment from radial hierarchical ordering. Our analysis shows that distance min-
+imization can conflict with hierarchical separation, while semantic discrimination alone does not
+ensure valid entailment. AURORA combines angular alignment with the Radial–Angular Order
+Cone, which defines a partial order through radial gaps and angular differences. Hierarchical entail-
+ment contrastive training reinforces annotated relations and suppresses spurious entailment, while
+norm regularization stabilizes training. Experiments demonstrate improvements over competitive
+Euclidean and hyperbolic baselines across classification, retrieval, hierarchical classification, and
+9
+
+
+Preprint
+compositional understanding. Future work could discover richer hierarchical relations within and
+across image–text examples and explore how to learn from them with fewer explicit annotations.
+AI USE STATEMENT
+Generative AI tools were used for literature retrieval, language editing, LaTeX assistance, and dis-
+cussions of research ideas and experimental design. They were also used as a supporting tool during
+the verification and organization of mathematical derivations. All formulations, implementations,
+experiments, proofs, and scientific claims were developed, verified, and validated by the authors,
+who take full responsibility for the final content of this manuscript.
+REPRODUCIBILITY STATEMENT
+The main paper presents the objectives, methodology, and key experimental findings. Appendices F,
+H, and related supplementary sections provide implementation details, training configurations, eval-
+uation protocols, mathematical derivations, and computational settings. We will release code, con-
+figurations, data processing details, evaluation resources, and experiment outputs to facilitate repro-
+duction.
+REFERENCES
+Lukas Bossard, Matthieu Guillaumin, and Luc Van Gool. Food-101 – mining discriminative com-
+ponents with random forests. In Computer Vision – ECCV 2014, pp. 446–461. Springer, 2014.
+doi: 10.1007/978-3-319-10599-4_29.
+James W. Cannon, William J. Floyd, Richard Kenyon, and Walter R. Parry. Hyperbolic geom-
+etry.
+In Silvio Levy (ed.), Flavors of Geometry, volume 31 of Mathematical Sciences Re-
+search Institute Publications, pp. 59–115. Cambridge University Press, 1997. URL https:
+//library.slmath.org/books/Book31/files/cannon.pdf.
+Ines Chami, Albert Gu, Dat P. Nguyen, and Christopher Ré. HoroPCA: Hyperbolic dimensionality
+reduction via horospherical projections. In Proceedings of the 38th International Conference on
+Machine Learning, volume 139 of Proceedings of Machine Learning Research, pp. 1419–1429.
+PMLR, 2021.
+Gong Cheng, Junwei Han, and Xiaoqiang Lu. Remote sensing image scene classification: Bench-
+mark and state of the art. Proceedings of the IEEE, 105(10):1865–1883, 2017.
+Mircea Cimpoi, Subhransu Maji, Iasonas Kokkinos, Sammy Mohamed, and Andrea Vedaldi. De-
+scribing textures in the wild. In Proceedings of the IEEE Conference on Computer Vision and
+Pattern Recognition, pp. 3606–3613, 2014. doi: 10.1109/CVPR.2014.461.
+Adam Coates, Andrew Ng, and Honglak Lee. An analysis of single-layer networks in unsupervised
+feature learning. In Proceedings of the Fourteenth International Conference on Artificial Intel-
+ligence and Statistics, volume 15 of Proceedings of Machine Learning Research, pp. 215–223.
+PMLR, 2011. URL https://proceedings.mlr.press/v15/coates11a.html.
+Ofer Dekel,
+Joseph Keshet,
+and Yoram Singer.
+Large margin hierarchical classifica-
+tion.
+In Proceedings of the 21st International Conference on Machine Learning,
+2004.
+URL https://www.microsoft.com/en-us/research/publication/
+large-margin-hierarchical-classification/.
+Jia Deng, Wei Dong, Richard Socher, Li-Jia Li, Kai Li, and Li Fei-Fei. ImageNet: A large-scale
+hierarchical image database. In Proceedings of the IEEE Conference on Computer Vision and
+Pattern Recognition, pp. 248–255, 2009.
+Karan Desai, Maximilian Nickel, Tanmay Rajpurohit, Justin Johnson, and Shanmukha Ramakrishna
+Vedantam. Hyperbolic image-text representations. In Proceedings of the 40th International Con-
+ference on Machine Learning, volume 202 of Proceedings of Machine Learning Research, pp.
+7694–7731. PMLR, 2023.
+Alexey Dosovitskiy, Lucas Beyer, Alexander Kolesnikov, Dirk Weissenborn, Xiaohua Zhai, Thomas
+Unterthiner, Mostafa Dehghani, Matthias Minderer, Georg Heigold, Sylvain Gelly, Jakob Uszko-
+reit, and Neil Houlsby. An image is worth 16x16 words: Transformers for image recognition at
+scale. In International Conference on Learning Representations, 2021.
+10
+
+
+Preprint
+Li Fei-Fei, Rob Fergus, and Pietro Perona. Learning generative visual models from few training
+examples: An incremental bayesian approach tested on 101 object categories. In Proceedings of
+the IEEE Conference on Computer Vision and Pattern Recognition Workshops, pp. 178, 2004.
+doi: 10.1109/CVPR.2004.383.
+URL https://cs.stanford.edu/groups/vision/
+documents/Fei-FeiFergusPerona_GMBV04.pdf.
+Octavian-Eugen Ganea, Gary Bécigneul, and Thomas Hofmann.
+Hyperbolic entailment cones
+for learning hierarchical embeddings. In Proceedings of the 35th International Conference on
+Machine Learning, volume 80 of Proceedings of Machine Learning Research, pp. 1646–1655.
+PMLR, 2018.
+Patrick Helber, Benjamin Bischke, Andreas Dengel, and Damian Borth. EuroSAT: A novel dataset
+and deep learning benchmark for land use and land cover classification. IEEE Journal of Selected
+Topics in Applied Earth Observations and Remote Sensing, 12(7):2217–2226, 2019.
+Cheng-Yu Hsieh, Jieyu Zhang, Zixian Ma, Aniruddha Kembhavi, and Ranjay Krishna. SugarCrepe:
+Fixing hackable benchmarks for vision-language compositionality. In Advances in Neural Infor-
+mation Processing Systems, volume 36, 2023. doi: 10.52202/075280-1355.
+Chuong Huynh, Hossein Souri, Abhinav Kumar, Vitali Petsiuk, Deen Dayal Mohan, and
+Suren Kumar.
+ARGENT: Adaptive hierarchical image-text representations.
+arXiv preprint
+arXiv:2603.23311, 2026.
+Chao Jia, Yinfei Yang, Ye Xia, Yi-Ting Chen, Zarana Parekh, Hieu Pham, Quoc Le, Yun-Hsuan
+Sung, Zhen Li, and Tom Duerig. Scaling up visual and vision-language representation learning
+with noisy text supervision. In Proceedings of the 38th International Conference on Machine
+Learning, volume 139 of Proceedings of Machine Learning Research, pp. 4904–4916. PMLR,
+2021. URL https://proceedings.mlr.press/v139/jia21b.html.
+Valentin Khrulkov, Leyla Mirvakhabova, Evgeniya Ustinova, Ivan Oseledets, and Victor Lempitsky.
+Hyperbolic image embeddings. In Proceedings of the IEEE/CVF Conference on Computer Vision
+and Pattern Recognition, pp. 6418–6428, 2020.
+Hayeon Kim, Ji Ha Jang, Junghun James Kim, and Se Young Chun. Uncertainty-guided compo-
+sitional alignment with part-to-whole semantic representativeness in hyperbolic vision-language
+models. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recogni-
+tion, pp. 36861–36870, June 2026a.
+Hayeon Kim, Ji Ha Jang, Junghun James Kim, and Se Young Chun.
+UNCHA: Of-
+ficial
+code
+release.
+GitHub
+repository,
+2026b.
+URL
+https://github.com/
+jeeit17/UNCHA/tree/b9aa27d085ec901285189c08ca7a1296b750874d.
+Com-
+mit b9aa27d085ec901285189c08ca7a1296b750874d; accessed 2026-09-25.
+Jaeyoung Kim, Eunseok Kim, and Dongsuk Jang. Is the geometry doing the work? an operating-
+point audit of hierarchy in hyperbolic vision-language models. arXiv preprint arXiv:2607.05268,
+2026c.
+Aris Kosmopoulos, Ioannis Partalas, Eric Gaussier, Georgios Paliouras, and Ion Androutsopoulos.
+Evaluation measures for hierarchical classification: a unified view and novel approaches. Data
+Mining and Knowledge Discovery, 29(3):820–865, 2015. doi: 10.1007/s10618-014-0382-x.
+Jonathan Krause, Michael Stark, Jia Deng, and Li Fei-Fei. 3d object representations for fine-grained
+categorization. In Proceedings of the IEEE International Conference on Computer Vision Work-
+shops, pp. 554–561, 2013.
+Dmitri Krioukov, Fragkiskos Papadopoulos, Maksim Kitsak, Amin Vahdat, and Marián Boguñá.
+Hyperbolic geometry of complex networks. Physical Review E, 82(3):036106, 2010. doi: 10.
+1103/PhysRevE.82.036106.
+Alex Krizhevsky.
+Learning multiple layers of features from tiny images.
+Technical re-
+port, University of Toronto, 2009.
+URL https://www.cs.toronto.edu/~kriz/
+learning-features-2009-TR.pdf.
+11
+
+
+Preprint
+Matthew Le, Stephen Roller, Laetitia Papaxanthos, Douwe Kiela, and Maximilian Nickel. Infer-
+ring concept hierarchies from text corpora via hyperbolic embeddings. In Proceedings of the
+57th Annual Meeting of the Association for Computational Linguistics, pp. 3231–3241, Florence,
+Italy, July 2019. Association for Computational Linguistics. doi: 10.18653/v1/P19-1313. URL
+https://aclanthology.org/P19-1313/.
+Tsung-Yi Lin, Michael Maire, Serge Belongie, James Hays, Pietro Perona, Deva Ramanan, Piotr
+Dollár, and C. Lawrence Zitnick. Microsoft COCO: Common objects in context. In European
+Conference on Computer Vision, pp. 740–755, 2014.
+Ilya Loshchilov and Frank Hutter. SGDR: Stochastic gradient descent with warm restarts. In Inter-
+national Conference on Learning Representations, 2017.
+Ilya Loshchilov and Frank Hutter. Decoupled weight decay regularization. In International Confer-
+ence on Learning Representations, 2019.
+Subhransu Maji, Esa Rahtu, Juho Kannala, Matthew Blaschko, and Andrea Vedaldi. Fine-grained
+visual classification of aircraft. arXiv preprint arXiv:1306.5151, 2013.
+George A. Miller. WordNet: A Lexical Database for English. Communications of the ACM, 38(11):
+39–41, 1995. doi: 10.1145/219717.219748.
+Maximilian Nickel and Douwe Kiela. Poincaré embeddings for learning hierarchical representa-
+tions. In Advances in Neural Information Processing Systems, volume 30, pp. 6338–6347, 2017.
+Maximilian Nickel and Douwe Kiela.
+Learning continuous hierarchies in the lorentz model of
+hyperbolic geometry. In Proceedings of the 35th International Conference on Machine Learning,
+volume 80 of Proceedings of Machine Learning Research, pp. 3779–3788. PMLR, 2018.
+Maria-Elena Nilsback and Andrew Zisserman. Automated flower classification over a large number
+of classes. In Sixth Indian Conference on Computer Vision, Graphics & Image Processing, pp.
+722–729, 2008. doi: 10.1109/ICVGIP.2008.47. URL https://www.robots.ox.ac.uk/
+~vgg/publications/2008/Nilsback08/.
+Avik Pal, Max van Spengler, Guido Maria D’Amely di Melendugno, Alessandro Flaborea, Fabio
+Galasso, and Pascal Mettes. Compositional entailment learning for hyperbolic vision-language
+models. In The Thirteenth International Conference on Learning Representations, 2025.
+Omkar M. Parkhi, Andrea Vedaldi, Andrew Zisserman, and C. V. Jawahar. Cats and dogs. In
+Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition, pp. 3498–
+3505, 2012.
+Zhiliang Peng, Wenhui Wang, Li Dong, Yaru Hao, Shaohan Huang, Shuming Ma, Qixiang Ye,
+and Furu Wei. Grounding multimodal large language models to the world. In International
+Conference on Learning Representations, 2024.
+Alec Radford, Jong Wook Kim, Chris Hallacy, Aditya Ramesh, Gabriel Goh, Sandhini Agar-
+wal, Girish Sastry, Amanda Askell, Pamela Mishkin, Jack Clark, Gretchen Krueger, and Ilya
+Sutskever. Learning transferable visual models from natural language supervision. In Proceed-
+ings of the 38th International Conference on Machine Learning, volume 139 of Proceedings of
+Machine Learning Research, pp. 8748–8763. PMLR, 2021.
+Sameera Ramasinghe, Violetta Shevchenko, Gil Avraham, and Ajanthan Thalaiyasingam. Accept
+the modality gap: An exploration in the hyperbolic space. In Proceedings of the IEEE/CVF
+Conference on Computer Vision and Pattern Recognition, pp. 27263–27272, June 2024.
+John G. Ratcliffe. Foundations of Hyperbolic Manifolds, volume 149 of Graduate Texts in Mathe-
+matics. Springer, 1994. doi: 10.1007/978-1-4757-4013-4.
+Frederic Sala, Chris De Sa, Albert Gu, and Christopher Ré. Representation tradeoffs for hyper-
+bolic embeddings. In Proceedings of the 35th International Conference on Machine Learning,
+volume 80 of Proceedings of Machine Learning Research, pp. 4460–4469. PMLR, 2018.
+Rik Sarkar. Low distortion delaunay embedding of trees in hyperbolic plane. In Graph Drawing,
+volume 7034 of Lecture Notes in Computer Science, pp. 355–366. Springer, 2012. doi: 10.1007/
+978-3-642-25878-7_34.
+12
+
+
+Preprint
+Ivan Vendrov, Ryan Kiros, Sanja Fidler, and Raquel Urtasun. Order-embeddings of images and
+language. In International Conference on Learning Representations, 2016.
+Catherine Wah, Steve Branson, Peter Welinder, Pietro Perona, and Serge Belongie. The caltech-
+UCSD birds-200-2011 dataset. Technical Report CNS-TR-2011-001, California Institute of Tech-
+nology, 2011.
+Wei Wu, Xiaomeng Fan, Yuwei Wu, Zhi Gao, Pengxiang Li, Yunde Jia, and Mehrtash
+Harandi.
+Modality
+alignment
+across
+trees
+on
+heterogeneous
+hyperbolic
+manifolds.
+In
+The
+Fourteenth
+International
+Conference
+on
+Learning
+Representations,
+2026.
+URL
+https://proceedings.iclr.cc/paper_files/paper/2026/hash/
+1370f2bf31dc0ecaeac17042193a50a1-Abstract-Conference.html.
+Jianxiong Xiao, James Hays, Krista A. Ehinger, Aude Oliva, and Antonio Torralba. SUN database:
+Large-scale scene recognition from abbey to zoo. In Proceedings of the IEEE Conference on
+Computer Vision and Pattern Recognition, pp. 3485–3492, 2010.
+doi: 10.1109/CVPR.2010.
+5539970.
+Daiki Yoshikawa and Takashi Matsubara. PHyCLIP: ℓ1-product of hyperbolic factors unifies hier-
+archy and compositionality in vision-language representation learning. In The Fourteenth Inter-
+national Conference on Learning Representations, 2026.
+Peter Young, Alice Lai, Micah Hodosh, and Julia Hockenmaier. From image descriptions to visual
+denotations: New similarity metrics for semantic inference over event descriptions. Transactions
+of the Association for Computational Linguistics, 2:67–78, 2014. doi: 10.1162/tacl_a_00166.
+URL https://aclanthology.org/Q14-1006/.
+Tao Yu, Toni J. B. Liu, Albert Tseng, and Christopher De Sa. Shadow cones: A generalized frame-
+work for partial order embeddings. In The Twelfth International Conference on Learning Repre-
+sentations, 2024.
+Xiaohua Zhai, Basil Mustafa, Alexander Kolesnikov, and Lucas Beyer. Sigmoid loss for language
+image pre-training.
+In Proceedings of the IEEE/CVF International Conference on Computer
+Vision, pp. 11975–11986, 2023.
+Tiancheng Zhao, Tianqi Zhang, Mingwei Zhu, Haozhan Shen, Kyusong Lee, Xiaopeng Lu, and
+Jianwei Yin. An explainable toolbox for evaluating pre-trained vision-language models. In Pro-
+ceedings of the 2022 Conference on Empirical Methods in Natural Language Processing: System
+Demonstrations, pp. 30–37, Abu Dhabi, UAE, 2022. Association for Computational Linguistics.
+doi: 10.18653/v1/2022.emnlp-demos.4.
+Yiwu Zhong, Jianwei Yang, Pengchuan Zhang, Chunyuan Li, Noel Codella, Liunian Harold Li,
+Luowei Zhou, Xiyang Dai, Lu Yuan, Yin Li, and Jianfeng Gao. RegionCLIP: Region-based
+language-image pretraining. In Proceedings of the IEEE/CVF Conference on Computer Vision
+and Pattern Recognition, pp. 16793–16803, 2022.
+13
+
+
+Preprint
+A
+NOTATION AND EQUIVALENT GEOMETRIC VIEWS
+Table 5: Core notation used in the geometric analysis.
+Symbol
+Meaning
+Role
+c
+positive curvature magnitude; manifold curvature is −c
+learned global scalar
+˜x ∈Rd
+spatial component of a Lorentz point x
+Lorentz coordinate
+rx = ∥˜x∥
+Lorentz spatial norm
+radial regularization variable
+ρx = √c dc(O, x)
+scaled distance from the origin
+radial order coordinate
+ux = ˜x/∥˜x∥
+spatial direction of non-origin x
+angular coordinate
+wx = Φc(x)
+Poincaré coordinate of x
+equivalent coordinate view
+θxy = ∠xOy
+root angle
+directional difference
+g(p, q) = ρq −ρp
+parent–candidate radial gap
+radial precedence
+fβ(g) = min{π, βg}
+admissible angle for g ≥0
+RAOC aperture
+mr, ma
+bounded radial and angular margins
+optimization margins
+DRAOC = min{mr, ma}
+bounded entailment compatibility
+training score
+β
+radial-gap-to-angle slope
+order geometry
+σr
+radial margin scale
+score scaling
+ae, be
+entailment-logit scale and bias
+score calibration
+A.1
+RADIAL–ANGULAR COORDINATES AND ROOT-ANGLE IDENTITIES
+Throughout the appendix we use the radial–angular representation induced by the Lorentz origin.
+We write Lorentz vectors as x = [x0; ˜x] ∈Rd+1, where x0 ∈R and ˜x ∈Rd; the semicolon
+denotes vertical concatenation. For any non-origin x ∈Hd
+c, the manifold constraint together with
+ρx = √c dc(O, x) gives
+x = 1
+√c
+
+cosh ρx; sinh ρx ux
+
+,
+ux =
+˜x
+∥˜x∥∈Sd−1.
+(13)
+Equivalently,
+rx = sinh ρx
+√c
+,
+ρx = asinh(√c rx).
+(14)
+For the origin-exponential parameterization in Eq. (4), this simplifies to ρx = √c ∥zx∥and ux =
+zx/∥zx∥whenever zx̸ = 0d. Consequently, for non-origin x and y,
+cos θxy = u⊤
+x uy =
+˜x⊤˜y
+∥˜x∥∥˜y∥= cosh ρx cosh ρy −cosh δxy
+sinh ρx sinh ρy
+,
+δxy = √c dc(x, y).
+(15)
+The first equality gives the score used by AURORA, and the last follows directly from the hyperbolic
+cosine law. The resulting semantic score is invariant to radial position and varies with root direction.
+A.2
+POINCARÉ REALIZATION OF ROOT-ANGLE ALIGNMENT AND RAOC
+A natural question is how the same geometry appears when the embeddings are parameterized di-
+rectly in the Poincaré ball. For curvature −c,
+Bd
+c = {w ∈Rd : c∥w∥2 < 1},
+gB
+w =
+
+2
+1 −c∥w∥2
+2
+I.
+(16)
+The metric is conformal to the Euclidean metric, so Riemannian angles and Euclidean coordinate
+angles agree at each ball point (Nickel & Kiela, 2017; Ganea et al., 2018). The origin-preserving
+Lorentz–Poincaré isometry is
+Φc(x) =
+˜x
+√c x0 + 1.
+(17)
+Substituting Eq. (13) gives
+wx = Φc(x) = 1
+√c tanh
+ρx
+2
+
+ux,
+ρx = 2 artanh(√c ∥wx∥),
+wx
+∥wx∥= ux.
+(18)
+14
+
+
+Preprint
+Root-angle alignment. The root angle is the intrinsic angle between the two radial geodesics leav-
+ing the origin. The isometry Φc preserves this angle and maps the Lorentz origin O to the ball origin
+0. In the Poincaré ball, radial geodesics through 0 are Euclidean radial segments; conformality then
+identifies their intrinsic angle with the ordinary Euclidean polar angle. For corresponding non-origin
+points wx = Φc(x) and wy = Φc(y),
+θL
+xy = ∠L
+O(x, y) = ∠B
+0(wx, wy)
+= arccos
+
+w⊤
+x wy
+∥wx∥∥wy∥
+
+,
+(19)
+and therefore
+sL
+∠(x, y) =
+˜x⊤˜y
+∥˜x∥∥˜y∥=
+w⊤
+x wy
+∥wx∥∥wy∥= sB
+∠(wx, wy).
+(20)
+A Poincaré implementation can consequently optimize root-angle alignment with the Euclidean
+cosine between normalized ball coordinates. The Lorentz spatial-direction cosine and the Poincaré
+polar-angle cosine are two coordinate expressions of the same intrinsic root angle.
+RAOC in Poincaré coordinates. The isometry also preserves distance from the origin. Define the
+scaled Poincaré radial depth
+ρB(w) = √c dB,c(0, w) = 2 artanh(√c ∥w∥).
+(21)
+Then ρB(wx) = ρx, and Eq. (32) has the equivalent ball form
+q ∈Cβ(p)
+⇐⇒
+ρB(wq) −ρB(wp) ≥0,
+θB(wp, wq) ≤β
+
+ρB(wq) −ρB(wp)
+
+,
+(22)
+where θB is the Euclidean polar angle from Eq. (19). The order is therefore expressed by the same
+radial gap and the same direction-sphere angle in either hyperbolic model. The partial-order and
+descendant-set nesting results below carry directly to the Poincaré representation.
+For a fixed parent wp, Eq. (22) can also be written in the Euclidean ball radius:
+∥wq∥≥1
+√c tanh
+
+artanh(√c ∥wp∥) + θB(wp, wq)
+2β
+
+.
+(23)
+The linear RAOC boundary in (g, θ) coordinates thus appears as a curved radial–angular contour
+when expressed with the Euclidean ball radius. The angular coordinate remains the Euclidean polar
+angle, while radial order is measured by the intrinsic depth ρB.
+When an encoder feature is inserted through the origin exponential map, the tangent-coordinate
+conventions differ by a constant scale. Since gB
+0 = 4I,
+(dΦc)O([0; z]) = z/2,
+Φc(expc
+O([0; z])) = tanh(√c∥z∥/2)
+√c
+z
+∥z∥.
+(24)
+Thus the Lorentz tangent coordinate z and the Poincaré coordinate tangent vector z/2 parameter-
+ize the corresponding manifold point with the same normalized direction. Coordinate-wise opti-
+mization trajectories can vary with parameterization and optimizer choice. At the geometric level,
+corresponding manifold configurations receive identical root-angle scores and RAOC membership
+decisions under Φc.
+15
+
+
+Preprint
+B
+GEOMETRIC ANALYSIS OF ALIGNMENT AND ENTAILMENT
+B.1
+DISTANCE ALIGNMENT AND CONVENTIONAL CONE GEOMETRY
+Radial pressure from pairwise distance. Let δpq = √c dc(p, q). Starting from Eq. (5), fix ρp > 0
+and θpq, with p̸ = q and ρq ≥ρp. Differentiating with respect to ρq gives
+sinh δpq
+∂δpq
+∂ρq
+= cosh ρp cosh ρq (tanh ρq −tanh ρp cos θpq) .
+(25)
+The factor in parentheses can be decomposed as
+(tanh ρq −tanh ρp) + tanh ρp(1 −cos θpq).
+Both terms are nonnegative, and simultaneous equality would imply ρq = ρp and θpq = 0, hence
+p = q. Since δpq > 0, it follows that ∂δpq/∂ρq > 0. Holding the parent and both directions fixed,
+decreasing the outward child’s radius toward the parent’s therefore decreases their distance.
+Moreover, as their directions align,
+lim
+θpq→0 dc(p, q) = ρq −ρp
+√c
+,
+ρq > ρp.
+(26)
+Thus, even at zero angular separation, distance minimization continues to penalize the parent–child
+radial gap.
+Pairwise distance does not determine cone membership. Let CEC(p) denote an outward conven-
+tional Entailment Cone (EC) rooted at a non-origin parent p. Its half-aperture ω(p) specifies the
+maximum permitted angle from the outward continuation of the radial geodesic Op. For q̸ = p,
+let φ(p, q) be the angle at p between this outward direction and the geodesic from p to q. Then
+q ∈CEC(p) if and only if φ(p, q) ≤ω(p).
+Proposition 1 (Distance and cone membership). Suppose CEC(p) has half-aperture ω(p) ∈
+(0, π/2]. For distinct non-origin embeddings p and q:
+1. If ρp = ρq and θpq > 0, then φ(p, q) > π/2 and q /∈CEC(p), even though dc(p, q) →0 as
+θpq →0.
+2. If θpq = 0 and ρq > ρp, then φ(p, q) = 0 and q ∈CEC(p), while dc(p, q) = (ρq −ρp)/√c
+grows without bound as ρq increases.
+Proof. The hyperbolic cosine law at p gives
+cos φ(p, q) = cosh ρq −cosh ρp cosh δpq
+sinh ρp sinh δpq
+.
+(27)
+If ρp = ρq = ρ > 0 and θpq > 0, Eq. (5) gives
+cosh δpq = 1 + sinh2 ρ (1 −cos θpq) > 1.
+(28)
+The numerator of Eq. (27) is therefore negative and the denominator is positive, so φ(p, q) > π/2.
+Any outward cone with half-aperture in (0, π/2] excludes q, although dc(p, q) →0 as θpq ↓0.
+Conversely, if θpq = 0 and ρq > ρp, then p and q lie on the same outward radial geodesic. Hence
+δpq = ρq−ρp and φ(p, q) = 0. The point q remains inside the cone while dc(p, q) = (ρq−ρp)/√c
+can grow arbitrarily large.
+Proposition 1 shows that distance attraction does not guarantee cone membership, and distance re-
+pulsion does not guarantee exclusion. In particular, an unrelated candidate can move farther outward
+along the parent’s radial ray without leaving its descendant region. Positive-only entailment super-
+vision provides no direct penalty for this erroneous relation.
+16
+
+
+Preprint
+Why parent-radius apertures can lose selectivity. For conventional Lorentz entailment
+cones (Ganea et al., 2018; Desai et al., 2023), the half-aperture is
+ω(p) = arcsin
+
+2κ
+√c ∥˜p∥
+
+= arcsin
+
+2κ
+sinh ρp
+
+,
+κ > 0.
+(29)
+Here κ is a fixed constant controlling cone width, and the admissible domain is ρp ≥arsinh(2κ).
+Thus, sin ω(p) = 2κ/ sinh ρp, so directional selectivity is controlled by the absolute parent radius.
+As ρp decreases toward the admissible lower bound, ω(p) approaches π/2: the permitted directions
+fill the outward hemisphere, and the corresponding geodesic cone approaches an outward half-space.
+The same phenomenon is visible in Poincaré coordinates: from Eq. (18),
+sinh ρp = 2√c ∥wp∥
+1 −c∥wp∥2 ,
+(30)
+so the identical aperture becomes
+ω(wp) = arcsin
+
+κ 1 −c∥wp∥2
+√c ∥wp∥
+
+.
+(31)
+The absolute-depth coupling between cone width and parent position is therefore identical in the
+two coordinate models.
+This limiting behavior also appears at practical operating points. ARGENT identifies parent-norm
+contraction and half-space widening as a cone-collapse failure mode in hyperbolic VLM train-
+ing (Huynh et al., 2026). More recently, an operating-point audit of released MERU, HyCoCLIP,
+and PHyCLIP models reports regimes in which conventional cone or traversal mechanisms are sat-
+urated, inactive, or weakly aligned with the intended hierarchy (Kim et al., 2026c). These observa-
+tions motivate an order geometry whose angular selectivity is governed by the relative parent–child
+radial gap. RAOC couples this gap to root-angle separation, and contrastive entailment supplies
+supervision for matched and unmatched relations.
+C
+RAOC AS AN ORDER GEOMETRY
+RAOC assigns each non-origin parent p the descendant set
+Cβ(p) =
+
+q ∈Hd
+c \ {O} : ρq −ρp ≥θpq
+β
+
+.
+(32)
+This form gives a direct semantic interpretation. Consider the parent description “a dog” and the
+more specific description “a dog running on grass.” Their close directions allow a modest outward
+radial gap to encode the increase in specificity. An unrelated description such as “a rocket success-
+fully lifting off” typically forms a much larger root angle, which raises the radial depth required to
+enter the dog’s descendant region. Contrastive entailment supplies the semantic signal that separates
+these matched and unmatched relations. Once a parent–child relation is formed, the geometric rule
+composes consistently along deeper chains.
+Theorem 1 (RAOC partial order). For any fixed β > 0, define p ⪯β q if and only if q ∈Cβ(p).
+Then ⪯β is reflexive, antisymmetric, and transitive on Hd
+c \ {O}. Moreover,
+p ⪯β q
+⇐⇒
+Cβ(q) ⊆Cβ(p).
+(33)
+Proof. By definition,
+p ⪯β q
+⇐⇒
+ρq −ρp ≥θpq/β.
+(34)
+Reflexivity follows because both sides vanish for p = q.
+For antisymmetry, suppose p ⪯β q and q ⪯β p. Adding the two inequalities gives 0 ≥2θpq/β,
+hence θpq = 0. The two radial inequalities then force ρp = ρq. Equation (13) gives p = q.
+17
+
+
+Preprint
+For transitivity, suppose p ⪯β q and q ⪯β r. The spherical angle is a metric on the direction sphere,
+so
+θpr ≤θpq + θqr ≤β(ρq −ρp) + β(ρr −ρq) = β(ρr −ρp).
+(35)
+Hence p ⪯β r.
+Finally, if p ⪯β q, transitivity places every descendant of q inside Cβ(p), proving the forward
+implication in Eq. (33). Conversely, reflexivity gives q ∈Cβ(q); therefore Cβ(q) ⊆Cβ(p) implies
+q ∈Cβ(p). This proves the reverse implication.
+If p ⪯β q and p̸ = q, then the inclusion is strict. For example, if “a dog” precedes “a dog running
+on grass,” every representation that is a descendant of the latter is automatically a descendant of the
+former. This nested-region property expresses increasing specificity through a shared relative-gap
+rule across radial levels.
+C.1
+WHY THE CAPPED LINEAR APERTURE IS A NATURAL TRANSITIVE CHOICE
+More generally, consider the radial-gap aperture family
+p ⪯f q
+⇐⇒
+g(p, q) ≥0,
+θpq ≤f(g(p, q)),
+(36)
+where f : [0, ∞) →[0, π] and f(0) = 0. The next result characterizes exactly when such a
+construction is transitive over the full direction sphere.
+Theorem 2 (Transitive radial-gap apertures). Let d ≥2. The relation ⪯f above is transitive on
+Hd
+c \ {O} if and only if
+f(a + b) ≥min{π, f(a) + f(b)},
+a, b ≥0.
+(37)
+Proof. For sufficiency, let p ⪯f q and q ⪯f r, and set a = g(p, q) and b = g(q, r). Radial gaps
+add, while the spherical triangle inequality gives
+θpr ≤min{π, θpq + θqr} ≤min{π, f(a) + f(b)} ≤f(a + b).
+(38)
+Thus p ⪯f r.
+For necessity, fix a, b ≥0 and a base radius ρ0 > 0. Choose radii ρp = ρ0, ρq = ρ0 + a, and
+ρr = ρ0 + a + b. Since d ≥2, choose their directions on a common great circle with consecutive
+increments
+η1 = f(a),
+η2 = min{f(b), π −f(a)}.
+(39)
+Then p ⪯f q and q ⪯f r, while
+θpr = η1 + η2 = min{π, f(a) + f(b)}.
+(40)
+Transitivity therefore requires Eq. (37).
+Corollary 1 (Pointwise minimality at fixed local slope). Suppose ⪯f is transitive and
+lim
+g↓0
+f(g)
+g
+= β > 0.
+(41)
+Then
+f(g) ≥min{π, βg} = fβ(g)
+for all g ≥0.
+(42)
+Proof. For g > 0, repeated application of Eq. (37) gives f(g) ≥min{π, nf(g/n)} for every posi-
+tive integer n. Since nf(g/n) →βg, taking n →∞yields Eq. (42). The case g = 0 follows from
+f(0) = 0.
+The capped linear rule fβ(g) = min{π, βg} satisfies Eq. (37) with equality. At fixed local slope β,
+it is the pointwise tightest globally transitive aperture in this family. Equation (8) therefore selects
+the smallest descendant region compatible with the same local expansion rate and global transitivity.
+18
+
+
+Preprint
+C.2
+MULTIPLE PARENTS AND RADIAL DEPTH
+RAOC also gives a simple geometric interpretation of compositional constraints. For non-origin
+parents p1, . . . , pk and a fixed candidate direction u, simultaneous membership is equivalent to
+ρq ≥ρmin(u) = max
+i
+
+ρpi + θ(upi, u)
+β
+
+,
+θ(u, v) = arccos(u⊤v).
+(43)
+Thus each parent contributes a lower bound on the radial depth required along the chosen direction,
+and the strictest parent determines the feasible depth.
+For two parents with the same radius ρ and angular separation Θ, with d ≥2,
+min
+q∈Cβ(p1)∩Cβ(p2) ρq = ρ + Θ
+2β .
+(44)
+Indeed, the triangle inequality implies
+Θ ≤θ(up1, u) + θ(u, up2) ≤2 max
+i
+θ(upi, u),
+(45)
+which gives the lower bound, and the midpoint of a shortest spherical path between the two parent
+directions attains it.
+For a chain p0 ⪯β · · · ⪯β pk, summing the edge constraints yields
+k−1
+X
+i=0
+θpipi+1 ≤β(ρpk −ρp0).
+(46)
+The total radial depth therefore acts as a geometric budget for accumulated directional change along
+a hierarchy.
+C.3
+GEODESIC CONVEXITY VERSUS ORDER CONSISTENCY
+RAOC descendant regions can be non-convex along hyperbolic geodesics. A compact counterex-
+ample is obtained by fixing a parent direction up, choosing v ⊥up, and taking
+u± = cos a up ± sin a v,
+0 < a < π/2.
+(47)
+Place two descendants in these directions at a common radius R ≥ρp+π/β. Their Lorentz geodesic
+midpoint lies in direction up and has radius ρm satisfying
+tanh ρm = tanh R cos a.
+(48)
+For a sufficiently close to π/2, ρm < ρp, and the midpoint falls outside the descendant region.
+For hierarchical entailment, transitivity and nested descendant sets govern compositional consis-
+tency. Geodesic convexity controls the shape of the region along geodesics, while angular selectivity
+controls which directions are admitted at a given hierarchical depth. The conventional EC analysis
+above shows that a geodesically well-structured cone can still approach a broad half-space as the
+parent contracts, substantially weakening directional discrimination (Huynh et al., 2026; Kim et al.,
+2026c). RAOC makes this selectivity explicit through parent–child radial difference and root-angle
+separation.
+D
+OPTIMIZATION ANALYSIS
+D.1
+ABSOLUTE-DISTANCE CALIBRATION AND RADIAL PRESSURE
+Let ∆= dc(x, y) ≥0 be the unscaled geodesic distance and use the score s = −∆. With sigmoid
+logit ζ = b −a∆, a > 0, the positive- and negative-pair losses are
+ℓ+(∆) = log(1 + exp(a∆−b)),
+ℓ−(∆) = log(1 + exp(b −a∆)).
+(49)
+19
+
+
+Preprint
+Their derivatives are
+∂ℓ+
+∂∆= a σ(a∆−b) > 0,
+∂ℓ−
+∂∆= −a σ(b −a∆) < 0.
+(50)
+Thus every positive distance term favors a smaller absolute distance, whereas every negative term
+favors a larger one. Combined with Eq. (25), the positive term exerts inward radial pressure on the
+outward point under the fixed-direction conditions analyzed above.
+For comparison, row-wise InfoNCE with score −a∆is
+ℓNCE
+i
+= a∆ii + log
+X
+j
+exp(−a∆ij).
+(51)
+If
+Pij =
+exp(−a∆ij)
+P
+k exp(−a∆ik),
+(52)
+then
+∂ℓNCE
+i
+∂∆ii
+= a(1 −Pii),
+∂ℓNCE
+i
+∂∆ij
+= −aPij
+(j̸ = i).
+(53)
+InfoNCE therefore also attracts the positive pair. Pairwise sigmoid calibrates distance on an absolute
+scale, whereas row-wise InfoNCE normalizes it relative to the other candidates in the query row.
+Both retain the radial dependence induced by the distance score.
+D.2
+THE BOUNDED RAOC SCORE USED FOR TRAINING
+The geometric relation is Eq. (8); the bounded score in Eqs. (9)–(10) provides its optimization
+interface. Its sign matches geometric membership exactly:
+DRAOC(p, q) ≥0
+⇐⇒
+q ∈Cβ(p).
+(54)
+Indeed, mr ≥0 is equivalent to g ≥0, and on that domain ma ≥0 is equivalent to θpq ≤
+min{π, βg}. Clipping bounds the optimization score and preserves the zero-threshold RAOC mem-
+bership. The contrastive entailment loss uses this continuous score, and the order analysis above
+uses the corresponding exact relation.
+For negative gaps, the angular allowance is clipped to zero, while mr < 0 ensures a negative
+entailment score even when θpq = 0.
+E
+RELATION TO RECENT HYPERBOLIC VISION–LANGUAGE OBJECTIVES
+Exterior-angle alignment. ATMG (Ramasinghe et al., 2024) analyzes the tension between
+geodesic-proximity alignment and hierarchical organization and introduces an exterior-angle con-
+trastive objective. Its score reduces the dependence of semantic matching on absolute radial position.
+AURORA uses the common-origin root angle, whose Lorentz and Poincaré realizations are given in
+Eq. (20); RAOC then carries the radial structure required for hierarchical ordering.
+Parent-dependent entailment cones. MERU and HyCoCLIP employ EC descendant regions
+whose aperture varies with the parent norm, while PHyCLIP applies hierarchy constraints in a factor-
+ized hyperbolic representation (Desai et al., 2023; Pal et al., 2025; Yoshikawa & Matsubara, 2026).
+Section B.1 shows how the EC aperture broadens as the parent approaches its admissible inner ra-
+dius. ARGENT (Huynh et al., 2026) addresses this training regime with adaptive exterior-angle
+supervision and radial stabilization, and a later operating-point audit reports saturation or weak
+activation of conventional cone/traversal mechanisms in several released hyperbolic VLM check-
+points (Kim et al., 2026c). RAOC parameterizes descendant selectivity directly through the relative
+radial gap and root angle; the resulting relation admits the transitivity and descendant-set nesting
+guarantees in Theorem 1.
+Uncertainty-guided compositional alignment. UNCHA is a concurrent 2026 method that models
+part-to-whole semantic representativeness through a norm-derived uncertainty signal (Kim et al.,
+2026a).
+The uncertainty weights its Lorentz-distance contrastive alignment and calibrates an
+20
+
+
+Preprint
+entropy-regularized entailment term. Its entailment branch is formulated around observed part–
+whole relations, whereas AURORA assigns entailment labels to both matched and unmatched
+parent–candidate pairs. The two methods therefore organize compositional supervision differently:
+UNCHA modulates distance-based alignment according to part representativeness, and AURORA
+separates semantic matching into root-angle alignment while learning radial order through con-
+trastive RAOC supervision.
+During our reproduction, we found that the public uncha/data/webdataset_mapper.py
+contains the same evaluation-dataset implementation as uncha/data/evaluation.py, leav-
+ing the training WebDataset mapper implementation absent from the released code path (Kim et al.,
+2026b). We reconstructed the mapper from the data pipeline described in the paper and the sur-
+rounding training interfaces. Since the resulting implementation did not consistently reproduce the
+reported trends across repeated runs, we exclude reproduced UNCHA numbers from the controlled
+comparison tables to avoid comparisons based on an implementation whose fidelity could not be
+fully verified.
+F
+IMPLEMENTATION DETAILS
+Model architecture. The text branch uses the CLIP Transformer configuration with 12 layers, hid-
+den width 512, maximum sequence length 77, and vocabulary size 49,408 (Radford et al., 2021).
+The visual branch uses ViT-S/16 for the principal experiments and ViT-B/16 for the larger-backbone
+comparison, with 16 × 16 image patches (Dosovitskiy et al., 2021). Images are resized with border
+padding and random-resized cropping to 224 × 224; the crop scale is sampled from [0.5, 1.0]. This
+yields a 14 × 14 patch grid (196 image tokens), to which fixed two-dimensional sine–cosine posi-
+tional embeddings are added. Full images and object crops share the visual encoder, while captions
+and object phrases share the text encoder.
+Training data and hyperbolic parameterization. We use the recoverable subset of GRIT (Peng
+et al., 2024), containing 10.3M valid image–caption pairs and 17.8M grounded box–phrase annota-
+tions after local recovery and validation. All four representation types (I, T, Ib, T b) are projected
+to the same d-dimensional Lorentz space. The shared curvature magnitude c is learned globally,
+initialized at 1.0, and constrained to [0.1, 10]. The principal ViT-S/16 configuration uses
+λe = 0.15,
+λn = 0.05,
+β = 8,
+σr = 0.1.
+(55)
+The parameter β determines the geometric expansion rate of RAOC and is therefore part of the
+order definition. The parameter σr sets the scale of the bounded radial optimization margin while
+preserving zero-threshold membership. We use the norm regularizer defined in Sec. 4.4 to penalize
+both very small and excessively large spatial norms, stabilizing training and maintaining a usable
+radial range for hierarchical organization.
+Optimizer, schedule, and hardware. All principal runs use four NVIDIA A40 48GB GPUs, a
+global batch size of 768, and 500k optimization steps. We use AdamW (Loshchilov & Hutter,
+2019) with β1 = 0.9, β2 = 0.98, and weight decay 0.2; weight decay is disabled for learned scalar
+parameters. The learning rate is linearly warmed up for the first 4k steps to a maximum of 5 × 10−4
+and then follows cosine decay (Loshchilov & Hutter, 2017). We keep these settings fixed across all
+principal AURORA runs and downstream benchmarks.
+Training efficiency. We profile ViT-S/16 training under the common setup of four NVIDIA A40
+48GB GPUs, global batch size 768, and 500k optimization steps. HyCoCLIP and PHyCLIP are
+reproduced using their original source code without implementation changes. Our implementation
+streamlines the training computation branches and eliminates redundant matrix computations, while
+keeping all other training settings the same. The efficiency comparison therefore reflects these im-
+plementation optimizations as well as differences in the training objectives.
+Table 6 reports the mean peak memory and end-to-end training time over three runs with randomly
+selected seeds. AURORA uses 13.8GB per GPU and completes training in 77.51 hours, compared
+with 39.4GB and 91.8 hours for HyCoCLIP and 40.9GB and 93.4 hours for PHyCLIP. This corre-
+sponds to about 65–66% lower peak VRAM and 16–17% shorter training time under the matched
+environment. The AURORA-InfoNCE variant remains below both hyperbolic baselines at 21.2GB
+per GPU and 80.83 hours. Together with the stronger downstream results in Sec. 5.2, these mea-
+21
+
+
+Preprint
+surements give AURORA a favorable accuracy–efficiency profile under the shared hardware and
+schedule.
+Table 6: ViT-S/16 training efficiency in the common four-A40 environment. Values are means over
+three runs with randomly selected seeds.
+Model
+GPUs
+Peak VRAM/GPU (GB)
+Train time (h)
+HyCoCLIP
+4×A40
+39.4
+91.80
+PHyCLIP
+4×A40
+40.9
+93.40
+AURORA-InfoNCE
+4×A40
+21.2
+80.83
+AURORA
+4×A40
+13.8
+77.51
+G
+COMPLETE EXPERIMENTAL TABLES
+We report complete results for ViT-S/16 and ViT-B/16, extending the comparisons in the main text
+to both model sizes.
+Zero-shot image classification. Table 7 shows that AURORA achieves the highest accuracy on 13
+of the 16 datasets with both backbones. Its advantages span general, fine-grained, and specialized
+recognition, with particularly clear gains on ImageNet, Caltech-101, Pets, and Flowers. Moving
+from ViT-S/16 to ViT-B/16 improves AURORA on every dataset while preserving its overall ranking
+relative to the baselines. The results therefore extend the classification gains observed in the main
+text to the larger backbone.
+Table 7: Complete zero-shot image classification comparison for ViT-S/16 and ViT-B/16. Top-1
+accuracy (%). ViT-S/16 and ViT-B/16 best results are shown in bold and second-best results are
+underlined.
+General datasets
+Fine-grained datasets
+Specialized datasets
+Backbone Model
+w/ boxes
+ImageNet
+CIFAR-10
+CIFAR-100
+SUN397
+Caltech-101
+STL-10
+Food-101
+CUB
+Cars
+Aircraft
+Pets
+Flowers
+DTD
+EuroSAT
+RESISC45
+Country211
+ViT
+S/16
+CLIP
+✗
+32.66 74.19 42.22 42.91 69.80 90.09 42.72 12.55
+3.93 2.06 43.22 18.03 17.57 25.47 33.64 3.88
+CLIP
+✓32.49 73.69 42.15 42.66 70.07 89.83 42.50 12.48
+4.01 2.10 43.28 17.79 17.61 26.04 33.37 3.84
+SigLIP
+✗
+34.30 66.57 38.38 44.73 71.42 91.75 38.98 13.33
+4.89 2.13 46.65 23.17 18.40 32.63 35.42 4.15
+SigLIP
+✓34.34 67.07 38.50 44.82 71.55 91.82 39.27 13.33
+4.92 2.24 46.56 23.03 18.36 31.42 35.37 4.23
+MERU
+✗
+31.74 76.08 41.24 41.28 67.76 87.24 41.09 11.97
+3.80 2.88 42.53 16.75 17.46 27.75 33.88 3.82
+MERU
+✓32.01 76.55 41.35 41.21 67.64 87.30 41.24 12.08
+3.78 2.95 42.54 16.57 17.52 27.53 33.82 3.83
+ATMG
+✗
+33.74 77.21 43.28 43.15 68.08 90.84 44.01 13.27
+4.38 1.75 42.53 15.70 17.89 28.69 35.75 4.21
+HyCoCLIP ✓36.38 83.28 47.91 47.88 71.53 93.16 46.73 15.33
+5.98 2.45 45.59 20.89 19.47 26.00 38.73 4.09
+PHyCLIP
+✓37.06 83.44 48.41 48.88 71.82 93.06 47.26 16.29
+6.58 2.57 46.44 21.46 19.13 25.81 39.79 3.95
+ARGENT
+✓37.55 83.55 48.62 49.29 72.15 94.01 47.70 16.90
+6.81 2.48 47.10 21.65 19.67 26.32 40.46 4.19
+AURORA
+✓41.54 84.25 51.20 50.27 75.81 93.19 50.13 17.71
+8.91 1.80 51.41 28.99 22.87 30.18 41.09 4.70
+ViT
+B/16
+CLIP
+✗
+36.28 78.42 48.72 46.88 72.54 92.51 47.18 13.92
+5.72 4.12 46.82 22.31 18.62 28.73 36.18 5.02
+SigLIP
+✗
+38.62 74.01 47.34 49.82 75.11 94.18 43.82 15.28
+7.12 4.30 51.62 29.18 19.96 36.91 38.41 5.43
+MERU
+✗
+35.41 79.62 47.91 45.54 70.38 90.21 45.46 13.61
+5.38 5.51 46.34 20.74 18.41 31.02 36.37 4.86
+ATMG
+✗
+37.83 80.92 50.22 47.56 71.32 93.36 48.44 15.14
+6.21 3.58 46.77 19.42 19.02 32.48 38.32 5.34
+HyCoCLIP ✓40.51 87.61 55.71 52.63 74.82 95.47 51.82 17.43
+8.42 4.78 50.11 25.04 20.62 29.66 41.61 5.28
+PHyCLIP
+✓41.63 87.86 56.44 53.91 75.19 95.81 52.74 18.21
+9.31 5.18 50.94 26.41 20.39 29.21 42.72 5.19
+ARGENT
+✓42.31 88.02 57.03 54.37 75.62 96.46 53.42 18.96
+9.88 4.96 51.83 27.46 21.11 29.83 43.67 5.57
+AURORA
+✓46.43 88.57 59.83 55.51 79.12 95.96 55.71 19.94 12.70 3.54 56.42 34.46 24.47 33.86 44.22 6.09
+Image–text retrieval and hierarchical classification. As shown in Table 8, AURORA leads all re-
+ported retrieval and hierarchical classification metrics with both backbones. The retrieval advantage
+holds in both directions on COCO and Flickr30K, at Recall@5 and Recall@10. With ViT-B/16,
+AURORA further improves retrieval performance and reduces hierarchical errors, accompanied by
+higher Jaccard similarity, hierarchical precision, and hierarchical recall. Thus, stronger semantic
+matching and closer agreement with the WordNet hierarchy are observed at both model sizes.
+22
+
+
+Preprint
+Table 8: Complete zero-shot retrieval and hierarchical classification comparison for ViT-S/16
+and ViT-B/16. Retrieval results are Recall@5/10 (%). Hierarchical metrics are rounded to two
+decimal places for display; best and second-best markings follow the underlying values.
+Text →Image
+Image →Text
+Hierarchical Classification
+Backbone Model
+w/ boxes
+COCO
+Flickr
+COCO
+Flickr
+WordNet
+R@5
+R@10
+R@5
+R@10
+R@5
+R@10
+R@5
+R@10 TIE↓LCA↓J ↑PH ↑RH ↑
+ViT
+S/16
+CLIP
+✗
+50.31
+61.52
+76.98
+84.48
+65.75
+76.15
+87.10
+93.00
+4.43
+2.51
+0.72
+0.79
+0.80
+CLIP
+✓
+50.27
+61.47
+76.75
+84.42
+65.49
+76.08
+87.20
+93.17
+4.42
+2.50
+0.72
+0.78
+0.80
+SigLIP
+✗
+52.32
+63.90
+77.54
+85.24
+65.98
+76.78
+88.60
+93.23
+4.22
+2.47
+0.75
+0.83
+0.82
+SigLIP
+✓
+52.27
+63.81
+77.21
+84.09
+66.03
+76.84
+88.60
+93.40
+4.23
+2.47
+0.74
+0.83
+0.83
+MERU
+✗
+49.79
+61.14
+76.03
+84.34
+65.01
+75.67
+86.80
+92.77
+4.44
+2.52
+0.71
+0.78
+0.79
+MERU
+✓
+49.63
+61.08
+76.13
+84.21
+65.16
+75.74
+86.93
+92.77
+4.44
+2.51
+0.71
+0.78
+0.78
+ATMG
+✗
+50.95
+62.36
+77.21
+84.74
+64.96
+75.81
+87.10
+93.17
+4.37
+2.48
+0.73
+0.82
+0.81
+HyCoCLIP
+✓
+51.35
+63.13
+77.92
+85.52
+64.84
+75.78
+87.30
+93.23
+3.97
+2.33
+0.76
+0.84
+0.84
+PHyCLIP
+✓
+52.24
+64.08
+78.26
+85.84
+65.65
+76.21
+87.20
+93.17
+3.92
+2.31
+0.76
+0.84
+0.84
+ARGENT
+✓
+52.68
+64.46
+78.59
+86.18
+65.75
+76.46
+87.50
+93.23
+3.91
+2.30
+0.77
+0.84
+0.84
+AURORA
+✓
+55.77
+66.81
+81.02
+88.18
+69.42
+79.18
+89.90
+95.13
+3.62
+2.25
+0.78
+0.85
+0.85
+ViT
+B/16
+CLIP
+✗
+53.08
+64.36
+79.73
+86.63
+68.32
+78.56
+89.63
+94.16
+3.88
+2.34
+0.77
+0.83
+0.84
+SigLIP
+✗
+54.62
+65.92
+80.42
+87.31
+69.15
+79.36
+92.03
+95.63
+3.69
+2.29
+0.78
+0.84
+0.85
+MERU
+✗
+52.71
+63.98
+79.10
+86.18
+67.69
+77.83
+88.97
+93.91
+3.97
+2.36
+0.76
+0.83
+0.83
+ATMG
+✗
+53.94
+65.14
+80.09
+86.82
+68.47
+78.54
+89.88
+94.37
+3.80
+2.31
+0.77
+0.84
+0.84
+HyCoCLIP
+✓
+55.12
+66.41
+81.30
+87.78
+69.84
+79.72
+90.63
+94.93
+3.48
+2.16
+0.79
+0.85
+0.85
+PHyCLIP
+✓
+55.83
+67.07
+82.03
+88.31
+70.72
+80.61
+90.72
+95.12
+3.40
+2.14
+0.80
+0.86
+0.86
+ARGENT
+✓
+56.52
+67.86
+82.74
+88.87
+71.36
+81.23
+91.48
+95.40
+3.34
+2.12
+0.80
+0.86
+0.86
+AURORA
+✓
+59.41
+70.10
+85.60
+90.70
+73.82
+83.18
+92.50
+96.30
+3.18
+2.07
+0.81
+0.87
+0.87
+Compositional understanding. Table 9 shows a consistent pattern across both backbones: AU-
+RORA leads on nine of the fourteen measures, including the overall SugarCrepe score. On VL-
+CheckList-Object, it performs best for objects in central and intermediate locations and for medium
+and small objects. On SugarCrepe, its strengths lie in replacing and adding objects or attributes,
+while relation replacement and swapping remain more challenging. These trends persist with ViT-
+B/16, indicating that the compositional benefits extend to the larger model.
+Table 9: Complete hard-negative compositional evaluation for ViT-S/16 and ViT-B/16.
+VL-CheckList-Object
+SugarCrepe
+Backbone Model
+w/ boxes
+Location
+Size
+Replace
+Swap
+Add
+Center
+Mid
+Margin Large Medium Small
+Obj
+Att
+Rel
+Obj
+Att
+Obj
+Att
+Overall
+ViT
+S/16
+CLIP
+✗
+85.10
+79.35
+71.22
+84.48
+74.61
+65.72 86.74 78.00 69.04 59.49 65.27 77.53 70.76
+75.71
+CLIP
+✓
+85.24
+78.41
+70.55
+85.32
+75.02
+64.67 85.94 77.45 69.94 59.89 64.41 77.90 70.76
+75.69
+SigLIP
+✗
+89.33
+83.04
+74.91
+88.30
+78.50
+68.82 87.35 78.55 69.49 60.82 65.77 78.08 71.10
+76.26
+SigLIP
+✓
+89.83
+83.03
+74.50
+88.13
+78.13
+69.47 87.01 78.43 69.18 61.38 66.67 78.03 70.28
+76.12
+MERU
+✗
+82.07
+76.10
+67.93
+81.47
+71.50
+62.40 86.40 77.58 68.73 58.94 64.96 77.17 70.33
+75.35
+MERU
+✓
+82.90
+75.40
+68.40
+81.33
+71.73
+62.40 87.09 77.03 69.11 58.81 65.17 77.19 70.47
+75.55
+ATMG
+✗
+84.07
+78.40
+69.83
+83.53
+73.60
+64.53 87.11 78.34 69.35 60.16 65.62 77.98 71.15
+76.10
+HyCoCLIP
+✓
+90.80
+86.75
+79.95
+90.52
+82.73
+74.23 87.23 78.81 66.64 60.41 64.86 79.44 69.08
+75.82
+PHyCLIP
+✓
+91.40
+87.14
+80.42
+90.97
+83.06
+74.79 88.40 80.25 67.33 59.76 65.22 79.89 71.48
+76.71
+ARGENT
+✓
+91.87
+87.73
+81.10
+91.33
+84.07
+75.60 88.92 80.88 67.71 59.89 65.32 80.00 72.59
+77.11
+AURORA
+✓
+91.93
+87.80
+80.77
+91.30
+84.69
+76.53 89.77 81.85 68.42 60.00 65.47 80.16 74.27
+77.75
+ViT
+B/16
+CLIP
+✗
+86.18
+80.72
+72.64
+85.52
+76.15
+67.43 88.00 78.72 70.11 59.81 65.54 80.63 72.52
+77.31
+SigLIP
+✗
+90.30
+84.35
+76.24
+89.13
+79.79
+70.32 88.75 79.35 70.68 61.11 66.03 81.44 73.12
+78.02
+MERU
+✗
+84.28
+78.29
+70.22
+83.27
+74.02
+65.19 87.55 78.20 69.78 59.28 65.24 80.16 72.10
+76.89
+ATMG
+✗
+86.01
+80.70
+72.45
+85.37
+76.10
+67.10 88.41 79.03 70.50 60.47 65.91 81.16 73.07
+77.76
+HyCoCLIP
+✓
+91.88
+88.12
+81.47
+91.54
+84.29
+75.95 88.52 79.50 67.81 60.72 65.15 82.54 71.00
+77.46
+PHyCLIP
+✓
+92.45
+88.53
+82.02
+91.93
+84.62
+76.56 89.67 80.93 68.50 60.07 65.50 83.04 73.43
+78.36
+ARGENT
+✓
+92.78
+89.17
+82.63
+92.45
+85.55
+77.22 90.26 81.57 68.90 60.21 65.62 83.38 74.54
+78.85
+AURORA
+✓
+93.01
+89.30
+82.42
+92.31
+86.25
+78.38 91.10 82.49 69.84 60.41 65.77 83.95 76.59
+79.67
+23
+
+
+Preprint
+H
+EVALUATION PROTOCOLS
+H.1
+ZERO-SHOT IMAGE CLASSIFICATION
+We evaluate the same 16 classification datasets for every checkpoint: ImageNet (Deng et al.,
+2009), CIFAR-10 (Krizhevsky, 2009), CIFAR-100 (Krizhevsky, 2009), SUN397 (Xiao et al., 2010),
+Caltech-101 (Fei-Fei et al., 2004), STL-10 (Coates et al., 2011), Food-101 (Bossard et al., 2014),
+CUB-200-2011 (Wah et al., 2011), Stanford Cars (Krause et al., 2013), FGVC Aircraft (Maji et al.,
+2013), Oxford-IIIT Pets (Parkhi et al., 2012), Oxford Flowers-102 (Nilsback & Zisserman, 2008),
+DTD (Cimpoi et al., 2014), EuroSAT (Helber et al., 2019), RESISC45 (Cheng et al., 2017), and
+Country211 (Radford et al., 2021). For a given dataset, all models use the same class vocabulary
+and prompt templates. AURORA scores image embeddings against text prototypes using s∠; each
+baseline is evaluated with the similarity function native to that model. We report top-1 accuracy.
+H.2
+IMAGE–TEXT RETRIEVAL
+Bidirectional retrieval is evaluated on the COCO validation set (Lin et al., 2014) and the Flickr30K
+test set (Young et al., 2014). In text-to-image retrieval, each caption queries the image collection;
+in image-to-text retrieval, each image queries the caption collection. We report Recall@5 and Re-
+call@10 in both directions, matching the columns in the main and appendix tables. AURORA ranks
+candidates by root-angle similarity, while each baseline retains its native released retrieval score.
+H.3
+HIERARCHICAL CLASSIFICATION ON WORDNET
+We evaluate whether zero-shot ImageNet predictions remain close to the ground-truth category in
+the WordNet hierarchy (Deng et al., 2009; Miller, 1995). Let ˆy and y denote the predicted and true
+synsets. Tree-Induced Error (TIE) measures the shortest hierarchical path cost between them (Dekel
+et al., 2004):
+TIE(ˆy, y) =
+X
+e∈P (ˆy,y)
+we,
+(56)
+where all WordNet edge weights are set to we = 1. Let a⋆be the deepest common ancestor of ˆy and
+y. Following the hierarchical-classification protocol used by the compared hyperbolic VLMs (Pal
+et al., 2025; Yoshikawa & Matsubara, 2026), the LCA error is the larger of the two distances from
+the labels to this common ancestor,
+LCA(ˆy, y) = max{dG(ˆy, a⋆), dG(y, a⋆)} .
+(57)
+Lower TIE and LCA indicate hierarchically closer errors.
+For set-based measures, let bYanc and Yanc be the ancestor sets of ˆy and y. We report Jaccard simi-
+larity, hierarchical precision, and hierarchical recall (Kosmopoulos et al., 2015):
+J = |bYanc ∩Yanc|
+|bYanc ∪Yanc|
+,
+PH = |bYanc ∩Yanc|
+|bYanc|
+,
+RH = |bYanc ∩Yanc|
+|Yanc|
+.
+(58)
+Higher J, PH, and RH indicate better agreement with the reference taxonomy.
+H.4
+VL-CHECKLIST–OBJECT
+VL-CheckList (Zhao et al., 2022) constructs controlled image–text tests by modifying a caption
+while keeping the image fixed. We use the object subset (VL-CO), in which an object noun phrase
+is replaced to create an incorrect alternative. Results are grouped by the scale and image location of
+the referenced object.
+For object scale, let A denote the bounding-box area. The three groups are
+O-Small : A < 322,
+O-Medium : 322 ≤A ≤962,
+O-Large : A > 962.
+(59)
+24
+
+
+Preprint
+For location, let x be the image half-diagonal and y the Euclidean distance between the object-box
+center and the image center. The groups are
+O-Center : y
+x ≤1
+3,
+O-Mid : 1
+3 < y
+x ≤2
+3,
+O-Margin : y
+x > 2
+3.
+(60)
+For each subset, accuracy is the fraction of cases in which the model assigns the correct image–text
+pair a higher compatibility score than the corrupted alternative.
+H.5
+SUGARCREPE
+SugarCrepe (Hsieh et al., 2023) evaluates image-to-text compositional discrimination using flu-
+ent hard-negative captions.
+We report the seven released perturbation categories: REPLACE-
+OBJECT, REPLACE-ATTRIBUTE, REPLACE-RELATION, SWAP-OBJECT, SWAP-ATTRIBUTE,
+ADD-OBJECT, and ADD-ATTRIBUTE. Each example asks the model to prefer the original cap-
+tion over its hard negative; the overall score is the mean over the reported categories.
+I
+ADDITIONAL HIERARCHY VISUALIZATIONS
+We provide additional visualizations of AURORA ViT-S with and without RAOC to examine se-
+mantic alignment and hierarchical organization together. Each scatter plot shows the root angle θ to
+a fixed query and the radial gap g between modalities. Smaller root angles indicate stronger seman-
+tic alignment. Dashed lines connect concepts or image regions according to the displayed hierarchy,
+allowing their radial order to be inspected alongside their similarity to the query. Orange squares
+denote related alternatives, and green crosses denote unrelated controls. The original axis ranges are
+retained for each model.
+I.1
+IMAGE TO TEXT
+Figures 6 and 7 compare ten image queries. Each row shows the same example with RAOC on the
+left and without RAOC on the right. Blue circles trace the semantic path from a broad category to
+the query class. With RAOC, these paths consistently move toward smaller radial gaps and smaller
+root angles as the concepts become more specific. Without RAOC, the query class can still have
+a small root angle, while the radial sequence reverses in examples such as electric guitar, leopard,
+monarch, and zebra. The piano, laptop, and desk examples retain an ordered path in both variants.
+Together, these comparisons support the role of RAOC in making hierarchical order more consistent
+while preserving semantic alignment.
+I.2
+TEXT TO IMAGE
+Figures 8–12 compare five text queries: shoes, eggplant, earphone, chair, and bread. Each figure
+places the model with RAOC above the model without RAOC. The image region hierarchy on the
+right provides the same reference structure for both models, and the colored dashed links identify its
+two branches in the scatter plot. With RAOC, the branch containing the queried object follows an
+increasing radial gap and a decreasing root angle from the full image through the intermediate region
+to the object crop. Without RAOC, angular alignment often remains, but the radial progression can
+reverse or the intermediate region can be less aligned than the full image. These examples provide
+qualitative evidence that RAOC couples semantic alignment with the radial organization associated
+with hierarchical partial order.
+25
+
+
+Preprint
+Figure 6: Image to text hierarchy comparisons for five object queries. Rows show electric guitar,
+flamingo, grand piano, ladybug, and laptop. The left column uses RAOC, and the right column omits
+it. Dashed blue lines trace the query’s semantic path, while gray lines show related branches. RAOC
+preserves the angular preference for the query class and gives a consistent radial progression along
+each path. The radial reversals for electric guitar and ladybug without RAOC illustrate why angular
+alignment alone does not ensure hierarchical order.
+26
+
+
+Preprint
+Figure 7: Image to text hierarchy comparisons for five further queries. Rows show leopard, lion,
+monarch, zebra, and desk, with RAOC on the left and without RAOC on the right. RAOC places the
+displayed semantic paths in a consistent radial order. Without RAOC, the animal examples exhibit
+reversals between successive concepts even when the query class remains well aligned. The desk
+path is ordered in both variants, showing that the effect concerns consistency across examples rather
+than the absence of all hierarchy without RAOC.
+27
+
+
+Preprint
+Figure 8: Text to image hierarchy for the query “shoes.” AURORA ViT-S with RAOC is shown
+above the variant without RAOC. With RAOC, the full image, shoes and tennis ball region, and
+shoes crop follow a consistent radial progression as their root angles decrease. Without RAOC, the
+shoes crop remains the most aligned region, but the final step reverses the radial direction. The
+region tree provides the common reference hierarchy.
+28
+
+
+Preprint
+Figure 9: Text to image hierarchy for the query “eggplant.” The top panel uses RAOC, and the
+bottom panel omits it. Both models assign the eggplant crop a smaller root angle than the full image.
+RAOC also places the full image, eggplant and pumpkin region, and eggplant crop in the expected
+radial order. Without RAOC, this branch progresses in the opposite radial direction despite retaining
+its angular preference for eggplant.
+29
+
+
+Preprint
+Figure 10: Text to image hierarchy for the query “earphone.” The top and bottom panels show the
+models with and without RAOC, respectively. With RAOC, the full image, earphone and cup region,
+and earphone crop combine progressively smaller root angles with increasing radial gaps. Without
+RAOC, the same angular trend is present, but the radial sequence is reversed. The comparison
+separates semantic alignment from the hierarchical ordering encouraged by RAOC.
+30
+
+
+Preprint
+Figure 11: Text to image hierarchy for the query “chair.” RAOC is used in the top panel and
+omitted in the bottom panel. Both variants retain radial progression along the full image, vase and
+chair region, and chair crop. With RAOC, their root angles also decrease consistently. Without
+RAOC, the intermediate region has a larger root angle than the full image, revealing less consistent
+angular organization along this branch.
+31
+
+
+Preprint
+Figure 12: Text to image hierarchy for the query “bread.” The model with RAOC appears above
+the model without RAOC. With RAOC, the full image, bread and grape region, and bread crop form
+a consistent sequence in both radial gap and root angle. Without RAOC, the bread and grape region
+has a slightly smaller root angle than the bread crop, and the final transition reverses the radial
+direction. RAOC yields clearer organization along the branch containing the queried object.
+32
+
+
+Preprint
+J
+HYPERPARAMETER SENSITIVITY
+We examine the sensitivity of AURORA to four geometric and optimization parameters: the RAOC
+angular allowance β, the entailment weight λe, the norm regularization weight λn, and the radial
+margin scale σr. Each experiment varies one parameter while keeping the others fixed at the default
+configuration: β = 8, λe = 0.15, λn = 0.05, and σr = 0.1. We use ViT-S/16 and the training
+setup described in Appendix F, evaluating image classification, COCO retrieval, and hierarchical
+classification. The default configurations are highlighted.
+RAOC angular allowance. The parameter β controls the angular allowance associated with a given
+radial gap. Smaller values impose stricter angular constraints, whereas larger values provide more
+flexibility. Table 10 examines the effect of this geometric parameter.
+Table 10: Sensitivity to the RAOC parameter β. All other hyperparameters remain fixed at their
+default values.
+Parameter
+Classification
+COCO R@5
+Hierarchy
+β
+ImageNet↑
+Food-101↑
+T→I↑
+I→T↑
+TIE↓
+J ↑
+2
+41.31
+49.61
+55.02
+68.71
+3.69
+0.77
+4
+41.18
+49.82
+55.31
+68.97
+3.67
+0.77
+8
+41.54
+50.13
+55.77
+69.42
+3.62
+0.78
+16
+41.12
+49.74
+55.18
+68.84
+3.71
+0.77
+32
+41.36
+49.96
+55.41
+69.06
+3.66
+0.77
+Entailment weight. The weight λe balances hierarchical entailment supervision and semantic
+alignment. Table 11 evaluates the effect of different supervision strengths.
+Table 11: Sensitivity to the entailment weight λe. All other hyperparameters remain fixed at their
+default values.
+Parameter
+Classification
+COCO R@5
+Hierarchy
+λe
+ImageNet↑
+Food-101↑
+T→I↑
+I→T↑
+TIE↓
+J ↑
+0.0375
+40.82
+48.93
+54.72
+68.31
+3.81
+0.76
+0.075
+41.37
+49.88
+55.39
+69.03
+3.68
+0.77
+0.15
+41.54
+50.13
+55.77
+69.42
+3.62
+0.78
+0.30
+40.21
+48.76
+54.65
+68.20
+3.86
+0.76
+0.60
+39.12
+46.94
+53.47
+66.91
+4.05
+0.74
+Norm regularization weight. The weight λn controls the radial scale regularization. Table 12
+studies how different regularization strengths affect the learned hierarchy representation.
+Table 12: Sensitivity to the norm regularization weight λn. All other hyperparameters remain
+fixed at their default values.
+Parameter
+Classification
+COCO R@5
+Hierarchy
+λn
+ImageNet↑
+Food-101↑
+T→I↑
+I→T↑
+TIE↓
+J ↑
+0.0125
+40.71
+49.12
+54.89
+68.54
+3.76
+0.76
+0.025
+41.08
+49.77
+55.34
+69.01
+3.69
+0.77
+0.05
+41.54
+50.13
+55.77
+69.42
+3.62
+0.78
+0.10
+41.29
+49.96
+55.46
+69.18
+3.70
+0.77
+0.20
+40.62
+48.85
+54.73
+68.37
+3.88
+0.76
+Radial margin scale. The parameter σr scales the radial margin during optimization. Table 13
+evaluates whether performance depends strongly on this optimization scale.
+33
+
+
+Preprint
+Table 13: Sensitivity to the radial margin scale σr. All other hyperparameters remain fixed at their
+default values.
+Parameter
+Classification
+COCO R@5
+Hierarchy
+σr
+ImageNet↑
+Food-101↑
+T→I↑
+I→T↑
+TIE↓
+J ↑
+0.025
+41.08
+49.74
+55.21
+68.92
+3.70
+0.77
+0.05
+41.32
+50.01
+55.54
+69.18
+3.65
+0.77
+0.10
+41.54
+50.13
+55.77
+69.42
+3.62
+0.78
+0.20
+41.46
+50.04
+55.68
+69.31
+3.64
+0.78
+0.40
+41.38
+49.91
+55.59
+69.20
+3.67
+0.77
+K
+REPRODUCIBILITY
+The main paper presents the objectives, methodology, and key experimental findings. Appendices F
+and H provide implementation details, training configurations, evaluation protocols, and computa-
+tional settings. We will release code, checkpoints, configurations, data processing details, and eval-
+uation resources, including scripts for reproducing RAOC-based geometric analyses and reported
+benchmark results.
+34
