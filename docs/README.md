@@ -48,17 +48,17 @@
 <section class="dpr-home-dashboard-card dpr-home-report-card">
   <div class="dpr-home-dashboard-header">
     <div>
-      <span class="dpr-home-dashboard-kicker">2026-10-27</span>
+      <span class="dpr-home-dashboard-kicker">2026-10-28</span>
       <h3 class="dpr-home-dashboard-title">今日汇总</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">共 6 篇</strong>
+    <strong class="dpr-home-dashboard-count">共 8 篇</strong>
   </div>
   <dl class="dpr-home-dashboard-stats">
     <div class="dpr-home-dashboard-stat"><dt>累计更新</dt><dd>1 次</dd></div>
     <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>1</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>5</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>7</dd></div>
   </dl>
-  <p class="dpr-home-dashboard-body">最近更新：2026-10-27 23:00:29 UTC<br>状态：成功</p>
+  <p class="dpr-home-dashboard-body">最近更新：2026-10-28 23:51:06 UTC<br>状态：成功</p>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-brief-card">
   <div class="dpr-home-dashboard-header">
@@ -69,9 +69,7 @@
     <strong class="dpr-home-dashboard-count">AI</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<p>今天筛完6篇，精读1篇、速读5篇，重点集中在医学影像分类与MRI重建。</p>
-<p>最值得看的是9.0分的帕金森静息态功能连接检索增强分类，以及速读中阿尔茨海默MRI跨数据集鲁棒性、卒中多中心外部验证这两条“可靠性”线索。</p>
-<p>普通读者可先读精读篇，再用多中心/跨数据集结论检验泛化性，别只被单一高分吸引。</p>
+<p>今天筛读 8 篇脑科学论文，精读 1 篇、速读 7 篇，重点聚焦 fMRI 个体化归因的可靠性。最值得看的是 ADNI 静息态 fMRI 认知预测中个体功能网络归因是否可靠（9.0 分），以及线虫全脑“每条通路都算数、有的更算数”的 max-plus 视角。普通读者可先读精读篇，理解归因可靠性边界后，再浏览线虫连接组研究。</p>
   </div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-deep-card">
@@ -83,7 +81,7 @@
     <strong class="dpr-home-dashboard-count">1 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Retrieval-Augmented Parkinson&#x27;s Disease Classification from Resting-State Functional Connectivity">Retrieval-Augmented Parkinson&#x27;s Disease Classification from Resting-State Functional Connectivity</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="How Reliable Is Individualized Functional-Network Attribution in Resting-State fMRI Cognitive Prediction in ADNI?">How Reliable Is Individualized Functional-Network Attribution in Resting-State fMRI Cognitive Prediction in ADNI?</span></li></ul>
   </div>
   <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">fbn <strong>1</strong></span></div>
 </section>
@@ -93,12 +91,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">速读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">5 篇</strong>
+    <strong class="dpr-home-dashboard-count">7 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="How Robust Are CNNs and Vision Transformers for Alzheimer&#x27;s MRI Classification Across Datasets?">How Robust Are CNNs and Vision Transformers for Alzheimer&#x27;s MRI Classification Across Datasets?</span></li><li><span class="dpr-home-dashboard-paper-title" title="Acute Stroke Classification Using Asymmetric Data Standardization and Orthogonal-Focal Loss Optimized CNN-ViT Cross-Attention Fusion: A Multicenter External Validation Study">Acute Stroke Classification Using Asymmetric Data Standardization and Orthogonal-Focal Loss Optimized CNN-ViT Cross-Attention Fusion: A Multicenter External Validation Study</span></li><li><span class="dpr-home-dashboard-paper-title" title="AGGR-Mamba: Mamba-based Network with Attention-Guided Gated Residual Refinement for Undersampled MRI Reconstruction">AGGR-Mamba: Mamba-based Network with Attention-Guided Gated Residual Refinement for Undersampled MRI Reconstruction</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Every route counts, but some count more: a max-plus view of the C. elegans brain">Every route counts, but some count more: a max-plus view of the C. elegans brain</span></li><li><span class="dpr-home-dashboard-paper-title" title="DRAFT: Decoding and Reconstructing 3D Room Layouts from fMRI and Camera Trajectories">DRAFT: Decoding and Reconstructing 3D Room Layouts from fMRI and Camera Trajectories</span></li><li><span class="dpr-home-dashboard-paper-title" title="Interpretable Brain Age Prediction Using White Matter Fiber Orientation Distributions with Rotation-Equivariant Deep Learning">Interpretable Brain Age Prediction Using White Matter Fiber Orientation Distributions with Rotation-Equivariant Deep Learning</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">fbn <strong>4</strong></span><span class="dpr-home-dashboard-tag">hginff <strong>1</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">fbn <strong>4</strong></span><span class="dpr-home-dashboard-tag">hginff <strong>3</strong></span></div>
 </section>
 </div>
 
