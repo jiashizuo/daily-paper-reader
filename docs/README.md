@@ -48,17 +48,17 @@
 <section class="dpr-home-dashboard-card dpr-home-report-card">
   <div class="dpr-home-dashboard-header">
     <div>
-      <span class="dpr-home-dashboard-kicker">2026-10-28</span>
+      <span class="dpr-home-dashboard-kicker">2026-10-29</span>
       <h3 class="dpr-home-dashboard-title">今日汇总</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">共 8 篇</strong>
+    <strong class="dpr-home-dashboard-count">共 2 篇</strong>
   </div>
   <dl class="dpr-home-dashboard-stats">
     <div class="dpr-home-dashboard-stat"><dt>累计更新</dt><dd>1 次</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>1</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>7</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>0</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>2</dd></div>
   </dl>
-  <p class="dpr-home-dashboard-body">最近更新：2026-10-28 23:51:06 UTC<br>状态：成功</p>
+  <p class="dpr-home-dashboard-body">最近更新：2026-10-29 23:52:21 UTC<br>状态：成功</p>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-brief-card">
   <div class="dpr-home-dashboard-header">
@@ -69,7 +69,7 @@
     <strong class="dpr-home-dashboard-count">AI</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<p>今天筛读 8 篇脑科学论文，精读 1 篇、速读 7 篇，重点聚焦 fMRI 个体化归因的可靠性。最值得看的是 ADNI 静息态 fMRI 认知预测中个体功能网络归因是否可靠（9.0 分），以及线虫全脑“每条通路都算数、有的更算数”的 max-plus 视角。普通读者可先读精读篇，理解归因可靠性边界后，再浏览线虫连接组研究。</p>
+<p>今日速读 2 篇 6.0 分论文，聚焦神经影像分析流程与 EEG 网络建模。最值得看的方向是：用软件产品线控制神经影像分析流程的可变性，以及基于相位的边耦合建模脑电网络中的重叠功能架构与高阶边间交互。普通读者可先浏览这两篇的方法框架，判断它们是否契合自己的数据分析需求。</p>
   </div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-deep-card">
@@ -78,12 +78,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">精读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">1 篇</strong>
+    <strong class="dpr-home-dashboard-count">0 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="How Reliable Is Individualized Functional-Network Attribution in Resting-State fMRI Cognitive Prediction in ADNI?">How Reliable Is Individualized Functional-Network Attribution in Resting-State fMRI Cognitive Prediction in ADNI?</span></li></ul>
+<p class="dpr-home-dashboard-empty">今日暂无推荐。</p>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">fbn <strong>1</strong></span></div>
+
 </section>
 <section class="dpr-home-dashboard-card dpr-home-skim-card">
   <div class="dpr-home-dashboard-header">
@@ -91,12 +91,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">速读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">7 篇</strong>
+    <strong class="dpr-home-dashboard-count">2 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Every route counts, but some count more: a max-plus view of the C. elegans brain">Every route counts, but some count more: a max-plus view of the C. elegans brain</span></li><li><span class="dpr-home-dashboard-paper-title" title="DRAFT: Decoding and Reconstructing 3D Room Layouts from fMRI and Camera Trajectories">DRAFT: Decoding and Reconstructing 3D Room Layouts from fMRI and Camera Trajectories</span></li><li><span class="dpr-home-dashboard-paper-title" title="Interpretable Brain Age Prediction Using White Matter Fiber Orientation Distributions with Rotation-Equivariant Deep Learning">Interpretable Brain Age Prediction Using White Matter Fiber Orientation Distributions with Rotation-Equivariant Deep Learning</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Controlling Variability in~Neuroimaging Analysis Pipelines with~Software Product Lines">Controlling Variability in~Neuroimaging Analysis Pipelines with~Software Product Lines</span></li><li><span class="dpr-home-dashboard-paper-title" title="Phase-based Edge Coupling: Modeling Overlapping Functional Architectures and High-Order Edge-to-Edge Interactions in EEG Networks">Phase-based Edge Coupling: Modeling Overlapping Functional Architectures and High-Order Edge-to-Edge Interactions in EEG Networks</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">fbn <strong>4</strong></span><span class="dpr-home-dashboard-tag">hginff <strong>3</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">fbn <strong>1</strong></span><span class="dpr-home-dashboard-tag">hginff <strong>1</strong></span></div>
 </section>
 </div>
 
