@@ -48,17 +48,17 @@
 <section class="dpr-home-dashboard-card dpr-home-report-card">
   <div class="dpr-home-dashboard-header">
     <div>
-      <span class="dpr-home-dashboard-kicker">2026-10-29</span>
+      <span class="dpr-home-dashboard-kicker">2026-10-30</span>
       <h3 class="dpr-home-dashboard-title">今日汇总</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">共 2 篇</strong>
+    <strong class="dpr-home-dashboard-count">共 4 篇</strong>
   </div>
   <dl class="dpr-home-dashboard-stats">
     <div class="dpr-home-dashboard-stat"><dt>累计更新</dt><dd>1 次</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>0</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>2</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>1</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>3</dd></div>
   </dl>
-  <p class="dpr-home-dashboard-body">最近更新：2026-10-29 23:52:21 UTC<br>状态：成功</p>
+  <p class="dpr-home-dashboard-body">最近更新：2026-10-30 23:21:30 UTC<br>状态：成功</p>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-brief-card">
   <div class="dpr-home-dashboard-header">
@@ -69,7 +69,7 @@
     <strong class="dpr-home-dashboard-count">AI</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<p>今日速读 2 篇 6.0 分论文，聚焦神经影像分析流程与 EEG 网络建模。最值得看的方向是：用软件产品线控制神经影像分析流程的可变性，以及基于相位的边耦合建模脑电网络中的重叠功能架构与高阶边间交互。普通读者可先浏览这两篇的方法框架，判断它们是否契合自己的数据分析需求。</p>
+<p>今日精选4篇神经影像论文，精读1篇、速读3篇，聚焦冥想态解码、跨被试表征与医学影像生成。最值得看的是8.0分的ACAM-J-MARS多图谱黎曼谱表征解码高级冥想态fMRI，以及6.0分的L0范数CycleGAN实现非配对脑CT到MR合成。普通读者可先读精读篇了解冥想态神经标记，再按需关注跨被试对齐与联邦学习数据异质性两条应用线索。</p>
   </div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-deep-card">
@@ -78,12 +78,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">精读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">0 篇</strong>
+    <strong class="dpr-home-dashboard-count">1 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<p class="dpr-home-dashboard-empty">今日暂无推荐。</p>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="ACAM-J-MARS: Multi-Atlas Riemannian Spectral Representations for Decoding Advanced Meditation States from fMRI">ACAM-J-MARS: Multi-Atlas Riemannian Spectral Representations for Decoding Advanced Meditation States from fMRI</span></li></ul>
   </div>
-
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">fbn <strong>1</strong></span></div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-skim-card">
   <div class="dpr-home-dashboard-header">
@@ -91,12 +91,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">速读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">2 篇</strong>
+    <strong class="dpr-home-dashboard-count">3 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Controlling Variability in~Neuroimaging Analysis Pipelines with~Software Product Lines">Controlling Variability in~Neuroimaging Analysis Pipelines with~Software Product Lines</span></li><li><span class="dpr-home-dashboard-paper-title" title="Phase-based Edge Coupling: Modeling Overlapping Functional Architectures and High-Order Edge-to-Edge Interactions in EEG Networks">Phase-based Edge Coupling: Modeling Overlapping Functional Architectures and High-Order Edge-to-Edge Interactions in EEG Networks</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Latent Prediction Yields Cross-Subject Alignable Representations in Sensory-Evoked fMRI">Latent Prediction Yields Cross-Subject Alignable Representations in Sensory-Evoked fMRI</span></li><li><span class="dpr-home-dashboard-paper-title" title="L0-Norm-Based CycleGAN for Unpaired Brain CT-to-MR Synthesis">L0-Norm-Based CycleGAN for Unpaired Brain CT-to-MR Synthesis</span></li><li><span class="dpr-home-dashboard-paper-title" title="Data Amount Heterogeneity Improves Performance in Federated Learning for Neuroimaging">Data Amount Heterogeneity Improves Performance in Federated Learning for Neuroimaging</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">fbn <strong>1</strong></span><span class="dpr-home-dashboard-tag">hginff <strong>1</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">hginff <strong>2</strong></span><span class="dpr-home-dashboard-tag">fbn <strong>1</strong></span></div>
 </section>
 </div>
 
