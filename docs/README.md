@@ -48,17 +48,17 @@
 <section class="dpr-home-dashboard-card dpr-home-report-card">
   <div class="dpr-home-dashboard-header">
     <div>
-      <span class="dpr-home-dashboard-kicker">2026-10-30</span>
+      <span class="dpr-home-dashboard-kicker">2026-10-31</span>
       <h3 class="dpr-home-dashboard-title">今日汇总</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">共 4 篇</strong>
+    <strong class="dpr-home-dashboard-count">共 1 篇</strong>
   </div>
   <dl class="dpr-home-dashboard-stats">
     <div class="dpr-home-dashboard-stat"><dt>累计更新</dt><dd>1 次</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>1</dd></div>
-    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>3</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>精读</dt><dd>0</dd></div>
+    <div class="dpr-home-dashboard-stat"><dt>速读</dt><dd>1</dd></div>
   </dl>
-  <p class="dpr-home-dashboard-body">最近更新：2026-10-30 23:21:30 UTC<br>状态：成功</p>
+  <p class="dpr-home-dashboard-body">最近更新：2026-10-31 22:26:45 UTC<br>状态：成功</p>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-brief-card">
   <div class="dpr-home-dashboard-header">
@@ -69,7 +69,9 @@
     <strong class="dpr-home-dashboard-count">AI</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<p>今日精选4篇神经影像论文，精读1篇、速读3篇，聚焦冥想态解码、跨被试表征与医学影像生成。最值得看的是8.0分的ACAM-J-MARS多图谱黎曼谱表征解码高级冥想态fMRI，以及6.0分的L0范数CycleGAN实现非配对脑CT到MR合成。普通读者可先读精读篇了解冥想态神经标记，再按需关注跨被试对齐与联邦学习数据异质性两条应用线索。</p>
+<p>今天完成1篇速读筛选，聚焦大规模脑连接组学中的智能SEM超分辨加速。</p>
+<p>最值得看的是ZoomSEM如何用智能超分辨思路缓解大规模脑连接组学的成像效率瓶颈。</p>
+<p>普通读者可先速读该文摘要与实验结果，判断其加速效果是否契合你的数据规模再决定精读。</p>
   </div>
 </section>
 <section class="dpr-home-dashboard-card dpr-home-deep-card">
@@ -78,12 +80,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">精读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">1 篇</strong>
+    <strong class="dpr-home-dashboard-count">0 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="ACAM-J-MARS: Multi-Atlas Riemannian Spectral Representations for Decoding Advanced Meditation States from fMRI">ACAM-J-MARS: Multi-Atlas Riemannian Spectral Representations for Decoding Advanced Meditation States from fMRI</span></li></ul>
+<p class="dpr-home-dashboard-empty">今日暂无推荐。</p>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">fbn <strong>1</strong></span></div>
+
 </section>
 <section class="dpr-home-dashboard-card dpr-home-skim-card">
   <div class="dpr-home-dashboard-header">
@@ -91,12 +93,12 @@
       <span class="dpr-home-dashboard-kicker">今日累计</span>
       <h3 class="dpr-home-dashboard-title">速读推荐</h3>
     </div>
-    <strong class="dpr-home-dashboard-count">3 篇</strong>
+    <strong class="dpr-home-dashboard-count">1 篇</strong>
   </div>
   <div class="dpr-home-dashboard-body">
-<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="Latent Prediction Yields Cross-Subject Alignable Representations in Sensory-Evoked fMRI">Latent Prediction Yields Cross-Subject Alignable Representations in Sensory-Evoked fMRI</span></li><li><span class="dpr-home-dashboard-paper-title" title="L0-Norm-Based CycleGAN for Unpaired Brain CT-to-MR Synthesis">L0-Norm-Based CycleGAN for Unpaired Brain CT-to-MR Synthesis</span></li><li><span class="dpr-home-dashboard-paper-title" title="Data Amount Heterogeneity Improves Performance in Federated Learning for Neuroimaging">Data Amount Heterogeneity Improves Performance in Federated Learning for Neuroimaging</span></li></ul>
+<ul class="dpr-home-dashboard-paper-list"><li><span class="dpr-home-dashboard-paper-title" title="ZoomSEM: accelerating large-scale brain connectomics with intelligent SEM super-resolution">ZoomSEM: accelerating large-scale brain connectomics with intelligent SEM super-resolution</span></li></ul>
   </div>
-  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">hginff <strong>2</strong></span><span class="dpr-home-dashboard-tag">fbn <strong>1</strong></span></div>
+  <div class="dpr-home-dashboard-tags"><span class="dpr-home-dashboard-tag">fbn <strong>1</strong></span></div>
 </section>
 </div>
 
